@@ -3,6 +3,8 @@ Code.require_file("../support/route_config.ex", __DIR__)
 defmodule Kogen.Codex.CompatibilityPreparationTest do
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Codex.Compatibility
   alias Kogen.RouteConfig
 
@@ -13,7 +15,7 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
     config = RouteConfig.codex_route!()
 
     assert {:ok, fixture, _evidence, discovery} =
-             Compatibility.prepare_fixture(File.cwd!(), config)
+             Compatibility.prepare_fixture(@project_root, config)
 
     assert File.regular?(Path.join(fixture, ".agents/skills/project-context/SKILL.md"))
     assert File.dir?(discovery["home"])
@@ -25,7 +27,7 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
     on_exit(fn -> File.rm_rf!(root) end)
     config = RouteConfig.codex_route!() |> Map.update!(:shaping, &%{&1 | model: ""})
 
-    assert {:error, reason} = Compatibility.prepare_fixture(File.cwd!(), config)
+    assert {:error, reason} = Compatibility.prepare_fixture(@project_root, config)
     message = if is_binary(reason), do: reason, else: inspect(reason)
     assert message =~ "shaping.model"
 
@@ -104,7 +106,7 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
     root = temporary_root("pty-trust")
     on_exit(fn -> File.rm_rf!(root) end)
 
-    # 0.154.0 and 0.156.1 native trust screens, in that order. 0.156.1 places
+    # 0.154.0 and 0.158.0 native trust screens, in that order. 0.158.0 places
     # the title's words with cursor moves, not spaces, as observed live.
     screens = [
       "1. Yes, continue\\nPress enter to continue",
@@ -170,6 +172,51 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
 
       assert native_exit in [0, -2]
       assert is_list(attempts)
+    end
+  end
+
+  # Recorded from live-native (Codex 0.158.0): the answer is streamed as
+  # fragments at absolute positions, interleaved with a status-line write and
+  # a window-title update, so the escape-stripped stream never holds it whole.
+  test "PTY driver matches a marker streamed as positioned fragments, only on one rendered row" do
+    root = temporary_root("pty-fragments")
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    program = fn last_row ->
+      """
+      import sys, time
+      out = sys.stdout.buffer
+      frames = [
+          b"\\x1b[?1049h\\x1b[10;3H\\xe2\\x80\\xba Reply with COMPATIBILITY_ and SHAPING_OK",
+          b"\\x1b[12;1H\\x1b[2m\\xe2\\x80\\xa2 \\x1b[22mCOMPATIBILITY_SH\\x1b[34;1H \\x1b[m\\x1b[37;3H",
+          b"\\x1b[?2026h\\x1b[12;19HAPING\\x1b[m\\x1b]0;\\xe2\\xa0\\x87 | fixture\\x07\\x1b[37;3H",
+          b"\\x1b[?2026h\\x1b[#{last_row};24H_OK\\x1b[m\\x1b[37;3H\\x1b[?2026l",
+      ]
+      for frame in frames:
+          out.write(frame); out.flush(); time.sleep(0.2)
+      time.sleep(30)
+      """
+    end
+
+    for {last_row, expected} <- [{12, true}, {13, false}] do
+      receipt = Path.join(root, "receipt-#{last_row}.json")
+
+      {_, status} =
+        System.cmd(
+          python(),
+          [pty_driver(), python(), receipt, "COMPATIBILITY_SHAPING_OK", "-c", program.(last_row)],
+          env: [
+            {"KOGEN_PTY_EXECUTION_TIMEOUT", "4"},
+            {"KOGEN_PTY_CLEANUP_TIMEOUT", "2"}
+          ],
+          stderr_to_stdout: true
+        )
+
+      result = receipt!(receipt)
+      assert result["marker"] == expected, "row #{last_row}: #{inspect(result["marker"])}"
+      refute result["output"] =~ "COMPATIBILITY_SHAPING_OK"
+      assert result["cleanup"]["ok"]
+      assert status == if(expected, do: 0, else: 1)
     end
   end
 
@@ -283,8 +330,6 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
     program =
       "import sys\nchunk='x'*65536\nwhile True:\n sys.stdout.write(chunk)\n sys.stdout.flush()"
 
-    started = System.monotonic_time(:millisecond)
-
     {_, status} =
       System.cmd(
         python(),
@@ -296,10 +341,17 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
         ]
       )
 
-    elapsed = System.monotonic_time(:millisecond) - started
     assert status == 1
-    assert elapsed < 3_000
-    assert %{"timed_out" => true, "cleanup" => %{"ok" => true}} = receipt!(receipt)
+
+    assert %{"timed_out" => true, "cleanup" => %{"ok" => true, "attempts" => attempts}} =
+             receipt!(receipt)
+
+    # The flood was drained and one graceful group signal ended the child.
+    # Cleanup never reached its bounded-wait timeout or a forced kill; that is
+    # the receipt's record of the events, not a clock reading.
+    assert Enum.any?(attempts, &(&1["signal"] == "SIGTERM" and &1["target"] == "group"))
+    refute Enum.any?(attempts, &(&1["signal"] == "SIGKILL"))
+    refute Enum.any?(attempts, &(&1["action"] == "bounded_cleanup"))
   end
 
   test "bounded wrapper kills an ignored turn and its descendant within its own process group" do

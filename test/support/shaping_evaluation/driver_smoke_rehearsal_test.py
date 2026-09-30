@@ -117,6 +117,13 @@ class DriverSmokeRehearsalTest(unittest.TestCase):
         spec.loader.exec_module(self.driver)
         self.driver.SESSION_ROOT = self.sessions
         self.driver.PROJECT = self.project
+        # The real validation runs `mix run` (covered in driver_rehearsal_test);
+        # this rehearsal fakes every subprocess, so it records the call.
+        self.validated = []
+        def recorded_validation(fixture, label, extra_files, draft=None):
+            self.validated.append(label)
+            return {"label": label, "digest": "0" * 64, "providers_denied": False, "files": 1}
+        self.driver.validate_generated_fixture = recorded_validation
         if old_runtime is None: self.addCleanup(os.environ.pop, "KOGEN_SHAPING_EVALUATION_RUNTIME")
         else: self.addCleanup(os.environ.__setitem__, "KOGEN_SHAPING_EVALUATION_RUNTIME", old_runtime)
         if old_code_paths is None: self.addCleanup(os.environ.pop, "KOGEN_SHAPING_EVALUATION_ELIXIR_CODE_PATHS")
@@ -305,13 +312,13 @@ class DriverSmokeRehearsalTest(unittest.TestCase):
         removed = [line for line in diff if line.startswith("-") and not line.startswith("---")]
         added = [line for line in diff if line.startswith("+") and not line.startswith("+++")]
         self.assertEqual(removed, [
-            "-    shaping:   {model: gpt-6-sol, effort: medium}",
-            "-    auditor:   {model: gpt-6-sol, effort: high}",
+            "-    shaping:   {model: gpt-6.1-sol, effort: medium}",
+            "-    auditor:   {model: gpt-6.1-sol, effort: high}",
             "-      worker: {model: gpt-6-luna, effort: high}",
-            "-      expert: {model: gpt-6-sol, effort: high}",
+            "-      expert: {model: gpt-6.1-sol, effort: high}",
         ])
         self.assertEqual(added, [
-            "+    shaping:   {model: gpt-6-sol, effort: low}",
+            "+    shaping:   {model: gpt-6.1-sol, effort: low}",
             "+      worker: {model: gpt-6-luna, effort: low}",
             "+      expert: {model: gpt-6-luna, effort: low}",
         ])

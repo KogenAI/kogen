@@ -1,5 +1,6 @@
 Code.require_file("../support/precondition_fixture.ex", __DIR__)
 Code.require_file("../support/compiled_fixture.exs", __DIR__)
+Code.require_file("../support/shared_outcome.ex", __DIR__)
 
 defmodule Kogen.BuildPreconditionsTest do
   @moduledoc """
@@ -156,35 +157,42 @@ defmodule Kogen.BuildPreconditionsTest do
   ]
 
   @project_root Path.expand("../..", __DIR__)
+  # Binds shared route outcomes to these exact test sources.
+  @source_digest :crypto.hash(:sha256, File.read!(__ENV__.file)) |> Base.encode16(case: :lower)
   template =
-    if System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1" do
-      Kogen.PreconditionFixture.child_template!()
-    else
-      Kogen.PreconditionFixture.create!(
-        @project_root,
-        [
-          {"Makefile", @makefile},
-          {".gitignore", @gitignore},
-          {".kogen/config.yaml", @config_yaml},
-          {"test/kogen/focused_fixture_test.exs", "# focused fixture\n"},
-          {"priv/kogen/verification_targets.yaml",
-           Jason.encode!(%{
-             "targets" => [
-               %{
-                 "name" => "check",
-                 "cost_class" => "offline",
-                 "rank" => 0,
-                 "dependencies" => [],
-                 "provider_backed" => false,
-                 "owner" => "fixture"
-               }
-             ]
-           })},
-          {".kogen/intents/approved/#{@slug}/intent.yaml", @valid_intent},
-          {".kogen/intents/approved/#{@slug}/scenarios.yaml", @scenarios_yaml}
-        ],
-        @git_env
-      )
+    cond do
+      System.get_env("KOGEN_ISOLATED_COMPILER") == "1" ->
+        Kogen.IsolatedCase.cached_parameter_marker()
+
+      System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1" ->
+        Kogen.PreconditionFixture.child_template!()
+
+      true ->
+        Kogen.PreconditionFixture.create!(
+          @project_root,
+          [
+            {"Makefile", @makefile},
+            {".gitignore", @gitignore},
+            {".kogen/config.yaml", @config_yaml},
+            {"test/kogen/focused_fixture_test.exs", "# focused fixture\n"},
+            {"priv/kogen/verification_targets.yaml",
+             Jason.encode!(%{
+               "targets" => [
+                 %{
+                   "name" => "check",
+                   "cost_class" => "offline",
+                   "rank" => 0,
+                   "dependencies" => [],
+                   "provider_backed" => false,
+                   "owner" => "fixture"
+                 }
+               ]
+             })},
+            {".kogen/intents/approved/#{@slug}/intent.yaml", @valid_intent},
+            {".kogen/intents/approved/#{@slug}/scenarios.yaml", @scenarios_yaml}
+          ],
+          @git_env
+        )
     end
 
   @template template
@@ -215,10 +223,13 @@ defmodule Kogen.BuildPreconditionsTest do
                           expected: "Complete Intent already exists"
                         },
                         %{
+                          # The Intent removed the publication byte caps: large valid
+                          # Approved evidence is never refused for its size, only for
+                          # being uncommitted like any other untracked file.
                           case:
-                            "many individually valid Approved files exceed the aggregate budget",
+                            "large uncommitted Approved evidence is refused as a dirty worktree",
                           operation: :approved_aggregate_oversize,
-                          expected: "largest contributors: \"evidence-a.bin\"=4000000"
+                          expected: "worktree is not clean"
                         },
                         %{
                           case: "missing configuration",
@@ -567,139 +578,181 @@ defmodule Kogen.BuildPreconditionsTest do
            "control's own worktree is the only one git knows about"
   end
 
+  # The four route tests below ignore this module's precondition parameters.
+  # Each parameterized rerun makes every assertion against the one real
+  # outcome of its fixture work in this suite run (`Kogen.SharedOutcome`).
   test "a flat-shaped config.yaml is refused before any launch and no tracking record is created" do
-    fixture = route_fixture!("route-flat-refused")
-    slug = write_route_build_package!(fixture)
+    outcome =
+      shared_outcome!("flat-config-refused", fn ->
+        fixture = route_fixture!("route-flat-refused")
+        slug = write_route_build_package!(fixture)
 
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), """
-    harness: codex
-    shaping:   {model: gpt-5.6-sol, effort: low}
-    developer: {model: gpt-5.6-sol, effort: low}
-    reviewer:  {model: gpt-5.6-terra, effort: medium}
-    helpers:
-      scout:  {model: gpt-5.6-luna, effort: low}
-      worker: {model: gpt-5.6-luna, effort: medium}
-      expert: {model: gpt-5.6-sol, effort: medium}
-    outer_resumptions: 2
-    verification_retries: 2
-    offline_retries: 4
-    """)
+        File.write!(Path.join(fixture, ".kogen/config.yaml"), """
+        harness: codex
+        shaping:   {model: gpt-5.6-sol, effort: low}
+        developer: {model: gpt-5.6-sol, effort: low}
+        reviewer:  {model: gpt-5.6-terra, effort: medium}
+        helpers:
+          scout:  {model: gpt-5.6-luna, effort: low}
+          worker: {model: gpt-5.6-luna, effort: medium}
+          expert: {model: gpt-5.6-sol, effort: medium}
+        outer_resumptions: 2
+        verification_retries: 2
+        offline_retries: 4
+        """)
 
-    init_route_git!(fixture)
+        init_route_git!(fixture)
 
-    {output, 1} =
-      Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", slug], route_env(fixture))
+        {output, status} =
+          Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", slug], route_env(fixture))
 
-    assert output =~
+        %{
+          output: output,
+          status: status,
+          harness_log?: File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
+          tracking: Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*"))
+        }
+      end)
+
+    assert outcome.status == 1
+
+    assert outcome.output =~
              "config.yaml uses the replaced flat configuration shape (top-level harness and roles); define default_route and routes instead"
 
-    refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
-           "the flat config must be refused before any fake-harness launch"
+    refute outcome.harness_log?, "the flat config must be refused before any fake-harness launch"
 
-    refute Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*")) != [],
+    refute outcome.tracking != [],
            "no tracking record may be created when config resolution fails"
   end
 
   test "an unknown --route fails before launch, naming the route and listing available routes sorted" do
-    fixture = route_fixture!("route-unknown-refused")
-    slug = write_route_build_package!(fixture)
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), @two_route_config)
-    init_route_git!(fixture)
+    outcome =
+      shared_outcome!("unknown-route-refused", fn ->
+        fixture = route_fixture!("route-unknown-refused")
+        slug = write_route_build_package!(fixture)
+        File.write!(Path.join(fixture, ".kogen/config.yaml"), @two_route_config)
+        init_route_git!(fixture)
 
-    {output, 1} =
-      Kogen.CompiledFixture.mix_task!(
-        fixture,
-        ["kogen.build", "--route", "missing", slug],
-        route_env(fixture)
-      )
+        {output, status} =
+          Kogen.CompiledFixture.mix_task!(
+            fixture,
+            ["kogen.build", "--route", "missing", slug],
+            route_env(fixture)
+          )
 
-    assert output =~ "unknown route: missing; available routes: codex, other"
+        %{
+          output: output,
+          status: status,
+          harness_log?: File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
+          tracking: Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*"))
+        }
+      end)
 
-    refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
+    assert outcome.status == 1
+    assert outcome.output =~ "unknown route: missing; available routes: codex, other"
+
+    refute outcome.harness_log?,
            "an unknown route must be refused before any fake-harness launch"
 
-    assert Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*")) == [],
+    assert outcome.tracking == [],
            "no tracking record may be created when route selection fails"
   end
 
   test "a missing --route value or an unknown option print the command's usage line" do
-    fixture = route_fixture!("route-usage")
-    slug = write_route_build_package!(fixture)
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), @two_route_config)
-    init_route_git!(fixture)
+    outcome =
+      shared_outcome!("usage-line", fn ->
+        fixture = route_fixture!("route-usage")
+        slug = write_route_build_package!(fixture)
+        File.write!(Path.join(fixture, ".kogen/config.yaml"), @two_route_config)
+        init_route_git!(fixture)
+
+        missing_value =
+          Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", "--route"], route_env(fixture))
+
+        unknown_option =
+          Kogen.CompiledFixture.mix_task!(
+            fixture,
+            ["kogen.build", "--unknown-option", slug],
+            route_env(fixture)
+          )
+
+        %{
+          missing_value: missing_value,
+          unknown_option: unknown_option,
+          harness_log?: File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log"))
+        }
+      end)
 
     usage = "usage: mix kogen.build [--route <name>] <slug>"
 
-    {missing_value_output, 1} =
-      Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", "--route"], route_env(fixture))
-
+    {missing_value_output, 1} = outcome.missing_value
     assert missing_value_output =~ usage
 
-    {unknown_option_output, 1} =
-      Kogen.CompiledFixture.mix_task!(
-        fixture,
-        ["kogen.build", "--unknown-option", slug],
-        route_env(fixture)
-      )
-
+    {unknown_option_output, 1} = outcome.unknown_option
     assert unknown_option_output =~ usage
 
-    refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
-           "usage failures must be refused before any fake-harness launch"
+    refute outcome.harness_log?, "usage failures must be refused before any fake-harness launch"
   end
 
   test "--route selects a non-default route's Developer, Reviewer, and execution-policy profiles" do
-    default_fixture = route_fixture!("route-flag-selects-default")
-    default_slug = write_route_build_package!(default_fixture)
-    File.write!(Path.join(default_fixture, ".kogen/config.yaml"), @two_route_config)
-    init_route_git!(default_fixture)
+    outcome =
+      shared_outcome!("route-flag-selects", fn ->
+        %{
+          default: route_build!("route-flag-selects-default", []),
+          other: route_build!("route-flag-selects-other", ["--route", "other"])
+        }
+      end)
 
-    {_default_output, 0} =
-      Kogen.CompiledFixture.mix_task!(
-        default_fixture,
-        ["kogen.build", default_slug],
-        route_env(default_fixture)
-      )
-
-    default_prompt =
-      File.read!(Kogen.CandidateFixture.fake_state(default_fixture, "developer-launch-prompt"))
+    {_default_output, 0} = outcome.default.result
+    {:ok, default_prompt} = outcome.default.developer_prompt
 
     # The default route's developer root and helper profiles are named.
     assert default_prompt =~ "gpt-5.6-sol"
     assert default_prompt =~ "gpt-5.6-luna"
     refute default_prompt =~ "gpt-route-b"
 
-    default_reviewer_prompt =
-      File.read!(Kogen.CandidateFixture.fake_state(default_fixture, "reviewer-prompt-1"))
+    {:ok, default_reviewer_prompt} = outcome.default.reviewer_prompt
 
     assert default_reviewer_prompt =~ "gpt-5.6-terra"
     refute default_reviewer_prompt =~ "gpt-route-b"
 
-    other_fixture = route_fixture!("route-flag-selects-other")
-    other_slug = write_route_build_package!(other_fixture)
-    File.write!(Path.join(other_fixture, ".kogen/config.yaml"), @two_route_config)
-    init_route_git!(other_fixture)
-
-    {_other_output, 0} =
-      Kogen.CompiledFixture.mix_task!(
-        other_fixture,
-        ["kogen.build", "--route", "other", other_slug],
-        route_env(other_fixture)
-      )
-
-    other_prompt =
-      File.read!(Kogen.CandidateFixture.fake_state(other_fixture, "developer-launch-prompt"))
+    {_other_output, 0} = outcome.other.result
+    {:ok, other_prompt} = outcome.other.developer_prompt
 
     assert other_prompt =~ "gpt-route-b-dev"
     assert other_prompt =~ "gpt-route-b-worker"
     refute other_prompt =~ "gpt-5.6-sol"
     refute other_prompt =~ "gpt-5.6-luna"
 
-    other_reviewer_prompt =
-      File.read!(Kogen.CandidateFixture.fake_state(other_fixture, "reviewer-prompt-1"))
+    {:ok, other_reviewer_prompt} = outcome.other.reviewer_prompt
 
     assert other_reviewer_prompt =~ "gpt-route-b-review"
     refute other_reviewer_prompt =~ "gpt-5.6-terra"
+  end
+
+  defp route_build!(label, route_args) do
+    fixture = route_fixture!(label)
+    slug = write_route_build_package!(fixture)
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), @two_route_config)
+    init_route_git!(fixture)
+
+    result =
+      Kogen.CompiledFixture.mix_task!(
+        fixture,
+        ["kogen.build"] ++ route_args ++ [slug],
+        route_env(fixture)
+      )
+
+    %{
+      result: result,
+      developer_prompt:
+        File.read(Kogen.CandidateFixture.fake_state(fixture, "developer-launch-prompt")),
+      reviewer_prompt: File.read(Kogen.CandidateFixture.fake_state(fixture, "reviewer-prompt-1"))
+    }
+  end
+
+  defp shared_outcome!(name, fun) do
+    Kogen.SharedOutcome.fetch!("#{__MODULE__} #{name} #{@source_digest}", fun)
   end
 
   # -- fixture plumbing --------------------------------------------------
@@ -742,11 +795,37 @@ defmodule Kogen.BuildPreconditionsTest do
       end)
 
     assert {:error, reason} = result
-    assert reason =~ expected
+
+    # The parameter keeps its immutable admission-base test ID. The assertion
+    # follows this Intent's explicit managed Claude Code pin upgrade.
+    current_expected =
+      if operation == {:claude, :uninstalled} do
+        assert expected ==
+                 "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
+
+        "Kogen Claude Code #{Kogen.ManagedRuntimeReady.claude_code_version()} is not installed. Run mix kogen.claude.install"
+      else
+        expected
+      end
+
+    assert reason =~ current_expected
     assert File.exists?(Path.join(dir, ".kogen/build.lock")) == lock_was_present
     refute File.exists?(marker), "the fake harness marker exists: the harness was invoked"
     refute_role_launch!(candidate_trace_path(dir, trace))
-    assert approved_bytes(dir) == approved_before
+
+    reports =
+      Path.wildcard(Path.join(dir, ".kogen/runtime/scenario-tracking/*/failure-report.json"))
+
+    if reports != [] do
+      # An admitted terminal failure returns the exact package for explicit
+      # Shaper reconciliation; a pre-admission refusal leaves it Approved.
+      assert approved_bytes(dir) == []
+      assert package_bytes(dir, "drafts") == approved_before
+    else
+      assert approved_bytes(dir) == approved_before
+      assert package_bytes(dir, "drafts") == []
+    end
+
     assert {"", 0} = System.cmd("git", ["diff", "--cached", "--"], cd: dir)
     assert real_index_bytes(dir) == index_before
   end
@@ -1046,7 +1125,12 @@ defmodule Kogen.BuildPreconditionsTest do
   end
 
   defp tmp_repo! do
-    dir = Kogen.PreconditionFixture.copy!(@template)
+    template =
+      if System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1",
+        do: Kogen.PreconditionFixture.child_template!(),
+        else: @template
+
+    dir = Kogen.PreconditionFixture.copy!(template)
     on_exit(fn -> File.rm_rf(dir) end)
     dir
   end
@@ -1093,7 +1177,11 @@ defmodule Kogen.BuildPreconditionsTest do
   end
 
   defp approved_bytes(dir) do
-    root = Path.join(dir, ".kogen/intents/approved/#{@slug}")
+    package_bytes(dir, "approved")
+  end
+
+  defp package_bytes(dir, state) do
+    root = Path.join(dir, ".kogen/intents/#{state}/#{@slug}")
 
     root
     |> Path.join("**/*")

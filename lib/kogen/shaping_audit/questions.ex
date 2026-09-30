@@ -45,11 +45,11 @@ defmodule Kogen.ShapingAudit.Questions do
       text
       |> String.split("\n")
       |> split_sections()
-      |> Map.new(fn {name, lines} ->
-        {name, if(name == "Dispositions", do: disposition_entries(lines), else: entries(lines))}
+      |> Enum.reduce(Map.new(@sections, &{&1, []}), fn {name, lines}, acc ->
+        parsed = if name == "Dispositions", do: disposition_entries(lines), else: entries(lines)
+        Map.update!(acc, name, &(&1 ++ parsed))
       end)
 
-    sections = Map.merge(Map.new(@sections, &{&1, []}), sections)
     %{sections: sections, dispositions: dispositions(sections["Dispositions"])}
   end
 

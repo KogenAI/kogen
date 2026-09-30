@@ -4,6 +4,12 @@ defmodule Kogen.IntentTest do
   alias Kogen.Build.{Contract, VerificationPlan}
   alias Kogen.Intent
 
+  # `Contract.load/2` validates a scenario's targets against the Makefile of
+  # the root it is given, defaulting to the shared VM's mutable cwd, which
+  # another async module may have `File.cd!`-ed away from the checkout.
+  @root Path.expand("../..", __DIR__)
+  @config_path Path.join(@root, ".kogen/config.yaml")
+
   # -- helpers ---------------------------------------------------------
 
   defp tmp_dir! do
@@ -106,7 +112,7 @@ defmodule Kogen.IntentTest do
 
   describe "read_config/1" do
     test "parses the real tracked .kogen/config.yaml" do
-      assert {:ok, config} = Intent.read_config(".kogen/config.yaml", "claude")
+      assert {:ok, config} = Intent.read_config(@config_path, "claude")
 
       assert %{
                harness: harness,
@@ -151,21 +157,21 @@ defmodule Kogen.IntentTest do
                expert: %{model: "claude-opus-5-5", effort: "high"}
              }
 
-      assert {:ok, codex} = Intent.read_config(".kogen/config.yaml", "codex")
+      assert {:ok, codex} = Intent.read_config(@config_path, "codex")
 
       assert codex == %{
                route: "codex",
                harness: "codex",
-               shaping: %{model: "gpt-6-sol", effort: "medium"},
-               developer: %{model: "gpt-6-sol", effort: "high"},
-               reviewer: %{model: "gpt-6-sol", effort: "high"},
+               shaping: %{model: "gpt-6.1-sol", effort: "medium"},
+               developer: %{model: "gpt-6.1-sol", effort: "high"},
+               reviewer: %{model: "gpt-6.1-sol", effort: "high"},
                helpers: %{
                  scout: %{model: "gpt-6-luna", effort: "low"},
                  worker: %{model: "gpt-6-luna", effort: "high"},
-                 expert: %{model: "gpt-6-sol", effort: "high"}
+                 expert: %{model: "gpt-6.1-sol", effort: "high"}
                },
-               expert: %{model: "gpt-6-sol", effort: "high"},
-               auditor: %{"model" => "gpt-6-sol", "effort" => "high"},
+               expert: %{model: "gpt-6.1-sol", effort: "high"},
+               auditor: %{"model" => "gpt-6.1-sol", "effort" => "high"},
                roles: %{
                  shaping: "codex",
                  developer: "codex",
@@ -180,14 +186,22 @@ defmodule Kogen.IntentTest do
                },
                outer_resumptions: 2,
                verification_retries: 2,
-               offline_retries: 4
+               offline_retries: 4,
+               max_developer_resumptions: 3,
+               max_no_progress: 8,
+               max_rounds: 6,
+               max_dispatches: 40,
+               developer_turn_minutes: 30,
+               build_time_nudge_minutes: 60,
+               live_concurrency: 4
              }
 
       assert Map.has_key?(codex, :auditor)
       refute Map.has_key?(codex.roles, :auditor)
 
-      assert {:ok, default} = Intent.read_config()
-      assert default.route == "claude"
+      assert {:ok, default} = Intent.read_config(@config_path)
+      assert default.route == "optimum"
+      assert default.developer == %{model: "claude-opus-5-5", effort: "medium"}
     end
 
     test "parses an explicit valid config path" do
@@ -336,14 +350,15 @@ defmodule Kogen.IntentTest do
                Intent.read_config(path)
     end
 
-    test "offline_retries is a required integer with no default, refused before any launch" do
+    test "offline_retries defaults to the established allowance and explicit invalid values are refused" do
       dir = tmp_dir!()
 
+      without_offline_retries = String.replace(@valid_config, "offline_retries: 4\n", "")
+
       assert {:ok, %{offline_retries: 4, verification_retries: 2}} =
-               Intent.read_config(write_yaml!(dir, "config.yaml", @valid_config))
+               Intent.read_config(write_yaml!(dir, "default.yaml", without_offline_retries))
 
       for bad <- [
-            "",
             "offline_retries: -1\n",
             "offline_retries: four\n",
             "offline_retries: 1.5\n"
@@ -351,19 +366,18 @@ defmodule Kogen.IntentTest do
         path =
           write_yaml!(
             dir,
-            "missing.yaml",
+            "invalid.yaml",
             String.replace(@valid_config, "offline_retries: 4\n", bad)
           )
 
         assert {:error, reason} = Intent.read_config(path)
         assert reason =~ "config.yaml missing required key: offline_retries"
-        assert reason =~ ".kogen/config.yaml"
         assert {:error, ^reason} = Intent.validate_config(path)
       end
     end
 
     test "the tracked config passes whole-config validation and carries offline_retries" do
-      assert {:ok, config} = Intent.validate_config(".kogen/config.yaml")
+      assert {:ok, config} = Intent.validate_config(@config_path)
       assert is_integer(config.offline_retries)
     end
 
@@ -582,7 +596,7 @@ defmodule Kogen.IntentTest do
         path = contract_dir!()
         write_yaml!(path, "scenarios.yaml", Jason.encode!([contract_scenario(base)]))
 
-        assert {:ok, %{scenarios: [scenario]}} = Contract.load(path)
+        assert {:ok, %{scenarios: [scenario]}} = Contract.load(path, @root)
         assert scenario["proof"]["base"] == base
       end
     end
@@ -591,7 +605,7 @@ defmodule Kogen.IntentTest do
       path = contract_dir!()
       write_yaml!(path, "scenarios.yaml", Jason.encode!([contract_scenario("maybe")]))
 
-      assert {:error, "scenarios.yaml missing or invalid"} = Contract.load(path)
+      assert {:error, "scenarios.yaml missing or invalid"} = Contract.load(path, @root)
     end
 
     test "keeps validating a contract written before proof.base existed" do
@@ -599,7 +613,7 @@ defmodule Kogen.IntentTest do
       scenario = contract_scenario(nil) |> update_in(["proof"], &Map.delete(&1, "base"))
       write_yaml!(path, "scenarios.yaml", Jason.encode!([scenario]))
 
-      assert {:ok, %{scenarios: [loaded]}} = Contract.load(path)
+      assert {:ok, %{scenarios: [loaded]}} = Contract.load(path, @root)
       refute Map.has_key?(loaded["proof"], "base")
     end
   end
@@ -827,7 +841,14 @@ defmodule Kogen.IntentTest do
                },
                outer_resumptions: 1,
                verification_retries: 0,
-               offline_retries: 4
+               offline_retries: 4,
+               max_developer_resumptions: 3,
+               max_no_progress: 5,
+               max_rounds: 10,
+               max_dispatches: 40,
+               developer_turn_minutes: 30,
+               build_time_nudge_minutes: 60,
+               live_concurrency: 4
              }
 
       assert {:ok, codex} = Intent.read_config(path, "codex")
@@ -997,7 +1018,12 @@ defmodule Kogen.IntentTest do
       assert {:ok, config} = Intent.read_config(path)
 
       assert Map.keys(config) |> Enum.sort() ==
-               ~w(developer expert harness helpers native_helpers offline_retries outer_resumptions reviewer roles route shaping verification_retries)a
+               ~w(build_time_nudge_minutes developer developer_turn_minutes expert harness helpers live_concurrency max_developer_resumptions max_dispatches max_no_progress max_rounds native_helpers offline_retries outer_resumptions reviewer roles route shaping verification_retries)a
+
+      assert {config.max_developer_resumptions, config.max_no_progress, config.max_rounds,
+              config.max_dispatches, config.live_concurrency} == {3, 8, 21, 40, 4}
+
+      assert {config.build_time_nudge_minutes, config.developer_turn_minutes} == {60, 30}
 
       refute Map.has_key?(config, :auditor)
     end

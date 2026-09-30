@@ -9,6 +9,7 @@ Code.require_file("root_profile_audit.ex", __DIR__)
 # run` (the `prepare` catalog argv) does not load `test/support/*.ex` the
 # way `mix test` does.
 Code.require_file("dependency_fixture.ex", __DIR__)
+Code.require_file("fixture_validation.ex", __DIR__)
 
 defmodule Kogen.LiveReviewerReworkFixture do
   @moduledoc false
@@ -16,11 +17,12 @@ defmodule Kogen.LiveReviewerReworkFixture do
   import ExUnit.Callbacks, only: [on_exit: 1]
 
   alias Kogen.Build.{Contract, VerificationPlan, Workspace, WriteBoundary}
+  alias Kogen.Harness.Claude
   alias Kogen.{Intent, LiveReworkAudit, ReviewPacketAudit, RootProfileAudit}
 
   @slug "live-reviewer-rework-probe"
   @intent_id "01960000-0000-7000-8000-00000000beef"
-  @route "claude-dominant-adversarial-codex"
+  @project_root Path.expand("../..", __DIR__)
 
   # Mirrors `Kogen.Build.GuardedPaths`' `@volatile` list
   # (lib/kogen/build/guarded_paths.ex), which has no public accessor.
@@ -47,7 +49,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
   - id: reviewer-directed-rework
     given: an isolated provider-backed fixture with no dummy.txt or reviewer-notes.md
     when: the first Developer turn implements this test protocol
-    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation. For the first controlled phase, its final free-prose notes plainly disclose that reviewer-notes.md is intentionally absent pending the mandated independent Review -- not a contract objection -- and reference only files that actually exist; it does not fabricate the missing file or gate receipts. The fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
+    then: before writing any file, the first Developer turn dispatches exactly two separate native implementation helpers (never one helper twice, never a built-in agent) and waits for both -- helper A owns dummy.txt, creates it and then runs `printf 'reviewer-rework-k4q9z\\n' | cmp -s - dummy.txt && echo A OK`; helper B owns nothing, only runs `test ! -e reviewer-notes.md && echo B OK` -- and each returns its command output; the Developer then reruns both checks itself. It creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation. For the first controlled phase, its final free-prose notes plainly disclose that reviewer-notes.md is intentionally absent pending the mandated independent Review -- not a contract objection -- and reference only files that actually exist; it does not fabricate the missing file or gate receipts. The fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, resume sequence and helper dispatch from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
     wrong_result: the first Reviewer accepts without inspecting the intentionally deferred companion file, a replacement Developer session performs rework, or the final Candidate lacks the companion file
     verified_by: [check]
     evidence: provider-backed Build-only fixture preserves both structured reviewer receipts, Developer raw streams, Stop records, and the resulting Commit
@@ -64,13 +66,14 @@ defmodule Kogen.LiveReviewerReworkFixture do
     description: Fixture seed state is not acceptance evidence.
   """
 
-  def run do
-    project_root = File.cwd!()
+  def run(route \\ nil) do
+    project_root = @project_root
+    route = route || System.get_env("KOGEN_ROUTE")
 
-    # Never the default: this fixture proves the Reviewer really runs on the
-    # adversarial harness, so it names the hybrid route explicitly.
     {:ok, config} =
-      Intent.read_config(Path.join(project_root, ".kogen/config.yaml"), @route)
+      Intent.read_config(Path.join(project_root, ".kogen/config.yaml"), route)
+
+    route = config.route
 
     log_dir = owned_log_dir(project_root)
 
@@ -92,49 +95,47 @@ defmodule Kogen.LiveReviewerReworkFixture do
     fixture = ReviewPacketAudit.assert_outside_checkout!(raw_fixture, project_root)
 
     # Fail closed, before any provider dispatch, if the fixture does not
-    # resolve to a logged-in Kogen Claude Code login scope (Developer) or a
-    # logged-in Kogen Codex login scope (Reviewer, Expert), or if the hook
-    # toolchain is below its required version. These are exactly the
-    # functions `prepare/1` runs (scenario prepare-rehearsed-in-check): the
-    # live owner and `prepare` call the same entry points, never a copy.
-    assert_scopes_and_toolchain_ready!(fixture, project_root)
+    # resolve every harness assigned to the selected route to its Kogen login
+    # scope, or if the hook toolchain is below its required version. These are
+    # exactly the functions `prepare/1` runs (scenario
+    # prepare-rehearsed-in-check): the live owner and `prepare` call the same
+    # entry points, never a copy.
+    assert_scopes_and_toolchain_ready!(fixture, project_root, config)
 
     File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
-    setup_fixture(project_root, fixture)
+    setup_fixture(project_root, fixture, config)
     precompile!(fixture, log_dir)
     write_package!(fixture)
 
     # Fail closed locally before a provider-backed Build can be dispatched.
-    approved = Path.join(fixture, ".kogen/intents/approved/#{@slug}")
-    assert {:ok, contract} = Contract.load(approved)
-    assert contract.scenarios != []
-    catalog = assert_catalog_ready!(fixture)
-
-    assert {:ok, _plan} =
-             VerificationPlan.build(
-               contract.scenarios,
-               ["dummy.txt", "reviewer-notes.md"],
-               catalog,
-               fixture
-             )
+    assert_package_ready!(fixture)
+    record = validate_fixture!(fixture)
+    File.write!(Path.join(log_dir, "fixture-inputs.json"), Jason.encode!(record) <> "\n")
 
     raw_stream_dir = Path.join(log_dir, "build-raw-streams")
-    {:ok, codex_scope} = Kogen.Codex.effective_scope(fixture)
-    scope_before = File.ls!(codex_scope.path)
 
+    codex_scope =
+      if "codex" in role_harnesses(config) do
+        {:ok, scope} = Kogen.Codex.effective_scope(fixture)
+        scope
+      end
+
+    scope_before = if codex_scope, do: File.ls!(codex_scope.path), else: []
+
+    # The nested Build controller runs under process custody: if this outer
+    # driver dies (a canceled live run), the supervisor's parent-death
+    # watchdog terminates the nested controller and its descendants instead
+    # of leaving an orphaned Build doing provider work.
     {output, status} =
-      System.cmd("mix", ["kogen.build", @slug, "--route", @route],
-        cd: fixture,
-        env: [
-          {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
-          {"MIX_BUILD_PATH", Path.join(fixture, "_build")},
-          {"KOGEN_JEV_TRANSPORT", nil},
-          {"KOGEN_JEV_SECURITY", nil},
-          # Only the nested Build's roles run the fixture's SessionStart probe.
-          {"KOGEN_BOUNDARY_PROBE_OUTSIDE", Kogen.BoundaryProbeFixture.outside(fixture)}
-        ],
-        stderr_to_stdout: true
-      )
+      nested_build!(fixture, route, [
+        {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
+        {"ERL_CRASH_DUMP", Path.join(log_dir, "erl_crash-build.dump")},
+        {"MIX_BUILD_PATH", Path.join(fixture, "_build")},
+        {"KOGEN_JEV_TRANSPORT", nil},
+        {"KOGEN_JEV_SECURITY", nil},
+        # Only the nested Build's roles run the fixture's SessionStart probe.
+        {"KOGEN_BOUNDARY_PROBE_OUTSIDE", Kogen.BoundaryProbeFixture.outside(fixture)}
+      ])
 
     File.write!(Path.join(log_dir, "build-console.log"), output)
     complete = Path.join(fixture, ".kogen/intents/complete/#{@slug}")
@@ -147,6 +148,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
            "reviewer-rework Build failed (#{status}):\n#{output}\nretained: #{log_dir}"
 
     assert File.dir?(complete)
+    assert_frozen_route!(log_dir, route, config)
 
     audit =
       LiveReworkAudit.audit!(fixture, raw_stream_dir, slug: @slug, intent_id: @intent_id)
@@ -157,7 +159,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
     RootProfileAudit.audit!(
       Path.join(log_dir, "build-root-profile-audit/developer"),
       %{audit.developer_session_id => Map.put(config.developer, :role, "developer")},
-      RootProfileAudit.sessions_root(fixture, :developer, @route)
+      RootProfileAudit.sessions_root(fixture, :developer, route)
     )
 
     RootProfileAudit.audit!(
@@ -166,7 +168,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
         audit.rework_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer"),
         audit.accepting_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
       },
-      RootProfileAudit.sessions_root(fixture, :reviewer, @route)
+      RootProfileAudit.sessions_root(fixture, :reviewer, route)
     )
 
     File.write!(
@@ -174,16 +176,30 @@ defmodule Kogen.LiveReviewerReworkFixture do
       Jason.encode!(audit.native_summary) <> "\n"
     )
 
+    assert_runtime_versions!(fixture, route, config, raw_stream_dir, [
+      {audit.developer_session_id, :developer},
+      {audit.rework_reviewer_session_id, :reviewer},
+      {audit.accepting_reviewer_session_id, :reviewer}
+    ])
+
+    assert_helper_dispatches!(
+      log_dir,
+      fixture,
+      config,
+      raw_stream_dir,
+      audit.developer_session_id
+    )
+
     assert [build_id] = retained.build_ids, "expected exactly one nested Build tracking id"
 
-    assert_codex_bounded!(
+    assert_developer_bounded!(
       log_dir,
       build_id,
       fixture,
-      codex_scope.path,
+      if(codex_scope, do: codex_scope.path),
       scope_before,
       raw_stream_dir,
-      [audit.rework_reviewer_session_id, audit.accepting_reviewer_session_id]
+      [audit.developer_session_id]
     )
 
     ReviewPacketAudit.audit!(log_dir, build_id, {:git, fixture, audit.candidate})
@@ -200,7 +216,251 @@ defmodule Kogen.LiveReviewerReworkFixture do
     assert :ok = LiveReworkAudit.audit_retained!(log_dir)
   end
 
-  # `reviewer-reask-once` (paid): the real Codex Reviewer accepted the
+  defp nested_build!(fixture, route, env) do
+    argv = [System.find_executable("mix"), "kogen.build", @slug, "--route", route]
+
+    case Kogen.ProcessCustody.run(argv, fixture,
+           env: env,
+           role: "nested-build",
+           timeout_ms: 1_140_000,
+           grace_ms: 10_000
+         ) do
+      {:ok, %{"exit_code" => status, "output" => output}} -> {output, status}
+      {:error, reason} -> flunk("nested Build custody failed: #{inspect(reason)}")
+    end
+  end
+
+  # Wrong-route substitution fails: the nested Build froze exactly the
+  # explicitly selected route and its resolved role profiles.
+  defp assert_frozen_route!(log_dir, route, config) do
+    [record_path] = Path.wildcard(Path.join(log_dir, "scenario-tracking/*/record.json"))
+    frozen = record_path |> File.read!() |> Jason.decode!() |> Map.fetch!("route")
+
+    assert frozen["name"] == route,
+           "nested Build froze route #{inspect(frozen["name"])}, expected #{route}"
+
+    for role <- ~w(developer reviewer) do
+      profile = Map.fetch!(config, String.to_existing_atom(role))
+
+      assert %{"model" => profile.model, "effort" => profile.effort} ==
+               Map.take(frozen[role], ["model", "effort"]),
+             "nested Build froze #{role} #{inspect(frozen[role])}, expected #{inspect(profile)}"
+    end
+  end
+
+  # Each role's actual runtime version comes from its own harness's native
+  # receipt: Claude Code's stream `system/init`, and Codex's native rollout
+  # `session_meta` (exec JSONL does not carry `cli_version`).
+  defp assert_runtime_versions!(fixture, route, config, raw_dir, sessions) do
+    streams =
+      raw_dir
+      |> Path.join("raw-stream-*.jsonl")
+      |> Path.wildcard()
+      |> Enum.map(&{&1, raw_events(&1)})
+
+    for {session_id, role} <- sessions do
+      assert_runtime_version!(Intent.role_harness(config, role), streams, session_id, role, fn ->
+        RootProfileAudit.sessions_root(fixture, role, route)
+      end)
+    end
+  end
+
+  defp assert_runtime_version!("claude", streams, session_id, role, _sessions_root) do
+    expected = Kogen.ClaudeCode.pinned_version()
+
+    versions =
+      for {_path, events} <- streams,
+          %{
+            "type" => "system",
+            "subtype" => "init",
+            "session_id" => ^session_id,
+            "claude_code_version" => version
+          } <- events,
+          do: version
+
+    assert expected in versions,
+           "Claude #{role} receipt #{session_id} must identify #{expected}, got #{inspect(versions)}"
+  end
+
+  defp assert_runtime_version!("codex", _streams, session_id, role, sessions_root) do
+    versions = RootProfileAudit.codex_cli_versions!(sessions_root.(), [session_id])
+
+    assert versions == %{session_id => Kogen.ManagedRuntimeReady.codex_version()},
+           "Codex #{role} rollout #{session_id} must identify #{Kogen.ManagedRuntimeReady.codex_version()}, got #{inspect(versions)}"
+  end
+
+  # The fixture's scenario explicitly requests two native implementation
+  # helpers. Audit the assigned harness's retained native records, using the
+  # selected route's worker profile as the expected model and effort.
+  defp assert_helper_dispatches!(log_dir, fixture, config, raw_dir, developer_id) do
+    worker = Intent.role_config(config, :developer).helpers.worker
+
+    case Intent.role_harness(config, :developer) do
+      "claude" ->
+        events =
+          raw_dir
+          |> Path.join("raw-stream-*.jsonl")
+          |> Path.wildcard()
+          |> Enum.map(&raw_events/1)
+          |> Enum.filter(fn events ->
+            Enum.any?(events, &(&1["type"] == "system" and &1["session_id"] == developer_id))
+          end)
+          |> List.flatten()
+
+        executed = Claude.executed_models(events)
+
+        File.write!(
+          Path.join(log_dir, "developer-helper-receipts.json"),
+          Jason.encode!(executed) <> "\n"
+        )
+
+        assert executed["root"] == [config.developer.model],
+               "Developer root model receipts: #{inspect(executed["root"])}"
+
+        workers =
+          Enum.filter(executed["helpers"], &(&1["agent"] == "kogen-worker"))
+
+        assert length(Enum.uniq_by(workers, & &1["tool_use_id"])) >= 2,
+               "expected two separate kogen-worker dispatches, got #{inspect(executed["helpers"])}"
+
+        for helper <- workers do
+          assert helper["models"] == [worker.model],
+                 "helper #{helper["tool_use_id"]} ran #{inspect(helper["models"])}, expected #{worker.model}"
+        end
+
+      "codex" ->
+        assert_codex_helper_dispatches!(log_dir, fixture, config, developer_id, worker)
+    end
+  end
+
+  defp find_codex_parent(session_files, developer_id) do
+    Enum.find(session_files, fn path ->
+      Enum.any?(
+        codex_rows!(path),
+        &match?(%{"type" => "session_meta", "payload" => %{"id" => ^developer_id}}, &1)
+      )
+    end)
+  end
+
+  defp codex_spawn_dispatches(rows) do
+    Enum.flat_map(rows, fn
+      %{
+        "type" => "response_item",
+        "payload" => %{"type" => "function_call", "name" => "spawn_agent", "arguments" => args}
+      } ->
+        decode_spawn_arguments(args)
+
+      _ ->
+        []
+    end)
+  end
+
+  defp decode_spawn_arguments(args) when is_map(args), do: [args]
+
+  defp decode_spawn_arguments(args) when is_binary(args) do
+    case Jason.decode(args) do
+      {:ok, decoded} when is_map(decoded) -> [decoded]
+      _ -> []
+    end
+  end
+
+  defp decode_spawn_arguments(_args), do: []
+
+  defp codex_child_rows(session_files, developer_id) do
+    session_files
+    |> Enum.map(&codex_rows!/1)
+    |> Enum.filter(fn rows ->
+      Enum.any?(rows, fn
+        %{
+          "type" => "session_meta",
+          "payload" => %{"id" => id, "parent_thread_id" => ^developer_id}
+        } ->
+          id != developer_id
+
+        _ ->
+          false
+      end)
+    end)
+  end
+
+  defp codex_turn_profiles(rows) do
+    rows
+    |> Enum.flat_map(fn
+      %{"type" => "turn_context", "payload" => %{"model" => model, "effort" => effort}} ->
+        [[model, effort]]
+
+      _ ->
+        []
+    end)
+    |> Enum.uniq()
+  end
+
+  defp assert_codex_helper_dispatches!(log_dir, fixture, config, developer_id, worker) do
+    sessions_root = RootProfileAudit.sessions_root(fixture, :developer, config.route)
+
+    session_files = Path.wildcard(Path.join(sessions_root, "**/*.jsonl"))
+
+    parent_path = find_codex_parent(session_files, developer_id)
+
+    assert is_binary(parent_path), "missing Codex Developer session #{developer_id}"
+
+    dispatches = codex_spawn_dispatches(codex_rows!(parent_path))
+
+    assert length(dispatches) == 2,
+           "expected two separate native worker dispatches, got #{inspect(dispatches)}"
+
+    for dispatch <- dispatches do
+      assert dispatch["agent_type"] in ["worker", "kogen-worker"],
+             "unexpected helper kind: #{inspect(dispatch)}"
+
+      assert dispatch["model"] == worker.model,
+             "helper requested #{inspect(dispatch["model"])}, expected #{worker.model}"
+
+      assert dispatch["reasoning_effort"] == worker.effort,
+             "helper requested effort #{inspect(dispatch["reasoning_effort"])}, expected #{worker.effort}"
+    end
+
+    children = codex_child_rows(session_files, developer_id)
+
+    assert length(children) == 2,
+           "expected two native child sessions for #{developer_id}, got #{length(children)}"
+
+    profiles = Enum.map(children, &codex_turn_profiles/1)
+
+    assert profiles == List.duplicate([[worker.model, worker.effort]], 2),
+           "Codex helper execution profiles #{inspect(profiles)} do not match #{inspect(worker)}"
+
+    File.write!(
+      Path.join(log_dir, "developer-helper-receipts.json"),
+      Jason.encode!(%{"dispatches" => dispatches, "observed_profiles" => profiles}) <> "\n"
+    )
+  end
+
+  defp codex_rows!(path) do
+    path
+    |> File.read!()
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn line ->
+      case Jason.decode(line) do
+        {:ok, event} when is_map(event) -> [event]
+        _ -> []
+      end
+    end)
+  end
+
+  defp raw_events(path) do
+    path
+    |> File.read!()
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn line ->
+      case Jason.decode(line) do
+        {:ok, event} when is_map(event) -> [event]
+        _ -> []
+      end
+    end)
+  end
+
+  # `reviewer-reask-once` (paid): the real Claude Reviewer accepted the
   # per-launch schema, so its accepting verdict names exactly the enum's
   # scenario ids. Then one real re-ask resumes that same session, in the
   # fixture project's own Codex scope (where the session lives), with the
@@ -259,10 +519,18 @@ defmodule Kogen.LiveReviewerReworkFixture do
     end
   end
 
-  # The real Codex Reviewer returned both verdicts inside the nested Build's
-  # applied boundary, which granted the Codex scope; its SessionStart probe
-  # wrote inside and was refused outside; no refused scope entry appeared.
-  defp assert_codex_bounded!(log_dir, build_id, fixture, scope, scope_before, raw, reviewers) do
+  # The real Developer ran inside the nested Build's applied boundary, which
+  # granted the Codex scope its Codex roles use; its SessionStart probe wrote
+  # inside and was refused outside; no refused scope entry appeared.
+  defp assert_developer_bounded!(
+         log_dir,
+         build_id,
+         fixture,
+         scope,
+         scope_before,
+         raw,
+         developers
+       ) do
     record =
       [log_dir, "scenario-tracking", build_id, "record.json"]
       |> Path.join()
@@ -272,31 +540,38 @@ defmodule Kogen.LiveReviewerReworkFixture do
     boundary = record["boundary"]
     worktree = record["candidate"]["worktree_path"]
     assert boundary["mode"] == "applied"
-    assert boundary["grants"]["codex_scope"] == Workspace.canonical(scope)
-    assert "hooks.json" in boundary["denied_scope_entries"]
 
-    reviewer_lines =
-      Enum.filter(Kogen.BoundaryProbeFixture.lines(raw), &(&1["role"] == "reviewer"))
+    if scope do
+      assert boundary["grants"]["codex_scope"] == Workspace.canonical(scope)
+      assert "hooks.json" in boundary["denied_scope_entries"]
+    end
 
-    assert length(reviewer_lines) >= 2, "expected one probe receipt per Codex Reviewer session"
+    developer_lines =
+      Enum.filter(Kogen.BoundaryProbeFixture.lines(raw), &(&1["role"] == "developer"))
 
-    with_ids = Enum.filter(reviewer_lines, &is_binary(&1["session_id"]))
-    for line <- with_ids, do: assert(line["session_id"] in reviewers, inspect(line))
+    assert developer_lines != [],
+           "expected a probe receipt for the Developer session; hook sidecars: " <>
+             inspect(Kogen.BoundaryProbeFixture.sidecars(raw))
 
-    if length(with_ids) == length(reviewer_lines),
+    with_ids = Enum.filter(developer_lines, &is_binary(&1["session_id"]))
+    for line <- with_ids, do: assert(line["session_id"] in developers, inspect(line))
+
+    if length(with_ids) == length(developer_lines),
       do:
         assert(
-          Enum.sort(Enum.uniq(Enum.map(with_ids, & &1["session_id"]))) == Enum.sort(reviewers)
+          Enum.sort(Enum.uniq(Enum.map(with_ids, & &1["session_id"]))) == Enum.sort(developers)
         )
 
-    Enum.each(reviewer_lines, &Kogen.BoundaryProbeFixture.assert_bounded!(&1, worktree))
+    Enum.each(developer_lines, &Kogen.BoundaryProbeFixture.assert_bounded!(&1, worktree))
     Kogen.BoundaryProbeFixture.assert_nothing_escaped!(fixture)
 
-    appeared = File.ls!(scope) -- scope_before
-    denied = WriteBoundary.codex_denied_entries()
+    if scope do
+      appeared = File.ls!(scope) -- scope_before
+      denied = WriteBoundary.codex_denied_entries()
 
-    assert Enum.filter(appeared, &(&1 in denied)) == [],
-           "refused scope entries appeared: #{inspect(appeared)}"
+      assert Enum.filter(appeared, &(&1 in denied)) == [],
+             "refused scope entries appeared: #{inspect(appeared)}"
+    end
   end
 
   def write_package!(fixture) do
@@ -339,7 +614,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
     :ok
   end
 
-  defp setup_fixture(root, fixture) do
+  defp setup_fixture(root, fixture, config) do
     VerificationPlan.trace("Kogen.LiveReviewerReworkFixture.setup_fixture")
     copy_source!(root, fixture)
 
@@ -355,7 +630,9 @@ defmodule Kogen.LiveReviewerReworkFixture do
       |> VerificationPlan.render_target_declarations()
 
     File.write!(Path.join(fixture, "Makefile"), @check_rule <> other_targets)
-    Kogen.BoundaryProbeFixture.install_codex!(fixture)
+    harnesses = Enum.map(Intent.roles(), &Intent.role_harness(config, &1))
+    if "codex" in harnesses, do: Kogen.BoundaryProbeFixture.install_codex!(fixture)
+    if "claude" in harnesses, do: Kogen.BoundaryProbeFixture.install_claude!(fixture)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},
@@ -386,14 +663,13 @@ defmodule Kogen.LiveReviewerReworkFixture do
   end
 
   # Fail closed, before any provider dispatch, if the fixture does not
-  # resolve to a logged-in Kogen Claude Code login scope (Developer) or a
-  # logged-in Kogen Codex login scope (Reviewer, Expert), or if the hook
-  # toolchain is below its required version. Delegates to
+  # resolve each harness assigned to the selected route to its Kogen login
+  # scope, or if the hook toolchain is below its required version. Delegates to
   # `Kogen.ReviewPacketAudit`'s non-raising `prepare`-step readiness checks
   # and turns a failure into a test failure here, so the live owner and
   # `prepare/1` (below) run the exact same three functions.
-  defp assert_scopes_and_toolchain_ready!(fixture, project_root) do
-    case readiness(fixture, project_root) do
+  defp assert_scopes_and_toolchain_ready!(fixture, project_root, config) do
+    case readiness(fixture, project_root, config) do
       :ok -> :ok
       {:error, reason} -> flunk(reason)
     end
@@ -403,6 +679,54 @@ defmodule Kogen.LiveReviewerReworkFixture do
   # (`priv/kogen/verification_targets.yaml`) matches its rendered Makefile
   # (`VerificationPlan.render_target_declarations/1` in `setup_fixture/2`
   # above), so a mismatch fails here rather than surfacing later.
+  @doc """
+  The written Approved package must load as a contract and plan against the
+  fixture catalog. The live owner and `prepare/1` both run this, so a
+  malformed fixture package fails in the provider-denied rehearsal instead
+  of in the paid target.
+  """
+  def assert_package_ready!(fixture) do
+    approved = Path.join(fixture, ".kogen/intents/approved/#{@slug}")
+    assert {:ok, contract} = Contract.load(approved)
+    assert contract.scenarios != []
+    catalog = assert_catalog_ready!(fixture)
+
+    assert {:ok, plan} =
+             VerificationPlan.build(
+               contract.scenarios,
+               ["dummy.txt", "reviewer-notes.md"],
+               catalog,
+               fixture
+             )
+
+    plan
+  end
+
+  @doc """
+  Validates the generated fixture exactly as the live target consumes it:
+  required files, the Approved package through the real
+  `Kogen.Intent.read/2` and `Kogen.Build.Contract.load/2` parsers, the
+  fixture Makefile's `check` target, and a digest of the generated input
+  bytes. `run/0` and `prepare/1` both call it right after the package is
+  written, so the digest recorded before dispatch covers the consumed bytes.
+  Returns the record or raises with every reason.
+  """
+  def validate_fixture!(fixture) do
+    spec = %{
+      "kind" => "live-reviewer-rework",
+      "label" => @slug,
+      "required" => ["Makefile", "mix.exs", "priv/kogen/verification_targets.yaml"],
+      "yaml" => ["priv/kogen/verification_targets.yaml"],
+      "approved" => ".kogen/intents/approved/#{@slug}",
+      "makefile_targets" => ["check"]
+    }
+
+    case Kogen.FixtureValidation.validate(fixture, spec) do
+      {:ok, record} -> record
+      {:error, reasons} -> raise "generated fixture invalid: " <> Enum.join(reasons, "; ")
+    end
+  end
+
   defp assert_catalog_ready!(fixture) do
     VerificationPlan.trace("Kogen.LiveReviewerReworkFixture.assert_catalog_ready!")
     assert {:ok, catalog} = VerificationPlan.load(fixture)
@@ -418,11 +742,28 @@ defmodule Kogen.LiveReviewerReworkFixture do
   # `codex_scope_ready?/1` and `hook_toolchain_ready?/1` fail closed for
   # (controlled through `KOGEN_PREPARE_SCOPE_OVERRIDE` /
   # `KOGEN_PREPARE_TOOLCHAIN_OVERRIDE`) with the controlled failing scope.
-  defp readiness(fixture, project_root) do
-    with :ok <- traced(&ReviewPacketAudit.claude_scope_ready?/1, fixture, "claude_scope_ready?"),
-         :ok <- traced(&ReviewPacketAudit.codex_scope_ready?/1, fixture, "codex_scope_ready?") do
+  defp readiness(fixture, project_root, config) do
+    with :ok <- ready_harness_scopes(fixture, role_harnesses(config)) do
       traced(&ReviewPacketAudit.hook_toolchain_ready?/1, project_root, "hook_toolchain_ready?")
     end
+  end
+
+  defp ready_harness_scopes(fixture, harnesses) do
+    Enum.reduce_while(harnesses, :ok, fn
+      "claude", :ok ->
+        result = traced(&ReviewPacketAudit.claude_scope_ready?/1, fixture, "claude_scope_ready?")
+        if result == :ok, do: {:cont, :ok}, else: {:halt, result}
+
+      "codex", :ok ->
+        result = traced(&ReviewPacketAudit.codex_scope_ready?/1, fixture, "codex_scope_ready?")
+        if result == :ok, do: {:cont, :ok}, else: {:halt, result}
+    end)
+  end
+
+  defp role_harnesses(config) do
+    Intent.roles()
+    |> Enum.map(&Intent.role_harness(config, &1))
+    |> Enum.uniq()
   end
 
   defp traced(fun, arg, name) do
@@ -443,7 +784,8 @@ defmodule Kogen.LiveReviewerReworkFixture do
   copy, a failing compile, a catalog/Makefile mismatch).
   """
   def prepare(opts \\ []) do
-    project_root = Keyword.get(opts, :project_root, File.cwd!())
+    project_root = Keyword.get(opts, :project_root, @project_root)
+    route = System.get_env("KOGEN_ROUTE")
 
     raw_fixture =
       Path.join(
@@ -464,9 +806,15 @@ defmodule Kogen.LiveReviewerReworkFixture do
     try do
       fixture = ReviewPacketAudit.assert_outside_checkout!(raw_fixture, project_root)
 
-      case readiness(fixture, project_root) do
-        :ok -> prepare_setup(project_root, fixture, log_dir)
-        {:error, reason} -> {:error, {:environment, reason}}
+      case Intent.read_config(Path.join(project_root, ".kogen/config.yaml"), route) do
+        {:ok, config} ->
+          case readiness(fixture, project_root, config) do
+            :ok -> prepare_setup(project_root, fixture, log_dir, config)
+            {:error, reason} -> {:error, {:environment, reason}}
+          end
+
+        {:error, reason} ->
+          {:error, {:offline, "cannot resolve selected route: #{reason}"}}
       end
     after
       File.rm_rf!(raw_fixture)
@@ -474,11 +822,17 @@ defmodule Kogen.LiveReviewerReworkFixture do
     end
   end
 
-  defp prepare_setup(project_root, fixture, log_dir) do
-    setup_fixture(project_root, fixture)
+  defp prepare_setup(project_root, fixture, log_dir, config) do
+    Kogen.FixtureValidation.require_denied!()
+    setup_fixture(project_root, fixture, config)
     precompile!(fixture, log_dir)
     write_package!(fixture)
-    assert_catalog_ready!(fixture)
+    assert_package_ready!(fixture)
+    record = validate_fixture!(fixture)
+
+    if path = System.get_env("KOGEN_FIXTURE_VALIDATION_RECEIPT"),
+      do: Kogen.FixtureValidation.append_record!(path, record)
+
     :ok
   rescue
     error -> {:error, {:offline, Exception.format(:error, error, __STACKTRACE__)}}

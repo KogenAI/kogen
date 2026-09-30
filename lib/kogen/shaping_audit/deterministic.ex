@@ -237,6 +237,7 @@ defmodule Kogen.ShapingAudit.Deterministic do
         touched != [] and not guarded?(@ledger_path, guards) ->
           [
             Finding.new("ledger-closure", nil, %{
+              "severity" => "advisory",
               "disputable" => false,
               "paths" => touched ++ [@ledger_path],
               "message" =>
@@ -252,7 +253,8 @@ defmodule Kogen.ShapingAudit.Deterministic do
 
           [
             Finding.new("ledger-row-update-unstated", nil, %{
-              "disputable" => true,
+              "severity" => "advisory",
+              "disputable" => false,
               "paths" => missing,
               "message" =>
                 "a catalogued test row is added or deleted; guard and update both #{@ledger_path} and #{@remediation_path} (renames edit the declaration in #{@ledger_path} only)"

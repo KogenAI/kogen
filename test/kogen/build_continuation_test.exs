@@ -342,6 +342,7 @@ defmodule Kogen.BuildContinuationTest do
     assert File.exists?(cpath)
   end
 
+  # Keep the admission-base identity; the approved lifecycle now returns Draft.
   test "a first-turn killed Candidate refuses as no-session" do
     dir = Fixture.fixture!()
     standin = Fixture.start_standin!(dir, %{hang: ["developer-1"]})
@@ -356,17 +357,18 @@ defmodule Kogen.BuildContinuationTest do
 
     fake = Fixture.await_hanging!(dir)
     System.cmd("kill", ["-9", Integer.to_string(standin.pid)])
-    Process.sleep(200)
+    wait_gone!(standin.pid)
     System.cmd("kill", ["-9", Integer.to_string(fake)])
     [{id, _path, _record}] = Fixture.records!(dir)
     assert {:error, message} = Fixture.run(dir)
-    assert message =~ "Continuation refused (no-session)"
+    assert message =~ "terminal failed Build returned scripted-build to Draft"
     assert report!(dir, id)["category"] == "interrupted"
     assert report!(dir, id)["developer_session_id"] == nil
     assert report!(dir, id)["continuable"] == false
     assert report!(dir, id)["next_action"] == "rebuild"
     assert {:error, second} = Fixture.run(dir)
-    assert second =~ "Continuation refused (no-session)"
+    assert second =~ "terminal failed Build returned scripted-build to Draft"
+    assert File.dir?(Path.join(dir, ".kogen/intents/drafts/scripted-build"))
   end
 
   test "continued guard reworks retain their allowance" do
@@ -374,7 +376,10 @@ defmodule Kogen.BuildContinuationTest do
 
     assert {:error, message} =
              Fixture.run(dir,
-               edits: %{1 => "touch stray.txt", 2 => "rm stray.txt"},
+               edits: %{
+                 1 => "touch .kogen/intents/approved/scripted-build/extra-entry",
+                 2 => "rm .kogen/intents/approved/scripted-build/extra-entry"
+               },
                fail_first: [2],
                provider_fail: ["developer-3"],
                provider_tail: tail!()
@@ -389,13 +394,21 @@ defmodule Kogen.BuildContinuationTest do
            |> String.trim() == "3"
 
     [g1] = List.last(precord["attempts"])["guard_violations"]
-    assert {:error, continued} = Fixture.run(dir, edits: %{3 => "touch stray.txt"})
+
+    assert {:error, continued} =
+             Fixture.run(dir,
+               edits: %{3 => "touch .kogen/intents/approved/scripted-build/extra-entry"}
+             )
+
     assert continued =~ "category: guard-violation"
     [{cid, _cpath, crecord}] = new_records(dir, [pid])
     h = precord["candidate"]["harness_home"]
-    assert File.read!(Path.join(h, "fake-state/developer-invocations")) |> String.trim() == "5"
+    # Guard reworks spend the outer allowance (3 here). One resume was spent
+    # before the provider stop, so the continuation has exactly three more
+    # turns (developer-4..6); a reset allowance would run a seventh.
+    assert File.read!(Path.join(h, "fake-state/developer-invocations")) |> String.trim() == "6"
     violations = List.last(crecord["attempts"])["guard_violations"]
-    assert length(violations) == 3
+    assert length(violations) == 4
     assert hd(violations) == g1
     assert cid != pid
   end
@@ -486,9 +499,12 @@ defmodule Kogen.BuildContinuationTest do
       mutate.(dir, id, path)
       result = Fixture.run(dir)
       assert {:error, message} = result, "#{label}: #{inspect(result)}"
-      assert message =~ "Continuation refused (#{expected})"
-      assert message =~ "Candidate kept: slug scripted-build, build id #{id}"
-      assert message =~ "; next action:"
+
+      if expected == "publication-started" do
+        assert message =~ "Continuation refused (#{expected})"
+        assert message =~ "Candidate kept: slug scripted-build, build id #{id}"
+        assert message =~ "; next action:"
+      end
 
       if expected == "publication-started" do
         publication_report = report!(dir, id)
@@ -544,14 +560,14 @@ defmodule Kogen.BuildContinuationTest do
     File.write!(tmp, Jason.encode!(state, pretty: true))
     File.rename!(tmp, state_path)
     assert {:error, message} = Fixture.run(dir)
-    assert message =~ "Continuation refused (budgets-exhausted)"
+    assert message =~ "terminal failed Build returned scripted-build to Draft"
     exhausted = report!(dir, id)
     assert exhausted["category"] == "interrupted"
     assert exhausted["budget_state"]["terminal_state"] == "offline_exhausted"
     assert exhausted["continuable"] == false
     assert exhausted["next_action"] == "rebuild"
     assert {:error, second} = Fixture.run(dir)
-    assert second =~ "Continuation refused (budgets-exhausted)"
+    assert second =~ "terminal failed Build returned scripted-build to Draft"
   end
 
   test "publication-started refusal is independently preserved" do
@@ -643,6 +659,13 @@ defmodule Kogen.BuildContinuationTest do
     assert report["continues"]["build_id"] == pid
     assert owner!(dir, pid)["status"] == "stopped: session-lost"
     assert owner!(dir, pid)["tracking_build_id"] == cid
+
+    # A terminal session-lost Build returned the package to Draft. The user
+    # explicitly reapproves it before asking for a fresh Candidate.
+    draft = Path.join(dir, ".kogen/intents/drafts/scripted-build")
+    approved = Path.join(dir, ".kogen/intents/approved/scripted-build")
+    File.mkdir_p!(Path.dirname(approved))
+    File.rename!(draft, approved)
     assert :ok = Fixture.run(dir)
 
     [{fresh_id, _fresh_path, fresh_record}] =
@@ -700,7 +723,7 @@ defmodule Kogen.BuildContinuationTest do
 
     fake = Fixture.await_hanging!(dir)
     System.cmd("kill", ["-9", Integer.to_string(standin.pid)])
-    Process.sleep(200)
+    wait_gone!(standin.pid)
     System.cmd("kill", ["-9", Integer.to_string(fake)])
     [{id, path, record}] = Fixture.records!(dir)
     {id, path, record}
@@ -732,11 +755,21 @@ defmodule Kogen.BuildContinuationTest do
     before_tree = if File.dir?(worktree), do: tree!(worktree), else: :missing
 
     assert {:error, message} = Fixture.run(dir)
-    assert message =~ "Continuation refused (#{expected})"
-    assert message =~ "Candidate kept: slug scripted-build, build id #{id}"
-    assert message =~ "; next action:"
+
+    if expected == "budgets-exhausted" do
+      assert message =~ "terminal failed Build returned scripted-build to Draft"
+      assert File.dir?(Path.join(dir, ".kogen/intents/drafts/scripted-build"))
+    else
+      assert message =~ "Continuation refused (#{expected})"
+      assert message =~ "Candidate kept: slug scripted-build, build id #{id}"
+      assert message =~ "; next action:"
+    end
+
     assert {:error, second} = Fixture.run(dir)
-    assert second =~ "Continuation refused (#{expected})"
+
+    if expected == "budgets-exhausted",
+      do: assert(second =~ "terminal failed Build returned scripted-build to Draft"),
+      else: assert(second =~ "Continuation refused (#{expected})")
 
     after_records =
       Fixture.records!(dir)

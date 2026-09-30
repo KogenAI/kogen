@@ -3,7 +3,7 @@ Code.require_file("../support/scripted_build_fixture.ex", __DIR__)
 defmodule Kogen.FailureReportTest do
   use Kogen.IsolatedCase, async: true
 
-  alias Kogen.Build.{FailureReport, FailureSignature}
+  alias Kogen.Build.{Breakers, FailureReport, FailureSignature, Tracking}
   alias Kogen.CandidateFixture, as: Candidate
   alias Kogen.ScriptedBuildFixture, as: Scripted
   alias Kogen.WorkspaceFixture, as: Workspace
@@ -33,6 +33,114 @@ defmodule Kogen.FailureReportTest do
     assert {"provider", "provider_wait"} = FailureReport.classify("provider")
     assert FailureReport.counts_toward("provider") == nil
     refute FailureReport.classify("interrupted") == {"interrupted", "continue"}
+  end
+
+  test "terminal report is bound to the exact record before the Approved package moves to Draft" do
+    control = Workspace.create!()
+    on_exit(fn -> File.rm_rf!(control) end)
+    slug = "terminal-package"
+    approved = Path.join(control, ".kogen/intents/approved/#{slug}")
+    File.mkdir_p!(approved)
+
+    File.write!(
+      Path.join(approved, "intent.yaml"),
+      "id: terminal-id\nslug: #{slug}\nstatus: approved\n"
+    )
+
+    File.write!(Path.join(approved, "scenarios.yaml"), "- id: first\n")
+    source_entries = package_entries(approved)
+    tracking_dir = Path.join(control, ".kogen/runtime/scenario-tracking/terminal-build")
+    File.mkdir_p!(tracking_dir)
+    record_path = Path.join(tracking_dir, "record.json")
+    record = Jason.encode!(%{"intent" => %{"id" => "terminal-id", "slug" => slug}})
+    File.write!(record_path, record)
+
+    report = %{
+      "slug" => slug,
+      "intent_id" => "terminal-id",
+      "approved_package_digest" => Tracking.approved_digest(source_entries),
+      "class" => "item",
+      "counts_toward" => "item",
+      "next_action" => "rebuild",
+      "candidate" => %{"worktree" => "/retained/candidate"},
+      "record" => Path.relative_to(record_path, control),
+      "record_sha256" => sha(record),
+      "continuable" => false,
+      "published" => nil
+    }
+
+    assert {:ok, report_path} = FailureReport.write(control, "terminal-build", report)
+    # The durable class, action, and exact record binding exist before custody moves.
+    written = report_path |> File.read!() |> Jason.decode!()
+    assert written["class"] == "item"
+    assert written["counts_toward"] == "item"
+    assert written["next_action"] == "rebuild"
+    assert written["record_sha256"] == sha(File.read!(record_path))
+
+    assert :ok = FailureReport.return_to_draft(control, report_path)
+    draft = Path.join(control, ".kogen/intents/drafts/#{slug}")
+    refute File.exists?(approved)
+    assert File.read!(Path.join(draft, "intent.yaml")) =~ "status: draft"
+    assert File.read!(Path.join(draft, "scenarios.yaml")) == "- id: first\n"
+    assert File.read!(record_path) == record
+
+    # Recovery is idempotent while the reconstructed package still matches
+    # the exact approved package digest, including historical non-contract data.
+    assert :ok = FailureReport.return_to_draft(control, report_path)
+    File.write!(Path.join(draft, "scenarios.yaml"), "- id: edited-after-return\n")
+    assert {:error, reason} = FailureReport.return_to_draft(control, report_path)
+    assert reason =~ "returned Draft digest mismatch"
+  end
+
+  test "package collisions and post-report Approved edits stop custody moves" do
+    for defect <- [:collision, :digest_mismatch] do
+      control = Workspace.create!()
+      on_exit(fn -> File.rm_rf!(control) end)
+      suffix = defect |> Atom.to_string() |> String.replace("_", "-")
+      slug = "custody-#{suffix}"
+      approved = Path.join(control, ".kogen/intents/approved/#{slug}")
+      File.mkdir_p!(approved)
+
+      File.write!(
+        Path.join(approved, "intent.yaml"),
+        "id: custody-id\nslug: #{slug}\nstatus: approved\n"
+      )
+
+      File.write!(Path.join(approved, "scenarios.yaml"), "- id: first\n")
+      tracking_dir = Path.join(control, ".kogen/runtime/scenario-tracking/custody-#{suffix}")
+      File.mkdir_p!(tracking_dir)
+      record_path = Path.join(tracking_dir, "record.json")
+      record = Jason.encode!(%{"intent" => %{"id" => "custody-id", "slug" => slug}})
+      File.write!(record_path, record)
+
+      report = %{
+        "slug" => slug,
+        "intent_id" => "custody-id",
+        "approved_package_digest" => Tracking.approved_digest(package_entries(approved)),
+        "candidate" => %{"worktree" => "/retained/candidate"},
+        "record" => Path.relative_to(record_path, control),
+        "record_sha256" => sha(record),
+        "continuable" => false,
+        "published" => nil
+      }
+
+      assert {:ok, report_path} = FailureReport.write(control, "custody-#{suffix}", report)
+
+      if defect == :collision do
+        draft = Path.join(control, ".kogen/intents/drafts/#{slug}")
+        File.mkdir_p!(draft)
+        File.write!(Path.join(draft, "foreign"), "keep\n")
+      else
+        File.write!(Path.join(approved, "scenarios.yaml"), "- id: changed\n")
+      end
+
+      assert {:error, reason} = FailureReport.return_to_draft(control, report_path)
+
+      assert reason =~
+               if(defect == :collision, do: "Draft collision", else: "Approved digest mismatch")
+
+      assert File.dir?(approved)
+    end
   end
 
   test "the category table is exhaustive and exposes counting semantics" do
@@ -94,6 +202,37 @@ defmodule Kogen.FailureReportTest do
     assert report["stopped_at"] =~ ~r/\.\d+Z$/
   end
 
+  test "record_failure keeps both attempts of a same-tree retried target" do
+    root = Path.join(System.tmp_dir!(), "kogen-report-att-#{System.unique_integer([:positive])}")
+    path = Path.join(root, ".kogen/runtime/scenario-tracking/build-1/record.json")
+    File.mkdir_p!(Path.dirname(path))
+    attempts = [%{"attempt" => "initial"}, %{"attempt" => "same-tree-retry"}]
+
+    bytes =
+      Jason.encode!(%{
+        "intent" => %{"slug" => "demo", "id" => "intent-1"},
+        "approved_package_digest" => "pkg-1",
+        "attempts" => [%{"failure_signatures" => [%{"digest" => "s"}]}]
+      })
+
+    File.write!(path, bytes)
+    on_exit(fn -> File.rm_rf(root) end)
+
+    ctx = %{
+      control: root,
+      slug: "demo",
+      tracking: %{path: path, bytes: bytes, record: Jason.decode!(bytes)},
+      execution: %{
+        state: %{"cycles" => [%{"receipts" => [%{"target" => "live-a", "attempts" => attempts}]}]}
+      },
+      candidate: nil
+    }
+
+    assert {:ok, report_path} = FailureReport.record_failure(ctx, "verification-exhausted", "x")
+    report = report_path |> File.read!() |> Jason.decode!()
+    assert report["target_attempts"] == %{"live-a" => attempts}
+  end
+
   test "same signature counts only matching intent and approved package" do
     root =
       Path.join(System.tmp_dir!(), "kogen-report-count-#{System.unique_integer([:positive])}")
@@ -115,9 +254,26 @@ defmodule Kogen.FailureReportTest do
         Jason.encode!(%{
           "intent_id" => intent_id,
           "approved_package_digest" => package,
+          "contract_digest" =>
+            if(intent_id == "intent-1" and package == "pkg-1", do: nil, else: "other-contract"),
           "signature" => signature
         })
       )
+    end
+
+    approved = Path.join(root, ".kogen/intents/approved/demo")
+    File.mkdir_p!(approved)
+    File.write!(Path.join(approved, "intent.yaml"), "id: intent-1\nslug: demo\n")
+    File.write!(Path.join(approved, "scenarios.yaml"), "- id: first\n")
+    package_contract = Breakers.contract_digest(approved, "intent-1")
+
+    for build_id <- ["old-same", "old-intent", "old-package"] do
+      path = Path.join(root, ".kogen/runtime/scenario-tracking/#{build_id}/failure-report.json")
+      {:ok, bytes} = File.read(path)
+      report = Jason.decode!(bytes)
+
+      contract = if build_id == "old-same", do: package_contract, else: "other-contract"
+      File.write!(path, Jason.encode!(Map.put(report, "contract_digest", contract)))
     end
 
     build = "new-build"
@@ -149,6 +305,13 @@ defmodule Kogen.FailureReportTest do
     on_exit(fn -> File.rm_rf(control) end)
 
     for expected <- [1, 2] do
+      if expected == 2 do
+        draft = Path.join(control, ".kogen/intents/drafts/#{Workspace.slug()}")
+        approved = Path.join(control, ".kogen/intents/approved/#{Workspace.slug()}")
+        File.mkdir_p!(Path.dirname(approved))
+        File.rename!(draft, approved)
+      end
+
       assert {:error, message} =
                Workspace.build!(control,
                  harness: Workspace.support("fake_codex"),
@@ -223,6 +386,14 @@ defmodule Kogen.FailureReportTest do
     assert report["class"] == "shaping"
     assert report["next_action"] == "reshape_scope"
 
+    # Model the user's explicit approval of the reshaped Draft before the
+    # next Build attempt. Shape owns editing; its approval boundary is this
+    # atomic Draft-to-Approved move.
+    draft = Path.join(control, ".kogen/intents/drafts/#{Workspace.slug()}")
+    approved = Path.join(control, ".kogen/intents/approved/#{Workspace.slug()}")
+    File.mkdir_p!(Path.dirname(approved))
+    File.rename!(draft, approved)
+
     role =
       Workspace.waiting_role!(
         Workspace.tmp_dir!("report-publication-role"),
@@ -251,6 +422,9 @@ defmodule Kogen.FailureReportTest do
       )
 
     assert owner
+    slug = Workspace.slug()
+    refute File.dir?(Path.join(control, ".kogen/intents/approved/#{slug}"))
+    assert File.regular?(Path.join(control, ".kogen/intents/drafts/#{slug}/intent.yaml"))
   end
 
   test "a pre-admission route refusal writes neither a record nor a report" do
@@ -396,7 +570,8 @@ defmodule Kogen.FailureReportTest do
     assert Map.has_key?(report, "continuable")
 
     assert [_, reported_path] =
-             Regex.run(~r/category: #{category}; failure report: (.+?); next action:/, message)
+             Regex.run(~r/category: #{category}; failure report: (.+?); next action:/, message),
+           "missing report suffix in: #{message}"
 
     assert File.stat!(reported_path).inode == File.stat!(report_path).inode
     assert message =~ "next action: #{report["next_action"]}"
@@ -413,4 +588,27 @@ defmodule Kogen.FailureReportTest do
     |> Jason.decode!()
     |> Map.fetch!("output")
   end
+
+  defp package_entries(root), do: package_entries(root, "")
+
+  defp package_entries(root, relative) do
+    path = Path.join(root, relative)
+    stat = File.lstat!(path)
+
+    case stat.type do
+      :directory ->
+        [
+          {relative, :directory, stat.mode}
+          | Enum.flat_map(
+              File.ls!(path) |> Enum.sort(),
+              &package_entries(root, Path.join(relative, &1))
+            )
+        ]
+
+      :regular ->
+        [{relative, :regular, stat.mode, File.read!(path)}]
+    end
+  end
+
+  defp sha(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
 end

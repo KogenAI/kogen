@@ -16,6 +16,28 @@ defmodule Kogen.LiveReworkAuditTest do
     assert is_binary(candidate)
   end
 
+  test "accepts the accepting Reviewer's evidence addendum as a second same-session receipt" do
+    {fixture, logs} = audit_fixture!(addendum?: true)
+    on_exit(fn -> File.rm_rf!(fixture) end)
+
+    assert %{accepting_reviewer_session_id: "review-2"} =
+             Kogen.LiveReworkAudit.audit!(fixture, logs, slug: @slug, intent_id: @intent)
+  end
+
+  test "rejects an addendum receipt from a different Reviewer session" do
+    {fixture, logs} = audit_fixture!(addendum?: true)
+    on_exit(fn -> File.rm_rf!(fixture) end)
+    path = Path.join(logs, "reviewer-verdicts.jsonl")
+    lines = path |> File.read!() |> String.split("\n", trim: true)
+    {head, [last]} = Enum.split(lines, -1)
+    last = last |> Jason.decode!() |> Map.put("session_id", "review-3") |> Jason.encode!()
+    File.write!(path, Enum.join(head ++ [last], "\n") <> "\n")
+
+    assert_raise ArgumentError, ~r/evidence addendum must resume the accepting Reviewer/, fn ->
+      Kogen.LiveReworkAudit.audit!(fixture, logs, slug: @slug, intent_id: @intent)
+    end
+  end
+
   test "retained compact summary resolves its copied archive after the fixture is gone" do
     root =
       Path.join(System.tmp_dir!(), "kogen-retained-audit-#{System.unique_integer([:positive])}")
@@ -310,13 +332,20 @@ defmodule Kogen.LiveReworkAuditTest do
         initial_candidate,
         "attempt-1"
       ) <>
-        "\n" <> receipt!("accept", [], "review-2", final_candidate, "attempt-2") <> "\n"
+        "\n" <>
+        receipt!("accept", [], "review-2", final_candidate, "attempt-2") <>
+        "\n" <>
+        if(Keyword.get(options, :addendum?, false),
+          do: receipt!("accept", [], "review-2", final_candidate, "attempt-2") <> "\n",
+          else: ""
+        )
     )
 
     write_stream!(logs, 1, "developer-1")
     write_stream!(logs, 2, "review-1")
     write_stream!(logs, 3, "developer-1")
     write_stream!(logs, 4, "review-2")
+    if Keyword.get(options, :addendum?, false), do: write_stream!(logs, 5, "review-2")
 
     git_commit!(root)
     {root, logs}

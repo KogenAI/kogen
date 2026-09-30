@@ -1,4 +1,4 @@
-default_route: claude
+default_route: optimum
 routes:
   claude:
     harness: claude
@@ -12,23 +12,23 @@ routes:
       expert: {model: claude-opus-5-5, effort: high}
   codex:
     harness: codex
-    shaping:   {model: gpt-6-sol, effort: medium}
-    developer: {model: gpt-6-sol, effort: high}
-    reviewer:  {model: gpt-6-sol, effort: high}
-    auditor:   {model: gpt-6-sol, effort: high}
+    shaping:   {model: gpt-6.1-sol, effort: medium}
+    developer: {model: gpt-6.1-sol, effort: high}
+    reviewer:  {model: gpt-6.1-sol, effort: high}
+    auditor:   {model: gpt-6.1-sol, effort: high}
     helpers:
       scout:  {model: gpt-6-luna, effort: low}
       worker: {model: gpt-6-luna, effort: high}
-      expert: {model: gpt-6-sol, effort: high}
+      expert: {model: gpt-6.1-sol, effort: high}
   # Hybrid routes assign each role its own harness. Shaping and Developer run
   # on the dominant harness; Reviewer and Expert run on the adversarial one.
   # Helpers stay native to the harness of the role that launches them.
   claude-dominant-adversarial-codex:
     shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
     developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-    reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
-    expert:    {harness: codex, model: gpt-6-sol, effort: high}
-    auditor:   {harness: codex, model: gpt-6-sol, effort: high}
+    reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+    expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
+    auditor:   {harness: codex, model: gpt-6.1-sol, effort: high}
     helpers:
       claude:
         scout:  {model: claude-sonnet-5, effort: low}
@@ -37,8 +37,8 @@ routes:
         scout:  {model: gpt-6-luna, effort: low}
         worker: {model: gpt-6-luna, effort: high}
   codex-dominant-adversarial-claude:
-    shaping:   {harness: codex, model: gpt-6-sol, effort: medium}
-    developer: {harness: codex, model: gpt-6-sol, effort: medium}
+    shaping:   {harness: codex, model: gpt-6.1-sol, effort: medium}
+    developer: {harness: codex, model: gpt-6.1-sol, effort: high}
     reviewer:  {harness: claude, model: claude-opus-5-5, effort: medium}
     expert:    {harness: claude, model: claude-opus-5-5, effort: high}
     auditor:   {harness: claude, model: claude-opus-5-5, effort: high}
@@ -49,6 +49,31 @@ routes:
       claude:
         scout:  {model: claude-sonnet-5, effort: low}
         worker: {model: claude-sonnet-5, effort: medium}
+  # optimum: the maintained best-known role combination, and the default for
+  # Shape and Build. Tuning it later never changes an admitted Build, which
+  # freezes its resolved harness, model and effort per role.
+  optimum:
+    shaping:   {harness: codex, model: gpt-6-astra, effort: low}
+    developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+    reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+    expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
+    auditor:   {harness: claude, model: claude-opus-5-5, effort: high}
+    helpers:
+      claude:
+        scout:  {model: claude-sonnet-5-5, effort: low}
+        worker: {model: claude-sonnet-5-5, effort: medium}
+      codex:
+        scout:  {model: gpt-6-luna, effort: low}
+        worker: {model: gpt-6-luna, effort: max}
 outer_resumptions: 2
 verification_retries: 2
 offline_retries: 4
+# Frozen Build budgets (optional; absent keys derive from the allowances above).
+live_concurrency: 4   # finite ceiling (positive integer): the provisional Review plus 3 live targets run at once
+max_rounds: 6
+max_dispatches: 40
+max_developer_resumptions: 3
+# A Developer turn passing this many minutes is resumed (same session) with a progress nudge; repeats every this many minutes, never a stop.
+developer_turn_minutes: 30
+# Timing is diagnostic: passing the nudge only logs a warning and adds a handoff line; a Build never stops for elapsed time.
+build_time_nudge_minutes: 60

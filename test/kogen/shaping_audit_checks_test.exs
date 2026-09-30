@@ -5,7 +5,17 @@ defmodule Kogen.ShapingAuditChecksTest do
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build.VerificationPlan
-  alias Kogen.ShapingAudit.{Deterministic, Fixture, Materialization, Package, Questions, Report}
+
+  alias Kogen.ShapingAudit.{
+    Deterministic,
+    Finding,
+    Fixture,
+    Materialization,
+    Package,
+    Questions,
+    Report
+  }
+
   alias Kogen.VerificationPolicy
 
   @root Path.expand("../..", __DIR__)
@@ -282,22 +292,35 @@ defmodule Kogen.ShapingAuditChecksTest do
     assert "unknown-target live-extra" in ids(%{"findings" => Deterministic.run(ctx)["findings"]})
   end
 
-  test "ledger-flawed: a catalogued test file with the ledger unguarded blocks with ledger-closure" do
+  test "ledger-flawed: a catalogued test file with the ledger unguarded is only an advisory ledger-closure" do
     report = report!(repo!(), "ledger-flawed")
     assert ids(report) == ["ledger-closure"]
     finding = hd(report["findings"])
+    assert finding["severity"] == "advisory"
+    refute Finding.open_blocking?(finding)
     assert finding["disputable"] == false
     assert finding["paths"] == ["test/a_test.exs", "priv/kogen/test-reliability.yaml"]
     assert finding["message"] =~ "guarding"
     assert finding["message"] =~ "harmless"
   end
 
-  test "ledger-unstated: a deleted catalogued test with the remediation file unguarded blocks" do
+  test "ledger-unstated: a deleted catalogued test with the remediation file unguarded is only advisory" do
     report = report!(repo!(), "ledger-unstated")
     assert ids(report) == ["ledger-row-update-unstated"]
-    assert hd(report["findings"])["disputable"]
+    assert hd(report["findings"])["severity"] == "advisory"
+    refute Finding.open_blocking?(hd(report["findings"]))
     assert hd(report["findings"])["paths"] == ["priv/kogen/test-reliability-remediation.yaml"]
     refute hd(report["findings"])["message"] =~ ~r/refresh|\.py/
+  end
+
+  test "ledger findings never block the audit" do
+    root = repo!()
+    add!(root, "ledger-flawed")
+
+    assert Kogen.ShapingAudit.main(["--auditor", "ledger-flawed"],
+             root: root,
+             env: Fixture.audit_env!(root)
+           ) == 0
   end
 
   test "ledger-rename, ledger-both and ledger-body get no ledger finding" do
@@ -453,14 +476,14 @@ defmodule Kogen.ShapingAuditChecksTest do
            }
 
     mechanical_root = repo!()
-    add!(mechanical_root, "ledger-flawed")
+    add!(mechanical_root, "proof-defects")
 
     File.write!(
-      Path.join(mechanical_root, ".kogen/intents/drafts/ledger-flawed/questions.md"),
-      "## Dispositions\nledger-closure: not a defect — accepted\n"
+      Path.join(mechanical_root, ".kogen/intents/drafts/proof-defects/questions.md"),
+      "## Dispositions\nproof-selector-missing test/stray_test.exs: not a defect — accepted\n"
     )
 
-    assert Kogen.ShapingAudit.main(["--auditor", "ledger-flawed"],
+    assert Kogen.ShapingAudit.main(["--auditor", "proof-defects"],
              root: mechanical_root,
              env: Fixture.audit_env!(mechanical_root)
            ) == 1

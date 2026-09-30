@@ -5,14 +5,14 @@ defmodule Kogen.ShapingAudit.Finding do
   Every finding has a stable id: its rule, plus its subject when the rule can
   fire more than once (`stale-anchor cited_bytes`). A `## Dispositions` entry
   "<id>: not a defect — <reason>" clears a disputable blocking finding; the
-  mechanical set (Build's own admission predicates, `ledger-closure`,
+  mechanical set (Build's own admission predicates,
   `controller-read-path`, `edited-live-owner-unselected`, `title-format`,
   `commit-subject-format` and `package-invalid`) cannot be disputed away.
   """
 
   @mechanical ~w(
     unguarded-affected-path proof-selector-missing unsupported-selector unknown-target
-    verified-by-invalid paid-reason-malformed ledger-closure controller-read-path
+    verified-by-invalid paid-reason-malformed controller-read-path
     edited-live-owner-unselected title-format commit-subject-format package-invalid
     recommendation-without-evidence assumption-without-reason
   )

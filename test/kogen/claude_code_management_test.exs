@@ -10,6 +10,8 @@ defmodule Kogen.ClaudeCode.ManagementTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   import ExUnit.CaptureIO
 
   alias Kogen.ClaudeCode
@@ -23,8 +25,18 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     ".credentials.json" => "PERSONAL-CREDENTIAL-MARKER"
   }
 
+  # `Kogen.IsolatedCase` also runs setup in the parent VM, where the process-
+  # global environment is shared with every other async module. The managed
+  # root and inherited-env simulation belong only to the child VM that runs the
+  # test body.
   setup do
-    source = File.cwd!()
+    if Kogen.WorkspaceFixture.isolated_child?(),
+      do: child_context(),
+      else: {:ok, root: nil, base: nil, source: @project_root, config: nil, personal: nil}
+  end
+
+  defp child_context do
+    source = @project_root
     base = Path.join(System.tmp_dir!(), "claude-managed-#{System.unique_integer([:positive])}")
     root = Path.join(base, "Kogen/claude")
     personal_config = Path.join(base, "personal-claude-config")
@@ -55,7 +67,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     System.put_env("CODEX_HOME", "/inherited/codex/home")
     System.delete_env("KOGEN_HARNESS")
     System.delete_env("KOGEN_ROLE")
-    {:ok, config} = Kogen.Intent.read_config()
+    {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", "claude")
     on_exit(fn -> File.rm_rf!(base) end)
 
     {:ok, root: root, base: base, source: source, config: config, personal: [personal_config]}
@@ -99,22 +111,25 @@ defmodule Kogen.ClaudeCode.ManagementTest do
   end
 
   test "readiness stops before any model launch with the exact fix", ctx do
-    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
-    assert reason == "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
+    assert {:error, reason} = ClaudeCode.open(ctx.config, @project_root)
+
+    assert reason ==
+             "Kogen Claude Code #{Kogen.ManagedRuntimeReady.claude_code_version()} is not installed. Run mix kogen.claude.install"
+
     assert trace(ctx) == []
 
     install_fixture!(ctx)
-    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
+    assert {:error, reason} = ClaudeCode.open(ctx.config, @project_root)
     assert reason =~ "Selected shared Kogen Claude Code login is not configured"
     assert reason =~ "Run mix kogen.claude.login"
     assert trace(ctx) == []
 
     File.mkdir_p!(shared(ctx))
-    assert {:error, _logged_out} = ClaudeCode.open(ctx.config, File.cwd!())
+    assert {:error, _logged_out} = ClaudeCode.open(ctx.config, @project_root)
     assert Enum.map(trace(ctx), & &1["args"]) == [["auth", "status"]]
 
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
-    assert {:ok, selection} = ClaudeCode.open(ctx.config, File.cwd!())
+    assert {:ok, selection} = ClaudeCode.open(ctx.config, @project_root)
     assert selection.scope.path == Path.expand(shared(ctx))
     assert Enum.all?(trace(ctx), &(&1["args"] == ["auth", "status"]))
     personal_unchanged!(ctx)
@@ -149,7 +164,10 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert call["args"] == ["--dangerously-skip-permissions", "--console"]
     assert_scope_native!(call["env"], Path.expand(shared(ctx)))
     assert call["scope"] == Path.expand(shared(ctx))
-    assert call["executable"] =~ Path.join(ctx.root, "runtimes/2.1.281-")
+
+    assert call["executable"] =~
+             Path.join(ctx.root, "runtimes/#{Kogen.ManagedRuntimeReady.claude_code_version()}-")
+
     assert File.read!(existing) == ~s({"existing":"scope state"})
 
     for name <-
@@ -188,11 +206,11 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert project_path =~ Path.join(ctx.root, "accounts/projects/")
     assert File.stat!(project_path).mode |> Bitwise.band(0o777) == 0o700
 
-    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
+    assert {:error, reason} = ClaudeCode.open(ctx.config, @project_root)
     assert reason =~ "Run mix kogen.claude.login --project"
 
     assert {:ok, 0} = ClaudeCode.login(["--project"])
-    assert {:ok, %{scope: %{name: :project}}} = ClaudeCode.open(ctx.config, File.cwd!())
+    assert {:ok, %{scope: %{name: :project}}} = ClaudeCode.open(ctx.config, @project_root)
     assert File.read!(Path.join(shared(ctx), ".fake-login")) == "claude.ai\n"
 
     assert {:ok, 0} = ClaudeCode.login(["--use-default"])
@@ -209,7 +227,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
     config = Map.put(ctx.config, :harness, "claude")
 
-    assert {:ok, selection} = Kogen.Harness.open(config, File.cwd!())
+    assert {:ok, selection} = Kogen.Harness.open(config, @project_root)
     context = Kogen.Harness.launch_context(selection)
 
     assert {:ok, verdict} =
@@ -232,6 +250,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     personal_unchanged!(ctx)
   end
 
+  # The test name remains the admission-base identity; assertions exercise the pinned Claude Code.
   test "a retained 2.1.280 default is never launched and survives the 2.1.281 install with logins",
        ctx do
     install_fixture!(ctx, ["2.1.280"])
@@ -240,25 +259,39 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     [old] = Path.wildcard(Path.join(ctx.root, "runtimes/2.1.280-*/claude"))
     old_bytes = File.read!(old)
 
-    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
-    assert reason == "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
+    assert {:error, reason} = ClaudeCode.open(ctx.config, @project_root)
+
+    assert reason ==
+             "Kogen Claude Code #{Kogen.ManagedRuntimeReady.claude_code_version()} is not installed. Run mix kogen.claude.install"
+
     assert trace(ctx) == []
 
     install_fixture!(ctx)
-    assert Jason.decode!(File.read!(Path.join(ctx.root, "default.json")))["version"] == "2.1.281"
+
+    assert Jason.decode!(File.read!(Path.join(ctx.root, "default.json")))["version"] ==
+             Kogen.ManagedRuntimeReady.claude_code_version()
+
     assert File.read!(old) == old_bytes
     assert File.read!(Path.join(shared(ctx), ".fake-login")) == "claude.ai\n"
 
-    assert {:ok, selection} = ClaudeCode.open(ctx.config, File.cwd!())
-    assert selection.runtime["executable"] =~ Path.join(ctx.root, "runtimes/2.1.281-")
+    assert {:ok, selection} = ClaudeCode.open(ctx.config, @project_root)
+
+    assert selection.runtime["executable"] =~
+             Path.join(ctx.root, "runtimes/#{Kogen.ManagedRuntimeReady.claude_code_version()}-")
+
     assert selection.scope.path == Path.expand(shared(ctx))
-    assert Enum.all?(trace(ctx), &(&1["executable"] =~ "runtimes/2.1.281-"))
+
+    assert Enum.all?(
+             trace(ctx),
+             &(&1["executable"] =~ "runtimes/#{Kogen.ManagedRuntimeReady.claude_code_version()}-")
+           )
+
     personal_unchanged!(ctx)
   end
 
   test "status reports pin, installation, scope and login metadata only", ctx do
     output = capture_io(fn -> CLI.run(:status, []) end)
-    assert output =~ "Pinned Claude Code: 2.1.281"
+    assert output =~ "Pinned Claude Code: #{Kogen.ManagedRuntimeReady.claude_code_version()}"
     assert output =~ "Not installed. Run mix kogen.claude.install"
 
     install_fixture!(ctx)
@@ -266,7 +299,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
     output = capture_io(fn -> CLI.run(:status, []) end)
     assert_scope_native!(List.last(trace(ctx))["env"], Path.expand(shared(ctx)))
-    assert output =~ "Installed: 2.1.281"
+    assert output =~ "Installed: #{Kogen.ManagedRuntimeReady.claude_code_version()}"
     assert output =~ "Effective login: shared (#{Path.expand(shared(ctx))})"
     assert output =~ "loggedIn: true, authMethod: claude.ai"
     refute output =~ "SYNTHETIC-SECRET"

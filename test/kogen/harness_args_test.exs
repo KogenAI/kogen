@@ -1,5 +1,9 @@
 defmodule Kogen.HarnessArgsTest do
   use ExUnit.Case, async: true
+
+  # Resolved from this file, never the shared VM's mutable working directory.
+  @root Path.expand("../..", __DIR__)
+  @config_path Path.join(@root, ".kogen/config.yaml")
   alias Kogen.Harness
 
   test "Developer starts Codex exec with JSON events, hooks, and reasoning effort" do
@@ -14,13 +18,13 @@ defmodule Kogen.HarnessArgsTest do
   end
 
   test "the tracked codex route launches each root role with its exact GPT-6 profile" do
-    assert {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
+    assert {:ok, config} = Kogen.Intent.read_config(@config_path, "codex")
     assert config.harness == "codex"
     developer = Harness.developer_args(config.developer.model, config.developer.effort)
     resumed = Harness.developer_args(config.developer.model, config.developer.effort, "abc-123")
     reviewer = Harness.reviewer_args(config.reviewer.model, config.reviewer.effort)
-    sol_medium = ["--model", "gpt-6-sol", "-c", "model_reasoning_effort=\"medium\""]
-    sol_high = ["--model", "gpt-6-sol", "-c", "model_reasoning_effort=\"high\""]
+    sol_medium = ["--model", "gpt-6.1-sol", "-c", "model_reasoning_effort=\"medium\""]
+    sol_high = ["--model", "gpt-6.1-sol", "-c", "model_reasoning_effort=\"high\""]
 
     assert Enum.slice(developer, 1, 4) == sol_high
     assert Enum.slice(resumed, 2, 4) == sol_high
@@ -44,12 +48,109 @@ defmodule Kogen.HarnessArgsTest do
     end
   end
 
+  test "the frozen default optimum route launches every role and native helper with its exact profile" do
+    assert {:ok, config} = Kogen.Intent.read_config(@config_path)
+    assert config.route == "optimum"
+
+    developer = Kogen.Intent.role_config(config, :developer)
+    assert developer.harness == "claude"
+    context = %{config: developer}
+    args = Harness.Claude.developer_args("claude-opus-5-5", "medium", context, {:fresh, "s-1"})
+    pairs = Enum.chunk_every(args, 2, 1, :discard)
+
+    assert ["--model", config.developer.model] in pairs
+    assert ["--effort", config.developer.effort] in pairs
+    assert {config.developer.model, config.developer.effort} == {"claude-opus-5-5", "medium"}
+
+    agents = args |> Enum.at(Enum.find_index(args, &(&1 == "--agents")) + 1) |> Jason.decode!()
+    assert agents["kogen-worker"]["model"] == "claude-sonnet-5-5"
+    assert agents["kogen-worker"]["effort"] == "medium"
+    assert agents["kogen-scout"]["model"] == "claude-sonnet-5-5"
+    assert agents["kogen-scout"]["effort"] == "low"
+    # The Expert runs on Codex: no native Claude stand-in is launched.
+    refute Map.has_key?(agents, "kogen-expert")
+
+    for builtin <- ~w(general-purpose Explore Plan),
+        do: assert("Agent(#{builtin})" in Harness.Claude.disallowed_tools("developer"))
+
+    # The Codex Reviewer and Expert launch Sol High; the Codex Shaper Astra Low.
+    assert Kogen.Intent.role_harness(config, :reviewer) == "codex"
+    reviewer = Harness.reviewer_args(config.reviewer.model, config.reviewer.effort)
+
+    assert Enum.slice(reviewer, 1, 4) == [
+             "--model",
+             "gpt-6.1-sol",
+             "-c",
+             ~s(model_reasoning_effort="high")
+           ]
+
+    expert = Harness.Codex.expert_args(config.expert.model, config.expert.effort)
+
+    assert Enum.slice(expert, 1, 4) == [
+             "--model",
+             "gpt-6.1-sol",
+             "-c",
+             ~s(model_reasoning_effort="high")
+           ]
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-optimum-shaper-#{System.pid()}-#{System.unique_integer([:positive])}.md"
+      )
+
+    on_exit(fn -> File.rm(path) end)
+    File.write!(path, "Shape one Intent.")
+    assert Kogen.Intent.role_harness(config, :shaping) == "codex"
+
+    assert Enum.take(Harness.shaper_args(config.shaping.model, config.shaping.effort, path), 4) ==
+             ["--model", "gpt-6-astra", "-c", ~s(model_reasoning_effort="low")]
+
+    # The Codex roles' native worker is Luna Max on optimum only.
+    assert Kogen.Intent.role_config(config, :reviewer).helpers.worker ==
+             %{model: "gpt-6-luna", effort: "max"}
+
+    policy = Kogen.ExecutionPolicy.render(config, "reviewer", @root)
+    assert policy =~ "`gpt-6-luna` at `max`; native kind `worker`"
+  end
+
+  test "Sonnet 5.5 is accepted only with its verified efforts; unknown models and efforts reject" do
+    dir = Path.join(System.tmp_dir!(), "kogen-sonnet-55-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    tracked = File.read!(@config_path)
+
+    for {label, replacement, expected} <- [
+          {"verified-low", "{model: claude-sonnet-5-5, effort: low}", :ok},
+          {"unverified-high", "{model: claude-sonnet-5-5, effort: high}", :error},
+          {"unknown-model", "{model: claude-sonnet-9, effort: medium}", :error}
+        ] do
+      path = Path.join(dir, label <> ".yaml")
+
+      File.write!(
+        path,
+        String.replace(
+          tracked,
+          "worker: {model: claude-sonnet-5-5, effort: medium}",
+          "worker: " <> replacement
+        )
+      )
+
+      result = Kogen.Intent.read_config(path, "optimum")
+
+      case expected do
+        :ok -> assert {:ok, %{route: "optimum"}} = result
+        :error -> assert {:error, _reason} = result
+      end
+    end
+  end
+
   # The hybrid route's adversarial Expert launches with its own exact profile
   # and its harness's existing unattended flags; it is read-only on Claude
   # Code like the Reviewer.
   test "hybrid Expert args carry their exact profile and harness flags" do
     assert {:ok, config} =
-             Kogen.Intent.read_config(".kogen/config.yaml", "claude-dominant-adversarial-codex")
+             Kogen.Intent.read_config(@config_path, "claude-dominant-adversarial-codex")
 
     assert Kogen.Intent.role_harness(config, :expert) == "codex"
     profile = Map.fetch!(config, :expert)
@@ -58,7 +159,7 @@ defmodule Kogen.HarnessArgsTest do
     assert Enum.take(args, 5) == [
              "exec",
              "--model",
-             "gpt-6-sol",
+             "gpt-6.1-sol",
              "-c",
              ~s(model_reasoning_effort="high")
            ]
@@ -69,7 +170,7 @@ defmodule Kogen.HarnessArgsTest do
     refute "resume" in args
 
     assert {:ok, mirror} =
-             Kogen.Intent.read_config(".kogen/config.yaml", "codex-dominant-adversarial-claude")
+             Kogen.Intent.read_config(@config_path, "codex-dominant-adversarial-claude")
 
     context = %{config: Kogen.Intent.role_config(mirror, :expert)}
 
@@ -197,7 +298,7 @@ defmodule Kogen.Harness.OutputTailTest do
     context = %{harness: "codex", executable: executable, args: [], env: []}
 
     assert {:error, {:developer_transport_failure, {:provider_error, failure}, evidence}} =
-             Harness.launch_build_developer("p", "gpt-6-sol", "medium", [], context)
+             Harness.launch_build_developer("p", "gpt-6.1-sol", "medium", [], context)
 
     assert failure["output_tail"] =~ "server_overloaded"
     assert byte_size(evidence.diagnostics) > 16_384

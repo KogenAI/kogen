@@ -1,3 +1,5 @@
+Code.require_file("../compiled_fixture.exs", __DIR__)
+
 defmodule Kogen.ShapingAudit.Fixture do
   # credo:disable-for-this-file Credo.Check.Refactor.CyclomaticComplexity
   @moduledoc """
@@ -14,6 +16,7 @@ defmodule Kogen.ShapingAudit.Fixture do
   `history` fixture Draft's id, for `prior-failures`.
   """
 
+  @project_root Path.expand("../../..", __DIR__)
   @history_intent_id "01965000-0000-7000-8000-000000000001"
 
   @doc "The fixed intent id the `history` Draft and its retained records share."
@@ -30,7 +33,7 @@ defmodule Kogen.ShapingAudit.Fixture do
     root =
       if Keyword.get(opts, :compiled, false) do
         Code.ensure_loaded!(Kogen.CompiledFixture)
-        Kogen.CompiledFixture.create!(File.cwd!(), "shaping-audit")
+        Kogen.CompiledFixture.create!(@project_root, "shaping-audit")
       else
         Path.join(
           System.tmp_dir!(),
@@ -50,7 +53,7 @@ defmodule Kogen.ShapingAudit.Fixture do
           ] do
         destination = Path.join(root, relative)
         File.mkdir_p!(Path.dirname(destination))
-        File.cp!(Path.join(File.cwd!(), relative), destination)
+        File.cp!(Path.join(@project_root, relative), destination)
       end
 
       for relative <- [
@@ -60,15 +63,15 @@ defmodule Kogen.ShapingAudit.Fixture do
           ] do
         destination = Path.join(root, relative)
         File.mkdir_p!(Path.dirname(destination))
-        File.cp!(Path.join(File.cwd!(), relative), destination)
+        File.cp!(Path.join(@project_root, relative), destination)
         File.chmod!(destination, 0o755)
       end
 
       for relative <-
             Path.wildcard(
-              Path.join(File.cwd!(), "test/support/shaping_audit/fake_auditor_messages/*")
+              Path.join(@project_root, "test/support/shaping_audit/fake_auditor_messages/*")
             ) do
-        destination = Path.join(root, Path.relative_to(relative, File.cwd!()))
+        destination = Path.join(root, Path.relative_to(relative, @project_root))
         File.mkdir_p!(Path.dirname(destination))
         File.cp!(relative, destination)
       end
@@ -81,7 +84,7 @@ defmodule Kogen.ShapingAudit.Fixture do
           ] do
         destination = Path.join(root, relative)
         File.mkdir_p!(Path.dirname(destination))
-        File.cp!(Path.join(File.cwd!(), relative), destination)
+        File.cp!(Path.join(@project_root, relative), destination)
       end
     end
 
@@ -154,11 +157,11 @@ defmodule Kogen.ShapingAudit.Fixture do
     Enum.each(["KOGEN_ROLE", "KOGEN_HARNESS_HOME", "FAKE_JEV_ANSWERS"], &System.delete_env/1)
 
     env = %{
-      "KOGEN_HARNESS" => Path.join(File.cwd!(), "test/support/shaping_audit/fake_auditor"),
+      "KOGEN_HARNESS" => Path.join(@project_root, "test/support/shaping_audit/fake_auditor"),
       "KOGEN_JEV_TRANSPORT" =>
-        Path.join(File.cwd!(), "test/support/shaping_audit/fake_jev_audit"),
+        Path.join(@project_root, "test/support/shaping_audit/fake_jev_audit"),
       "KOGEN_JEV_SECURITY" =>
-        Path.join(File.cwd!(), "test/support/shaping_audit/fake_security_audit"),
+        Path.join(@project_root, "test/support/shaping_audit/fake_security_audit"),
       "FAKE_AUDITOR_LOG_DIR" => Path.join(root, ".kogen/runtime/fake-auditor"),
       "FAKE_JEV_LOG_DIR" => Path.join(root, ".kogen/runtime/fake-jev-audit"),
       "FAKE_SECURITY_LOG" => Path.join(root, ".kogen/runtime/fake-security.log"),
@@ -385,7 +388,7 @@ defmodule Kogen.ShapingAudit.Fixture do
         shaping: {model: gpt-5.6-sol, effort: low}
         developer: {model: gpt-5.6-sol, effort: low}
         reviewer: {model: gpt-5.6-terra, effort: medium}
-        auditor: {model: gpt-6-sol, effort: high}
+        auditor: {model: gpt-6.1-sol, effort: high}
         helpers:
           scout: {model: gpt-5.6-luna, effort: low}
           worker: {model: gpt-5.6-luna, effort: medium}

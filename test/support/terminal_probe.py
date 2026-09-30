@@ -58,6 +58,19 @@ def drain_master(master, limit=1024 * 1024):
             return
 
 
+def signal_tolerating_reap(send, target, sig):
+    """Signal a process or group that may already be exiting.
+
+    macOS answers EPERM when every member is a zombie, for example an exited
+    but not yet waited leader or an orphan launchd is reaping. The caller's
+    mandatory disappearance checks still decide whether cleanup succeeded.
+    """
+    try:
+        send(target, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def terminate(process, owned, master=None):
     """Terminate the owned process group and all descendants."""
     cleanup_error = None
@@ -72,19 +85,15 @@ def terminate(process, owned, master=None):
     except (OSError, RuntimeError) as error:
         cleanup_error = error
     for pid in owned:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+        signal_tolerating_reap(os.kill, pid, signal.SIGKILL)
+    signal_tolerating_reap(os.killpg, process.pid, signal.SIGTERM)
     try:
         process.wait(timeout=1)
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
+        signal_tolerating_reap(os.killpg, process.pid, signal.SIGKILL)
         process.wait()
+    # Tolerated signal errors never count as cleanup: the group and every
+    # owned descendant must still be confirmed gone below.
     wait_group(process.pid)
     for pid in owned:
         deadline = time.monotonic() + 3
@@ -93,6 +102,9 @@ def terminate(process, owned, master=None):
                 os.kill(pid, 0)
             except ProcessLookupError:
                 break
+            except PermissionError:
+                # A reparented zombie being reaped; keep waiting for it.
+                pass
             time.sleep(0.005)
         else:
             raise RuntimeError(f"terminal descendant {pid} survived cleanup")

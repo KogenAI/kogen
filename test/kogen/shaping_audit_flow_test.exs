@@ -4,9 +4,11 @@ defmodule Kogen.ShapingAuditFlowTest do
   @moduledoc "Questions and audit state transitions for the Shaping audit."
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.ShapingAudit.{Finding, Fixture, Package, Questions, Report}
 
-  @fixtures Path.join(File.cwd!(), "test/support/shaping_audit/packages/flow")
+  @fixtures Path.join(@project_root, "test/support/shaping_audit/packages/flow")
 
   defp questions!(state) do
     Path.join([@fixtures, state, "questions.md"]) |> File.read!() |> Questions.parse()
@@ -23,6 +25,30 @@ defmodule Kogen.ShapingAuditFlowTest do
     questions = questions!("asking-no-answers")
     assert Questions.state(questions) == :asking
     assert is_list(Questions.findings(questions, files("asking-no-answers")))
+  end
+
+  test "repeated recognized sections merge and a later empty ask cannot erase open questions" do
+    questions =
+      Questions.parse("""
+      ## Ask the Shaper
+
+      1. Keep the original behavior? Recommendation: retain it. Evidence: "existing contract".
+
+      ## Ask the Shaper
+
+      ## Shaper answers
+      none yet
+
+      ## Ask the Shaper
+
+      2. Should the new path be public? Recommendation: keep it private. Evidence: unproven — confirm with the Shaper.
+      """)
+
+    asks = Questions.entries(questions, "Ask the Shaper")
+
+    assert Enum.map(asks, & &1.number) == [1, 2]
+    assert Questions.state(questions) == :asking
+    assert Questions.findings(questions, ["questions.md"]) == []
   end
 
   test "question evidence and recommendation defects become findings" do

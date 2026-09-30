@@ -9,6 +9,8 @@ defmodule Kogen.LiveShapingEvaluationTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   @moduletag :live
   @tag isolated_required_output_prefix: "KOGEN_TARGET_EVIDENCE_MANIFEST"
   @tag isolated_required_output_manifest: true
@@ -18,7 +20,7 @@ defmodule Kogen.LiveShapingEvaluationTest do
   @moduletag timeout: 5_700_000
 
   test "five real public shaping sessions retain evidence and emit one manifest locator" do
-    root = File.cwd!()
+    root = @project_root
     support = Path.join(root, "test/support/shaping_evaluation")
 
     runtime =

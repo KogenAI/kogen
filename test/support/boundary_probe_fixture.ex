@@ -100,16 +100,49 @@ defmodule Kogen.BoundaryProbeFixture do
     File.mkdir_p!(outside(fixture))
   end
 
+  # The hook command swallows every failure (SessionStart output would enter
+  # the model's context), so it records its own trace and any failure in
+  # sidecars beside the probe lines: `boundary-probe.trace` (one line per
+  # invocation: role, whether the probe env reached the hook, python3 and its
+  # version) and `boundary-probe.err` (the probe's stderr and a failing exit).
+  # Both live in `$KOGEN_RAW_LOG_DIR`, which the controller retains.
+  #
+  # The probe is stdlib-only, so it must not depend on the project's mise
+  # Python: a role inherits the mise shim on PATH, and inside a Candidate
+  # worktree the shim refuses to run ("Config files ... are not trusted"
+  # for the Candidate's mise.toml), which silently dropped the Claude
+  # Developer's receipt. If `python3` fails, the macOS `/usr/bin/python3`
+  # runs the same script.
   defp session_start(dir) do
+    sink = "\"${KOGEN_RAW_LOG_DIR:-/dev/null}\""
+    probe = "\"$(git rev-parse --show-toplevel)/#{dir}/boundary_probe.py\""
+
+    trace =
+      "echo \"role=${KOGEN_ROLE:-} raw=${KOGEN_RAW_LOG_DIR:+set} " <>
+        "python=$(command -v python3) $(python3 -V 2>&1) cwd=$PWD\" " <>
+        ">> #{sink}/boundary-probe.trace 2>/dev/null"
+
+    command =
+      "[ -z \"$KOGEN_BOUNDARY_PROBE_OUTSIDE\" ] || { #{trace}; " <>
+        "{ python3 #{probe} || /usr/bin/python3 #{probe}; } >/dev/null 2>> #{sink}/boundary-probe.err || " <>
+        "echo \"probe exit $? (python=$(command -v python3))\" >> #{sink}/boundary-probe.err; }; true"
+
     %{
       "hooks" => [
         %{
           "type" => "command",
-          "command" =>
-            "python3 \"$(git rev-parse --show-toplevel)/#{dir}/boundary_probe.py\" >/dev/null 2>&1 || true"
+          "command" => command
         }
       ]
     }
+  end
+
+  @doc "The sidecar diagnostics the hooks retained beside `lines/1`'s receipts."
+  def sidecars(raw_log_dir) do
+    for name <- ~w(boundary-probe.trace boundary-probe.err),
+        path = Path.join(raw_log_dir, name),
+        File.regular?(path),
+        do: "#{name}:\n" <> File.read!(path)
   end
 
   @doc "The probe lines the controller copied into `raw_log_dir`."

@@ -78,7 +78,11 @@ def vrefs(path="Makefile", locator="check", receipt=None):
     return [{"path": path, "locator": locator, "receipt": receipt}]
 
 
-def review_refs(snapshot, mode):
+def review_refs(snapshot, mode, settled=False):
+    if mode.startswith("target_evidence") and not settled:
+        # Provisional packets precede settled receipt supersession. The
+        # evidence addendum is where the Reviewer sees the retained artifacts.
+        return vrefs()
     if mode.startswith("target_evidence"):
         receipts = snapshot.get("attempt", {}).get("receipts", [])
         target = next((r for r in receipts if r.get("target") == "verify"), receipts[0] if receipts else {})
@@ -146,7 +150,7 @@ def developer(snapshot, call, mode):
     return response
 
 
-def verdict(snapshot, review, mode):
+def verdict(snapshot, review, mode, settled=False):
     ids = [item["id"] for item in snapshot.get("scenarios", [])]
     open_ids = [item["id"] for item in snapshot.get("open_findings", [])]
     rework = mode in {"exhaust", "target_history"} or (mode == "partial_dispute" and review < 3) or (mode == "regression" and review < 3) or (mode in {"review_evidence", "omitted_disposition", "record_citations", "record_sidecar_delete", "record_sidecar_edit", "verdict_diagnostics"} and review == 1)
@@ -165,7 +169,7 @@ def verdict(snapshot, review, mode):
     if mode == "regression" and review == 2:
         dispositions = [{"id": finding, "status": "closed", "reason": "fixed", "evidence": vrefs()} for finding in open_ids]
         findings = [{"scenario_ids": ids, "reason": "regression found", "evidence": vrefs()}]
-    evidence = review_refs(snapshot, mode)
+    evidence = review_refs(snapshot, mode, settled=settled)
     response = {
         "candidate_id": snapshot.get("candidate_id", "missing-candidate"),
         "attempt_token": snapshot.get("attempt_token", "missing-token"),
@@ -174,8 +178,6 @@ def verdict(snapshot, review, mode):
         "dispositions": dispositions,
         "findings": findings,
     }
-    if mode == "target_evidence_mutation":
-        (RUNTIME / "target-evidence" / "semantic.txt").write_text("mutated after inspection\n")
     return response
 
 
@@ -187,6 +189,27 @@ def main():
     reviewer = os.environ.get("KOGEN_ROLE") == "reviewer"
     resume = "resume" in args
     control = control_root(prompt)
+    if reviewer and prompt.startswith("KOGEN_EVIDENCE_ADDENDUM"):
+        # The evidence addendum resumes the accepting Reviewer's own session
+        # after settlement: not a new Review, so `reviews` is not counted,
+        # and it confirms the latest Review's verdict on the settled tree.
+        output = args[args.index("--output-last-message") + 1]
+        count("addenda")
+        review_number = int((STATE / "reviews").read_text())
+        response = verdict(context(prompt), review_number, mode, settled=True)
+        if mode == "record_citations":
+            record = next((control / ".kogen/runtime/scenario-tracking").glob("*/record.json"))
+            (STATE / "reviewer-inspected-addendum.json").write_bytes(record.read_bytes())
+            response["scenarios"][0]["evidence"].append(
+                {"path": str(record.relative_to(control)), "locator": "settled tracking record", "receipt": None}
+            )
+        if mode == "target_evidence_mutation":
+            (RUNTIME / "target-evidence" / "semantic.txt").write_text("mutated after inspection\n")
+        pathlib.Path(output).write_text(json.dumps(response))
+        sid = args[args.index("resume") + 1]
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
+        return
     if reviewer:
         output = args[args.index("--output-last-message") + 1]
         # A resumed Review (`reviewer-reask-once`) reuses the exact

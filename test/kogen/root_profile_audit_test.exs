@@ -354,8 +354,8 @@ defmodule Kogen.RootProfileAuditTest do
         "model" => "claude-opus-5-5",
         "effort" => "medium"
       },
-      "reviewer" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
-      "expert" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+      "reviewer" => %{"harness" => "codex", "model" => "gpt-6.1-sol", "effort" => "high"},
+      "expert" => %{"harness" => "codex", "model" => "gpt-6.1-sol", "effort" => "high"},
       "helpers" => %{
         "claude" => %{
           "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},

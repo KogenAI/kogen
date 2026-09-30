@@ -10,6 +10,14 @@ defmodule Kogen.TestReliabilityCatalog do
     |> Jason.decode!()
   end
 
+  @doc """
+  Validates the catalog's own structure: schema, counts, required fields, valid
+  dispositions, unique identities and text, and non-aliased evidence roles.
+
+  Whether a row's test name, files or witness text still exist in the tree is
+  advisory metadata, never an error: renaming, adding or removing a test must
+  not fail the gate. See `advisories/2` for that report.
+  """
   def validate(catalog, root, changed_paths \\ nil) when is_map(catalog) do
     rows = catalog["declarations"]
 
@@ -28,6 +36,18 @@ defmodule Kogen.TestReliabilityCatalog do
       end)
 
     if errors == [], do: :ok, else: {:error, Enum.reverse(errors)}
+  end
+
+  @doc """
+  Reports catalog rows that no longer resolve against the tree (a renamed or
+  removed test, a moved evidence file, a changed consumer witness). Purely
+  informational: returns a list of messages, empty when everything resolves.
+  """
+  def advisories(catalog, root) when is_map(catalog) do
+    catalog["declarations"]
+    |> List.wrap()
+    |> Enum.filter(&is_map/1)
+    |> Enum.flat_map(&row_advisories(&1, root))
   end
 
   def validate_remediation(catalog, remediation) do
@@ -69,8 +89,8 @@ defmodule Kogen.TestReliabilityCatalog do
     errors
     |> require(length(Enum.uniq(claimed)) == length(claimed), "duplicate declaration identity")
     |> require(
-      Enum.all?(sources, &File.regular?(Path.join(root, &1))),
-      "catalog source is absent"
+      Enum.all?(sources, &is_binary/1),
+      "catalog source is not a path"
     )
     |> require(
       sources == Enum.sort(catalog["maintained_sources"] || []),
@@ -101,25 +121,44 @@ defmodule Kogen.TestReliabilityCatalog do
     |> require(missing == [], "#{row["id"] || "unknown"}: missing #{Enum.join(missing, ", ")}")
     |> require(row["disposition"] in @allowed, "#{row["id"]}: invalid disposition")
     |> require(
-      Enum.all?(paths, &regular_repo_path?(root, &1)),
-      "#{row["id"]}: evidence path is absent or unsafe"
+      Enum.all?(paths, &repo_relative_path?(root, &1)),
+      "#{row["id"]}: evidence path is unsafe"
     )
     |> require(
       length(Enum.uniq(paths)) == length(paths),
       "#{row["id"]}: evidence roles alias one path"
     )
     |> require(
-      consumer_mentions?(root, row),
-      "#{row["id"]}: consumer does not expose claimed behavior"
-    )
-    |> require(
       changed_implementation?(row, changed_paths),
       "#{row["id"]}: implementation is unchanged without preservation proof"
     )
-    |> require(
-      declaration_bound?(root, row),
-      "#{row["id"]}: #{row["file"]}: missing declaration #{inspect(row["declaration"])}"
-    )
+  end
+
+  defp row_advisories(row, root) do
+    id = row["id"] || "unknown"
+    paths = Enum.map(~w(positive_control wrong_control failure_recovery implementation), &row[&1])
+
+    missing_source =
+      if File.regular?(Path.join(root, row["file"] || "")),
+        do: [],
+        else: ["#{id}: catalog source #{inspect(row["file"])} is absent"]
+
+    missing_paths =
+      for path <- paths,
+          not regular_repo_path?(root, path),
+          do: "#{id}: evidence path #{inspect(path)} is absent"
+
+    consumer =
+      if consumer_mentions?(root, row),
+        do: [],
+        else: ["#{id}: consumer does not expose claimed behavior"]
+
+    declaration =
+      if declaration_bound?(root, row),
+        do: [],
+        else: ["#{id}: #{row["file"]}: missing declaration #{inspect(row["declaration"])}"]
+
+    missing_source ++ missing_paths ++ consumer ++ declaration
   end
 
   defp changed_implementation?(_row, nil), do: true
@@ -170,6 +209,12 @@ defmodule Kogen.TestReliabilityCatalog do
   end
 
   defp regular_repo_path?(_, _), do: false
+
+  defp repo_relative_path?(root, path) when is_binary(path) do
+    String.starts_with?(Path.expand(path, root), Path.expand(root) <> "/")
+  end
+
+  defp repo_relative_path?(_, _), do: false
 
   defp unique_text?(rows, field) do
     values = Enum.map(rows, & &1[field])

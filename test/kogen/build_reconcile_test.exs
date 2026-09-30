@@ -313,18 +313,22 @@ defmodule Kogen.BuildReconcileTest do
 
     assert {:error, "Complete Intent already exists: scripted-build"} = Fixture.run(dir)
     refute File.exists?(Workspace.lock_path(dir))
-    refute File.exists?(report_path)
-    assert owner!(dir, dead_id)["status"] == "running"
+    report_bytes = File.read!(report_path)
+    report = Jason.decode!(report_bytes)
+    assert report["published"] == true
+    assert report["next_action"] == "remove"
+    assert owner!(dir, dead_id)["status"] == "stopped: publication-interrupted"
 
     output = capture_io(fn -> File.cd!(dir, fn -> Candidates.run([]) end) end)
 
     assert output =~
              "  published: #{commit} is on main; remove it with mix kogen.candidates.remove #{dead_id}"
 
-    assert output =~ "report:   none"
+    assert output =~ "class:   interrupted"
+    assert output =~ "next:    remove (mix kogen.candidates.remove #{dead_id})"
 
     other!(dir, "scripted-other", "01960000-0000-7000-8000-0000000c0de3")
-    report = File.read!(report_path) |> Jason.decode!()
+    assert File.read!(report_path) == report_bytes
     assert report["published"] == true
     assert report["next_action"] == "remove"
     assert report["next_command"] == "mix kogen.candidates.remove #{dead_id}"
@@ -339,8 +343,20 @@ defmodule Kogen.BuildReconcileTest do
   end
 
   defp other!(dir, slug, id) do
+    ignore_drafts!(dir)
     Fixture.add_intent!(dir, slug, id)
     assert :ok = Fixture.run(dir, slug: slug)
+  end
+
+  defp ignore_drafts!(dir) do
+    path = Path.join(dir, ".gitignore")
+    bytes = File.read!(path)
+
+    unless String.contains?(bytes, ".kogen/intents/drafts/") do
+      File.write!(path, bytes <> "\n.kogen/intents/drafts/\n")
+      git!(dir, ["add", ".gitignore"])
+      git!(dir, ["commit", "-q", "-m", "ignore returned Draft packages"])
+    end
   end
 
   defp provider_stopped!(dir) do

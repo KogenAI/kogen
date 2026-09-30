@@ -14,3 +14,8 @@ models:
     efforts: [low, medium, high, xhigh]
     intent: 01a0cc76-aac2-7130-9beb-48933506606d
     evidence: .kogen/intents/complete/claude-code-harness/evidence/claude-code-probe.md
+  # Sonnet 5.5 efforts are limited to the observed passing native probes.
+  - id: claude-sonnet-5-5
+    efforts: [low, medium]
+    intent: 01a0e6df-71cf-78d7-9921-2c41bdd58979
+    evidence: .kogen/intents/complete/build-system-fixes/evidence/probe-native-team/RESULT.md

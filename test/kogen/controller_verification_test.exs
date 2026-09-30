@@ -28,7 +28,30 @@ defmodule Kogen.ControllerVerificationTest do
 
   alias Kogen.Build.{ReviewPacket, Tracking, Verification, VerificationRunner}
   alias Kogen.ControllerBuildFixture, as: F
+  alias Kogen.Harness.Claude
   alias Kogen.ScriptedBuildFixture, as: Fixture
+
+  test "controller target child receives the frozen route instead of a caller default" do
+    root = Path.join(System.tmp_dir!(), "kogen-route-child-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf(root) end)
+    File.write!(Path.join(root, "Makefile"), "probe:\n\t@printf '%s\\n' \"$$KOGEN_ROUTE\"\n")
+    log = Path.join(root, "route.log")
+    previous = System.get_env("KOGEN_ROUTE")
+    System.put_env("KOGEN_ROUTE", "caller-default")
+
+    on_exit(fn ->
+      if previous,
+        do: System.put_env("KOGEN_ROUTE", previous),
+        else: System.delete_env("KOGEN_ROUTE")
+    end)
+
+    assert {:ok, %{"exit_code" => 0}} =
+             VerificationRunner.run_target(root, "probe", log, route: "selected-hybrid")
+
+    assert File.read!(log) =~ "selected-hybrid"
+    refute File.read!(log) =~ "caller-default"
+  end
 
   # --- controller-owns-verification -----------------------------------
 
@@ -170,7 +193,11 @@ defmodule Kogen.ControllerVerificationTest do
     # drives `Kogen.Build.run/1` directly with the same fixture directory and
     # provider, keeping `KOGEN_RAW_LOG_DIR` set for the whole Build.
     assert :ok =
-             run_with_raw_log_dir!(dir, archive_dir, fail_first: [1], reviews: "rework,accept")
+             run_with_raw_log_dir!(dir, archive_dir,
+               fail_first: [1],
+               reviews: "rework,accept",
+               edits: %{3 => "printf 'review change\\n' > dummy.txt"}
+             )
 
     assert {:ok, record} = Kogen.Check.read_record(dir)
 
@@ -263,7 +290,12 @@ defmodule Kogen.ControllerVerificationTest do
   test "an outer Review rework resumption starts a fresh verification context with no reuse" do
     dir = Fixture.fixture!()
 
-    assert :ok = Fixture.run(dir, fail_first: [1], reviews: "rework,accept")
+    assert :ok =
+             Fixture.run(dir,
+               fail_first: [1],
+               reviews: "rework,accept",
+               edits: %{3 => "printf 'review change\\n' > dummy.txt"}
+             )
 
     tracking = Fixture.record!(dir)
     [first, second] = tracking["attempts"]
@@ -944,6 +976,12 @@ defmodule Kogen.ControllerVerificationTest do
       assert state["terminal_state"] == "passed"
       assert state["failures_since_pass"] == 0
 
+      # The live (provider-backed) receipt records the Build's selected route;
+      # the offline receipt records none.
+      receipts = Map.new(cycle4["receipts"], &{&1["target"], &1})
+      assert receipts["paid"]["route"] == "selected-route"
+      refute Map.has_key?(receipts["check"], "route")
+
       assert {:ok, _execution, _state} = Verification.settle(execution, "dev-1", candidate_id)
     end)
   end
@@ -1014,10 +1052,9 @@ defmodule Kogen.ControllerVerificationTest do
     File.cd!(dir, fn ->
       catalog = F.load_catalog!(dir)
 
-      # `verified_by` must list its targets in catalog rank order (a proof
-      # rule, `VerificationPlan.verified_by_errors/3`), so `paid` (rank 0)
-      # comes before `check` (rank 100) here; dispatch order is unaffected,
-      # since offline targets always run first regardless of list or rank.
+      # `verified_by` may list its targets in any order; the plan canonicalizes
+      # them by catalog rank and dependencies. Dispatch still runs offline
+      # targets before paid targets, independent of that canonical order.
       scenario =
         paid_scenario("s1", ["paid", "check"], "paid",
           offline: ["proof.txt"],
@@ -1155,6 +1192,52 @@ defmodule Kogen.ControllerVerificationTest do
 
       passed_prepare = Enum.find(cycle["prepare"], &(&1["target"] == "p2"))
       assert passed_prepare["status"] == "passed"
+    end)
+  end
+
+  test "a prepare runs on the Build's selected route, whatever KOGEN_ROUTE the controller holds" do
+    dir =
+      prepare_repo!([
+        offline_catalog_entry(),
+        paid_catalog_entry("p2", 200, [
+          "sh",
+          "-c",
+          "echo \"route=$KOGEN_ROUTE\"; exit 1"
+        ])
+      ])
+
+    selected = "selected-route"
+    previous = System.get_env("KOGEN_ROUTE")
+    System.put_env("KOGEN_ROUTE", "codex")
+
+    on_exit(fn ->
+      if previous,
+        do: System.put_env("KOGEN_ROUTE", previous),
+        else: System.delete_env("KOGEN_ROUTE")
+    end)
+
+    File.cd!(dir, fn ->
+      catalog = F.load_catalog!(dir)
+
+      scenarios = [
+        paid_scenario("s-p2", ["check", "p2"], "p2",
+          offline: ["proof.txt"],
+          affected_paths: ["dummy.txt"]
+        )
+      ]
+
+      plan = F.build_plan!(dir, scenarios, catalog, guards: ["dummy.txt"])
+      candidate_id = F.candidate_id!(dir)
+      env = F.env(dir, catalog, plan, scenarios)
+
+      execution =
+        F.initialize!(dir, plan.targets, plan: plan, retries: %{verification: 2, offline: 4})
+
+      {_execution, state} = F.run_cycle!(execution, "dev-1", candidate_id, env)
+      [prepare] = List.last(state["cycles"])["prepare"]
+
+      assert prepare["output"] =~ "route=#{selected}"
+      refute prepare["output"] =~ "route=codex"
     end)
   end
 
@@ -1466,20 +1549,23 @@ defmodule Kogen.ControllerVerificationTest do
       refute Map.has_key?(attempt, "verification")
     end
 
+    # Keep the admission-base identity; approved capacity backoff now permits
+    # five bounded retries before this fake stops on its sixth overload.
     test "a second overloaded Developer turn stops the Build as provider" do
       dir = Fixture.fixture!()
 
       assert {:error, reason} =
                Fixture.run(dir,
-                 provider_fail: ["developer-1", "developer-2"],
+                 provider_fail: Enum.map(1..6, &"developer-#{&1}"),
                  provider_tail: provider_tail(@capacity)
                )
 
       assert reason =~ "provider failure during Developer turn (class provider, overload)"
-      assert fake_state(dir, "developer-invocations") == "2"
+      assert fake_state(dir, "developer-invocations") == "6"
       [attempt] = Fixture.record!(dir)["attempts"]
       assert attempt["stop_class"] == "provider"
-      assert [%{"role" => "developer"}] = attempt["provider_retries"]
+      assert length(attempt["provider_retries"]) == 5
+      assert Enum.all?(attempt["provider_retries"], &(&1["role"] == "developer"))
     end
 
     test "an overloaded Review gets one fresh Review with the same packet and the Build settles" do
@@ -1638,6 +1724,116 @@ defmodule Kogen.ControllerVerificationTest do
     assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ["failed", "passed"]
   end
 
+  # A fresh `mix kogen.expert` VM has not loaded the modules that intern the
+  # accepted scope-name atoms; decoding must not depend on load order, and an
+  # unknown name fails explicitly instead of raising.
+  test "a fresh VM decodes accepted recorded scope names and rejects unknown ones explicitly" do
+    ebins =
+      :code.get_path()
+      |> Enum.map(&List.to_string/1)
+      |> Enum.filter(&(Path.basename(&1) == "ebin" and File.dir?(&1)))
+
+    script = """
+    for name <- ["shared", "project", "bogus"] do
+      record = %{"harness" => "codex", "scope_name" => name, "scope_path" => "/scope",
+                 "runtime_executable" => "/managed/codex", "runtime_version" => Kogen.ManagedRuntimeReady.codex_version()}
+      case Kogen.Harness.binding_from_record(record) do
+        {:ok, %{scope: %{name: atom}}} -> IO.puts("ok " <> name <> " " <> inspect(atom))
+        {:error, reason} -> IO.puts("error " <> name <> " " <> reason)
+      end
+    end
+    """
+
+    {output, 0} =
+      System.cmd("elixir", Enum.flat_map(ebins, &["-pa", &1]) ++ ["-e", script],
+        stderr_to_stdout: true
+      )
+
+    assert output =~ "ok shared :shared"
+    assert output =~ "ok project :project"
+    assert output =~ ~s(error bogus unknown login scope name "bogus")
+    refute output =~ "ArgumentError"
+  end
+
+  test "a truncated Developer turn is not a handoff: one same-session continuation, then normal verification" do
+    dir = Fixture.fixture!()
+
+    assert :ok = Fixture.run(dir, truncate: [1])
+
+    state = &File.read!(Kogen.CandidateFixture.fake_state(dir, &1))
+    assert state.("developer-invocations") == "2"
+    assert state.("developer-invocation-2") =~ "resume"
+    assert state.("developer-invocation-2") =~ "developer-session"
+    assert state.("developer-invocation-2-prompt") =~ "ended incomplete (no-completion)"
+    assert state.("developer-invocation-2-prompt") =~ "spends no outer resumption"
+
+    [attempt] = Fixture.record!(dir)["attempts"]
+
+    assert [%{"kind" => "no-completion", "session_id" => "developer-session"}] =
+             attempt["incomplete_turns"]
+
+    # Only the completed turn was verified, once, within the first attempt.
+    assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ["passed"]
+    assert attempt["verdict"]["verdict"] == "accept"
+  end
+
+  test "two consecutive incomplete Developer turns stop with an actionable next step and no verification" do
+    dir = Fixture.fixture!()
+
+    assert {:error, reason} = Fixture.run(dir, truncate: [1, 2])
+    assert reason =~ "harness failure during Developer turn"
+    assert reason =~ "ended incomplete (no-completion) 2 times in a row"
+    assert reason =~ "the Candidate is preserved"
+    assert reason =~ "rerun `mix kogen.build"
+
+    [attempt] = Fixture.record!(dir)["attempts"]
+    assert length(attempt["incomplete_turns"]) == 2
+    assert get_in(attempt, ["verification", "cycles"]) in [nil, []]
+    refute Map.has_key?(attempt, "verdict")
+  end
+
+  test "Claude stream results limited by output or turns are incomplete, never successful" do
+    init = %{"type" => "system", "subtype" => "init", "session_id" => "s-1"}
+
+    assistant = %{
+      "type" => "assistant",
+      "session_id" => "s-1",
+      "message" => %{"model" => "claude-opus-5-5", "content" => [%{"type" => "text"}]}
+    }
+
+    stream = fn result ->
+      Enum.map_join(
+        [init, assistant, Map.put(result, "session_id", "s-1")],
+        "\n",
+        &Jason.encode!/1
+      )
+    end
+
+    truncated = %{"type" => "result", "subtype" => "success", "stop_reason" => "max_tokens"}
+    max_turns = %{"type" => "result", "subtype" => "error_max_turns", "is_error" => true}
+    complete = %{"type" => "result", "subtype" => "success", "result" => "notes"}
+
+    assert {:error, {:incomplete_turn, "truncated", _}} =
+             Claude.parse_stream(stream.(truncated), 0, "s-1", "claude-opus-5-5")
+
+    assert {:error, {:incomplete_turn, "max_turns", _}} =
+             Claude.parse_stream(stream.(max_turns), 0, "s-1", "claude-opus-5-5")
+
+    assert {:ok, %{result: %{"result" => "notes"}}} =
+             Claude.parse_stream(stream.(complete), 0, "s-1", "claude-opus-5-5")
+  end
+
+  test "a changed source blob over the former publication cap verifies and publishes" do
+    dir = Fixture.fixture!()
+
+    assert :ok = Fixture.run(dir, edits: %{1 => "head -c 6000000 /dev/zero > dummy.txt"})
+
+    [attempt] = Fixture.record!(dir)["attempts"]
+    assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ["passed"]
+    assert attempt["verdict"]["verdict"] == "accept"
+    assert File.stat!(Path.join(dir, "dummy.txt")).size > 5_242_880
+  end
+
   # `Kogen.ScriptedBuildFixture.run/2` unconditionally clears
   # `KOGEN_RAW_LOG_DIR` around its call so unrelated tests never leak private
   # raw logs; this replicates its Codex-protocol environment without that
@@ -1649,21 +1845,25 @@ defmodule Kogen.ControllerVerificationTest do
 
     root = Path.expand("../..", __DIR__)
 
-    env = [
-      {"KOGEN_HARNESS", Path.join(dir, "provider.py")},
-      {"HANDOFF_NOTES_DIR", notes_dir},
-      {"HANDOFF_REVIEWS", Keyword.get(opts, :reviews, "accept")},
-      {"HANDOFF_RESPONSE_HELPER", Path.join(root, "test/support/scenario_response.py")},
-      {"HANDOFF_FAIL_FIRST", Enum.join(Keyword.get(opts, :fail_first, []), ",")},
-      {"HANDOFF_FAIL_ALL", Enum.join(Keyword.get(opts, :fail_all, []), ",")},
-      {"HANDOFF_PACKET_MUTATION", ""},
-      {"FAKE_JEV_LOG_DIR", Path.join(runtime, "fake-jev")},
-      {"FAKE_JEV_ANSWERS", "{}"},
-      {"FAKE_SECURITY_ITEM", "present"},
-      {"KOGEN_JEV_TRANSPORT", Kogen.FakeJev.transport_path()},
-      {"KOGEN_JEV_SECURITY", Kogen.FakeJev.security_path()},
-      {"KOGEN_RAW_LOG_DIR", archive_dir}
-    ]
+    env =
+      [
+        {"KOGEN_HARNESS", Path.join(dir, "provider.py")},
+        {"HANDOFF_NOTES_DIR", notes_dir},
+        {"HANDOFF_REVIEWS", Keyword.get(opts, :reviews, "accept")},
+        {"HANDOFF_RESPONSE_HELPER", Path.join(root, "test/support/scenario_response.py")},
+        {"HANDOFF_FAIL_FIRST", Enum.join(Keyword.get(opts, :fail_first, []), ",")},
+        {"HANDOFF_FAIL_ALL", Enum.join(Keyword.get(opts, :fail_all, []), ",")},
+        {"HANDOFF_PACKET_MUTATION", ""},
+        {"FAKE_JEV_LOG_DIR", Path.join(runtime, "fake-jev")},
+        {"FAKE_JEV_ANSWERS", "{}"},
+        {"FAKE_SECURITY_ITEM", "present"},
+        {"KOGEN_JEV_TRANSPORT", Kogen.FakeJev.transport_path()},
+        {"KOGEN_JEV_SECURITY", Kogen.FakeJev.security_path()},
+        {"KOGEN_RAW_LOG_DIR", archive_dir}
+      ] ++
+        Enum.map(Keyword.get(opts, :edits, %{}), fn {call, command} ->
+          {"HANDOFF_EDIT_#{call}", command}
+        end)
 
     previous = Map.new(env, fn {key, _value} -> {key, System.get_env(key)} end)
     Enum.each(env, fn {key, value} -> System.put_env(key, value) end)

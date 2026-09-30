@@ -2,19 +2,22 @@ Code.require_file("../support/scripted_build_fixture.ex", __DIR__)
 
 defmodule Kogen.ReviewPacketTest do
   @moduledoc """
-  The bounded, Candidate-bound review packet: canonical JSON under 64 KiB with
-  per-field UTF-8-safe caps, digest-bound stubs whose locators resolve into
-  the record, fail-closed required ids, and controller integrity binding
+  The bounded, Candidate-bound review packet: canonical JSON targeting 64 KiB
+  with per-field UTF-8-safe caps, digest-bound stubs whose locators resolve
+  into the record, complete required ids, and controller integrity binding
   through the real Review route.
   """
   use Kogen.IsolatedCase, async: true
+
+  @project_root Path.expand("../..", __DIR__)
 
   alias Kogen.Build.ReviewPacket
   alias Kogen.ScriptedBuildFixture, as: Fixture
 
   @keys ~w(attempt_number attempt_token base_suite build_id candidate_id developer_notes
-           guard_violations handoff omitted open_findings receipts record risk_ids scenario_ids
-           schema_version superseded_objection verification_ledger)
+           guard_violations handoff omitted open_findings receipts record repair_disclosures
+           risk_ids scenario_ids schema_version superseded_objection verification_disclosures
+           verification_ledger)
 
   describe "packet construction" do
     test "oversized notes, receipts, findings and handoff fit the bound with digest-bound stubs" do
@@ -39,6 +42,9 @@ defmodule Kogen.ReviewPacketTest do
       assert packet["scenario_ids"] == ["s-one", "s-two"]
       assert packet["risk_ids"] == ["r-one"]
       assert Enum.map(packet["open_findings"], & &1["id"]) == ["F1", "F2", "F3"]
+      assert packet["repair_disclosures"]["item_count"] == 0
+      assert packet["repair_disclosures"]["items"] == []
+      assert packet["verification_disclosures"] == verification_disclosures()
 
       assert packet["record"] == %{
                "path" => ".kogen/runtime/scenario-tracking/build-x/record.json",
@@ -116,6 +122,90 @@ defmodule Kogen.ReviewPacketTest do
 
       # No guard reworks on this record: the field is present but empty.
       assert packet["guard_violations"] == []
+      assert packet["repair_disclosures"]["items"] == []
+    end
+
+    test "repair disclosures have a distinct section with controller hunks and Developer rationale" do
+      diff = "diff --git a/generated-fixture.txt b/generated-fixture.txt\n+fixture\n"
+
+      record =
+        small_record()
+        |> put_in(["attempts", Access.at(1), "repair_disclosures"], %{
+          "items" => [
+            %{
+              "path" => "generated-fixture.txt",
+              "hunks" => diff,
+              "hunks_sha256" => sha256(diff),
+              "hunks_byte_count" => byte_size(diff),
+              "reason" => "fixture changed by the new behavior",
+              "feature_relationship" => "required fixture for s-one",
+              "failure_evidence" => "unknown"
+            }
+          ]
+        })
+
+      assert {:ok, bytes} = ReviewPacket.build(input(record, Jason.encode!(record)))
+      packet = Jason.decode!(bytes)
+      assert [item] = packet["repair_disclosures"]["items"]
+      assert packet["repair_disclosures"]["item_count"] == 1
+      assert item["path"] == "generated-fixture.txt"
+      assert item["hunks"] == diff
+      assert item["reason"] == "fixture changed by the new behavior"
+      assert item["feature_relationship"] == "required fixture for s-one"
+      assert item["failure_evidence"] == "unknown"
+      assert packet["repair_disclosures"]["developer_rationale"] == "All done."
+      assert packet["repair_disclosures"]["developer_rationale"] != nil
+    end
+
+    test "large repair hunks remain digest-bound and oversized extra-path lists do not block packet creation" do
+      hunk = String.duplicate("+generated fixture line\n", 2_000)
+
+      items =
+        for index <- 1..20 do
+          %{
+            "path" => "generated/fixture-#{index}.txt",
+            "hunks" => hunk,
+            "hunks_sha256" => sha256(hunk),
+            "hunks_byte_count" => byte_size(hunk),
+            "reason" => "unknown",
+            "feature_relationship" => "unknown",
+            "failure_evidence" => "unknown"
+          }
+        end
+
+      record =
+        small_record()
+        |> put_in(["attempts", Access.at(1), "repair_disclosures"], %{"items" => items})
+
+      record_bytes = Jason.encode!(record)
+      assert {:ok, bytes} = ReviewPacket.build(input(record, record_bytes))
+      assert byte_size(bytes) <= ReviewPacket.limit()
+      packet = Jason.decode!(bytes)
+      section = packet["repair_disclosures"]
+
+      assert section["item_count"] == 20
+      assert section["truncated"] == true
+      assert section["locator"] == "/attempts/1/repair_disclosures"
+      full_disclosures = get_in(record, ["attempts", Access.at(1), "repair_disclosures"])
+      assert section["sha256"] == sha256(ReviewPacket.encode(full_disclosures))
+      assert section["items"] != []
+      assert length(section["items"]) < 20
+
+      [first] = Enum.take(section["items"], 1)
+      assert first["hunks"]["truncated"] == true
+      assert first["hunks"]["locator"] == "/attempts/1/repair_disclosures/items/0/hunks"
+      assert first["hunks"]["sha256"] == sha256(hunk)
+      assert resolve!(record, first["hunks"]["locator"]) == hunk
+
+      assert Enum.any?(packet["omitted"], fn omitted ->
+               omitted["locator"] == section["locator"] and
+                 omitted["sha256"] == section["sha256"]
+             end)
+
+      assert Enum.any?(packet["omitted"], fn omitted ->
+               omitted["locator"] == first["hunks"]["locator"] and
+                 omitted["sha256"] == first["hunks"]["sha256"]
+             end)
     end
 
     test "small inputs are carried whole, with nothing omitted but left-out sections" do
@@ -129,6 +219,25 @@ defmodule Kogen.ReviewPacketTest do
       assert hd(packet["receipts"])["output"] == hd(attempt["receipts"])["output"]
       assert Enum.all?(packet["omitted"], &(&1["kind"] == "left_out"))
       assert packet["guard_violations"] == []
+    end
+
+    test "a same-tree retried receipt carries both attempts and the flaky mark" do
+      attempts = [
+        %{"attempt" => "initial", "status" => "failed", "exit_code" => 1},
+        %{"attempt" => "same-tree-retry", "status" => "passed", "exit_code" => 0}
+      ]
+
+      record = small_record()
+
+      record =
+        update_in(record, ["attempts", Access.at(1), "receipts", Access.at(0)], fn receipt ->
+          Map.merge(receipt, %{"attempts" => attempts, "flaky" => true})
+        end)
+
+      assert {:ok, bytes} = ReviewPacket.build(input(record, Jason.encode!(record)))
+      receipt = bytes |> Jason.decode!() |> Map.fetch!("receipts") |> hd()
+      assert receipt["attempts"] == attempts
+      assert receipt["flaky"] == true
     end
 
     test "guard_violations inlines whole paths up to the profile's cap and digest-binds the rest" do
@@ -218,16 +327,67 @@ defmodule Kogen.ReviewPacketTest do
       assert packet["scenario_ids"] == ["s-one", "s-two"]
     end
 
-    test "required ids that alone exceed the bound are an integrity error, never dropped" do
+    test "required ids remain complete when they alone exceed the preferred target" do
       ids = for index <- 1..3_000, do: "scenario-#{index}-" <> String.duplicate("x", 20)
 
       record =
         small_record()
         |> Map.put("scenarios", Enum.map(ids, &%{"id" => &1}))
 
-      assert {:error, reason} = ReviewPacket.build(input(record, Jason.encode!(record)))
-      assert reason =~ "review packet integrity failure"
-      assert reason =~ "65536"
+      assert {:ok, bytes} = ReviewPacket.build(input(record, Jason.encode!(record)))
+      assert byte_size(bytes) > ReviewPacket.limit()
+      assert ReviewPacket.encode(Jason.decode!(bytes)) == bytes
+      assert Jason.decode!(bytes)["scenario_ids"] == ids
+
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "kogen-large-review-packet-#{System.unique_integer([:positive])}"
+        )
+
+      packet_dir = Path.join(root, ".kogen/runtime/scenario-tracking/build-x")
+      File.mkdir_p!(packet_dir)
+      on_exit(fn -> File.rm_rf!(root) end)
+      record_path = Path.join(packet_dir, "record.json")
+
+      assert {:ok, binding} =
+               ReviewPacket.write(record_path, 0, bytes, "token-1", "candidate-1", root)
+
+      assert :ok = ReviewPacket.verify(binding, root)
+      assert File.read!(Path.expand(binding["path"], root)) == bytes
+    end
+
+    test "verification disclosures remain intact as advisory packet context" do
+      disclosures = %{
+        "disposition" =>
+          "advisory only: assess current scenario evidence; declared test names and path mappings are not proof",
+        "test_name_mappings" => %{
+          "scenarios" => [
+            %{
+              "scenario_id" => "S1",
+              "declared_names" => ["old test name"],
+              "absent_names" => ["old test name"]
+            }
+          ],
+          "enumeration_error" => nil
+        },
+        "changed_provider_coverage_gaps" => [%{"target" => "live-web", "paths" => ["lib/app.ex"]}],
+        "changed_paths_error" => nil
+      }
+
+      record = small_record()
+      record_bytes = Jason.encode!(record)
+      assert {:ok, bytes} = ReviewPacket.build(input(record, record_bytes, disclosures))
+      assert Jason.decode!(bytes)["verification_disclosures"] == disclosures
+    end
+
+    test "Reviewer guidance treats test-name and coverage signals as advisory" do
+      prompt = File.read!(Path.join(@project_root, "priv/kogen/prompts/reviewer.md"))
+
+      assert prompt =~ "verification_disclosures"
+      assert prompt =~ "not grounds for rework"
+      assert prompt =~ "test_inventory_diff"
+      assert prompt =~ "judge the reported inventory change in context"
     end
 
     test "notes that are not valid UTF-8 are bound by digest and never sliced" do
@@ -266,6 +426,69 @@ defmodule Kogen.ReviewPacketTest do
     end
   end
 
+  describe "packet names within one attempt" do
+    setup do
+      root =
+        Path.join(System.tmp_dir!(), "kogen-packet-names-#{System.unique_integer([:positive])}")
+
+      record_path = Path.join(root, ".kogen/runtime/scenario-tracking/build-x/record.json")
+      File.mkdir_p!(Path.dirname(record_path))
+      on_exit(fn -> File.rm_rf!(root) end)
+      %{root: root, record_path: record_path}
+    end
+
+    test "settled Review after a provisional Review that wrote a packet then failed",
+         %{root: root, record_path: record_path} do
+      # The provisional job wrote and bound its packet in its own state, then
+      # failed before its result; the fallback's state never saw the binding.
+      assert {:ok, first} =
+               ReviewPacket.write_unique(record_path, 1, "cycle-1", "provisional", "t", "c", root)
+
+      assert {:ok, settled} =
+               ReviewPacket.write_unique(record_path, 1, "settled-1", "settled", "t", "c", root)
+
+      assert first["path"] != settled["path"]
+      assert :ok = ReviewPacket.verify(first, root)
+      assert :ok = ReviewPacket.verify(settled, root)
+
+      # Tampering with either packet is refused.
+      File.write!(Path.expand(first["path"], root), "tampered")
+      assert {:error, "review packet mutated: " <> _} = ReviewPacket.verify(first, root)
+      assert :ok = ReviewPacket.verify(settled, root)
+      File.write!(Path.expand(settled["path"], root), "tampered")
+      assert {:error, "review packet mutated: " <> _} = ReviewPacket.verify(settled, root)
+    end
+
+    test "identical bytes are idempotent, different bytes are refused, no temp files remain",
+         %{root: root, record_path: record_path} do
+      assert {:ok, first} = ReviewPacket.write(record_path, 1, "same", "t", "c", root)
+      assert {:ok, ^first} = ReviewPacket.write(record_path, 1, "same", "t", "c", root)
+
+      assert {:error, reason} = ReviewPacket.write(record_path, 1, "other", "t", "c", root)
+      assert reason =~ "review packet integrity failure"
+      assert reason =~ "already exists"
+      assert :ok = ReviewPacket.verify(first, root)
+
+      assert {:ok, same} =
+               ReviewPacket.write_unique(record_path, 1, "cycle-1", "same", "t", "c", root)
+
+      assert same["path"] == first["path"]
+
+      assert {:ok, other} =
+               ReviewPacket.write_unique(record_path, 1, "cycle-1", "other", "t", "c", root)
+
+      assert Path.basename(other["path"]) == "1-cycle-1.json"
+
+      assert {:ok, third} =
+               ReviewPacket.write_unique(record_path, 1, "cycle-1", "third", "t", "c", root)
+
+      assert Path.basename(third["path"]) == "1-cycle-1-2.json"
+
+      files = record_path |> Path.dirname() |> Path.join("review-packets") |> File.ls!()
+      refute Enum.any?(files, &String.ends_with?(&1, ".tmp"))
+    end
+  end
+
   describe "the real Review route" do
     test "each attempt's packet is written once before launch and bound in state and record" do
       dir = Fixture.fixture!()
@@ -277,7 +500,12 @@ defmodule Kogen.ReviewPacketTest do
                  notes: [notes, notes, notes, notes],
                  reviews: "rework,rework,rework,accept",
                  check_output: 70_000,
-                 edits: %{1 => "printf 'changed\\n' > dummy.txt"}
+                 edits: %{
+                   1 => "printf 'changed\\n' > dummy.txt",
+                   2 => "printf 'changed again\\n' > dummy.txt",
+                   3 => "printf 'third change\\n' > dummy.txt",
+                   4 => "printf 'fourth change\\n' > dummy.txt"
+                 }
                )
 
       record_path = Fixture.record_path!(dir)
@@ -292,7 +520,7 @@ defmodule Kogen.ReviewPacketTest do
         relative = Path.relative_to(record_path, dir)
 
         assert binding["path"] ==
-                 Path.join(Path.dirname(relative), "review-packets/#{attempt["number"]}.json")
+                 Path.join(Path.dirname(relative), "review-packets/#{index}.json")
 
         bytes = File.read!(Path.join(dir, binding["path"]))
         assert byte_size(bytes) <= 65_536
@@ -400,7 +628,7 @@ defmodule Kogen.ReviewPacketTest do
     # rewording the section keeps passing while a section that drops the
     # requirement, or is no longer the prompt's last instruction, fails.
     test "reviewer.md's last section forces completeness over both id lists" do
-      source = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+      source = File.read!(Path.join(@project_root, "priv/kogen/prompts/reviewer.md"))
 
       assert completeness_meets_requirements?(source),
              "reviewer.md must still require every scenario_ids id in `scenarios` " <>
@@ -422,7 +650,7 @@ defmodule Kogen.ReviewPacketTest do
     # longer satisfies the meaning check, even though it is still well-formed
     # markdown.
     test "negative control: reviewer.md without the completeness requirement fails the meaning check" do
-      source = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+      source = File.read!(Path.join(@project_root, "priv/kogen/prompts/reviewer.md"))
       [before, _step] = String.split(source, "## Mandatory completeness step\n")
 
       refute completeness_meets_requirements?(before)
@@ -470,14 +698,25 @@ defmodule Kogen.ReviewPacketTest do
     end)
   end
 
-  defp input(record, record_bytes) do
+  defp input(record, record_bytes, disclosures \\ verification_disclosures()) do
     %{
       record: record,
       record_path: ".kogen/runtime/scenario-tracking/build-x/record.json",
       record_bytes: record_bytes,
       candidate_id: "candidate-1",
       open_findings:
-        record["findings"] |> Enum.filter(&(&1["status"] == "open")) |> Enum.map(& &1["id"])
+        record["findings"] |> Enum.filter(&(&1["status"] == "open")) |> Enum.map(& &1["id"]),
+      verification_disclosures: disclosures
+    }
+  end
+
+  defp verification_disclosures do
+    %{
+      "disposition" =>
+        "advisory only: assess current scenario evidence; declared test names and path mappings are not proof",
+      "test_name_mappings" => %{"scenarios" => [], "enumeration_error" => nil},
+      "changed_provider_coverage_gaps" => [],
+      "changed_paths_error" => nil
     }
   end
 

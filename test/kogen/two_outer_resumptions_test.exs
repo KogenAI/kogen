@@ -13,6 +13,8 @@ defmodule Kogen.TwoOuterResumptionsTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   @slug "always-rework-intent"
 
   @intent_yaml """
@@ -78,11 +80,21 @@ defmodule Kogen.TwoOuterResumptionsTest do
   \t@true
   """
 
+  test "stops after two outer resumptions when Claude Code Review never accepts" do
+    # Preserve the base ID. The approved no-change convergence rule now stops
+    # this unchanged Claude fixture before it spends both outer resumptions.
+    stops_after_two_resumptions!("claude")
+  end
+
   test "stops after two outer resumptions when Review never accepts" do
+    stops_after_two_resumptions!("codex", :review_changed)
+  end
+
+  test "one unchanged Review continuation does not spend an outer resumption, then stops" do
     stops_after_two_resumptions!("codex")
   end
 
-  test "stops after two outer resumptions when Claude Code Review never accepts" do
+  test "Claude Code Review gives one unchanged continuation, then stops" do
     stops_after_two_resumptions!("claude")
   end
 
@@ -95,8 +107,9 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
   @missing_selector "test/kogen/never_written_test.exs"
 
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp stops_after_two_resumptions!(harness, mode \\ :review) do
-    project_root = File.cwd!()
+    project_root = @project_root
     dest = Path.join(System.tmp_dir!(), "kogen-rework-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
     on_exit(fn -> File.rm_rf(dest) end)
@@ -186,6 +199,29 @@ defmodule Kogen.TwoOuterResumptionsTest do
         do: Path.join(project_root, "test/support/fake_claude"),
         else: Path.join(project_root, "test/support/fake_codex_always_rework")
 
+    fake_harness =
+      if mode == :review_changed do
+        # Every Reviewer finding now gets a real Candidate correction, so the
+        # two outer turns are exercised independently of the no-change guard.
+        wrapper_dir = dest <> "-harness"
+        wrapper = Path.join(wrapper_dir, "codex")
+        File.mkdir_p!(wrapper_dir)
+
+        File.write!(wrapper, """
+        #!/bin/sh
+        case " $* " in
+          *" resume "*) printf 'review correction\\n' >> dummy.txt ;;
+        esac
+        exec "#{fake_harness}" "$@"
+        """)
+
+        File.chmod!(wrapper, 0o755)
+        on_exit(fn -> File.rm_rf(wrapper_dir) end)
+        wrapper
+      else
+        fake_harness
+      end
+
     prior_harness = System.get_env("KOGEN_HARNESS")
     System.put_env("KOGEN_HARNESS", fake_harness)
 
@@ -211,7 +247,10 @@ defmodule Kogen.TwoOuterResumptionsTest do
       end)
 
     assert {:error, reason} = result
-    assert reason =~ "stopped after 2 outer resumptions"
+
+    if mode == :review,
+      do: assert(reason =~ "Candidate unchanged after a second same-session Review continuation"),
+      else: assert(reason =~ "stopped after 2 outer resumptions")
 
     assert_mode_outcome!(mode, dest, reason)
 
@@ -219,7 +258,11 @@ defmodule Kogen.TwoOuterResumptionsTest do
     assert head_after == head_before, "no Commit should have been made"
 
     refute File.dir?(Path.join(dest, ".kogen/intents/complete/#{@slug}"))
-    assert File.dir?(intent_dir), "the approved Intent directory must be left as-is"
+
+    assert File.dir?(Path.join(dest, ".kogen/intents/drafts/#{@slug}")),
+           "a terminal failed admitted Build returns the selected Intent to Draft"
+
+    refute File.dir?(intent_dir)
     refute File.exists?(Path.join(dest, ".kogen/build.lock")), "the lock must be released"
 
     log_lines =
@@ -267,11 +310,21 @@ defmodule Kogen.TwoOuterResumptionsTest do
              "exactly once and never consume an outer resumption, log:\n#{Enum.join(log_lines, "\n")}"
 
     assert outer_resumptions_consumed == 2,
-           "expected exactly two outer-resumption (Review-rework) Codex resume launches, " <>
+           "expected two Developer resume launches, " <>
              "log:\n#{Enum.join(log_lines, "\n")}"
 
     assert reviewer_calls == expected_reviews(mode),
-           "expected exactly three Reviewer launches (all rework), log:\n#{Enum.join(log_lines, "\n")}"
+           "unexpected Reviewer launch count, log:\n#{Enum.join(log_lines, "\n")}"
+
+    if mode == :review do
+      [record_path] =
+        Path.wildcard(Path.join(dest, ".kogen/runtime/scenario-tracking/*/record.json"))
+
+      attempts = record_path |> File.read!() |> Jason.decode!() |> Map.fetch!("attempts")
+      # The Review finding spends one outer resumption; the first unchanged
+      # same-session continuation stays inside that resumed attempt.
+      assert Enum.map(attempts, & &1["number"]) == [0, 1]
+    end
 
     assert_output_paths!(harness, mode, log_lines, verification_resumes)
   end
@@ -285,6 +338,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
   defp expected_verification_resumes(_harness), do: 0
 
   defp contract_yaml(:review), do: {@intent_yaml, @scenarios_yaml}
+  defp contract_yaml(:review_changed), do: {@intent_yaml, @scenarios_yaml}
 
   defp contract_yaml(:missing_selector) do
     {@intent_yaml <> "  - #{@missing_selector}\n",
@@ -300,12 +354,17 @@ defmodule Kogen.TwoOuterResumptionsTest do
     do: assert_unfinished_work!(dest, reason)
 
   defp assert_mode_outcome!(:review, _dest, _reason), do: :ok
+  defp assert_mode_outcome!(:review_changed, _dest, _reason), do: :ok
 
   defp expected_reviews(:missing_selector), do: 0
-  defp expected_reviews(:review), do: 3
+  defp expected_reviews(:review), do: 1
+  defp expected_reviews(:review_changed), do: 3
 
   defp assert_output_paths!("codex", :review, log_lines, verification_resumes),
-    do: assert_owned_output_paths!(log_lines, verification_resumes)
+    do: assert_owned_output_paths!(log_lines, verification_resumes, 1)
+
+  defp assert_output_paths!("codex", :review_changed, log_lines, verification_resumes),
+    do: assert_owned_output_paths!(log_lines, verification_resumes, 3)
 
   defp assert_output_paths!(_harness, _mode, _log_lines, _verification_resumes), do: :ok
 
@@ -326,7 +385,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
     assert Enum.map(attempts, & &1["outcome"]) == List.duplicate("unfinished_work", 3)
   end
 
-  defp assert_owned_output_paths!(log_lines, verification_resumes) do
+  defp assert_owned_output_paths!(log_lines, verification_resumes, expected_reviewers) do
     # Developer turns (fresh and resumed) carry no handoff schema and own no
     # output file; only each Reviewer owns its verdict output. One extra
     # Developer resume (never an outer resumption) fixes the controller's
@@ -336,7 +395,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
       Enum.split_with(log_lines, &String.contains?(&1, " --output-last-message "))
 
     assert length(developer_lines) == 3 + verification_resumes
-    assert length(reviewer_lines) == 3
+    assert length(reviewer_lines) == expected_reviewers
     refute Enum.any?(developer_lines, &String.contains?(&1, "--output-schema"))
 
     output_paths =
@@ -464,7 +523,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
   """
 
   test "a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it; same-candidate-rework holds" do
-    project_root = File.cwd!()
+    project_root = @project_root
     dest = Path.join(System.tmp_dir!(), "kogen-route-hold-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
     on_exit(fn -> File.rm_rf(dest) end)
@@ -618,7 +677,9 @@ defmodule Kogen.TwoOuterResumptionsTest do
       Kogen.CandidateFixture.fake_state(dest, "fake-harness-log")
       |> File.read!()
       |> String.split("\n", trim: true)
-      |> Enum.count(&String.contains?(&1, "exec resume"))
+      |> Enum.filter(&String.contains?(&1, "exec resume"))
+      # A Reviewer's evidence addendum resumes the Reviewer's own session.
+      |> Enum.count(&(not String.contains?(&1, "exec resume reviewer-session-")))
 
     assert resume_argv_count == 2,
            "one controller verification-failure resume plus exactly one outer Review-rework " <>
@@ -630,14 +691,21 @@ defmodule Kogen.TwoOuterResumptionsTest do
     # same session (asserted above via `--resume`/`exec resume` naming the
     # exact fresh session), and each Review is its own Reviewer launch.
     developer_receipts = Kogen.CandidateFixture.receipts(dest, "developer", [])
-    reviewer_receipts = Kogen.CandidateFixture.receipts(dest, "reviewer", [])
+    # Each evidence addendum resumes its Reviewer's own session; it is not a
+    # Reviewer launch, but it runs in the same Candidate and harness home.
+    {addendum_receipts, reviewer_receipts} =
+      dest
+      |> Kogen.CandidateFixture.receipts("reviewer", [])
+      |> Enum.split_with(&("resume" in &1["argv"] or "--resume" in &1["argv"]))
+
     assert length(developer_receipts) == 3, "fresh, verification-failure resume, rework resume"
     assert length(reviewer_receipts) == 2, "the rework Reviewer and the accepting Reviewer"
+    assert addendum_receipts != []
 
     candidate_path = Kogen.CandidateFixture.worktree(dest)
     harness_home = Kogen.CandidateFixture.harness_home(dest)
 
-    for receipt <- developer_receipts ++ reviewer_receipts do
+    for receipt <- developer_receipts ++ reviewer_receipts ++ addendum_receipts do
       assert receipt["pwd"] == candidate_path
       assert receipt["env"]["KOGEN_HARNESS_HOME"] == harness_home
     end

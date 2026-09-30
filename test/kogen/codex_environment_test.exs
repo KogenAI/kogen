@@ -3,6 +3,8 @@ Code.require_file("../support/route_config.ex", __DIR__)
 defmodule Kogen.Codex.EnvironmentTest do
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Codex.{Environment, State}
   alias Kogen.Harness.Codex, as: CodexHarness
   alias Kogen.RouteConfig
@@ -22,7 +24,7 @@ defmodule Kogen.Codex.EnvironmentTest do
     end
 
     defp build_launch_fixture do
-      source = File.cwd!()
+      source = @project_root
       root = temporary_root!()
       workspaces = temporary_root!()
       candidate = Path.join(workspaces, "candidate")
@@ -128,7 +130,7 @@ defmodule Kogen.Codex.EnvironmentTest do
       harness_context = %{context | harness: "codex"}
 
       assert {:ok, verdict} =
-               Kogen.Harness.launch_reviewer("review", "gpt-6-sol", "high", harness_context)
+               Kogen.Harness.launch_reviewer("review", "gpt-6.1-sol", "high", harness_context)
 
       assert verdict.verdict == "accept"
     end
@@ -294,7 +296,7 @@ defmodule Kogen.Codex.EnvironmentTest do
     expected = %{
       "scout" => {"gpt-6-luna", "low"},
       "worker" => {"gpt-6-luna", "high"},
-      "expert" => {"gpt-6-sol", "high"}
+      "expert" => {"gpt-6.1-sol", "high"}
     }
 
     for {role, {model, effort}} <- expected do
@@ -711,6 +713,88 @@ defmodule Kogen.Codex.EnvironmentTest do
     path = Path.join(root, "shaping-prompt.md")
     File.write!(path, "shape\n")
     path
+  end
+
+  # Codex 0.159.0 exits its interactive UI after a hard 30 second wait for the
+  # state database backfill; a fresh operation database must therefore never
+  # index the credential scope's rollout history.
+  describe "a fresh operation's state database" do
+    @read_status """
+    import sqlite3, sys
+    print(sqlite3.connect(sys.argv[1]).execute("select status from backfill_state").fetchone()[0])
+    """
+
+    test "is created complete over an empty home, never over the scope's rollouts" do
+      root = temporary_root!()
+      on_exit(fn -> File.rm_rf(root) end)
+      %{project: project, operation: invocation, scope: scope} = paths!(root)
+      rollout = Path.join([scope.path, "sessions", "2026", "01", "01", "rollout-1.jsonl"])
+      File.mkdir_p!(Path.dirname(rollout))
+      File.write!(rollout, "{}\n")
+      executable = fake_codex!(root, :backfills_what_it_finds)
+
+      context =
+        Environment.prepare(%{"executable" => executable}, scope, profiles(), project, invocation)
+
+      database = Path.join(value!(context.env, "SQLITE_HOME"), "state_5.sqlite")
+
+      assert {status, 0} =
+               System.cmd(System.find_executable("python3"), ["-c", @read_status, database])
+
+      assert String.trim(status) == "complete"
+      assert File.read!(rollout) == "{}\n"
+      assert File.ls!(Path.dirname(Path.dirname(database))) == ["sqlite"]
+
+      # A second preparation of the same operation keeps its database.
+      Environment.prepare(%{"executable" => executable}, scope, profiles(), project, invocation)
+      assert File.read!(Path.join(root, "seed-runs")) == "seeded\n"
+    end
+
+    test "falls back to Codex's own first start when seeding fails" do
+      root = temporary_root!()
+      on_exit(fn -> File.rm_rf(root) end)
+      %{project: project, operation: invocation, scope: scope} = paths!(root)
+      executable = fake_codex!(root, :fails)
+
+      context =
+        Environment.prepare(%{"executable" => executable}, scope, profiles(), project, invocation)
+
+      sqlite = value!(context.env, "SQLITE_HOME")
+      assert File.ls!(sqlite) == []
+      assert File.ls!(Path.dirname(sqlite)) == ["sqlite"]
+    end
+
+    # A stand-in for `codex app-server --stdio`: it creates the state database
+    # in SQLITE_HOME, marks the backfill complete only when its CODEX_HOME
+    # holds no rollouts, and exits when stdin closes.
+    defp fake_codex!(root, behavior) do
+      path = Path.join(root, "fake-codex")
+
+      body =
+        case behavior do
+          :fails ->
+            "import sys\nsys.exit(1)\n"
+
+          :backfills_what_it_finds ->
+            """
+            import os, sqlite3, sys
+            with open(#{inspect(Path.join(root, "seed-runs"))}, "a") as log:
+                log.write("seeded\\n")
+            home = os.environ["CODEX_HOME"]
+            found = any(files for _, _, files in os.walk(home))
+            db = sqlite3.connect(os.path.join(os.environ["SQLITE_HOME"], "state_5.sqlite"))
+            db.execute("create table backfill_state (id integer primary key, status text)")
+            db.execute("insert into backfill_state values (1, ?)", ("running" if found else "complete",))
+            db.commit()
+            db.close()
+            sys.stdin.read()
+            """
+        end
+
+      File.write!(path, "#!/usr/bin/env python3\n" <> body)
+      File.chmod!(path, 0o755)
+      path
+    end
   end
 
   defp profiles do

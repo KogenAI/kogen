@@ -11,10 +11,12 @@ defmodule Kogen.RolePromptContractTest do
   """
   use ExUnit.Case, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Harness.Verdict
 
-  @developer_path Path.join(File.cwd!(), "priv/kogen/prompts/developer.md")
-  @reviewer_path Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md")
+  @developer_path Path.join(@project_root, "priv/kogen/prompts/developer.md")
+  @reviewer_path Path.join(@project_root, "priv/kogen/prompts/reviewer.md")
 
   test "the Developer prompt carries an explicit Done-when list" do
     developer = File.read!(@developer_path)
@@ -24,7 +26,8 @@ defmodule Kogen.RolePromptContractTest do
     for phrase <- [
           ~r/every scenario.{0,40}`then`.{0,40}(genuinely true|not just plausible)/is,
           ~r/declared proof selector.{0,80}(present|passing).{0,80}focused/is,
-          ~r/no path outside.{0,40}guard/is,
+          ~r/every additional path.{0,80}approved outcome.{0,80}disclosed/is,
+          ~r/no frozen package.{0,100}verification record.{0,100}protected control/is,
           ~r/notes.{0,40}written.{0,60}objection.{0,40}objection/is
         ] do
       assert developer =~ phrase,

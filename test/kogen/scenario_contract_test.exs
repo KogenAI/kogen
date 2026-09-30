@@ -1,7 +1,13 @@
 defmodule Kogen.ScenarioContractTest do
-  use ExUnit.Case, async: true
+  use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build.Contract
+
+  # Isolated: `Contract.handoff/4` resolves evidence paths (`README.md`) against
+  # the process cwd and offers no root argument, so these tests must not share
+  # a VM whose cwd another async module could change. `Contract.load/2` gets an
+  # explicit root: it validates targets against that root's Makefile.
+  @root Path.expand("../..", __DIR__)
 
   @scenario %{
     "id" => "one",
@@ -57,7 +63,7 @@ defmodule Kogen.ScenarioContractTest do
       "- id: risk-one\n  scenario_ids: [one]\n  description: A useful risk\n"
     )
 
-    assert {:ok, loaded} = Contract.load(dir)
+    assert {:ok, loaded} = Contract.load(dir, @root)
     assert loaded.scenarios == [@scenario]
     assert loaded.risks == @contract.risks
     assert loaded.risks_supplied
@@ -68,7 +74,7 @@ defmodule Kogen.ScenarioContractTest do
   test "rejects duplicate scenario IDs and dangling risk links" do
     dir = temp_dir!()
     File.write!(Path.join(dir, "scenarios.yaml"), @scenario_yaml <> @scenario_yaml)
-    assert {:error, reason} = Contract.load(dir)
+    assert {:error, reason} = Contract.load(dir, @root)
     assert reason =~ "scenarios.yaml"
 
     File.write!(Path.join(dir, "scenarios.yaml"), @scenario_yaml)
@@ -78,7 +84,7 @@ defmodule Kogen.ScenarioContractTest do
       "- id: risk\n  scenario_ids: [missing]\n  description: bad link\n"
     )
 
-    assert {:error, reason} = Contract.load(dir)
+    assert {:error, reason} = Contract.load(dir, @root)
     assert reason =~ "risks.yaml"
   end
 
@@ -87,7 +93,7 @@ defmodule Kogen.ScenarioContractTest do
     File.write!(Path.join(dir, "scenarios.yaml"), @scenario_yaml)
     File.write!(Path.join(dir, "risks.yaml"), "[]\n")
 
-    assert {:ok, %{risks: [], risks_supplied: true}} = Contract.load(dir)
+    assert {:ok, %{risks: [], risks_supplied: true}} = Contract.load(dir, @root)
   end
 
   test "the Shaping ownership example uses scalar text for paths" do
@@ -116,14 +122,14 @@ defmodule Kogen.ScenarioContractTest do
 
     path = Path.join(dir, "risks.yaml")
     File.write!(path, Jason.encode!([risk]))
-    assert {:ok, %{risks: [^risk]}} = Contract.load(dir)
+    assert {:ok, %{risks: [^risk]}} = Contract.load(dir, @root)
 
     invalid = put_in(risk, ["ownership", Access.at(0), "paths"], ["dummy.txt"])
     File.write!(path, Jason.encode!([invalid]))
-    assert {:error, reason} = Contract.load(dir)
+    assert {:error, reason} = Contract.load(dir, @root)
     assert reason =~ "risks.yaml"
     assert File.read!(path) == Jason.encode!([invalid])
-    prompt = File.read!("priv/kogen/prompts/shaping.md")
+    prompt = File.read!(Path.join(@root, "priv/kogen/prompts/shaping.md"))
     assert prompt =~ "Every ownership field is a nonblank YAML string"
     assert prompt =~ "paths: dummy.txt"
   end
@@ -163,7 +169,7 @@ defmodule Kogen.ScenarioContractTest do
 
     assert {:error, _} = Contract.verdict(invalid, @contract, binding, [])
 
-    assert File.read!("priv/kogen/prompts/reviewer.md") =~
+    assert File.read!(Path.join(@root, "priv/kogen/prompts/reviewer.md")) =~
              "Never put the absent filename in an evidence `path`"
   end
 

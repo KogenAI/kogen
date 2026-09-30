@@ -1,6 +1,9 @@
 defmodule Kogen.VerificationPolicyTest do
   use ExUnit.Case, async: true
 
+  # Subprocesses run from this checkout, never the shared VM's mutable cwd.
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.VerificationPolicy
 
   @targets ["check", "live", "fixture_gate"]
@@ -213,7 +216,10 @@ defmodule Kogen.VerificationPolicyTest do
       check = "import sys; compile(open(sys.argv[1]).read(), sys.argv[1], 'exec')"
 
       assert {_output, 0} =
-               System.cmd("python3", ["-B", "-c", check, absolute], stderr_to_stdout: true)
+               System.cmd("python3", ["-B", "-c", check, absolute],
+                 stderr_to_stdout: true,
+                 cd: @project_root
+               )
     end
   end
 

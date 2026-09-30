@@ -3,7 +3,7 @@ defmodule Kogen.NativeHelperFixture do
 
   # A deliberately small read-only fixture for the provider-backed routing
   # probe. It is test support, rather than a product dispatcher: the live
-  # driver asks Codex to make these three bounded calls and this module checks
+  # driver asks Codex to make these two bounded calls and this module checks
   # the runner-owned receipt it retains afterwards.
   @tasks [
     %{
@@ -25,16 +25,6 @@ defmodule Kogen.NativeHelperFixture do
       schema: "{\"records\":[{\"id\": string, \"value\": integer}]}",
       instruction:
         "Read worker.json only. Report the sorted normalized non-conflicting records exactly; do not edit files."
-    },
-    %{
-      name: "fresh_expert_route",
-      helper: :expert,
-      kind: "default",
-      file: "review_boundary.py",
-      expected: %{"provider_failure_result" => "provider_error"},
-      schema: "{\"provider_failure_result\": string}",
-      instruction:
-        "Read review_boundary.py only. Report the result required for provider failure; do not edit files."
     }
   ]
 
@@ -42,9 +32,7 @@ defmodule Kogen.NativeHelperFixture do
     "scout.json" =>
       "{\"current\":{\"release\":\"r17\",\"channel\":\"stable\",\"enabled\":true},\"historical\":{\"release\":\"r16\",\"channel\":\"preview\",\"enabled\":false}}\n",
     "worker.json" =>
-      "{\"records\":[{\"id\":\"B\",\"value\":2},{\"id\":\"a\",\"value\":1},{\"id\":\"b\",\"value\":2}],\"rules\":[\"lowercase ids\",\"deduplicate equal normalized records\",\"reject conflicting duplicates\"]}\n",
-    "review_boundary.py" =>
-      "def outcome(provider_failed, verdict_valid):\n    if provider_failed:\n        return 'provider_error'\n    return 'accept' if verdict_valid else 'malformed_verdict'\n"
+      "{\"records\":[{\"id\":\"B\",\"value\":2},{\"id\":\"a\",\"value\":1},{\"id\":\"b\",\"value\":2}],\"rules\":[\"lowercase ids\",\"deduplicate equal normalized records\",\"reject conflicting duplicates\"]}\n"
   }
 
   def files, do: @files
@@ -69,27 +57,70 @@ defmodule Kogen.NativeHelperFixture do
     }
   end
 
-  # The policy renderer is intentionally the production renderer. The appended
-  # packet gives a live parent a compact, deterministic read-only task only.
+  # Reads only the Candidate's prompt and frozen route settings. The fixture
+  # values make the normal role template safe to run as a read-only native
+  # probe; the paid owner passes this result to prompt/3.
+  def candidate_prompt(config, project_root) when is_map(config) and is_binary(project_root) do
+    developer_path = Path.join(project_root, "priv/kogen/prompts/developer.md")
+    developer_template = File.read!(developer_path)
+
+    execution_policy =
+      Kogen.ExecutionPolicy.render(config, "developer", project_root)
+
+    replacements = %{
+      "{{intent_title}}" => "Fix Build convergence and live selection",
+      "{{intent_id}}" => "01a0e6df-71cf-78d7-9921-2c41bdd58979",
+      "{{approved_path}}" => ".kogen/intents/approved/build-system-fixes",
+      "{{may_change_guarded_paths}}" => "fixture/scout.json, fixture/worker.json",
+      "{{verification_ownership}}" =>
+        "This read-only routing probe has no developer-run verification target. Do not run any gate, Make target, or Stop script.",
+      "{{readiness_scope}}" =>
+        "fixture Candidate; changed paths: fixture/scout.json, fixture/worker.json",
+      "{{readiness_commands}}" => "",
+      "{{execution_policy}}" => execution_policy
+    }
+
+    rendered =
+      Enum.reduce(replacements, developer_template, fn {placeholder, value}, text ->
+        String.replace(text, placeholder, value)
+      end)
+
+    if Regex.match?(~r/\{\{[^}]+\}\}/, rendered),
+      do:
+        raise(ArgumentError, "Candidate Developer prompt has an unresolved template placeholder")
+
+    rendered
+  end
+
+  # Offline tests can use the production execution-policy renderer. The live
+  # proof must pass Build's fully rendered Candidate Developer prompt to /3.
   def prompt(config, role) when role in ["shaping", "developer", "reviewer"] do
-    rendered = Kogen.ExecutionPolicy.render(config, role)
+    prompt(config, role, Kogen.ExecutionPolicy.render(config, role))
+  end
+
+  def prompt(config, role, candidate_prompt)
+      when role in ["shaping", "developer", "reviewer"] and is_binary(candidate_prompt) do
+    if String.trim(candidate_prompt) == "",
+      do: raise(ArgumentError, "native helper fixture requires a rendered Candidate prompt")
 
     assignments =
       tasks(config)
       |> Enum.map_join("\n\n", fn task ->
         """
-        Native child `#{task.name}`: call `spawn_agent` with agent_type `#{task.kind}`, model `#{task.model}`, reasoning_effort `#{task.effort}`, and fork_turns `none`.
-        Read-only boundary: inspect only `fixture/#{task.file}`. #{task.instruction}
-        Do not spawn children, modify files, run any gate/Make target/Stop script, or retry. Return exactly one JSON object matching #{task.schema}; derive its values from the fixture and include no prose.
+        Native child `#{task.name}`: call `spawn_agent` with agent_type `#{task.kind}`, model `#{task.model}`, reasoning_effort `#{task.effort}`, and no forked turns (`fork_turns` `none`, or `fork_context` false where the tool exposes only that parameter). Pass exactly this `message`, character for character, and add nothing to it:
+        Task #{task.name}: Read-only boundary: inspect only `fixture/#{task.file}` (a relative path; your working directory already contains `fixture/`, so pass no `workdir` and never type an absolute path). #{task.instruction} This is a separate fixed slice; the other child owns a different fixture file. Do not spawn children, modify files, run any gate/Make target/Stop script, or retry. Return exactly one JSON object matching #{task.schema}; derive its values from the fixture and include no prose. If the file cannot be read, return {"error": "<what failed>"} and never guess values.
         """
       end)
 
-    rendered <>
+    candidate_prompt <>
       "\n\n## Bounded native-helper routing probe\n\n" <>
-      "This is a read-only routing probe. Do not modify any file, run a gate, Make target, or Stop script.\n\n" <>
+      "This is a read-only routing probe using the rendered Candidate prompt and frozen Candidate settings. Start both independent child tasks concurrently before waiting for either result. Do not modify any file, run a gate, Make target, or Stop script.\n\n" <>
       assignments <>
-      "\n\nWait for all three children. Do not make another native call. Your final answer may only state that all requested child returns were collected."
+      "\n\nWait for both children. Do not make another native call. If a child fails or returns invalid data, report the failure to the root and do not claim completion. Otherwise, your final answer may only state that both requested child returns were collected."
   end
+
+  def prompt(_config, _role, _candidate_prompt),
+    do: raise(ArgumentError, "native helper fixture requires a rendered Candidate prompt")
 
   def write_fixture!(root) do
     fixture = Path.join(root, "fixture")
@@ -109,7 +140,7 @@ defmodule Kogen.NativeHelperFixture do
     calls = child_calls!(parent_rows, protocol["children"])
     File.mkdir_p!(raw_root)
     File.write!(Path.join(raw_root, "parent.jsonl"), parent_bytes)
-    owned = owned_children!(sessions, parent_id, protocol["children"])
+    owned = owned_children!(sessions, parent_id, protocol["children"], calls)
 
     children =
       protocol["children"]
@@ -229,18 +260,44 @@ defmodule Kogen.NativeHelperFixture do
 
   defp child_calls!(parent_rows, tasks) do
     expected = MapSet.new(Enum.map(tasks, & &1["name"]))
+    outputs = spawn_outputs(parent_rows)
+
+    first_wait =
+      Enum.find_index(parent_rows, fn
+        %{"type" => "response_item", "payload" => %{"type" => "function_call", "name" => name}} ->
+          name in ["wait_agent", "write_stdin"]
+
+        _ ->
+          false
+      end)
+
+    spawn_positions =
+      parent_rows
+      |> Enum.with_index()
+      |> Enum.filter(fn
+        {%{
+           "type" => "response_item",
+           "payload" => %{"type" => "function_call", "name" => "spawn_agent"}
+         }, _} ->
+          true
+
+        _ ->
+          false
+      end)
+      |> Enum.map(&elem(&1, 1))
+
+    if first_wait && Enum.any?(spawn_positions, &(&1 > first_wait)),
+      do: raise(ArgumentError, "native child slices were not dispatched before waiting")
 
     calls =
       parent_rows
       |> Enum.flat_map(fn
         %{
           "type" => "response_item",
-          "payload" => %{"type" => "function_call", "name" => "spawn_agent", "arguments" => json}
+          "payload" =>
+            %{"type" => "function_call", "name" => "spawn_agent", "arguments" => json} = payload
         } ->
-          case Jason.decode(json) do
-            {:ok, %{"task_name" => name} = call} -> [{name, call}]
-            _ -> raise ArgumentError, "malformed native child call"
-          end
+          [normalize_call!(json, payload["call_id"], outputs, tasks)]
 
         _ ->
           []
@@ -250,6 +307,67 @@ defmodule Kogen.NativeHelperFixture do
       do: raise(ArgumentError, "missing or repeated requested native child call")
 
     Map.new(calls)
+  end
+
+  # Codex 0.158.0 spawn calls carry `task_name` and `fork_turns`, and the child
+  # session records `agent_path`. Codex 0.159.0 (multi_agent_v1) has neither: the
+  # call carries `fork_context` and a `message` that begins `Task <name>:`, its
+  # output carries the child's `agent_id`, and the child's `agent_path` is null.
+  # Both shapes are reduced to one name, one fork setting and (when the runner
+  # recorded it) the spawned child id; anything else is a malformed call.
+  defp normalize_call!(json, call_id, outputs, tasks) do
+    with {:ok, %{} = call} <- Jason.decode(json),
+         {:ok, name} <- call_name(call, tasks),
+         {:ok, fork} <- call_fork(call),
+         true <- Enum.all?(~w(agent_type model reasoning_effort), &is_binary(call[&1])) do
+      agent_id = outputs |> Map.get(call_id, %{}) |> Map.get("agent_id")
+      {name, call |> Map.put("fork_turns", fork) |> Map.put("agent_id", agent_id)}
+    else
+      _ -> raise ArgumentError, "malformed native child call"
+    end
+  end
+
+  defp call_name(%{"task_name" => name}, _tasks) when is_binary(name) and name != "",
+    do: {:ok, name}
+
+  # Without `task_name` the call must name exactly one requested task and must
+  # point at that task's own fixture file only.
+  defp call_name(%{"message" => message}, tasks) when is_binary(message) do
+    with [_, name] <- Regex.run(~r/\ATask ([A-Za-z0-9_]+):/, message),
+         %{} = task <- Enum.find(tasks, &(&1["name"] == name)),
+         true <- message =~ "fixture/" <> task["file"],
+         true <-
+           Enum.all?(tasks, &(&1 == task or not (message =~ "fixture/" <> &1["file"]))) do
+      {:ok, name}
+    else
+      _ -> :error
+    end
+  end
+
+  defp call_name(_call, _tasks), do: :error
+
+  defp call_fork(%{"fork_turns" => fork}) when is_binary(fork) and fork != "", do: {:ok, fork}
+  defp call_fork(%{"fork_context" => false}), do: {:ok, "none"}
+  defp call_fork(%{"fork_context" => true}), do: {:ok, "context"}
+  defp call_fork(_call), do: :error
+
+  defp spawn_outputs(parent_rows) do
+    parent_rows
+    |> Enum.flat_map(fn
+      %{
+        "type" => "response_item",
+        "payload" => %{"type" => "function_call_output", "call_id" => id, "output" => output}
+      }
+      when is_binary(id) and is_binary(output) ->
+        case Jason.decode(output) do
+          {:ok, %{"agent_id" => agent_id} = decoded} when is_binary(agent_id) -> [{id, decoded}]
+          _ -> []
+        end
+
+      _ ->
+        []
+    end)
+    |> Map.new()
   end
 
   defp collect_child!(owned, raw_root, task, calls) do
@@ -296,14 +414,23 @@ defmodule Kogen.NativeHelperFixture do
     end
   end
 
-  defp owned_children!(sessions, parent_id, tasks) do
+  defp owned_children!(sessions, parent_id, tasks, calls) do
     expected = MapSet.new(Enum.map(tasks, & &1["name"]))
 
     owned =
       Enum.filter(sessions, fn {_id, {_path, meta}} -> meta["parent_thread_id"] == parent_id end)
 
-    names =
-      Enum.map(owned, fn {_id, {_path, meta}} -> Path.basename(meta["agent_path"] || "") end)
+    by_agent_id =
+      for {name, %{"agent_id" => id}} <- calls, is_binary(id), into: %{}, do: {id, name}
+
+    child_name = fn id, meta ->
+      case meta["agent_path"] do
+        path when is_binary(path) and path != "" -> Path.basename(path)
+        _ -> Map.get(by_agent_id, id, "")
+      end
+    end
+
+    names = Enum.map(owned, fn {id, {_path, meta}} -> child_name.(id, meta) end)
 
     if MapSet.new(names) != expected or length(names) != length(tasks),
       do: raise(ArgumentError, "missing, duplicate, or unexpected native child session")
@@ -315,9 +442,7 @@ defmodule Kogen.NativeHelperFixture do
        end),
        do: raise(ArgumentError, "native helper spawned an unexpected descendant")
 
-    Map.new(owned, fn {id, value} ->
-      {Path.basename(elem(value, 1)["agent_path"]), {id, value}}
-    end)
+    Map.new(owned, fn {id, {_path, meta} = value} -> {child_name.(id, meta), {id, value}} end)
   end
 
   defp observed_profiles(rows) do

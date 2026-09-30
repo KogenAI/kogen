@@ -1,6 +1,8 @@
 .PHONY: check live-shape-to-build live-reviewer-rework live-general live-shaping-quality live-shaping-smoke live-native cold-offline
 
-# Complete offline gate. The normal Stop hook owns invoking this target.
+# Complete offline gate, run once per Candidate revision. Its one receipt
+# carries the immutable admission-base test-ID, rehearsal, controlled-prepare
+# and runtime-pin proof plus diagnostic timing; elapsed time never fails it.
 check:
 	/usr/bin/time -p python3 scripts/check/offline.py
 

@@ -4,7 +4,7 @@
 defmodule Kogen.Build.FailureReport do
   @moduledoc "Durable, one-per-build summaries for terminal Build failures."
 
-  alias Kogen.Build.{FailureSignature, Workspace}
+  alias Kogen.Build.{Breakers, FailureSignature, Workspace}
 
   @schema_version 1
 
@@ -52,6 +52,133 @@ defmodule Kogen.Build.FailureReport do
     end
   end
 
+  @doc "Return a terminal admitted package after its immutable failure report is durable."
+  def return_to_draft(control, report_path) when is_binary(control) and is_binary(report_path) do
+    with {:ok, bytes} <- File.read(report_path),
+         {:ok, report} <- Jason.decode(bytes),
+         true <- terminal_admitted?(report),
+         :ok <- verify_report_record(control, report) do
+      move_reported_package(control, report)
+    else
+      false -> :ok
+      {:error, reason} -> {:error, "package custody: #{inspect(reason)}"}
+      _ -> {:error, "package custody: invalid terminal failure report"}
+    end
+  end
+
+  defp terminal_admitted?(report) do
+    is_map(report["candidate"]) and report["continuable"] != true and
+      report["published"] != true
+  end
+
+  defp verify_report_record(control, report) do
+    path = Path.expand(report["record"] || "", control)
+
+    if String.starts_with?(
+         path,
+         Path.join(Path.expand(control), ".kogen/runtime/scenario-tracking/") <> "/"
+       ) do
+      case File.read(path) do
+        {:ok, bytes} ->
+          if is_binary(report["record_sha256"]) and sha(bytes) == report["record_sha256"],
+            do: :ok,
+            else: {:error, "failure record digest mismatch"}
+
+        _ ->
+          {:error, "failure record missing or unbound"}
+      end
+    else
+      {:error, "failure record locator escaped tracking"}
+    end
+  end
+
+  defp move_reported_package(control, report) do
+    slug = report["slug"]
+    approved = Path.join([control, ".kogen/intents/approved", slug])
+    draft = Path.join([control, ".kogen/intents/drafts", slug])
+
+    cond do
+      not is_binary(slug) or not Regex.match?(~r/^[a-z0-9]+(?:-[a-z0-9]+)*$/, slug) ->
+        {:error, "package custody: invalid slug"}
+
+      File.exists?(approved) and File.exists?(draft) ->
+        {:error, "package custody: Draft collision for #{slug}"}
+
+      File.exists?(approved) ->
+        with {:ok, digest} <- approved_digest(approved),
+             true <- digest == report["approved_package_digest"],
+             :ok <- File.mkdir_p(Path.dirname(draft)),
+             :ok <- File.rename(approved, draft) do
+          reconcile_draft_status(draft)
+        else
+          false -> {:error, "package custody: Approved digest mismatch for #{slug}"}
+          {:error, reason} -> {:error, "package custody: move failed: #{inspect(reason)}"}
+        end
+
+      File.dir?(draft) ->
+        if returned_draft_digest(draft) == report["approved_package_digest"],
+          do: reconcile_draft_status(draft),
+          else: {:error, "package custody: returned Draft digest mismatch for #{slug}"}
+
+      true ->
+        {:error, "package custody: Approved and Draft package both missing for #{slug}"}
+    end
+  end
+
+  defp approved_digest(path) do
+    entries = package_entries(path, "")
+    {:ok, Kogen.Build.Tracking.approved_digest(entries)}
+  rescue
+    error in File.Error -> {:error, Exception.message(error)}
+  end
+
+  defp returned_draft_digest(path) do
+    path
+    |> package_entries("")
+    |> Enum.map(fn
+      {"intent.yaml", :regular, mode, bytes} ->
+        {"intent.yaml", :regular, mode,
+         Regex.replace(~r/^status:[ \t]*draft[ \t]*$/m, bytes, "status: approved")}
+
+      entry ->
+        entry
+    end)
+    |> Kogen.Build.Tracking.approved_digest()
+  rescue
+    File.Error -> nil
+  end
+
+  defp package_entries(root, relative) do
+    path = Path.join(root, relative)
+    stat = File.lstat!(path)
+
+    case stat.type do
+      :directory ->
+        [
+          {relative, :directory, stat.mode}
+          | Enum.flat_map(
+              path |> File.ls!() |> Enum.sort(),
+              &package_entries(root, Path.join(relative, &1))
+            )
+        ]
+
+      :regular ->
+        [{relative, :regular, stat.mode, File.read!(path)}]
+
+      _ ->
+        raise File.Error, reason: :einval, action: "inspect package entry", path: path
+    end
+  end
+
+  defp reconcile_draft_status(draft) do
+    path = Path.join(draft, "intent.yaml")
+
+    with {:ok, bytes} <- File.read(path) do
+      updated = Regex.replace(~r/^status:[ \t]*approved[ \t]*$/m, bytes, "status: draft")
+      if updated == bytes, do: :ok, else: File.write(path, updated)
+    end
+  end
+
   @doc "Writes a report atomically and never replaces an existing report."
   def write(control, build_id, report)
       when is_binary(control) and is_binary(build_id) and is_map(report) do
@@ -90,6 +217,17 @@ defmodule Kogen.Build.FailureReport do
     end
   end
 
+  # Both attempts of a same-tree retried target, from the last verification
+  # cycle (or the attempt's receipts): target => [attempt records].
+  defp target_attempts(ctx, attempt) do
+    cycle = ctx |> get_in([:execution, :state, "cycles"]) |> List.wrap() |> List.last() || %{}
+
+    (List.wrap(cycle["receipts"]) ++
+       List.wrap(cycle["failures"]) ++ List.wrap(attempt["receipts"]))
+    |> Enum.filter(&(is_map(&1) and is_list(&1["attempts"]) and &1["attempts"] != []))
+    |> Map.new(&{&1["target"], &1["attempts"]})
+  end
+
   @doc "Builds and persists one report from the latest controller context."
   def record_failure(ctx, category, reason, details \\ %{}) do
     tracking = ctx[:tracking] || %{}
@@ -124,6 +262,11 @@ defmodule Kogen.Build.FailureReport do
       "slug" => intent["slug"] || ctx[:slug],
       "intent_id" => intent["id"] || ctx[:intent_id] || get_in(ctx, [:intent, :id]),
       "approved_package_digest" => record["approved_package_digest"],
+      "contract_digest" =>
+        Breakers.contract_digest(
+          Path.join([control, ".kogen/intents/approved", intent["slug"] || ctx[:slug]]),
+          intent["id"] || ctx[:intent_id] || get_in(ctx, [:intent, :id])
+        ),
       "stopped_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "category" => category,
       "stop_class" => details["stop_class"] || attempt["stop_class"],
@@ -139,9 +282,11 @@ defmodule Kogen.Build.FailureReport do
       "record" => Path.relative_to(Path.expand(tracking[:path]), Path.expand(control)),
       "record_sha256" => record_sha(tracking),
       "budget_state" => budget,
+      "time" => time_block(attempt),
       "continuable" => continuable,
       "continues" => record["continues"],
-      "published" => Map.get(details, "published")
+      "published" => Map.get(details, "published"),
+      "target_attempts" => target_attempts(ctx, attempt)
     }
 
     write(control, build_id, report)
@@ -189,6 +334,11 @@ defmodule Kogen.Build.FailureReport do
       "slug" => get_in(record, ["intent", "slug"]),
       "intent_id" => get_in(record, ["intent", "id"]),
       "approved_package_digest" => record["approved_package_digest"],
+      "contract_digest" =>
+        Breakers.contract_digest(
+          Path.join([control, ".kogen/intents/approved", get_in(record, ["intent", "slug"])]),
+          get_in(record, ["intent", "id"])
+        ),
       "stopped_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "category" => category,
       "stop_class" => nil,
@@ -209,6 +359,7 @@ defmodule Kogen.Build.FailureReport do
       "record" => Path.relative_to(record_path, Path.expand(control)),
       "record_sha256" => sha(record_bytes),
       "budget_state" => budget,
+      "time" => time_block(attempt),
       "continuable" => continuable,
       "continues" => record["continues"],
       "published" => if(category == "publication-interrupted", do: published, else: nil)
@@ -228,6 +379,20 @@ defmodule Kogen.Build.FailureReport do
   defp record_sha(_), do: nil
 
   defp sha(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+
+  # Diagnostic timing only (active elapsed per Build, phase and cycle, nudges).
+  defp time_block(%{"progress" => %{"elapsed_ms" => _} = progress}) do
+    %{
+      "elapsed_ms" => progress["elapsed_ms"],
+      "phases" => progress["phases"] || %{},
+      "cycles_ms" => progress["cycles_ms"] || [],
+      "nudge_minutes" => get_in(progress, ["limits", "build_time_nudge_minutes"]),
+      "nudged" => progress["nudged"] || false,
+      "turn_nudges" => progress["turn_nudges"] || []
+    }
+  end
+
+  defp time_block(_attempt), do: nil
 
   defp budget_state(ctx, attempt) do
     case Map.get(attempt, "budget_state") do
@@ -304,7 +469,12 @@ defmodule Kogen.Build.FailureReport do
   def same_signature_count(control, record, signature) do
     digest = signature["digest"]
     intent_id = get_in(record, ["intent", "id"])
-    package_digest = record["approved_package_digest"]
+
+    package_digest =
+      Breakers.contract_digest(
+        Path.join([control, ".kogen/intents/approved", get_in(record, ["intent", "slug"])]),
+        intent_id
+      )
 
     if is_binary(digest) do
       existing =
@@ -318,7 +488,9 @@ defmodule Kogen.Build.FailureReport do
           with {:ok, bytes} <- File.read(path),
                {:ok, report} <- Jason.decode(bytes),
                true <- report["intent_id"] == intent_id,
-               true <- report["approved_package_digest"] == package_digest,
+               true <-
+                 (report["contract_digest"] || report["approved_package_digest"]) ==
+                   package_digest,
                %{"digest" => ^digest} <- report["signature"] do
             true
           else

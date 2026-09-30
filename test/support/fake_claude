@@ -48,10 +48,22 @@ if [ "${KOGEN_ROLE:-}" != reviewer ] && [ -z "$resume" ] && [ -n "${FAKE_CLAUDE_
  exit 1
 fi
 if [ "${KOGEN_ROLE:-}" = reviewer ]; then
- n=0; [ -f "$state_dir/fake-reviewer-calls" ] && n="$(cat "$state_dir/fake-reviewer-calls")"; n=$((n+1)); echo "$n" >"$state_dir/fake-reviewer-calls"
- printf '%s' "$input" > "$state_dir/reviewer-prompt-$n"
+ # A provisional Review defers an unforced judgement to the evidence
+ # addendum: the same session resumed after settlement, not a new launch.
+ addendum=0; provisional=0
+ case "$input" in KOGEN_EVIDENCE_ADDENDUM*) addendum=1 ;; esac
+ case "$input" in *'## Provisional Review'*) provisional=1 ;; esac
+ n=0; [ -f "$state_dir/fake-reviewer-calls" ] && n="$(cat "$state_dir/fake-reviewer-calls")"
+ if [ "$addendum" -eq 1 ]; then
+  session="$resume"
+  printf '%s' "$input" > "$state_dir/reviewer-addendum-prompt-$n"
+ else
+  n=$((n+1)); echo "$n" >"$state_dir/fake-reviewer-calls"
+  printf '%s' "$input" > "$state_dir/reviewer-prompt-$n"
+ fi
  [ "${FAKE_CLAUDE_REVIEWER_MUTATES:-0}" = 1 ] && echo 'tampered by a reviewer that should never write anything' >tampered.txt
  decision="${FAKE_CLAUDE_REVIEW:-}"
+ [ -z "$decision" ] && [ "$provisional" -eq 1 ] && decision=accept
  if [ -z "$decision" ]; then
   decision=accept
   approved_path="$(printf '%s' "$input" | python3 -c 'import json,sys; lines=sys.stdin.read().splitlines(); i=max(i for i,v in enumerate(lines) if v=="KOGEN_TASK_CONTEXT"); print(json.loads(lines[i+1])["approved_path"])')"
@@ -66,9 +78,10 @@ PY
  fi
  schema=; prev=
  for a in "$@"; do [ "$prev" = --json-schema ] && schema="$a"; prev="$a"; done
- printf '%s' "$schema" > "$state_dir/reviewer-schema-$n.json"
+ schema_file="$state_dir/reviewer-schema-$n.json"; [ "$addendum" -eq 1 ] && schema_file="$state_dir/reviewer-addendum-schema-$n.json"
+ printf '%s' "$schema" > "$schema_file"
  if [ -f "$script_dir/fake_ledger.py" ]; then
-  printf '%s' "$input" | python3 "$response_helper" reviewer "$decision" | python3 "$script_dir/fake_ledger.py" "$state_dir/reviewer-schema-$n.json" | python3 "$stream" reviewer "$session" "$model"
+  printf '%s' "$input" | python3 "$response_helper" reviewer "$decision" | python3 "$script_dir/fake_ledger.py" "$schema_file" | python3 "$stream" reviewer "$session" "$model"
  else
   printf '%s' "$input" | python3 "$response_helper" reviewer "$decision" | python3 "$stream" reviewer "$session" "$model"
  fi

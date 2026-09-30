@@ -225,6 +225,20 @@ defmodule Kogen.GenericProjectFixture do
         path = state / name
         value = int(path.read_text()) + 1 if path.exists() else 1
         path.write_text(str(value)); return value
+    if os.environ.get("KOGEN_ROLE") == "reviewer" and prompt.startswith("KOGEN_EVIDENCE_ADDENDUM"):
+        # The evidence addendum resumes the accepting Reviewer's own session
+        # after settlement: not a new Review, so it is counted apart, and it
+        # confirms unless HANDOFF_ADDENDUM says otherwise.
+        k = count("addenda")
+        (state / f"reviewer-addendum-prompt-{k}").write_text(prompt)
+        out = args[args.index("--output-last-message") + 1]
+        response = subprocess.run([sys.executable, os.environ["HANDOFF_RESPONSE_HELPER"], "reviewer", os.environ.get("HANDOFF_ADDENDUM", "accept")],
+                                  input=prompt, capture_output=True, text=True, check=True).stdout
+        pathlib.Path(out).write_text(response)
+        sid = args[args.index("resume") + 1]
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
+        raise SystemExit(0)
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
         (state / f"reviewer-prompt-{n}").write_text(prompt)

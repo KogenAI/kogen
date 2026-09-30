@@ -27,8 +27,14 @@ defmodule Kogen.ExecutionPolicy do
   delegate only to those agents, never to built-in agents.\
   """
 
-  @doc "Expands the maintained policy with explicit current root and helper profiles."
-  def render(config, role) do
+  @doc """
+  Expands the maintained policy with explicit current root and helper profiles.
+
+  The policy text is read from `policy_root` (default: the working
+  directory), so a caller naming another checkout never changes the VM-wide
+  working directory.
+  """
+  def render(config, role, policy_root \\ File.cwd!()) do
     role_key = Map.fetch!(@roles, role)
     root = Map.fetch!(config, role_key)
     view = Kogen.Intent.role_config(config, role_key)
@@ -40,13 +46,81 @@ defmodule Kogen.ExecutionPolicy do
       |> Enum.flat_map(fn {label, kind} -> helper_line(config, view, role_key, label, kind) end)
       |> Enum.join("\n")
 
-    File.read!(@path)
+    File.read!(Path.join(policy_root, @path))
     |> String.replace(
       "{{root_profile}}",
       "Configured root (#{role}): `#{root.model}` at `#{root.effort}`."
     )
     |> String.replace("{{helper_profiles}}", helpers)
     |> routing(harness)
+    |> append_developer_delegation(role_key, view)
+  end
+
+  # Build's Developer owns coordination and must use available independent
+  # slices instead of leaving them serial by default. Keep this instruction in
+  # the rendered role policy so both initial turns and exact resumes receive it.
+  defp append_developer_delegation(text, :developer, view) do
+    text <> "\n\n" <> developer_delegation(view)
+  end
+
+  defp append_developer_delegation(text, _role, _view), do: text
+
+  defp developer_delegation(%{harness: "codex", helpers: helpers}) do
+    scout = Map.fetch!(helpers, :scout)
+    worker = Map.fetch!(helpers, :worker)
+
+    """
+    ## Build Developer work decomposition
+
+    When at least two useful independent slices are available, proactively
+    start bounded Codex-native scout and worker tasks concurrently, using the
+    configured profiles above. Give each child explicit disjoint ownership,
+    the needed facts, its interface and stopping condition.
+    #{helper_packet()}
+
+    The configured scout profile is `#{scout.model}` at `#{scout.effort}`
+    (native kind `explorer`); the configured worker profile is
+    `#{worker.model}` at `#{worker.effort}` (native kind `worker`).
+    """
+  end
+
+  defp developer_delegation(%{harness: "claude", helpers: helpers}) do
+    scout = Map.fetch!(helpers, :scout)
+    worker = Map.fetch!(helpers, :worker)
+
+    """
+    ## Build Developer work decomposition
+
+    When at least two useful independent slices are available, proactively
+    start bounded configured scout and worker agents concurrently. Give each
+    child explicit disjoint ownership, the needed facts, its interface and
+    stopping condition.
+    #{helper_packet()}
+
+    The configured scout is `#{scout.model}` at `#{scout.effort}` and the
+    worker is `#{worker.model}` at `#{worker.effort}`.
+    """
+  end
+
+  # The shared packet and completion contract for native implementation
+  # helpers, whichever harness launches them.
+  defp helper_packet do
+    """
+    Each worker packet names its task, deliverable, the focused test commands
+    with their expected results, a time budget and how to report a blocker. A
+    worker finishes its assigned change and actually runs its assigned focused
+    check; a command that never started or a syntax-only check is not
+    completion, and partial progress is reported as partial. After its
+    assigned checks pass it returns results without unrelated files and
+    without launching extra reviewer helpers. Keep short or coupled work
+    serial and name the concrete dependency that makes it coupled. Helpers
+    must not fan out, modify outside their assigned ownership, or run a full
+    gate, Make target or Stop script. Wait for every child, surface any
+    failure to the root, and have the root integrate, check the combined
+    behavior and review all returned work before handoff. Never accept a
+    failed helper silently or use a helper result as controller verification
+    evidence.\
+    """
   end
 
   # The Expert is the uncertainty's last stop: it never delegates to itself.

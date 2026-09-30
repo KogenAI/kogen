@@ -1,6 +1,9 @@
 defmodule Kogen.ScenarioResponseTest do
   use ExUnit.Case, async: true
 
+  # Subprocesses run from this checkout, never the shared VM's mutable cwd.
+  @project_root Path.expand("../..", __DIR__)
+
   @helper Path.expand("../support/scenario_response.py", __DIR__)
 
   test "uses only the last task context for developer and reviewer fixture responses" do
@@ -77,7 +80,10 @@ defmodule Kogen.ScenarioResponseTest do
     driver =
       "import subprocess,sys; p=subprocess.run([sys.executable]+sys.argv[2:],input=sys.argv[1],text=True,capture_output=True); sys.stdout.write(p.stdout); sys.exit(p.returncode)"
 
-    System.cmd("python3", ["-c", driver, prompt | args], stderr_to_stdout: true)
+    System.cmd("python3", ["-c", driver, prompt | args],
+      stderr_to_stdout: true,
+      cd: @project_root
+    )
   end
 
   defp task_prompt(path, token, candidate) do

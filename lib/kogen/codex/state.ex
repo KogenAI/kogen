@@ -61,8 +61,7 @@ defmodule Kogen.Codex.State do
           "AGENTS.md",
           "AGENTS.override.md",
           "rules",
-          "hooks.json",
-          "plugins"
+          "hooks.json"
         ] do
       case File.lstat(Path.join(path, name)) do
         {:error, :enoent} ->
@@ -73,8 +72,59 @@ defmodule Kogen.Codex.State do
       end
     end
 
+    plugins_clean!(path)
     native_projects!(path)
     :ok
+  end
+
+  # `plugins/` in a credential scope is real discovery content only when it
+  # holds anything but empty directories. Codex creates an empty tree there
+  # whenever a session runs with plugins enabled (a bare launch, or the
+  # account observer's deliberate one), and every Kogen launch disables
+  # plugins, so an empty tree is inert and never Kogen configuration. A user
+  # or foreign install (any file, symlink or non-directory) still refuses.
+  # The account observer runs in its own disposable CODEX_HOME, so real
+  # content here is never the observer's; it refuses without waiting.
+  defp plugins_clean!(scope) do
+    plugins = Path.join(scope, "plugins")
+
+    case plugins_state(plugins) do
+      :absent ->
+        :ok
+
+      :empty ->
+        :ok
+
+      :content ->
+        raise "unexpected discovery settings in Kogen credential store: #{plugins}"
+    end
+  end
+
+  defp plugins_state(path) do
+    case File.lstat(path) do
+      {:error, :enoent} -> :absent
+      {:ok, %{type: :directory}} -> if empty_tree?(path, 0), do: :empty, else: :content
+      _ -> :content
+    end
+  end
+
+  defp empty_tree?(_path, depth) when depth > 8, do: false
+
+  defp empty_tree?(path, depth) do
+    case File.ls(path) do
+      {:ok, names} ->
+        Enum.all?(names, fn name ->
+          child = Path.join(path, name)
+
+          match?({:ok, %{type: :directory}}, File.lstat(child)) and empty_tree?(child, depth + 1)
+        end)
+
+      {:error, :enoent} ->
+        true
+
+      {:error, _} ->
+        false
+    end
   end
 
   defp validate_scope_owner!(path) do

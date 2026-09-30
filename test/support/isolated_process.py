@@ -11,9 +11,37 @@ import time
 import base64
 
 
-def kill_group(pid, sig):
+def report(message):
+    """A dead BEAM port must not interrupt the supervisor's final cleanup."""
     try:
-        os.killpg(pid, sig)
+        print(message, flush=True)
+    except BrokenPipeError:
+        # The parent worker can die while this supervisor is reaping its VM.
+        # Redirect final interpreter flushing as well as later reports.
+        sys.stdout = open(os.devnull, "w")
+
+
+def group_owned(process):
+    """The unreaped child reserves its PID even after it becomes a zombie."""
+    if process.returncode is not None:
+        return False
+    try:
+        os.kill(process.pid, 0)
+        try:
+            return os.getpgid(process.pid) == process.pid
+        except ProcessLookupError:
+            # macOS hides a zombie's PGID, but its unreaped PID cannot have
+            # been reused by an unrelated group.
+            return True
+    except OSError:
+        return False
+
+
+def kill_group(process, sig):
+    if not group_owned(process):
+        return
+    try:
+        os.killpg(process.pid, sig)
     except ProcessLookupError:
         pass
     except PermissionError:
@@ -35,6 +63,73 @@ def wait_group(pid):
             pass
         time.sleep(0.005)
     raise RuntimeError(f"isolated process group {pid} survived cleanup")
+
+
+class ExitObserver:
+    """Notice child exit without releasing its PID before group cleanup."""
+
+    def __init__(self, process):
+        self.process = process
+        self.exited = False
+        self.queue = None
+        if hasattr(select, "kqueue"):
+            self.queue = select.kqueue()
+            try:
+                self.queue.control([
+                    select.kevent(process.pid, filter=select.KQ_FILTER_PROC,
+                                  flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE,
+                                  fflags=select.KQ_NOTE_EXIT)
+                ], 0, 0)
+            except ProcessLookupError:
+                # The child exited before registration. It remains unreaped.
+                self.exited = True
+
+    def poll(self):
+        if self.exited:
+            return True
+        if self.queue is not None:
+            self.exited = bool(self.queue.control(None, 1, 0))
+        elif hasattr(os, "waitid"):
+            self.exited = os.waitid(os.P_PID, self.process.pid,
+                                    os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+        else:
+            # Older platforms without either non-reaping observer retain the
+            # previous fail-closed behavior: group_owned refuses a reaped PID.
+            self.exited = self.process.poll() is not None
+        return self.exited
+
+    def wait(self, timeout):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.poll():
+                return True
+            time.sleep(0.005)
+        return self.poll()
+
+    def close(self):
+        if self.queue is not None:
+            self.queue.close()
+
+
+def settle_group(process, observer):
+    """Bound both waits, including the wait after an unsuccessful group kill.
+
+    A group signal can be refused while macOS reaps an orphan. The subsequent
+    group probe decides whether cleanup passed; the launcher must never wait
+    forever for a leader it could not signal.
+    """
+    kill_group(process, signal.SIGTERM)
+    observer.wait(0.2)
+    # The original PID is still reserved here, including when the leader
+    # exited naturally. Kill its orphaned group members before wait() reaps it.
+    kill_group(process, signal.SIGKILL)
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"isolated child {process.pid} survived bounded group cleanup"
+        ) from error
+    wait_group(process.pid)
 
 
 def descendants(pid):
@@ -79,6 +174,8 @@ def reap_descendants(pid):
 
 
 def main():
+    profile = os.environ.get("KOGEN_PROFILE_ISOLATED") == "1"
+    started = time.monotonic()
     timeout = float(sys.argv[1])
     startup_timeout = float(sys.argv[2])
     readiness = None if sys.argv[3] == "-" else Path(sys.argv[3])
@@ -91,15 +188,17 @@ def main():
     except OSError:
         shutil.rmtree(result.parent)
         raise
+    observer = ExitObserver(process)
     deadline = None if readiness else time.monotonic() + timeout
+    launched = time.monotonic()
     startup_deadline = time.monotonic() + startup_timeout if readiness else None
     status = 124
     completed = False
     try:
-        while process.poll() is None:
+        while not observer.poll():
             if readiness and deadline is None:
                 if readiness.is_file():
-                    print("KOGEN_ISOLATED_READY", flush=True)
+                    report("KOGEN_ISOLATED_READY")
                     deadline = time.monotonic() + timeout
                 elif time.monotonic() >= startup_deadline:
                     status = 126
@@ -138,45 +237,48 @@ def main():
                 os.read(sys.stdin.fileno(), 1)
                 break
         else:
-            status = process.returncode
+            # Read the exit status only after owned group members are reaped.
+            status = None
     finally:
         # Also remove background work on normal/nonzero exit. Descendants remain
         # in this session even after the initial VM exits.
         cleanup_error = None
+        scan_started = time.monotonic()
         try:
             reap_descendants(process.pid)
         except (OSError, RuntimeError) as error:
             cleanup_error = error
+        scanned = time.monotonic()
         if completed and cleanup_error is None:
             # Let BEAM shut down its own runtime helpers normally. Killing
             # erl_child_setup first makes BEAM crash and write a crash dump.
             result.with_suffix(".ack").touch()
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
+            if not observer.wait(1):
                 status = 125
-            else:
-                if process.returncode != status:
-                    status = process.returncode
-        kill_group(process.pid, signal.SIGTERM)
-        try:
-            process.wait(timeout=0.2)
-        except subprocess.TimeoutExpired:
-            pass
-        kill_group(process.pid, signal.SIGKILL)
-        process.wait()
-        wait_group(process.pid)
+        settle_group(process, observer)
+        observer.close()
+        settled = time.monotonic()
+        if status is None or (completed and process.returncode != status):
+            status = process.returncode
         if cleanup_error:
             raise cleanup_error
         if not result.parent.is_dir():
             raise RuntimeError("private fixture disappeared before child cleanup completed")
-        print("isolated children terminated; private fixture still present", flush=True)
+        report("isolated children terminated; private fixture still present")
         try:
             shutil.rmtree(result.parent)
         except OSError as error:
             raise RuntimeError(f"could not remove private fixture {result.parent}: {error}") from error
         if completed:
-            print("KOGEN_ISOLATED_COMPLETION\t" + "\t".join(fields + ["passed"]), flush=True)
+            if profile:
+                report("KOGEN_ISOLATED_TIMING\t" + str({
+                    "launch_ms": round((launched - started) * 1000),
+                    "to_receipt_ms": round((scan_started - launched) * 1000),
+                    "scan_ms": round((scanned - scan_started) * 1000),
+                    "settle_ms": round((settled - scanned) * 1000),
+                    "total_ms": round((time.monotonic() - started) * 1000),
+                }))
+            report("KOGEN_ISOLATED_COMPLETION\t" + "\t".join(fields + ["passed"]))
     return status if status >= 0 else 128 - status
 
 

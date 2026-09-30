@@ -58,10 +58,14 @@ defmodule Kogen.Build.VerificationPlan do
   @doc """
   Builds the plan. `verified_by` is the complete, explicit list of targets a
   scenario needs; the plan runs exactly the union of those lists in catalog
-  rank order and never adds a target. `opts[:added]` names targets the
-  Intent declares in `catalog_changes.add`: they may be selected although the
-  admission catalog lacks them, and their catalog rules are checked each
-  cycle against the Candidate's catalog.
+  rank order and never adds a target. `proof.paid_target` names the primary
+  provider-backed target (or the cataloged `cold-offline` target); any other
+  explicitly listed provider-backed targets are still required and carry
+  their own receipt evidence. Duplicate names and input ordering are
+  canonicalized in the planned union. `opts[:added]`
+  names targets the Intent declares in `catalog_changes.add`: they may be
+  selected although the admission catalog lacks them, and their catalog rules
+  are checked each cycle against the Candidate's catalog.
   """
   def build(scenarios, guards, catalog, root \\ File.cwd!(), opts \\ [])
       when is_list(scenarios) and is_list(guards) and is_map(catalog) do
@@ -70,7 +74,8 @@ defmodule Kogen.Build.VerificationPlan do
     with :ok <- validate_added(added, catalog),
          :ok <- validate_proofs(scenarios, guards, catalog, root, added),
          selected = scenarios |> Enum.flat_map(& &1["verified_by"]) |> Enum.uniq(),
-         {:ok, ordered} <- selected_order(selected, catalog.targets, added) do
+         {:ok, ordered} <- selected_order(selected, catalog.targets, added),
+         :ok <- maybe_validate_coverage(ordered, scenarios, catalog, opts) do
       offline = scenarios |> Enum.flat_map(&get_in(&1, ["proof", "offline"])) |> Enum.uniq()
 
       affected =
@@ -92,9 +97,144 @@ defmodule Kogen.Build.VerificationPlan do
          affected_paths: affected,
          rehearsals: rehearsals,
          catalog_sha256: catalog.sha256,
+         login_roles: login_roles(ordered, catalog),
          scenarios: Enum.map(scenarios, &scenario_proof(&1, catalog))
        }}
     end
+  end
+
+  @doc "Harnesses needed by the roles that selected route-marked targets launch."
+  def required_logins(plan, config) do
+    plan.login_roles
+    |> Enum.map(&Kogen.Intent.role_harness(config, &1))
+    |> Enum.uniq()
+  end
+
+  defp login_roles(targets, catalog) do
+    targets
+    |> Enum.flat_map(fn target ->
+      case catalog.targets[target] do
+        %{"requires_login" => "route", "launched_roles" => roles} ->
+          Enum.map(roles, &String.to_existing_atom/1)
+
+        _ ->
+          []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp validate_coverage(targets, scenarios, catalog) do
+    affected =
+      scenarios |> Enum.flat_map(&get_in(&1, ["proof", "affected_paths"])) |> MapSet.new()
+
+    selected = MapSet.new(targets)
+
+    marked = Enum.filter(catalog.entries, &(is_list(&1["covers"]) and &1["covers"] != []))
+
+    overbroad =
+      Enum.find(marked, fn entry ->
+        MapSet.member?(selected, entry["name"]) and
+          not Enum.any?(entry["covers"], &MapSet.member?(affected, &1))
+      end)
+
+    uncovered =
+      Enum.find(affected, fn path ->
+        owners = Enum.filter(marked, &(path in &1["covers"]))
+        owners != [] and not Enum.any?(owners, &MapSet.member?(selected, &1["name"]))
+      end)
+
+    cond do
+      overbroad ->
+        {:error, "selected provider target #{overbroad["name"]} covers no affected path"}
+
+      uncovered ->
+        {:error, "changed-path coverage missing selected target for #{uncovered}"}
+
+      true ->
+        :ok
+    end
+  end
+
+  # Earlier Approved and Complete packages predate coverage metadata, so
+  # declared-path coverage is checked only on request; keep them readable.
+  # Actual changed owners are disclosed to Review by `review_disclosures/5`.
+  defp maybe_validate_coverage(targets, scenarios, catalog, opts) do
+    if Keyword.get(opts, :strict_coverage, false),
+      do: validate_coverage(targets, scenarios, catalog),
+      else: :ok
+  end
+
+  @doc "Required catalog owners for actual changed paths, using the frozen target selection."
+  def missing_changed_coverage(plan, catalog, changed_paths) do
+    selected = MapSet.new(plan.targets)
+
+    catalog.entries
+    |> Enum.filter(fn entry ->
+      entry["provider_backed"] == true and
+        Enum.any?(List.wrap(entry["covers"]), &(&1 in changed_paths)) and
+        not MapSet.member?(selected, entry["name"])
+    end)
+    |> Enum.map(& &1["name"])
+    |> Enum.sort()
+  end
+
+  @doc """
+  Builds advisory disclosures for the independent Reviewer. Declared test names
+  and catalog coverage mappings are context only; actual required proof remains
+  the selected target receipts and the scenario's required offline selectors.
+  """
+  def review_disclosures(scenarios, plan, catalog, changed_paths, root \\ File.cwd!()) do
+    {missing_names, enumeration_error} =
+      case missing_tests(scenarios, root) do
+        {:ok, names} -> {MapSet.new(names), nil}
+        {:error, reason} -> {MapSet.new(), reason}
+      end
+
+    test_name_mappings =
+      scenarios
+      |> Enum.map(fn scenario ->
+        names = scenario |> Map.get("tests", []) |> List.wrap() |> Enum.uniq()
+
+        %{
+          "scenario_id" => scenario["id"],
+          "declared_names" => names,
+          "absent_names" => Enum.filter(names, &MapSet.member?(missing_names, &1))
+        }
+      end)
+      |> Enum.reject(&(&1["declared_names"] == []))
+
+    selected = MapSet.new(plan.targets)
+
+    {changed, changed_paths_error} =
+      case changed_paths do
+        paths when is_list(paths) -> {MapSet.new(paths), nil}
+        {:ok, paths} when is_list(paths) -> {MapSet.new(paths), nil}
+        {:error, reason} -> {MapSet.new(), reason}
+      end
+
+    changed_provider_coverage_gaps =
+      catalog.entries
+      |> Enum.filter(fn entry ->
+        entry["provider_backed"] == true and not MapSet.member?(selected, entry["name"])
+      end)
+      |> Enum.map(fn entry ->
+        paths = Enum.filter(List.wrap(entry["covers"]), &MapSet.member?(changed, &1))
+        {entry["name"], paths}
+      end)
+      |> Enum.reject(fn {_target, paths} -> paths == [] end)
+      |> Enum.map(fn {target, paths} -> %{"target" => target, "paths" => paths} end)
+
+    %{
+      "disposition" =>
+        "advisory only: assess current scenario evidence; declared test names and path mappings are not proof",
+      "test_name_mappings" => %{
+        "scenarios" => test_name_mappings,
+        "enumeration_error" => enumeration_error
+      },
+      "changed_provider_coverage_gaps" => changed_provider_coverage_gaps,
+      "changed_paths_error" => changed_paths_error
+    }
   end
 
   @doc """
@@ -231,8 +371,12 @@ defmodule Kogen.Build.VerificationPlan do
   @doc """
   The `verified_by` rules for one scenario against `entries` (name to catalog
   entry). `unknown` names may be absent from `entries` (declared additions at
-  admission); rules that need their entry are checked once it exists.
-  Returns the list of violated rules.
+  admission); rules that need their entry are checked once it exists. The
+  scalar `proof.paid_target` must identify the primary selected paid target
+  (with `cold-offline` as the cataloged offline-cost exception); other selected
+  provider-backed targets are allowed and remain required.
+  Duplicate or out-of-order target names are accepted because `build/5`
+  canonicalizes the selected union. Returns the list of violated rules.
   """
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def verified_by_errors(scenario, entries, unknown \\ []) do
@@ -245,19 +389,16 @@ defmodule Kogen.Build.VerificationPlan do
       pending? = Enum.any?(list, &(not Map.has_key?(entries, &1)))
       paid = for entry <- known, entry["provider_backed"] == true, do: entry["name"]
       offline = for entry <- known, entry["provider_backed"] == false, do: entry["name"]
-      ranks = Enum.map(known, & &1["rank"])
 
       [
-        {Enum.uniq(list) == list, "verified_by lists a target twice"},
         {missing == [], "verified_by names an unknown target: #{Enum.join(missing, ", ")}"},
         {offline != [] or pending?, "verified_by needs at least one offline target"},
-        {length(paid) <= 1, "verified_by lists more than one provider-backed target"},
-        {paid == [] or paid == [target],
-         "verified_by provider-backed target must be proof.paid_target"},
+        {(target == "none" and paid == []) or target in paid or
+           (target == "cold-offline" and paid == [] and target in list) or target in unknown,
+         "proof.paid_target must name the primary listed paid target"},
         {target == "none" or target in list, "proof.paid_target is not listed in verified_by"},
         {Enum.all?(known, fn entry -> Enum.all?(entry["depends_on"], &(&1 in list)) end),
-         "verified_by omits a dependency of a listed target"},
-        {ranks == Enum.sort(ranks), "verified_by does not follow catalog rank order"}
+         "verified_by omits a dependency of a listed target"}
       ]
       |> Enum.reject(&elem(&1, 0))
       |> Enum.map(&elem(&1, 1))
@@ -296,10 +437,12 @@ defmodule Kogen.Build.VerificationPlan do
 
     %{
       "id" => scenario["id"],
+      "affected_paths" => get_in(scenario, ["proof", "affected_paths"]) || [],
       "base" => base,
       "label" => proof_label(catalog, base),
       "file_selectors" => files,
-      "existence_selectors" => others
+      "existence_selectors" => others,
+      "selector_commands" => Enum.map(offline, &selector_command(&1, catalog))
     }
   end
 
@@ -322,11 +465,84 @@ defmodule Kogen.Build.VerificationPlan do
     end
   end
 
-  def readiness_commands(plan, changed_paths) do
-    _admission_changed_paths = changed_paths
-    credo = ["python3 -B scripts/check/changed_credo.py"]
-    tests = plan.offline_commands
-    ["mix format"] ++ credo ++ tests ++ plan.rehearsals ++ ["mix format"]
+  @doc "Focused development observations for the current changed paths; never gate receipts."
+  def readiness_commands(plan, changed_paths, root \\ File.cwd!()) do
+    relevant_scenarios =
+      Enum.filter(plan.scenarios, fn scenario ->
+        affected = Map.get(scenario, "affected_paths", [])
+        Enum.any?(changed_paths, &(&1 in affected))
+      end)
+
+    tests =
+      relevant_scenarios
+      |> Enum.flat_map(&Map.get(&1, "selector_commands", []))
+      |> Enum.uniq()
+
+    changed_tests =
+      changed_paths
+      |> Enum.filter(&String.starts_with?(&1, "lib/"))
+      |> Enum.map(fn path ->
+        path
+        |> String.replace_prefix("lib/", "test/")
+        |> String.replace_suffix(".ex", "_test.exs")
+      end)
+      |> Enum.filter(&File.regular?(Path.join(root, &1)))
+      |> Enum.uniq()
+      |> Enum.map(&"mix test '#{&1}'")
+
+    ["mix format", "python3 -B scripts/check/changed_credo.py"] ++
+      Enum.uniq(changed_tests ++ tests)
+  end
+
+  @doc "Exact optional `tests:` names absent from the Candidate's non-live dry run."
+  def missing_tests(scenarios, root) do
+    names =
+      scenarios
+      |> Enum.flat_map(&List.wrap(&1["tests"]))
+      |> Enum.uniq()
+
+    if names == [] do
+      {:ok, []}
+    else
+      path =
+        Path.join(System.tmp_dir!(), "kogen-tests-#{System.unique_integer([:positive])}.jsonl")
+
+      try do
+        {_output, status} =
+          System.cmd(
+            "mix",
+            ["test", "--dry-run", "--exclude", "live", "--formatter", "Kogen.TimingFormatter"],
+            cd: root,
+            stderr_to_stdout: true,
+            env: [
+              {"KOGEN_TEST_EVENT_LOG", path},
+              {"KOGEN_TEST_ROOT", root},
+              {"KOGEN_TEST_DRY_RUN", "1"},
+              {"KOGEN_TEST_EVENT_OWNER_PID", nil},
+              {"KOGEN_TEST_EVENT_OWNER_PATH", nil}
+            ]
+          )
+
+        if status == 0 and File.regular?(path) do
+          present =
+            path
+            |> File.stream!()
+            |> Enum.flat_map(fn line ->
+              case Jason.decode(line) do
+                {:ok, %{"name" => name, "status" => "enumerated"}} -> [name]
+                _ -> []
+              end
+            end)
+            |> MapSet.new()
+
+          {:ok, Enum.reject(names, &MapSet.member?(present, &1))}
+        else
+          {:error, "could not enumerate declared tests before Review"}
+        end
+      after
+        File.rm(path)
+      end
+    end
   end
 
   def handoff_valid?(plan, catalog, root \\ File.cwd!()) do
@@ -485,8 +701,42 @@ defmodule Kogen.Build.VerificationPlan do
     is_map(entry) and is_binary(entry["name"]) and entry["name"] != "" and
       is_binary(entry["cost_class"]) and is_integer(entry["rank"]) and entry["rank"] >= 0 and
       is_list(entry["depends_on"]) and is_boolean(entry["provider_backed"]) and
-      present?(entry["owner"]) and valid_rehearsal?(entry) and valid_prepare?(entry)
+      present?(entry["owner"]) and valid_rehearsal?(entry) and valid_prepare?(entry) and
+      valid_same_tree_retry?(entry) and valid_route_metadata?(entry)
   end
+
+  # Optional `same_tree_retry`: 0 or 1 rerun of a failed provider-backed
+  # target on the identical Candidate tree.
+  defp valid_same_tree_retry?(entry) do
+    case Map.get(entry, "same_tree_retry") do
+      nil -> true
+      0 -> true
+      1 -> entry["provider_backed"] == true
+      _other -> false
+    end
+  end
+
+  defp valid_route_metadata?(entry) do
+    case entry["requires_login"] do
+      nil ->
+        is_nil(entry["covers"]) and is_nil(entry["launched_roles"])
+
+      "route" ->
+        entry["provider_backed"] == true and valid_route_coverage?(entry["covers"]) and
+          valid_route_roles?(entry["launched_roles"])
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_route_coverage?(covers),
+    do: is_list(covers) and covers != [] and Enum.all?(covers, &safe_relative?/1)
+
+  defp valid_route_roles?(roles),
+    do:
+      is_list(roles) and roles != [] and
+        Enum.all?(roles, &(&1 in ~w(shaping developer reviewer expert)))
 
   # An optional `prepare` is a nonempty argv list of nonempty strings (no
   # shell); any other shape is refused. Absent is valid: the controller does

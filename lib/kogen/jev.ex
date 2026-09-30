@@ -29,7 +29,8 @@ defmodule Kogen.Jev do
   @endpoint "https://api.typesafe.ai/v1/systemone"
   @keychain_service "dev.kogen.jev"
   @timeout_ms 60_000
-  # Only a timeout, HTTP 429 or HTTP 529 is retried, and at most once.
+  # Only a timeout, HTTP 429, HTTP 529 or a closed/reset connection is retried,
+  # and at most once.
   @max_retries 1
   @retry_statuses [429, 529]
   @wording_version "prose-v2"
@@ -299,8 +300,21 @@ defmodule Kogen.Jev do
   end
 
   defp retryable?({:error, :timeout}), do: true
+  defp retryable?({:error, reason}), do: closed_connection?(reason)
   defp retryable?({:ok, %{status: status}}), do: status in @retry_statuses
   defp retryable?(_result), do: false
+
+  # A connection the peer closed or reset (httpc reports it bare or wrapped in
+  # `:failed_connect`) is transient like a timeout. Nothing else is retried.
+  @closed_reasons [:socket_closed_remotely, :closed, :econnreset, :econnaborted, :epipe]
+
+  defp closed_connection?(reason) when reason in @closed_reasons, do: true
+
+  defp closed_connection?({:failed_connect, details}) when is_list(details),
+    do: Enum.any?(details, &closed_connection?/1)
+
+  defp closed_connection?({:inet, _families, reason}), do: closed_connection?(reason)
+  defp closed_connection?(_reason), do: false
 
   defp exchange_record({:ok, %{status: status, body: body}}, latency, _key)
        when is_integer(status) and is_binary(body) do

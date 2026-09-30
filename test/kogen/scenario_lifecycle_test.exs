@@ -169,6 +169,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     refute File.exists?(Path.join(dir, ".kogen/runtime/raw"))
     assert_retained!(dir, reason, "outer-allowance-exhausted")
 
+    reapprove_returned_draft!(dir)
     assert {:error, _} = run(dir, "exhaust")
     assert Enum.count(records(dir)) == 2
     assert File.regular?(first)
@@ -232,7 +233,9 @@ defmodule Kogen.ScenarioLifecycleTest do
     [first | _] = record!(dir)["attempts"]
     snapshot = first["reference_snapshots"][".kogen/runtime/review-proof.txt"]
 
-    assert Base.decode64!(snapshot["content_base64"]) ==
+    assert snapshot["binding"] == "fixed_file"
+
+    assert File.read!(Path.join(dir, snapshot["sidecar"])) ==
              "independently inspected first-candidate evidence"
 
     closure = record!(dir)
@@ -251,44 +254,81 @@ defmodule Kogen.ScenarioLifecycleTest do
     path = records(dir) |> List.first() |> Path.relative_to(dir)
     record_bytes = File.read!(Path.join(dir, path))
 
-    inspected =
-      for {attempt, call} <- Enum.with_index(record["attempts"], 1) do
-        inspected = File.read!(fake_state_path(dir, "reviewer-inspected-#{call}.json"))
-        sidecar = Path.join(Path.dirname(path), "record-versions/#{sha256(inspected)}.json")
+    [rework_attempt, accepted_attempt] = record["attempts"]
+    first_review = File.read!(fake_state_path(dir, "reviewer-inspected-1.json"))
+    accepting_review = File.read!(fake_state_path(dir, "reviewer-inspected-2.json"))
+    addendum_review = File.read!(fake_state_path(dir, "reviewer-inspected-addendum.json"))
 
-        for key <- ~w(reviewer_reference_snapshots reference_snapshots) do
-          assert attempt[key][path] == %{
-                   "path" => path,
-                   "sha256" => sha256(inspected),
-                   "byte_count" => byte_size(inspected),
-                   "binding" => "controller_record_version",
-                   "sidecar" => sidecar
-                 }
-        end
+    for key <- ~w(reviewer_reference_snapshots reference_snapshots) do
+      assert_record_citation_snapshot!(
+        dir,
+        path,
+        rework_attempt[key][path],
+        first_review,
+        "first provisional Review #{key}"
+      )
+    end
 
-        # The sidecar holds exactly the version the Reviewer inspected.
-        assert File.read!(Path.join(dir, sidecar)) == inspected
+    # The accepted attempt's provisional snapshot remains available after the
+    # accepting Reviewer resumes for its evidence addendum. Both versions are
+    # tied to the same Candidate revision but to distinct inspected record bytes.
+    assert [archived_review] = accepted_attempt["reference_snapshot_history"]
+    assert archived_review["candidate_id"] == accepted_attempt["candidate_id"]
 
-        # Ordinary cited files keep their inline snapshots.
-        makefile = attempt["reviewer_reference_snapshots"]["Makefile"]
+    assert_record_citation_snapshot!(
+      dir,
+      path,
+      archived_review["snapshots"][path],
+      accepting_review,
+      "accepting provisional Review archive"
+    )
 
-        assert Base.decode64!(makefile["content_base64"]) ==
-                 File.read!(Path.join(dir, "Makefile"))
+    archived_makefile = archived_review["snapshots"]["Makefile"]
+    assert archived_makefile["binding"] == "fixed_file"
 
-        # A record path in the Developer's notes is never parsed into a citation;
-        # the controller report cites only Candidate files and selectors.
-        assert attempt["developer_notes"]["text"] =~ path
-        refute Map.has_key?(attempt["developer_reference_snapshots"], path)
-        inspected
-      end
+    assert File.read!(Path.join(dir, archived_makefile["sidecar"])) ==
+             File.read!(Path.join(dir, "Makefile"))
+
+    for key <- ~w(reviewer_reference_snapshots reference_snapshots) do
+      assert_record_citation_snapshot!(
+        dir,
+        path,
+        accepted_attempt[key][path],
+        addendum_review,
+        "accepting Review evidence addendum #{key}"
+      )
+    end
+
+    for {attempt, inspected} <- [
+          {rework_attempt, first_review},
+          {accepted_attempt, addendum_review}
+        ] do
+      # Ordinary cited files retain their bytes in fixed-file sidecars.
+      makefile = attempt["reviewer_reference_snapshots"]["Makefile"]
+
+      assert makefile["binding"] == "fixed_file"
+
+      assert File.read!(Path.join(dir, makefile["sidecar"])) ==
+               File.read!(Path.join(dir, "Makefile"))
+
+      # A record path in the Developer's notes is never parsed into a citation;
+      # the controller report cites only Candidate files and selectors.
+      assert attempt["developer_notes"]["text"] =~ path
+      refute Map.has_key?(attempt["developer_reference_snapshots"], path)
+      assert inspected != record_bytes
+    end
+
+    inspected = [first_review, accepting_review, addendum_review]
 
     # No record version contains an earlier one, so the record stays smaller
     # than the versions it cites.
     versions = Path.wildcard(Path.join(dir, Path.dirname(path) <> "/record-versions/*.json"))
-    assert Enum.sort(Enum.map(versions, &File.read!/1)) == Enum.sort(inspected)
-    assert byte_size(record_bytes) < Enum.sum(Enum.map(inspected, &byte_size/1))
+    inspected_versions = Enum.uniq(inspected)
+    version_bytes = Enum.map(versions, &File.read!/1)
+    assert Enum.sort(version_bytes) == Enum.sort(inspected_versions)
+    assert byte_size(record_bytes) < Enum.sum(Enum.map(version_bytes, &byte_size/1))
 
-    for version <- inspected ++ Enum.map(versions, &File.read!/1) do
+    for version <- inspected ++ version_bytes do
       refute record_bytes =~ Base.encode64(version)
     end
 
@@ -331,7 +371,7 @@ defmodule Kogen.ScenarioLifecycleTest do
       assert {:error, reason} = result
       assert reason =~ unquote(message)
       assert File.read!(fake_state_path(dir, "reviews")) == "2"
-      assert File.dir?(Path.join(dir, ".kogen/intents/approved/#{@slug}"))
+      assert File.dir?(Path.join(dir, ".kogen/intents/drafts/#{@slug}"))
       refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
       # Only a retained sidecar was mutated; the tracking record itself
       # stays valid JSON, so the ordinary retention assertion applies.
@@ -353,7 +393,9 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert reason =~ "scenario tracking record changed outside Build"
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
     assert File.read!(Path.join(candidate["harness_home"], "fake-state/reviews")) == "1"
-    assert_retained_snapshot!(candidate, reason, "review-failure")
+    # Mutating controller-owned tracking bytes is an integrity stop, even
+    # when the mutation is requested during a Reviewer turn.
+    assert_retained_snapshot!(candidate, reason, "integrity")
   end
 
   test "declared target evidence retains all artifacts separately from Reviewer citations" do
@@ -408,7 +450,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     on_exit(fn -> File.rm_rf(dir) end)
     assert {:error, reason} = run(dir, "target_evidence_mutation")
     assert reason =~ "bound target evidence changed"
-    assert File.dir?(Path.join(dir, ".kogen/intents/approved/#{@slug}"))
+    assert File.dir?(Path.join(dir, ".kogen/intents/drafts/#{@slug}"))
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
     assert_retained!(dir, reason, "review-failure")
   end
@@ -425,6 +467,8 @@ defmodule Kogen.ScenarioLifecycleTest do
     first = Kogen.CandidateFixture.candidate(dir)
     first_owner_before = first["owner_record"] |> File.read!()
     first_worktree_files_before = File.ls!(first["worktree_path"]) |> Enum.sort()
+
+    reapprove_returned_draft!(dir)
 
     assert {:error, _reason} = run(dir, "developer_exit")
     second = Kogen.CandidateFixture.candidate(dir)
@@ -463,6 +507,17 @@ defmodule Kogen.ScenarioLifecycleTest do
     end
   end
 
+  defp reapprove_returned_draft!(dir) do
+    draft = Path.join(dir, ".kogen/intents/drafts/#{@slug}")
+    approved = Path.join(dir, ".kogen/intents/approved/#{@slug}")
+    assert File.dir?(draft)
+    refute File.dir?(approved)
+    # The fixture models Shaper reconciliation and explicit reapproval; the
+    # returned package's agreement bytes and historical evidence stay intact.
+    File.write!(Path.join(draft, "approval.md"), "Explicit fixture reapproval\n")
+    File.rename!(draft, approved)
+  end
+
   defp fixture! do
     dir =
       Path.join(System.tmp_dir!(), "kogen-scenario-life-#{System.unique_integer([:positive])}")
@@ -495,6 +550,15 @@ defmodule Kogen.ScenarioLifecycleTest do
       Path.join(@root, "test/support/scenario_lifecycle_harness.py"),
       Path.join(dir, "scenario-lifecycle-harness.py")
     )
+
+    # This fixture predates Build's no-change Review continuation. Its
+    # rework cases must edit the Candidate so they can reach the intended
+    # second Review and exercise verdict, citation and disposition checks.
+    harness = Path.join(dir, "scenario-lifecycle-harness.py")
+    original = File.read!(harness)
+    needle = ~s(if mode in {"regression", "target_history"}:)
+    assert String.contains?(original, needle)
+    File.write!(harness, String.replace(original, needle, ~s(if mode not in {}:)))
 
     File.chmod!(Path.join(dir, ".codex/hooks/check.sh"), 0o755)
     File.chmod!(Path.join(dir, "scenario-lifecycle-harness.py"), 0o755)
@@ -579,6 +643,24 @@ defmodule Kogen.ScenarioLifecycleTest do
 
   defp sha256(bytes),
     do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+
+  defp assert_record_citation_snapshot!(dir, path, snapshot, inspected, phase) do
+    sidecar = Path.join(Path.dirname(path), "record-versions/#{sha256(inspected)}.json")
+
+    expected = %{
+      "path" => path,
+      "sha256" => sha256(inspected),
+      "byte_count" => byte_size(inspected),
+      "binding" => "controller_record_version",
+      "sidecar" => sidecar
+    }
+
+    assert snapshot == expected,
+           "#{phase} must retain the exact record bytes the Reviewer inspected; got #{inspect(snapshot)}, expected #{inspect(expected)}"
+
+    assert File.read!(Path.join(dir, sidecar)) == inspected,
+           "#{phase} sidecar must contain exactly the inspected record bytes"
+  end
 
   defp git!(dir, args), do: System.cmd("git", args, cd: dir, env: git_env())
 

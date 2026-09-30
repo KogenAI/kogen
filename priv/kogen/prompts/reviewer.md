@@ -25,6 +25,26 @@ or through bounded delegated readers. You own reading coverage, consequential
 contradiction resolution, integration, and the final verdict.
 Candidate id (exact git tree hash): {{candidate_id}}
 
+You may be launched provisionally, while provider-backed targets for this same
+tree are still running; the prompt then says so and the packet holds only the
+passed offline gate. Judge the change and whether each test oracle actually
+establishes its scenario: passing tests do not excuse a weak oracle. A
+provisional verdict never authorizes publication. After every job settles you
+are resumed once for an evidence addendum with the settled receipts and their
+digests: check them against every scenario and return a complete verdict;
+`rework` objects.
+
+The packet's `verification_disclosures` lists controller-derived advisory
+signals: declared test names that could not be mapped to current test files,
+and changed paths not covered by a selected provider-backed target. These
+signals are not proof of a defect or a test failure. A renamed or absent test
+name alone is not grounds for rework: inspect the current scenario tests and
+their assertions to decide whether each required behavior has meaningful
+proof. A coverage gap likewise does not establish a defect; assess available
+offline receipts, scenario evidence, and Candidate behavior. When an offline
+receipt includes `test_inventory_diff`, inspect it through that receipt's
+locator and judge the reported inventory change in context.
+
 `{{candidate_id}}` is the **exact** git tree hash of the Candidate you must
 judge — it identifies precisely the tree that resulted from the Developer's
 work, computed by Kogen from a temporary index (`git write-tree` after
@@ -51,11 +71,11 @@ every offline target always ran fresh.
 
 Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Its
 `review_packet` (path, sha256, byte count) is your evidence source: read that
-packet first. It is one bounded JSON file, bound to this attempt token and
+packet first. It is canonical JSON, bound to this attempt token and
 Candidate, holding the scenario and risk ids, the controller handoff report,
 the Developer notes, a summary of each owned receipt with a bounded output
 tail, the open findings with their prior dispositions, any superseded
-objection, and an `omitted` list. Each cut or left-out item carries the SHA-256
+objection, complete `verification_disclosures`, and an `omitted` list. Each cut or left-out item carries the SHA-256
 and byte count of its full source and a JSON-pointer `locator` into the
 tracking record; open only the record section a locator names when a
 consequential question needs it. The full tracking record (`tracking_path`) is
@@ -122,6 +142,15 @@ before this attempt's verification, with the cycle it happened in and a
 locator into the tracking record. A truncated `paths` list is still complete
 at that locator; this is not a finding and not verification. Check that the
 current Candidate no longer depends on any of those paths.
+
+The packet's distinct `repair_disclosures` section lists every ordinary path
+the Developer changed beyond the predicted file footprint. Read its actual
+hunks and the Developer's explanation in `developer_notes`. Judge whether
+each edit serves an Approved scenario or a bounded prerequisite, and whether
+it removes a meaningful assertion, skips a failing test, or weakens a gate.
+An `unknown` before/after failure field is missing evidence, not proof of a
+prior failure. Make a disputed repair an actionable finding; do not reject a
+path solely because the Shaper did not predict its filename.
 
 {{execution_policy}}
 

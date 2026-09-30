@@ -12,13 +12,25 @@ defmodule Kogen.ClaudeCodeCatalogTest do
   test "the picker lists exactly the proven models, each citing retained evidence" do
     assert {:ok, models} = Kogen.Intent.claude_models()
 
-    assert Enum.map(models, & &1["id"]) == ["claude-opus-5-5", "claude-sonnet-5"]
+    assert Enum.map(models, & &1["id"]) ==
+             ["claude-opus-5-5", "claude-sonnet-5", "claude-sonnet-5-5"]
 
     for model <- models do
-      assert model["efforts"] == ~w(low medium high xhigh)
-      assert model["intent"] == @intent_id
       assert evidence_exists?(model["evidence"]), "missing evidence for #{model["id"]}"
     end
+
+    for model <- Enum.take(models, 2) do
+      assert model["efforts"] == ~w(low medium high xhigh)
+      assert model["intent"] == @intent_id
+    end
+
+    # Sonnet 5.5 lists only the efforts its retained native probes passed.
+    sonnet_55 = List.last(models)
+    assert sonnet_55["efforts"] == ~w(low medium)
+    assert sonnet_55["intent"] == "01a0e6df-71cf-78d7-9921-2c41bdd58979"
+
+    assert sonnet_55["evidence"] ==
+             ".kogen/intents/complete/build-system-fixes/evidence/probe-native-team/RESULT.md"
 
     refute Enum.any?(models, &String.contains?(&1["id"], "haiku"))
   end

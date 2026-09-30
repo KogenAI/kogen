@@ -3,6 +3,8 @@ Code.require_file("../support/compiled_fixture.exs", __DIR__)
 defmodule Kogen.HarnessRoleTest do
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Build.{Workspace, WriteBoundary}
   alias Kogen.Codex.State
   alias Kogen.Harness.Claude
@@ -14,11 +16,11 @@ defmodule Kogen.HarnessRoleTest do
 
     File.write!(prompt_file, "shape")
     on_exit(fn -> File.rm(prompt_file) end)
-    shaper = Kogen.Harness.Codex.shaper_args("gpt-6-sol", "high", prompt_file)
-    developer = Kogen.Harness.Codex.developer_args("gpt-6-sol", "high")
-    reviewer = Kogen.Harness.Codex.reviewer_args("gpt-6-sol", "high")
-    expert = Kogen.Harness.Codex.expert_args("gpt-6-sol", "high")
-    auditor = Kogen.Harness.Codex.auditor_args("gpt-6-sol", "high")
+    shaper = Kogen.Harness.Codex.shaper_args("gpt-6.1-sol", "high", prompt_file)
+    developer = Kogen.Harness.Codex.developer_args("gpt-6.1-sol", "high")
+    reviewer = Kogen.Harness.Codex.reviewer_args("gpt-6.1-sol", "high")
+    expert = Kogen.Harness.Codex.expert_args("gpt-6.1-sol", "high")
+    auditor = Kogen.Harness.Codex.auditor_args("gpt-6.1-sol", "high")
 
     hooks = Enum.filter(shaper, &String.starts_with?(&1, "hooks.Stop="))
 
@@ -55,8 +57,8 @@ defmodule Kogen.HarnessRoleTest do
     hybrid:
       shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
       developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
-      expert:    {harness: codex, model: gpt-6-sol, effort: high}
+      reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+      expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
       helpers:
         claude:
           scout:  {model: claude-sonnet-5, effort: low}
@@ -156,7 +158,10 @@ defmodule Kogen.HarnessRoleTest do
 
     codex_binding = %{
       harness: "codex",
-      runtime: %{"executable" => "/managed/codex", "version" => "0.156.1"},
+      runtime: %{
+        "executable" => "/managed/codex",
+        "version" => Kogen.ManagedRuntimeReady.codex_version()
+      },
       scope: %{name: :shared, path: "/scope/codex"}
     }
 
@@ -200,14 +205,14 @@ defmodule Kogen.HarnessRoleTest do
   @tag :unconfined
   test "mix kogen.expert launches on the Build's bound scope and harness home, and refuses a wrong cwd" do
     candidate =
-      File.cwd!()
+      @project_root
       |> Kogen.CompiledFixture.create!("expert-candidate")
       |> Workspace.canonical()
 
     File.mkdir_p!(Path.join(candidate, "priv/kogen/prompts"))
 
     File.cp!(
-      Path.join(File.cwd!(), "priv/kogen/prompts/expert.md"),
+      Path.join(@project_root, "priv/kogen/prompts/expert.md"),
       Path.join(candidate, "priv/kogen/prompts/expert.md")
     )
 
@@ -299,15 +304,9 @@ defmodule Kogen.HarnessRoleTest do
     refute File.exists?(env_log)
   end
 
-  # `Kogen.CompiledFixture.mix_task!/3` plus one `-e`: a documented core
-  # defect (see this packet's report) makes a *completely fresh* `mix
-  # kogen.expert` process -- exactly how the real task always starts, since
-  # native Claude Code/Codex invoke it as a brand-new OS process -- crash in
-  # `Kogen.Harness.binding_from_record/1` (`String.to_existing_atom/1` on a
-  # scope name no code path has interned yet). Pre-loading the two modules
-  # that define `:shared`/`:project` works around it here so the rest of this
-  # test's real assertions (bound scope, harness home, cwd refusal) can run;
-  # it does not touch the behavior under test.
+  # `Kogen.CompiledFixture.mix_task!/3` in a completely fresh VM, exactly how
+  # native Claude Code/Codex start `mix kogen.expert`. Nothing is preloaded:
+  # the recorded scope name must decode without atom-load-order dependence.
   defp run_expert_task!(fixture, question, env, prefix \\ []) do
     env = Kogen.CompiledFixture.offline_jev_env(env) ++ env
 
@@ -319,13 +318,11 @@ defmodule Kogen.HarnessRoleTest do
       )
       |> Enum.sort()
 
-    preload = "Code.ensure_loaded!(Kogen.ClaudeCode); Code.ensure_loaded!(Kogen.Codex.State)"
-
     [cmd | args] =
       prefix ++
         ["elixir", "--erl", "+S 2:2 +SDcpu 1 +SDio 1"] ++
         Enum.flat_map(ebins, &["-pa", &1]) ++
-        ["-e", preload, "-S", "mix", "kogen.expert", question]
+        ["-S", "mix", "kogen.expert", question]
 
     System.cmd(
       cmd,
@@ -357,7 +354,7 @@ defmodule Kogen.HarnessRoleTest do
   # `def close(%{lease: nil}), do: :ok` before the existing clause.
   @tag :unconfined
   test "the Codex Expert's managed launch runs inherited inside the enclosing profile and touches no Codex state root" do
-    source = File.cwd!()
+    source = @project_root
 
     candidate =
       source
@@ -452,7 +449,7 @@ defmodule Kogen.HarnessRoleTest do
       "route" => "hybrid",
       "caller" => "developer",
       "harness" => "codex",
-      "model" => "gpt-6-sol",
+      "model" => "gpt-6.1-sol",
       "effort" => "high",
       "helpers" => %{
         "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
@@ -646,6 +643,16 @@ defmodule Kogen.HarnessRoleTest do
     assert developer.harness == "claude"
     assert reviewer.harness == "codex"
 
+    # A fan-out job's :on_start reaches the launch context of every harness
+    # (the provisional Reviewer's group is then reapable by identity), and
+    # no launch carries one unless the runtime was given it.
+    refute Map.has_key?(developer, :on_start)
+    refute Map.has_key?(reviewer, :on_start)
+    on_start = fn _group -> :ok end
+    job_runtime = Map.put(runtime, :on_start, on_start)
+    assert Kogen.Harness.role_context(job_runtime, :reviewer).on_start == on_start
+    assert Kogen.Harness.role_context(job_runtime, :developer).on_start == on_start
+
     # The dominant Developer carries the frozen Codex Expert assignment; its
     # native Claude Code helpers exclude any substituted expert.
     {"KOGEN_EXPERT", json} = List.keyfind(developer.env, "KOGEN_EXPERT", 0)
@@ -654,7 +661,7 @@ defmodule Kogen.HarnessRoleTest do
              "route" => "hybrid",
              "caller" => "developer",
              "harness" => "codex",
-             "model" => "gpt-6-sol",
+             "model" => "gpt-6.1-sol",
              "effort" => "high",
              "helpers" => %{
                "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
@@ -676,7 +683,10 @@ defmodule Kogen.HarnessRoleTest do
 
     # The Expert role itself launches on Codex with Codex's unattended flags.
     assignment = Expert.assignment(json)
-    assert {:ok, %{harness: "codex", expert: %{model: "gpt-6-sol", effort: "high"}}} = assignment
+
+    assert {:ok, %{harness: "codex", expert: %{model: "gpt-6.1-sol", effort: "high"}}} =
+             assignment
+
     {:ok, expert_config} = assignment
 
     assert {:ok, %{session_id: "codex-expert", message: "codex expert answer"}} =
@@ -726,7 +736,7 @@ defmodule Kogen.HarnessRoleTest do
     claude_launch = Enum.find(entries, &String.starts_with?(&1, " -p "))
 
     assert codex_expert =~
-             ~s(exec --model gpt-6-sol -c model_reasoning_effort="high" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json -)
+             ~s(exec --model gpt-6.1-sol -c model_reasoning_effort="high" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json -)
 
     assert codex_expert =~ "KOGEN_ROLE=expert KOGEN_EXPERT=unset KOGEN_VERIFICATION_CONTEXT=unset"
 
@@ -765,12 +775,12 @@ defmodule Kogen.HarnessRoleTest do
     }
 
     assert {:ok, %{session_id: "codex-expert"}} =
-             Kogen.Harness.launch_expert("q", "gpt-6-sol", "high", context)
+             Kogen.Harness.launch_expert("q", "gpt-6.1-sol", "high", context)
 
     [expert] = log |> File.read!() |> String.split("argv:", trim: true)
 
     assert expert =~
-             ~s( --disable apps -c tool_output_token_limit=4000 exec --model gpt-6-sol -c model_reasoning_effort="high" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json -)
+             ~s( --disable apps -c tool_output_token_limit=4000 exec --model gpt-6.1-sol -c model_reasoning_effort="high" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json -)
 
     assert expert =~
              "KOGEN_ROLE=expert KOGEN_EXPERT=unset KOGEN_VERIFICATION_CONTEXT=unset"

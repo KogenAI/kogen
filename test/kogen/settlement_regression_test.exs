@@ -18,13 +18,15 @@ defmodule Kogen.SettlementRegressionTest do
   """
   use ExUnit.Case, async: true, parameterize: [%{legacy: true}, %{legacy: false}]
 
+  @project_root Path.expand("../..", __DIR__)
+
   @slug "fake-shaped-intent"
   @sentinel "corrected-check-negative-control"
 
   test "a corrected Check block cannot masquerade as a completed Developer turn", %{
     legacy: legacy
   } do
-    fixture = Kogen.CompiledFixture.create!(File.cwd!(), "settlement-negative")
+    fixture = Kogen.CompiledFixture.create!(@project_root, "settlement-negative")
     on_exit(fn -> File.rm_rf!(fixture) end)
     fake = Path.join(fixture, "test/support/fake_codex")
 

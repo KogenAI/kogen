@@ -55,6 +55,11 @@ if readiness or not home:
 
 prompt = sys.stdin.buffer.read()
 role = os.environ.get("KOGEN_ROLE", "")
+turn_kind = (
+    "evidence_addendum"
+    if role == "reviewer" and prompt.startswith(b"KOGEN_EVIDENCE_ADDENDUM")
+    else "regular"
+)
 pid = os.getpid()
 tmp = os.environ.get("TMPDIR", "")
 results = {}
@@ -177,6 +182,7 @@ if env.get("FIXTURE_PROBE_SERVICES") == "1":
 
 receipt = {
     "role": role,
+    "turn_kind": turn_kind,
     "pid": pid,
     "argv": ARGS,
     "pwd": os.path.realpath(os.getcwd()),
@@ -191,7 +197,10 @@ write(os.path.join(directory, "%d-%d-%s.json" % (time.time_ns(), pid, role or "l
 raw_log = env.get("KOGEN_RAW_LOG_DIR")
 if raw_log:
     os.makedirs(raw_log, exist_ok=True)
-    write(os.path.join(raw_log, "boundary-role-note-%d" % pid), "from inside the role\n")
+    write(
+        os.path.join(raw_log, "boundary-role-note-%s-%s-%d" % (role or "launch", turn_kind, pid)),
+        "from inside the role\n",
+    )
 
 handle, stdin_copy = tempfile.mkstemp(prefix="boundary-stdin-", dir=tmp or None)
 with os.fdopen(handle, "wb") as saved:

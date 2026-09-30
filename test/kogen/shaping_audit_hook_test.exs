@@ -8,6 +8,8 @@ defmodule Kogen.ShapingAuditHookTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.ShapingAudit.{Finding, Fixture, StopHook}
 
   @t 1_790_000_000_000
@@ -177,13 +179,13 @@ defmodule Kogen.ShapingAuditHookTest do
 
   # -- stop_hook.sh helpers -----------------------------------------------------
 
-  defp script, do: Path.join(File.cwd!(), "priv/kogen/shaping_audit/stop_hook.sh")
+  defp script, do: Path.join(@project_root, "priv/kogen/shaping_audit/stop_hook.sh")
 
   defp toolchain!(root) do
     toolchain = Path.join(root, "toolchain")
     File.mkdir_p!(toolchain)
     mix = Path.join(toolchain, "mix")
-    File.cp!(Path.join(File.cwd!(), "test/support/shaping_audit/fake_mix"), mix)
+    File.cp!(Path.join(@project_root, "test/support/shaping_audit/fake_mix"), mix)
     File.chmod!(mix, 0o755)
     python = System.find_executable("python3")
 
@@ -490,7 +492,7 @@ defmodule Kogen.ShapingAuditHookTest do
   defp payload(rollout) do
     Jason.encode!(%{
       "session_id" => "s",
-      "transcript_path" => Path.join(File.cwd!(), "test/support/shaping_audit/hook/#{rollout}"),
+      "transcript_path" => Path.join(@project_root, "test/support/shaping_audit/hook/#{rollout}"),
       "stop_hook_active" => false
     })
   end
@@ -683,7 +685,7 @@ defmodule Kogen.ShapingAuditHookTest do
 
     File.cp!(
       Path.join(
-        File.cwd!(),
+        @project_root,
         "test/support/shaping_audit/packages/flow/assumed-without-reason/questions.md"
       ),
       Path.join([root, package_rel, "questions.md"])
@@ -874,7 +876,13 @@ defmodule Kogen.ShapingAuditHookTest do
   end
 
   test "H27 the README documents the Stop hook and the inside-Shaping status" do
-    readme = Regex.replace(~r/\s+/, File.read!("README.md"), " ")
+    readme =
+      Regex.replace(
+        ~r/\s+/,
+        File.read!(Path.join(System.fetch_env!("KOGEN_TEST_ROOT"), "README.md")),
+        " "
+      )
+
     assert readme =~ "mix kogen.audit --stop-hook"
     assert readme =~ "Inside a Shaping session the Stop hook audits the Draft at every stop"
     refute readme =~ "it does not run as a Shaper Stop hook"

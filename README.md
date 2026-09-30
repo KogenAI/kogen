@@ -14,9 +14,17 @@ with two adapters: Claude Code (`harness: claude`) and Codex CLI
 (`harness: codex`). `.kogen/config.yaml` names one or more routes, each
 assigning every role a harness and a model profile; a Shape or Build selects
 one route, by default the configured `default_route`. This repository's
-`default_route` is `claude`. The `claude-dominant-adversarial-codex` route lets
-Claude Code shape and develop while Codex reviews and answers Expert
-questions; `codex-dominant-adversarial-claude` is its mirror image. Installing
+`default_route` is `optimum`: the maintained best-known role combination —
+Codex `gpt-6-astra` at low effort shapes, a Claude Code `claude-opus-5-5`
+Developer at medium effort implements with native `claude-sonnet-5-5` helpers,
+Codex `gpt-6.1-sol` at high effort reviews and answers Expert questions, and
+`claude-opus-5-5` at high effort audits Shaping. `optimum` is tuned over time
+as measured outcomes compare combinations; an admitted Build freezes the
+resolved harness, model and effort of every role, so later tuning never
+changes a running or resumed Build. The existing named routes stay available
+through `--route <name>`: `claude-dominant-adversarial-codex` lets Claude Code
+shape and develop while Codex reviews and answers Expert questions, and
+`codex-dominant-adversarial-claude` is its mirror image. Installing
 Kogen into arbitrary projects and other harnesses are future work.
 The broader design remains a longer-term direction, open to change as Kogen develops.
 
@@ -25,15 +33,18 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, Python 3.11 or newer, and Rust 1.97.1 on macOS. Run `mix kogen.ctx.build` once per machine after the locked crates are available in the Cargo cache. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.281 and Codex 0.156.1. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `dev.kogen.jev` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s dev.kogen.jev -a <account> -w` before building, or Build stops before launching the Developer.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.285 and Codex 0.159.2. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `dev.kogen.jev` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s dev.kogen.jev -a <account> -w` before building, or Build stops before launching the Developer.
 
-From a checkout whose `default_route` uses Claude Code:
+For this checkout's hybrid default route (`optimum`), prepare both managed harnesses:
 
 ```sh
 mix deps.get
 mix kogen.claude.install
 mix kogen.claude.login
 mix kogen.claude.status
+mix kogen.codex.install
+mix kogen.codex.login
+mix kogen.codex.status
 make check
 mix kogen.shape
 ```
@@ -102,10 +113,10 @@ Candidate), publication itself still stands: the Build exits zero with a
 warning naming the kept worktree and `mix kogen.candidates.remove
 <build-id>`. `mix kogen.candidates` lists this project's Candidates (build
 id, slug, title, status, start time, branch, path); `mix
-kogen.candidates.remove <build-id> [--discard-accepted]` force-removes one
-worktree, its branch, harness home and owner record, refusing a `running`
-Candidate and, without the flag, one holding a commit unreachable from its
-admitted branch. Neither command prunes. Still one Build at a time: the
+kogen.candidates.remove <build-id> [--discard-accepted]` removes one Candidate,
+refusing a `running` Candidate and, without the flag, one holding a commit
+unreachable from its admitted branch. A Kogen-created Candidate loses its
+worktree and branch. Neither command prunes. Still one Build at a time: the
 global `.kogen/build.lock` stays in control.
 
 ### Failure reports
@@ -122,8 +133,9 @@ configuration and last persisted verification state, including its relative
 path and SHA256) and `published`, which is null except for a publication
 interruption. Reports are never replaced: they are written to a
 same-directory temporary file and published without clobbering an existing
-report, so no partial or temporary report remains. A repeated item signature
-changes the suggested action from `rebuild` to `reshape_details`.
+report, so no partial or temporary report remains. Repeated item signatures
+remain available as diagnostics and may suggest `reshape_details`; they never
+block a new Build.
 
 The category table is the single classification contract:
 
@@ -154,21 +166,15 @@ report named by `tracking_build_id`. Reports are refused when their evidence,
 package, control, route, Candidate, session or budgets drift. A resume that
 creates a new Developer session is `session-lost` and requires a rebuild.
 
-#### Breakers
-
-Two or more item reports with the same failure signature, Intent id and
-Approved package digest refuse the next Build before admission with
-`Build refused (item breaker)` and `reshape_details` (or `reshape_scope` for
-shaping reports). The check recounts report files on disk, so deleting a
-report or editing the Approved package changes the result.
+#### Environment breaker
 
 Three consecutive environment reports across Intents refuse admission with
 `Build refused (environment breaker)` until the no-launch harness readiness
 check passes. A passing check writes `environment-clear.json`; a successful
 published Build clears a non-empty environment run with `reason: "published"`.
-Refusals create no tracking record, Candidate or harness home. A fresh Build
-with a matching item report carries the canonical `## First failure` block and
-the absolute `Previous failure report:` path in its first Developer prompt.
+Refusals create no tracking record, Candidate or harness home. Prior item
+reports remain available as context for a fresh Build; a repeated failure
+signature alone never blocks admission.
 
 Every process a Build launches (Developer, Reviewer, Expert and their
 helpers, Jev's executable transport, make targets, `prepare`, and focused and
@@ -232,6 +238,40 @@ declared target, or a Review finding uses one outer resumption of the same
 Developer, when allowance remains, and a resumed attempt must settle a fresh
 controller verification before the next handoff or Review. An exhausted
 verification or outer allowance stops the Build rather than claiming success.
+
+### Concurrent settlement, provisional Review and the acceptance join
+
+One Candidate tree T is frozen per cycle. The complete offline gate (and every
+applicable `prepare`, provider access denied) settles first; an offline or
+evidence failure dispatches nothing. Once it passes, every selected
+provider-backed target and one provisional, read-only Review of exactly T run
+as concurrent jobs under the finite `live_concurrency` ceiling (a resource cap,
+never a spend count), each target with its own fixture, log and evidence roots.
+The Developer stays idle until every started job settles. A failure or a Review
+finding never cancels other work; only controller shutdown or
+a classified provider/environment stop cancels, and cancelled jobs are recorded
+as neither pass nor fail. Every failed receipt, its signature and class, and
+every validated provisional finding reach the Developer in one handoff.
+Classes come from the controller's dispatch ledger and typed evidence, never
+exit status alone. Repair rounds record the frozen `max_rounds`,
+`max_no_progress` and `max_dispatches` counters in `.kogen/config.yaml`. A round
+that clears none of the previous unresolved signatures, reintroduces a cleared
+one, or is a same-tree Review no-change increments a diagnostic no-progress
+counter; repetition alone does not stop repair. The configured round and
+dispatch limits still bound actual work, and counters never reset when a
+finding resolves or the controller restarts.
+
+A provisional verdict never authorizes publication. After a clean settlement
+the same Reviewer session is resumed once for an **evidence addendum**: it gets
+a second immutable packet with every settled receipt of T and their digests
+and must return a complete verdict; an objection is Review rework.
+`Kogen.Build.AcceptanceJoin` then requires, on the same T and frozen context,
+the passed offline gate, a passed receipt for every selected target, every
+scenario satisfied in the addendum verdict, no open finding, and an addendum
+after settlement citing exactly the settled receipt digests. Only then does
+guarded publication run. Any changed tree invalidates T's receipts and
+verdicts; a restart reuses only passed receipts whose tree, catalog, frozen
+context and log digests match exactly.
 
 Each failed cycle carries a failure class, and each class spends its own
 budget. The controller knows only catalog classes (`provider_backed`), never a
@@ -402,6 +442,14 @@ permitted mutation, validation, Git state, and upgrades. An absent risk file is
 recorded as “not supplied.” Shaping leaves unresolved ownership decisions to the
 Shaper, including when a protected seed becomes user-owned configuration.
 
+Keep the Approved Intent contract compact and readable at roughly kilobyte
+scale: state behavior, acceptance conditions, ownership, and the essential
+proof a Reviewer must inspect. Put bulk fixtures, generated output, logs, and
+historical material in their maintained owner locations and cite them by path
+and digest. Build reports the package byte count before provider work, but does
+not enforce a package or source-blob size ceiling; publication still verifies
+the exact staged tree and excludes controller runtime data.
+
 Role launches carry concise file and identity locators rather than task bodies.
 Shaping starts from this README and maintained relevant context; Developer and
 Reviewer read the complete selected Approved package and selected current fields
@@ -413,16 +461,17 @@ unfinished optional Draft files remain valid shaping work.
 
 Before each Review the controller writes one immutable review packet per
 attempt, `.kogen/runtime/scenario-tracking/<build-id>/review-packets/<attempt-number>.json`.
-It is canonical JSON of at most 64 KiB (65,536 bytes), bound to the attempt
+It is canonical JSON that targets 64 KiB (65,536 bytes), bound to the attempt
 token and Candidate, holding the scenario and risk IDs, the controller handoff
 report, the Developer notes, a summary of each receipt with a bounded output
 tail, the open findings with their prior dispositions, any superseded
 objection, and an `omitted` list. Long fields are cut at a UTF-8 boundary
 (notes 16 KiB, handoff 24 KiB, each receipt output 2 KiB of its tail); every
 cut or left-out item carries its full source SHA-256, byte count and a JSON
-pointer into the record, and the required IDs are never dropped (Build stops
-instead). The controller keeps the packet digest in its state and in the
-attempt and verifies it before launch, after Review and during publication.
+pointer into the record. If required IDs still exceed the target after
+compaction, the packet keeps them intact and may be larger. The controller
+keeps the packet digest in its state and in the attempt and verifies it before
+launch, after Review and during publication.
 The Reviewer's `KOGEN_TASK_CONTEXT` names the packet as its evidence source;
 `tracking_path` stays as an audit locator. The packet never narrows the
 Reviewer's inspection of Candidate files or read-only commands.
@@ -501,14 +550,11 @@ A clone retains the contract and concise result, but not those exact local bytes
 If the archive has been cleaned up, report it unavailable—do not substitute a
 summary or another Build's record.
 
-Immediately before commit, Build measures every added or modified staged
-destination relative to the starting `HEAD` by its full uncompressed Git blob
-length. The fixed limit is 5 MiB (5,242,880 bytes) per path and 10 MiB
-(10,485,760 bytes) in aggregate; equality is allowed, deletions and unchanged
-historical blobs cost zero, and there is no override. Added or modified staged
-paths under `.kogen/runtime/` are always rejected, including force-staged ignored
-files. An Approved package already unable to meet these limits stops before a
-provider launch and must return to Shaping.
+Immediately before commit, Build verifies the exact staged tree against the
+accepted Candidate tree and permits changes only in Kogen's lifecycle paths.
+There is no arbitrary per-file or aggregate Git blob ceiling. Added or modified
+staged paths under `.kogen/runtime/` remain rejected, including force-staged
+ignored files; actual filesystem, provider, and Git failures remain visible.
 
 
 ## Configuration and local data
@@ -518,20 +564,19 @@ Edit the tracked `.kogen/config.yaml` to define named **routes** and a
 model and effort for `shaping`, `developer`, `reviewer` and each required
 helper profile (`helpers.scout`, `helpers.worker`, `helpers.expert`);
 `outer_resumptions`, `verification_retries` and `offline_retries` stay
-top-level, shared by every route. All three are required integers with no
-default: `offline_retries` bounds offline verification failures per attempt
+top-level, shared by every route. `outer_resumptions` and
+`verification_retries` are required integers. An omitted `offline_retries`
+uses the established default of `4`; an explicit value must be a
+non-negative integer. It bounds offline verification failures per attempt
 (offline targets and Candidate-caused `prepare` failures), separately from the
 paid `verification_retries`. Stray paths a Developer turn leaves outside the
-Approved guards resume the same session to delete or restore them up to 2 times
-per attempt (fixed, not configurable, and not `offline_retries`), then stop the
-Build as `guard-violation`; hook or agent configuration changes stop it as
-`protected-path` and Git policy changes as `git-policy`. A config without
-`offline_retries`, including an existing project's config written before the
-key existed, is refused before any launch with a message naming the key; add it
-beside `verification_retries`:
+Approved guards resume the same session to delete or restore them within the
+configured `outer_resumptions` allowance; hook or agent configuration changes stop it as
+`protected-path` and Git policy changes as `git-policy`. Projects can set
+`offline_retries` beside `verification_retries` to override the default:
 
 ```yaml
-default_route: claude
+default_route: optimum
 routes:
   claude:
     harness: claude
@@ -544,18 +589,18 @@ routes:
       expert: {model: claude-opus-5-5, effort: high}
   codex:
     harness: codex
-    shaping:   {model: gpt-6-sol, effort: medium}
-    developer: {model: gpt-6-sol, effort: high}
-    reviewer:  {model: gpt-6-sol, effort: high}
+    shaping:   {model: gpt-6.1-sol, effort: medium}
+    developer: {model: gpt-6.1-sol, effort: high}
+    reviewer:  {model: gpt-6.1-sol, effort: high}
     helpers:
       scout:  {model: gpt-6-luna, effort: low}
       worker: {model: gpt-6-luna, effort: high}
-      expert: {model: gpt-6-sol, effort: high}
+      expert: {model: gpt-6.1-sol, effort: high}
   claude-dominant-adversarial-codex:
     shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
     developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-    reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
-    expert:    {harness: codex, model: gpt-6-sol, effort: high}
+    reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+    expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
     helpers:
       claude:
         scout:  {model: claude-sonnet-5, effort: low}
@@ -563,12 +608,37 @@ routes:
       codex:
         scout:  {model: gpt-6-luna, effort: low}
         worker: {model: gpt-6-luna, effort: high}
-  # codex-dominant-adversarial-claude is the mirror image: Codex shapes and
-  # develops, Claude Code reviews and answers Expert questions.
+  codex-dominant-adversarial-claude:
+    shaping:   {harness: codex, model: gpt-6.1-sol, effort: medium}
+    developer: {harness: codex, model: gpt-6.1-sol, effort: high}
+    reviewer:  {harness: claude, model: claude-opus-5-5, effort: medium}
+    expert:    {harness: claude, model: claude-opus-5-5, effort: high}
+    helpers:
+      codex:
+        scout:  {model: gpt-6-luna, effort: low}
+        worker: {model: gpt-6-luna, effort: high}
+      claude:
+        scout:  {model: claude-sonnet-5, effort: low}
+        worker: {model: claude-sonnet-5, effort: medium}
+  optimum:
+    shaping:   {harness: codex, model: gpt-6-astra, effort: low}
+    developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+    reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+    expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
+    helpers:
+      claude:
+        scout:  {model: claude-sonnet-5-5, effort: low}
+        worker: {model: claude-sonnet-5-5, effort: medium}
+      codex:
+        scout:  {model: gpt-6-luna, effort: low}
+        worker: {model: gpt-6-luna, effort: max}
 outer_resumptions: 2
 verification_retries: 2
 offline_retries: 4
 ```
+
+Only `optimum`'s Codex worker runs `gpt-6-luna` at `max`; every other named
+route keeps its own configured helper efforts.
 
 A hybrid (role-level) route has no top-level `harness`: each of `shaping`,
 `developer`, `reviewer` and `expert` names its own `harness`,
@@ -675,11 +745,11 @@ offline-first policy in [Choosing verification targets](#choosing-verification-t
 
 | Target | Select when | Classification and prerequisites |
 | --- | --- | --- |
-| `check` | Offline sufficiency covers the behavior and failure controls; a later Intent may use check only. | Offline; installed dependencies and the tools below. Provider dispatch is denied. |
-| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The corresponding configured-default lifecycle or Review workflow (on `default_route`) can change. | Provider-backed on `default_route`'s harness; network, its installed runtime and Kogen login, `expect`, and `rsync`. |
+| `check` | Offline sufficiency covers the behavior and failure controls; a later Intent may use check only. | Offline; installed dependencies, the tools below and staged exact managed runtime pins. Provider dispatch is denied. One run proves the current offline suite, rehearsals and controlled prepares; baseline test changes and timing are diagnostic. |
+| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The configured-default lifecycle or selected-route Review workflow can change. | Provider-backed on the selected route's role harnesses; network, managed runtimes and Kogen logins, `expect`, and `rsync`. |
 | `live-shaping-quality` | Shaping prompts, continuation, Draft quality, evaluation cases, prerequisites, or its evidence manifest can change. | Provider-backed; network, configured Codex authentication, and maintained evaluation sources. |
 | `live-native` | The authenticated native boundary, managed runtime/login/discovery, compatibility runner, helper routing, profiles, or native receipts can change. | Provider-backed; installed pinned Codex runtime and configured authentication. |
-| `cold-offline` | Cold-cache behavior, the offline recipe, dependency copying, toolchain setup, containment, or cold cleanup can change. | Offline, though expensive; installed dependency sources, `rsync`, and the offline toolchain. Provider dispatch is denied. |
+| `cold-offline` | Cold-cache behavior needs an explicit empty-cache diagnosis (offline recipe, dependency copying, toolchain setup, containment, or cold cleanup). Routine Builds do not select it; `check` carries the focused cold setup/dependency regression. | Offline, though expensive; installed dependency sources, `rsync`, and the offline toolchain. Provider dispatch is denied. |
 
 Use check only when deterministic offline evidence is sufficient. Select one
 narrow paid target per scenario only when its proof names a provider-only
@@ -753,6 +823,14 @@ Candidate during a Build:
 - the approved package: `.kogen/intents/approved/<slug>/`, read by
   `lib/kogen/build.ex` and `lib/kogen/build/contract.ex`
 
+For Builds started by the updated controller, `may_change_guarded_paths`
+predicts the likely edit footprint. Ordinary extra files are disclosed with
+their actual diffs for independent Review. An optional `gate_change_paths`
+list separately authorizes changes to gate definitions, reliability rules,
+check scripts and role prompts. Older approved packages remain readable: their
+named gate paths retain their previous authority. Protected hooks and frozen
+approval evidence remain protected regardless of either list.
+
 The running controller renders the role prompts,
 `priv/kogen/prompts/developer.md` and `priv/kogen/prompts/reviewer.md`, from
 control (its own checkout), not from the Candidate. A Candidate's prompt
@@ -787,7 +865,10 @@ Both adapters' offline suites run in every `make check`.
 Switching provider means either passing `--route <name>` for one session or
 changing `default_route` for future ones, after that route's harness install
 and login. The general provider-backed lifecycle targets (`live-general`,
-`live-reviewer-rework`, `live-shape-to-build`) run on `default_route`, while
+`live-shape-to-build`) run on `default_route`; `live-reviewer-rework` names
+`optimum` explicitly and also audits the Developer's two native Sonnet 5.5
+helper dispatches from stream receipts. Every Build passes its frozen route to
+its verification children as `KOGEN_ROUTE`, while
 the Codex-only `live-native` owners always resolve the one route whose harness
 is `codex` (and fail, listing the candidates, when there is none or several).
 Re-proving a harness therefore means running those general targets with
@@ -802,7 +883,7 @@ route is `default_route`.
 ## Managed Claude Code runtime and login
 
 `mix kogen.claude.install` installs the exact Claude Code release pinned by this
-checkout (2.1.281) from the official npm registry into Kogen's managed root,
+checkout (2.1.285) from the official npm registry into Kogen's managed root,
 checking the pinned per-platform sha512 integrity, staging privately and
 publishing atomically. It never resolves latest, never uses a `claude` on PATH,
 and never writes to personal Claude Code locations such as `~/.local/share/claude`.
@@ -882,7 +963,8 @@ Kogen never answers it.
 Configured Claude Code models must appear in the model picker
 [`priv/kogen/claude_code/models.yaml`](priv/kogen/claude_code/models.yaml), which
 lists only models with retained evidence: `claude-opus-5-5` and `claude-sonnet-5`,
-each at efforts low, medium, high and xhigh. Haiku 4.5 is excluded because it does
+each at efforts low, medium, high and xhigh, and `claude-sonnet-5-5` at low and
+medium only, the efforts its retained native probes passed. Haiku 4.5 is excluded because it does
 not support the per-role effort Kogen configures. Kogen launches the exact
 configured model and effort, never a fallback model, and does not intercept
 provider requests. It records the model each response came from, including
@@ -921,6 +1003,8 @@ Device authorization still requires a human. `--project` selects a private proje
 Managed distributions, accounts, selectors, settings generations, sessions, and compatibility evidence live under `~/Library/Application Support/Kogen/codex`. Per-launch discovery homes exclude personal Codex settings while project guidance and tracked hooks remain available. Shell tools and hooks retain the caller's HOME and exact set/unset XDG semantics. Every managed Codex role and native helper launch carries one central `-c tool_output_token_limit=4000`, about Claude Code's Bash result cap, so a large tool result is not re-sent in full on every later step. Active operations retain their concrete runtime and session across Review and exact resume; new checkouts select their own pin.
 
 The `live-native` compatibility runner drives discovery, interactive Shaping, the Developer with its controller verification, and the exact Developer resume with its scout helper. The resume is driven by a fixed rework request held in the runner. The real Reviewer is proved by `live-reviewer-rework`, not by a scripted stand-in. The runner owns its own timing: it passes each native turn the unchanged 240 s limit explicitly, and the whole test must finish within 15 minutes. A `timed_out` attempt is rerun once in a fresh fixture, and only if a typical run still fits before that deadline. No other failure is retried. Both attempts' class, provider session ids, elapsed time and cleanup are kept in one repository-relative summary under `.kogen/runtime/codex-compatibility/`, which the test emits as its target evidence manifest.
+
+Discovery isolation is decided from structured observations, never from a model's absence statement. Bundled `.system` skills are classified against a provenance-bound inventory for the pinned runtime (version, platform, executable and tree digests); an unclassified name is `unproven`, a planted forbidden sentinel is `leak`, and a missing project sentinel fails. Account and remote plugin exclusion is a separate verdict per surface (`native_discovery`, `root`, `helper`, `resume`, `interactive`). Each `live-native` compatibility run produces its own fresh native observation (`Kogen.Codex.AccountObservation`, driver `priv/kogen/codex/compatibility/account_observation.py`): two bounded read-only `codex app-server` sessions on the pinned executable, the selected scope home, the same environment and fixture directory, one with exactly the production launch arguments (apps and plugins disabled) and one positive control with only those two flags enabled. They make no model turn or tool call and are reaped with their process group; secrets are dropped and the account is recorded only as a fingerprint. `native_discovery` is `excluded` only when the control shows enabled remote plugins in the native installed inventory (its catalog fetch may be unavailable) and the production session shows empty discovery, nothing enabled or callable and no installed plugin, both on the same runtime version, executable digest, server-reported scope home, account and launch binding, and fresh. The compatibility probe accepts only that verdict, from receipt files still matching their recorded digests; `leaked`, `unproven`, missing or tampered evidence refuses. The model-visible surfaces are reported as observed (normally `unproven`) and are not claimed; historical probe summaries are references, never acceptance. Bundled skill names never count as account leakage.
 
 When upgrading Kogen's pinned Codex runtime, follow the [Codex runtime upgrade workflow](workflows/codex-runtime-upgrade.md).
 
@@ -989,26 +1073,14 @@ long as logins need them to. Reads are never confined by this boundary.
 
 ### Shaping audit
 
-`mix kogen.audit [--route <name>] <slug>` audits one Draft or Approved package. `mix kogen.audit --status <slug>` reports `current`, `stale` (naming the changed HEAD or route), or `missing` without auditing again. Reports live under `.kogen/runtime/shaping-audits/<slug>/<revision>/` and include the package revision, HEAD, route, deterministic layer, findings, and readiness. The command exits `0` when the report is ready, `1` when findings remain open, and `2` for a usage error or refusal. Nothing under `.kogen/intents/` changes, and each private materialization is removed after the run. A report is never approval.
-
-## Context index (`kogen-ctx`)
-
-Rust 1.97.1 is required (pinned in `mise.toml`). Build the native binary with `mix kogen.ctx.build` or `mix kogen.ctx.build --offline` when the locked crates are cached. Run `kogen-ctx index [--root DIR]` to refresh the derived SQLite index, or `kogen-ctx search <query>... [--limit N] [--root DIR]` to refresh and search it. Output is one index/report line per change or one `<path>:<start>-<end> [kind] <snippet>` result per hit. The index is keyed by the canonical checkout path and lives under `KOGEN_CTX_HOME/<project-id>/index.sqlite`, or `$HOME/Library/Caches/Kogen/ctx/<project-id>/index.sqlite` by default. Refreshes compare Git blob IDs, queries refresh before answering, and corrupt, old-schema, or foreign-root files rebuild. Nothing is written into or committed from the checkout.
-
-The schema 2 index also supports `kogen-ctx symbols <query> [--limit N] [--root DIR]` and `kogen-ctx refs <target> [--limit N] [--root DIR]`. Symbols use case-sensitive substring matching and print `<path>:<line> <kind> <Module>.<fun>/<arity>` (or a module row); refs print alias, import, use, require, call, and capture rows. Alias resolution follows the parsed file's lexical module scopes, including nested modules, and is intentionally approximate. `kogen-ctx map [--tokens N] [--focus <path>]... [--root DIR]` prints a deterministic PageRank order of code-file symbol blocks. It runs 100 iterations with damping 0.85, redistributes dangling rank through the personalization vector, estimates tokens as block bytes divided by four, and stops at the first block that exceeds the budget. Old schema 1 indexes rebuild automatically. Placeholders such as `<Module>.<fun>/<arity>` and `<path>` describe output shapes without referring to a particular checkout.
-
-Run `kogen-ctx mcp [--root DIR]` to serve the `search`, `symbols`, `refs`, and `map` queries over newline-delimited JSON-RPC on stdio. Their arguments are the corresponding query or target, optional `limit`, `tokens`, and repeated `focus` paths. Successful tool text is byte-identical to the CLI stdout; failures return the CLI stderr with `isError` set. Every tool call refreshes the index. Register the server with `claude mcp add kogen-ctx -- <path> mcp`, using the executable path printed by `mix kogen.ctx.build`.
-
-### Shaping audit
-
 `mix kogen.audit [--route <name>] [--auditor] <slug>` audits one Draft or
 Approved package at `.kogen/intents/drafts/<slug>` (or `approved/<slug>`):
 deterministic checks, the blind auditor and Jev over the package's current
 revision (a SHA-256 over its sorted relative paths and bytes, taken under an
 `lstat` walk that refuses any symlink, FIFO or other non-regular entry
 before reading anything). `--auditor` launches a fresh auditor run when the
-per-`HEAD` bound allows one; without it the audit reuses whatever auditor
-record already exists. `mix kogen.audit --status [--route <name>] <slug>`
+per-`HEAD` bound allows one; plain `mix kogen.audit [--route <name>] <slug>`
+reuses whatever auditor record already exists. `mix kogen.audit --status [--route <name>] <slug>`
 recomputes the revision and `HEAD` and reports whether the stored report is
 `current`, `stale` (naming what changed) or `missing`, without auditing
 again. The command exits `0` when the report is ready, `1` when it is not
@@ -1078,8 +1150,8 @@ and `launch_auditor/4`:
 | Route | Auditor harness | Model | Effort |
 |---|---|---|---|
 | `claude` | claude | `claude-opus-5-5` | `high` |
-| `codex` | codex | `gpt-6-sol` | `high` |
-| `claude-dominant-adversarial-codex` | codex | `gpt-6-sol` | `high` |
+| `codex` | codex | `gpt-6.1-sol` | `high` |
+| `claude-dominant-adversarial-codex` | codex | `gpt-6.1-sol` | `high` |
 | `codex-dominant-adversarial-claude` | claude | `claude-opus-5-5` | `high` |
 
 The auditor is a separate profile from the Expert: it never shares the
@@ -1098,7 +1170,7 @@ make live-reviewer-rework # Build-only Reviewer rework acceptance
 make live-general         # Independent semantic Reviewer acceptance
 make live-shaping-quality # Provider-backed maintained Shaping evaluation
 make live-native          # Provider-backed native/runtime/helper compatibility
-make cold-offline          # Offline gate from an empty private build cache
+make cold-offline          # Diagnostic only: offline gate from an empty private build cache
 ```
 
 Fetch dependencies first. Python 3.11 or newer, `rsync`, and the macOS Command Line Tools (`xcrun clang`)
@@ -1106,9 +1178,19 @@ are also required for the offline gate and bounded subprocess probes.
 `make check` runs formatting, forced warnings-as-errors compilation,
 strict Credo, Boundary enforcement (including its compiler negative control), ordinary
 tests, and the complete fake lifecycle without provider requests. No dependency
-fetching or cached test results are used. The recipe reports each stage and the
-whole gate's elapsed time, including failures; roughly ten seconds is a warm-cache
-guideline, with no elapsed-time failure cutoff.
+fetching or cached test results are used. The same run first checks the staged
+managed runtime pins and enumerates the immutable admission-base (`HEAD`) non-live
+test IDs, then requires every one of them, every Candidate-added test, each
+catalog-derived rehearsal trace and each controlled prepare outcome to pass.
+Its one receipt under `.kogen/runtime/offline-results/` carries that proof beside
+whole-gate and per-stage timing, host and cache conditions and the slowest stages
+and tests. Timing is diagnostic only: `check` has no elapsed-time failure cutoff,
+and no second warm run repeats it. The controller runs `check` fresh on every
+Candidate revision. Its focused cold setup/dependency regression
+(`test/kogen/cold_offline_test.exs`) proves that base enumeration reuses the
+installed builds under `MIX_BUILD_PATH` with complete sources and headers instead
+of recompiling them. The standalone `cold-offline` empty-cache suite is for explicit
+diagnosis only and is never a second routine full suite.
 
 All test modules run asynchronously. Cases that mutate cwd or environment execute
 in private OS processes using the current compiled application and dependency code;
@@ -1122,8 +1204,8 @@ instead of retaining writable aliases to installed dependencies.
 See [the check workflow](scripts/check/README.md) for maintenance and timing conditions.
 
 The provider-backed lifecycle targets are narrow owner routes, not a complete suite. They
-run on `default_route`'s harness only and require network access, its installed runtime
-and Kogen login, `expect`, and `rsync`; create disposable
+resolve each launched role through the selected route and require network access, its installed runtimes
+and Kogen logins, `expect`, and `rsync`; create disposable
 fixtures; and retains evidence under `.kogen/runtime/`. It covers real failed-check
 correction, exact Developer resume, reviewer-directed rework, and fresh independent
 Review. The Build-only Reviewer-rework fixture creates its project in a
@@ -1131,7 +1213,7 @@ canonical (symlink-resolved) directory under the system temporary directory,
 outside the checkout, asserts that before the nested Build together with a
 logged-in Kogen Claude Code scope, and retains its records, sidecars, review
 packets, Complete package and a review-packet audit summary (including
-per-Review elapsed seconds) in the owned log directory. Separately selected `make cold-offline` owns the empty-cache offline run. Set
+per-Review elapsed seconds) in the owned log directory. The diagnostic-only `make cold-offline` owns the empty-cache offline run. Set
 `KOGEN_LIVE_LOG_DIR` to retain lifecycle or cold evidence elsewhere.
 
 ## Project and contact

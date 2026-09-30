@@ -3,15 +3,21 @@ defmodule Kogen.Build.ReviewPacket do
   The bounded, Candidate-bound evidence a fresh Reviewer starts from.
 
   Before each Review the controller writes one immutable packet per attempt
-  next to the tracking record. It is canonical JSON (keys sorted) and never
-  larger than #{65_536} bytes. Long string fields are cut at a UTF-8 boundary
+  next to the tracking record. It is canonical JSON (keys sorted) and aims to
+  stay within #{65_536} bytes. Long string fields are cut at a UTF-8 boundary
   with a per-field cap; a cut or left-out value is replaced by a stub carrying
   the SHA-256 and byte count of the full source and a JSON pointer into the
   record, and is listed in `omitted`. Serialized JSON is never byte-sliced.
   The scenario, risk and open finding ids are always present, and so is one
   complete index entry per verification-surface ledger item (its full diff
-  stays a retained file cited by locator and sha256, never inlined): if they
-  alone cannot fit, building fails instead of dropping them.
+  stays a retained file cited by locator and sha256, never inlined). If the
+  required ids and index still exceed the target after all profiles shrink,
+  the smallest packet keeps them intact and may exceed the target.
+
+  `repair_disclosures` is a separate section for controller-derived extra
+  paths, their hunks, and the supplied rationale and failure context. Large
+  sections keep a digest-bound locator into the attempt record. Legacy
+  attempts without this section are represented as an empty disclosure.
 
   `guard_violations` carries one object per latest-attempt guard rework the
   controller recorded, with the paths inlined as the longest whole-path
@@ -30,16 +36,53 @@ defmodule Kogen.Build.ReviewPacket do
 
   @keys ~w(schema_version build_id attempt_number attempt_token candidate_id scenario_ids
            risk_ids handoff developer_notes receipts open_findings superseded_objection
-           verification_ledger base_suite guard_violations omitted record)
+           verification_ledger base_suite guard_violations repair_disclosures
+           verification_disclosures omitted record)
 
   # Tried in order until the whole packet fits. The first profile holds the
   # per-field caps; later profiles only tighten them, and the last one keeps
   # nothing beyond the required ids and digest-bound stubs.
   @profiles [
-    %{notes: 16_384, output: 2_048, handoff: 24_576, finding: 8_192, guard_paths: 4_096},
-    %{notes: 8_192, output: 1_024, handoff: 12_288, finding: 2_048, guard_paths: 2_048},
-    %{notes: 2_048, output: 256, handoff: 2_048, finding: 256, guard_paths: 512},
-    %{notes: 0, output: 0, handoff: 0, finding: 0, guard_paths: 0}
+    %{
+      notes: 16_384,
+      output: 2_048,
+      handoff: 24_576,
+      finding: 8_192,
+      guard_paths: 4_096,
+      repair_hunks: 16_384,
+      repair_section: 32_768,
+      repair_rationale: 4_096
+    },
+    %{
+      notes: 8_192,
+      output: 1_024,
+      handoff: 12_288,
+      finding: 2_048,
+      guard_paths: 2_048,
+      repair_hunks: 8_192,
+      repair_section: 16_384,
+      repair_rationale: 2_048
+    },
+    %{
+      notes: 2_048,
+      output: 256,
+      handoff: 2_048,
+      finding: 256,
+      guard_paths: 512,
+      repair_hunks: 2_048,
+      repair_section: 4_096,
+      repair_rationale: 512
+    },
+    %{
+      notes: 0,
+      output: 0,
+      handoff: 0,
+      finding: 0,
+      guard_paths: 0,
+      repair_hunks: 0,
+      repair_section: 0,
+      repair_rationale: 0
+    }
   ]
 
   @inner_caps [4_096, 1_024, 256, 64]
@@ -48,7 +91,7 @@ defmodule Kogen.Build.ReviewPacket do
 
   @record_use "audit locator only: start from this packet and never dump the whole record; open a record section only through a locator named here"
 
-  @doc "The packet byte bound."
+  @doc "The preferred packet byte target; mandatory content may exceed it."
   def limit, do: @limit
 
   @doc "The exact top-level packet keys."
@@ -59,7 +102,8 @@ defmodule Kogen.Build.ReviewPacket do
   record map), `:record_path`, `:record_bytes`, `:candidate_id` and
   `:open_findings` (the open finding ids). The packet is bound to the
   record's latest attempt, whose `verification_ledger` and `base_suite` it
-  carries when present.
+  carries when present. `verification_disclosures` is controller-generated
+  advisory context and remains complete in the packet.
   """
   @spec build(map()) :: {:ok, binary()} | {:error, String.t()}
   def build(input) do
@@ -67,45 +111,98 @@ defmodule Kogen.Build.ReviewPacket do
     index = length(record["attempts"]) - 1
     attempt = List.last(record["attempts"])
 
-    result =
+    compact =
       Enum.find_value(@profiles, fn profile ->
         bytes = input |> packet(record, index, attempt, profile) |> encode()
         if byte_size(bytes) <= @limit, do: bytes
       end)
 
-    case result do
-      nil ->
-        {:error,
-         "review packet integrity failure: the required scenario, risk and open finding ids alone exceed #{@limit} bytes"}
-
-      bytes ->
-        {:ok, bytes}
-    end
+    bytes = compact || input |> packet(record, index, attempt, List.last(@profiles)) |> encode()
+    {:ok, bytes}
   end
 
   @doc """
-  Writes packet bytes once, with exclusive create, at
-  `<record dir>/review-packets/<attempt-number>.json` and returns the binding
-  the controller keeps in its state and in the attempt.
+  Writes packet bytes atomically at
+  `<record dir>/review-packets/<number>.json` and returns the binding the
+  controller keeps in its state and in the attempt. The bytes go to a
+  temporary file that is hard-linked into place, so a packet is never seen
+  half-written and an existing name is never replaced. Writing identical
+  bytes to an existing name is an idempotent success; different bytes are
+  refused as an integrity failure.
   """
-  @spec write(Path.t(), non_neg_integer(), binary(), String.t(), String.t(), Path.t()) ::
+  @spec write(
+          Path.t(),
+          non_neg_integer() | String.t(),
+          binary(),
+          String.t(),
+          String.t(),
+          Path.t()
+        ) ::
           {:ok, map()} | {:error, String.t()}
   def write(record_path, number, bytes, token, candidate_id, root \\ File.cwd!()) do
+    case write_named(record_path, number, bytes, token, candidate_id, root) do
+      {:error, {:conflict, path}} ->
+        {:error, "review packet integrity failure: #{path} already exists with different bytes"}
+
+      other ->
+        other
+    end
+  end
+
+  defp write_named(record_path, number, bytes, token, candidate_id, root) do
     directory = Path.join(Path.dirname(record_path), @directory)
     path = Path.join(directory, "#{number}.json")
 
     with :ok <- owned_directory(directory),
-         :ok <- exclusive_write(path, bytes) do
-      {:ok,
-       %{
-         "path" => Path.relative_to(Path.expand(path), Path.expand(root)),
-         "sha256" => sha256(bytes),
-         "byte_count" => byte_size(bytes),
-         "attempt_token" => token,
-         "candidate_id" => candidate_id
-       }}
+         :ok <- atomic_write(path, bytes) do
+      {:ok, binding(path, bytes, token, candidate_id, root)}
     end
   end
+
+  @doc """
+  Writes the packet of one Review launch under a name unique by
+  construction: the first name in `<index>`, `<index>-<label>`,
+  `<index>-<label>-2`, ... that is free on disk, or that already holds
+  exactly these bytes (an idempotent rerun). The directory itself is the
+  source of truth, never controller state that can lag behind a crashed
+  Reviewer: a leftover packet from a launch that never recorded its
+  binding keeps its bytes under its own name, and this launch is written
+  beside it.
+  """
+  @spec write_unique(
+          Path.t(),
+          non_neg_integer(),
+          String.t(),
+          binary(),
+          String.t(),
+          String.t(),
+          Path.t()
+        ) :: {:ok, map()} | {:error, String.t()}
+  def write_unique(record_path, index, label, bytes, token, candidate_id, root) do
+    names =
+      Stream.concat(
+        [index, "#{index}-#{label}"],
+        Stream.map(2..1_000, &"#{index}-#{label}-#{&1}")
+      )
+
+    Enum.reduce_while(names, {:error, "review packet names exhausted for #{index}-#{label}"}, fn
+      name, acc ->
+        case write_named(record_path, name, bytes, token, candidate_id, root) do
+          {:ok, binding} -> {:halt, {:ok, binding}}
+          {:error, {:conflict, _path}} -> {:cont, acc}
+          {:error, _reason} = error -> {:halt, error}
+        end
+    end)
+  end
+
+  defp binding(path, bytes, token, candidate_id, root),
+    do: %{
+      "path" => Path.relative_to(Path.expand(path), Path.expand(root)),
+      "sha256" => sha256(bytes),
+      "byte_count" => byte_size(bytes),
+      "attempt_token" => token,
+      "candidate_id" => candidate_id
+    }
 
   @doc """
   Confirms that a written packet still has exactly its bound bytes. Its
@@ -188,6 +285,7 @@ defmodule Kogen.Build.ReviewPacket do
     {receipts, receipt_omitted} = receipts(attempt, base, profile.output)
     {findings, finding_omitted} = findings(record, input.open_findings, profile.finding)
     {guard_violations, guard_omitted} = guard_violations(attempt, base, profile.guard_paths)
+    {repair_disclosures, repair_omitted} = repair_disclosures(attempt, base, profile)
 
     %{
       "schema_version" => @schema_version,
@@ -205,10 +303,16 @@ defmodule Kogen.Build.ReviewPacket do
       "verification_ledger" => ledger_index(attempt["verification_ledger"], base),
       "base_suite" => attempt["base_suite"],
       "guard_violations" => guard_violations,
+      "repair_disclosures" => repair_disclosures,
+      "verification_disclosures" => Map.get(input, :verification_disclosures, %{}),
       "omitted" =>
         handoff_omitted ++
           notes_omitted ++
-          receipt_omitted ++ finding_omitted ++ guard_omitted ++ left_out(record, index),
+          receipt_omitted ++
+          finding_omitted ++
+          guard_omitted ++
+          repair_omitted ++
+          left_out(record, index),
       "record" => %{
         "path" => input.record_path,
         "byte_count" => byte_size(input.record_bytes),
@@ -296,7 +400,8 @@ defmodule Kogen.Build.ReviewPacket do
         receipt
         |> Map.take(
           ~w(target status exit_code candidate_id attempt_token session_id developer_session_id
-             cycle_sequence finished_at log_path log_sha256 cleanup reused_from)
+             cycle_sequence finished_at log_path log_sha256 cleanup reused_from
+             attempts flaky)
         )
         |> Map.merge(%{
           "output_sha256" => sha256(output),
@@ -360,6 +465,174 @@ defmodule Kogen.Build.ReviewPacket do
     end)
     |> Enum.unzip()
     |> then(fn {items, omitted} -> {items, List.flatten(omitted)} end)
+  end
+
+  # Extra-path repairs have a distinct Review section. Whole hunks remain in
+  # the tracking record; only the inline copy is tightened to the packet
+  # profile. If the section itself is too large, it keeps a whole-item prefix
+  # and a digest-bound locator to the complete controller-derived section.
+  defp repair_disclosures(attempt, base, profile) do
+    source = attempt["repair_disclosures"] || %{"items" => []}
+    raw_items = Map.get(source, "items", [])
+    disclosure_locator = base <> "/repair_disclosures"
+    digest = sha256(encode(source))
+    byte_count = byte_size(encode(source))
+
+    rationale_source =
+      Map.get(source, "developer_rationale") ||
+        get_in(attempt, ["developer_notes", "text"])
+
+    rationale_locator =
+      if Map.has_key?(source, "developer_rationale"),
+        do: disclosure_locator <> "/developer_rationale",
+        else: base <> "/developer_notes/text"
+
+    {rationale, rationale_omitted} =
+      if raw_items == [] or rationale_source == nil do
+        {nil, []}
+      else
+        fit(
+          rationale_source,
+          rationale_locator,
+          "/repair_disclosures/developer_rationale",
+          profile.repair_rationale,
+          :head
+        )
+      end
+
+    {items, item_omitted} =
+      raw_items
+      |> Enum.with_index()
+      |> Enum.map(fn {item, index} ->
+        repair_disclosure_item(item, disclosure_locator, index, profile.repair_hunks)
+      end)
+      |> Enum.unzip()
+
+    full_section = %{
+      "item_count" => length(raw_items),
+      "items" => items,
+      "developer_rationale" => rationale
+    }
+
+    if byte_size(encode(full_section)) <= profile.repair_section do
+      {full_section, rationale_omitted ++ List.flatten(item_omitted)}
+    else
+      stub_section = %{
+        "item_count" => length(raw_items),
+        "items" => [],
+        "developer_rationale" => rationale,
+        "truncated" => true,
+        "sha256" => digest,
+        "byte_count" => byte_count,
+        "locator" => disclosure_locator
+      }
+
+      prefix = repair_item_prefix(items, stub_section, profile.repair_section)
+      section = Map.put(stub_section, "items", prefix)
+
+      {section,
+       [omission("/repair_disclosures", disclosure_locator, digest, byte_count)] ++
+         (item_omitted |> Enum.take(length(prefix)) |> List.flatten()) ++
+         rationale_omitted}
+    end
+  end
+
+  defp repair_disclosure_item(item, base, index, cap) do
+    item = if is_map(item), do: item, else: %{}
+    item_locator = "#{base}/items/#{index}"
+
+    {hunks, hunks_omitted} =
+      disclosure_hunks(item, item_locator, cap)
+
+    {reason, reason_omitted} =
+      fit(
+        Map.get(item, "reason", "unknown"),
+        item_locator <> "/reason",
+        "/repair_disclosures/items/#{index}/reason",
+        1_024,
+        :head
+      )
+
+    {relationship, relationship_omitted} =
+      fit(
+        Map.get(item, "feature_relationship", "unknown"),
+        item_locator <> "/feature_relationship",
+        "/repair_disclosures/items/#{index}/feature_relationship",
+        1_024,
+        :head
+      )
+
+    {failure, failure_omitted} =
+      fit(
+        Map.get(item, "failure_evidence", "unknown"),
+        item_locator <> "/failure_evidence",
+        "/repair_disclosures/items/#{index}/failure_evidence",
+        1_024,
+        :head
+      )
+
+    display_path =
+      case Map.get(item, "path", "unknown") do
+        path when is_binary(path) ->
+          if(String.valid?(path), do: path, else: "base64:" <> Base.encode64(path))
+
+        other ->
+          inspect(other)
+      end
+
+    output = %{
+      "path" => display_path,
+      "reason" => reason,
+      "feature_relationship" => relationship,
+      "failure_evidence" => failure,
+      "hunks_sha256" => Map.get(item, "hunks_sha256"),
+      "hunks_byte_count" => Map.get(item, "hunks_byte_count")
+    }
+
+    output = Map.merge(output, hunks)
+
+    {output, hunks_omitted ++ reason_omitted ++ relationship_omitted ++ failure_omitted}
+  end
+
+  defp disclosure_hunks(item, locator, cap) do
+    cond do
+      is_binary(item["hunks"]) ->
+        {fitted, omitted} =
+          fit(
+            item["hunks"],
+            locator <> "/hunks",
+            "/repair_disclosures/hunks",
+            cap,
+            :head
+          )
+
+        {%{"hunks" => fitted}, omitted}
+
+      is_binary(item["hunks_base64"]) ->
+        {fitted, omitted} =
+          fit(
+            item["hunks_base64"],
+            locator <> "/hunks_base64",
+            "/repair_disclosures/hunks_base64",
+            cap,
+            :head
+          )
+
+        {%{"hunks_base64" => fitted}, omitted}
+
+      true ->
+        {%{"hunks" => "unknown"}, []}
+    end
+  end
+
+  defp repair_item_prefix(items, section, budget) do
+    Enum.reduce_while(items, [], fn item, kept ->
+      candidate = Map.put(section, "items", kept ++ [item])
+
+      if byte_size(encode(candidate)) <= budget,
+        do: {:cont, kept ++ [item]},
+        else: {:halt, kept}
+    end)
   end
 
   # The longest prefix of whole paths whose canonical JSON array fits `cap`:
@@ -542,8 +815,24 @@ defmodule Kogen.Build.ReviewPacket do
     end
   end
 
-  defp exclusive_write(path, bytes) do
-    case File.open(path, [:write, :exclusive, :binary]) do
+  defp atomic_write(path, bytes) do
+    temp = "#{path}.#{System.unique_integer([:positive])}.tmp"
+
+    try do
+      with :ok <- write_synced(temp, bytes) do
+        case :file.make_link(String.to_charlist(temp), String.to_charlist(path)) do
+          :ok -> :ok
+          {:error, :eexist} -> same_bytes(path, bytes)
+          {:error, reason} -> {:error, "could not create review packet: #{inspect(reason)}"}
+        end
+      end
+    after
+      File.rm(temp)
+    end
+  end
+
+  defp write_synced(temp, bytes) do
+    case File.open(temp, [:write, :exclusive, :binary]) do
       {:ok, io} ->
         try do
           with :ok <- IO.binwrite(io, bytes), :ok <- :file.sync(io) do
@@ -555,11 +844,18 @@ defmodule Kogen.Build.ReviewPacket do
           File.close(io)
         end
 
-      {:error, :eexist} ->
-        {:error, "review packet integrity failure: #{path} already exists"}
-
       {:error, reason} ->
         {:error, "could not create review packet: #{inspect(reason)}"}
+    end
+  end
+
+  # An existing packet is success only when it holds exactly these bytes.
+  # `{:conflict, path}` lets `write_unique/7` move to the next name; a direct
+  # `write/6` caller sees it as an integrity failure through `write/6`.
+  defp same_bytes(path, bytes) do
+    case File.read(path) do
+      {:ok, ^bytes} -> :ok
+      _other -> {:error, {:conflict, path}}
     end
   end
 

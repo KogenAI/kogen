@@ -92,6 +92,82 @@ defmodule Kogen.BuildEvidenceTest do
     assert_version_2_record_resolves!()
   end
 
+  test "validates verification-state and fixed-file artifact sidecars" do
+    root = Path.join(System.tmp_dir!(), "kogen-artifacts-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(root) end)
+    tracking_dir = Path.join(root, ".kogen/runtime/scenario-tracking/build-artifacts")
+    artifacts_dir = Path.join(tracking_dir, "artifacts")
+    File.mkdir_p!(artifacts_dir)
+    record_path = Path.join(tracking_dir, "record.json")
+
+    state_bytes = "verification state"
+    proof_bytes = "proof file"
+    state_sha = sha256(state_bytes)
+    proof_sha = sha256(proof_bytes)
+    File.write!(Path.join(artifacts_dir, state_sha <> ".bin"), state_bytes)
+    File.write!(Path.join(artifacts_dir, proof_sha <> ".bin"), proof_bytes)
+
+    attempt = %{
+      "number" => 0,
+      "attempt_token" => "artifact-token",
+      "status" => "accepted",
+      "developer_session_id" => "artifact-developer",
+      "reviewer_session" => "artifact-reviewer",
+      "candidate_id" => "artifact-candidate",
+      "verification_state" => %{
+        "file" => "state.json",
+        "sha256" => state_sha,
+        "byte_count" => byte_size(state_bytes),
+        "binding" => "verification_state",
+        "sidecar" => Path.relative_to(Path.join(artifacts_dir, state_sha <> ".bin"), root)
+      },
+      "reference_snapshots" => %{
+        "proof.txt" => %{
+          "path" => "proof.txt",
+          "sha256" => proof_sha,
+          "byte_count" => byte_size(proof_bytes),
+          "binding" => "fixed_file",
+          "sidecar" => Path.relative_to(Path.join(artifacts_dir, proof_sha <> ".bin"), root)
+        }
+      }
+    }
+
+    record =
+      Jason.encode!(%{
+        "schema_version" => 2,
+        "intent" => %{"id" => "artifacts"},
+        "attempts" => [attempt]
+      })
+
+    File.write!(record_path, record)
+
+    summary_path = Path.join(root, "build-summary.json")
+
+    summary = %{
+      "format" => "kogen-build-summary",
+      "schema_version" => 1,
+      "intent" => %{"id" => "artifacts"},
+      "build_id" => "build-artifacts",
+      "candidate_id" => "artifact-candidate",
+      "developer_session_id" => "artifact-developer",
+      "attempts" => [Map.put(attempt, "reviewer_session_id", "artifact-reviewer")],
+      "full_record" => %{
+        "format" => "kogen-scenario-tracking-record",
+        "schema_version" => 2,
+        "path" => Path.relative_to(record_path, root),
+        "sha256" => sha256(record),
+        "byte_count" => byte_size(record)
+      }
+    }
+
+    write_summary!(summary_path, summary)
+    assert {:ok, _record} = Evidence.resolve(summary_path, root)
+
+    File.write!(Path.join(artifacts_dir, state_sha <> ".bin"), state_bytes <> "!")
+    assert {:error, reason} = Evidence.resolve(summary_path, root)
+    assert reason =~ "retained artifact sidecar mismatch"
+  end
+
   # Version 2 records add the Developer notes, Jev evidence and the
   # controller-built report; version 1 records above stay readable.
   defp assert_version_2_record_resolves! do

@@ -13,13 +13,29 @@ defmodule Kogen.LifecycleTest do
   """
   use ExUnit.Case, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   @moduletag :lifecycle
   @moduletag timeout: 300_000
 
   @slug "fake-shaped-intent"
 
+  test "in-flight tracking reads retry incomplete JSON while settled reads stay strict" do
+    dest = Path.join(System.tmp_dir!(), "kogen-live-record-#{System.unique_integer([:positive])}")
+    record_path = Path.join(dest, ".kogen/runtime/scenario-tracking/build/record.json")
+    File.mkdir_p!(Path.dirname(record_path))
+    on_exit(fn -> File.rm_rf(dest) end)
+
+    File.write!(record_path, "")
+    assert live_candidate_record(dest) == nil
+    assert_raise Jason.DecodeError, fn -> Kogen.CandidateFixture.records(dest) end
+
+    File.write!(record_path, ~s({"candidate":{"harness_home":"/fixture/harness"}}))
+    assert live_candidate_record(dest) == %{"harness_home" => "/fixture/harness"}
+  end
+
   test "public Shape, explicit fixture approval and public Build form one offline lifecycle; candidate-routing and same-candidate-rework hold" do
-    src = File.cwd!()
+    src = @project_root
     dest = Kogen.CompiledFixture.create!(src, "lifecycle")
     copy_launch_receipt!(src, dest)
 
@@ -85,9 +101,16 @@ defmodule Kogen.LifecycleTest do
     # home; the worktree existed exactly once (removed by publication), never
     # a second one.
     developer_receipts = Kogen.CandidateFixture.receipts(dest, "developer", [])
-    reviewer_receipts = Kogen.CandidateFixture.receipts(dest, "reviewer", [])
+    # Each evidence addendum resumes its Reviewer's own session; it is not
+    # a Reviewer launch.
+    {addendum_receipts, reviewer_receipts} =
+      dest
+      |> Kogen.CandidateFixture.receipts("reviewer", [])
+      |> Enum.split_with(&("resume" in &1["argv"] or "--resume" in &1["argv"]))
+
     assert length(developer_receipts) == 3
     assert length(reviewer_receipts) == 2
+    assert addendum_receipts != []
 
     harness_home = Kogen.CandidateFixture.harness_home(dest)
 
@@ -131,10 +154,17 @@ defmodule Kogen.LifecycleTest do
     assert trailer_out =~ "Kogen-Intent-ID: #{intent_id}"
     assert trailer_out =~ "Kogen-Intent: #{@slug}"
 
-    log_lines =
+    # Every evidence addendum resumes a Reviewer's own session
+    # (`exec resume reviewer-session-N`); it is not a Developer or Reviewer
+    # launch and is asserted apart.
+    {addendum_lines, log_lines} =
       Kogen.CandidateFixture.fake_state(dest, "fake-harness-log")
       |> File.read!()
       |> String.split("\n", trim: true)
+      |> Enum.split_with(&String.contains?(&1, "exec resume reviewer-session-"))
+
+    assert addendum_lines != []
+    assert Enum.all?(addendum_lines, &String.contains?(&1, "--output-schema"))
 
     # The initial attempt's first controller verification cycle fails at
     # `check` while the ignored `kogen_fake_break` marker exists; the
@@ -376,8 +406,8 @@ defmodule Kogen.LifecycleTest do
     hybrid:
       shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
       developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
-      expert:    {harness: codex, model: gpt-6-sol, effort: high}
+      reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+      expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
       helpers:
         claude:
           scout:  {model: claude-sonnet-5, effort: low}
@@ -418,7 +448,7 @@ defmodule Kogen.LifecycleTest do
     "route" => "hybrid",
     "caller" => "developer",
     "harness" => "codex",
-    "model" => "gpt-6-sol",
+    "model" => "gpt-6.1-sol",
     "effort" => "high",
     "helpers" => %{
       "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
@@ -429,8 +459,8 @@ defmodule Kogen.LifecycleTest do
   @frozen_role_assignment %{
     "shaping" => %{"harness" => "claude", "model" => "claude-opus-5-5", "effort" => "medium"},
     "developer" => %{"harness" => "claude", "model" => "claude-opus-5-5", "effort" => "medium"},
-    "reviewer" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
-    "expert" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+    "reviewer" => %{"harness" => "codex", "model" => "gpt-6.1-sol", "effort" => "high"},
+    "expert" => %{"harness" => "codex", "model" => "gpt-6.1-sol", "effort" => "high"},
     "helpers" => %{
       "claude" => %{
         "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
@@ -439,13 +469,13 @@ defmodule Kogen.LifecycleTest do
       "codex" => %{
         "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
         "worker" => %{"model" => "gpt-6-luna", "effort" => "high"},
-        "expert" => %{"model" => "gpt-6-sol", "effort" => "high"}
+        "expert" => %{"model" => "gpt-6.1-sol", "effort" => "high"}
       }
     }
   }
 
   test "a hybrid route launches the Developer on Claude Code and Review on Codex, resumes exactly, and freezes the role matrix" do
-    project_root = File.cwd!()
+    project_root = @project_root
     dest = Kogen.CompiledFixture.create!(project_root, "hybrid-lifecycle")
     copy_launch_receipt!(project_root, dest)
     on_exit(fn -> File.rm_rf(dest) end)
@@ -517,7 +547,13 @@ defmodule Kogen.LifecycleTest do
     # shell environment (never set by Kogen code for readiness checks) could
     # otherwise mislabel the unrelated `claude auth status` readiness call.
     developer_lines = Enum.filter(dispatch_lines, &String.contains?(&1, "argv: -p"))
-    reviewer_lines = Enum.filter(dispatch_lines, &String.contains?(&1, "argv: exec"))
+    # A Reviewer's evidence addendum (`exec resume`) is not a Reviewer turn.
+    {addendum_lines, reviewer_lines} =
+      dispatch_lines
+      |> Enum.filter(&String.contains?(&1, "argv: exec"))
+      |> Enum.split_with(&String.contains?(&1, "argv: exec resume"))
+
+    assert addendum_lines != []
 
     assert length(developer_lines) == 2, "expected exactly a fresh and a resumed Developer turn"
 
@@ -552,7 +588,7 @@ defmodule Kogen.LifecycleTest do
 
     for line <- reviewer_lines do
       assert line =~ "argv: exec", "the Reviewer must always run the Codex protocol"
-      assert line =~ "--model gpt-6-sol"
+      assert line =~ "--model gpt-6.1-sol"
       assert line =~ ~s(model_reasoning_effort=\"high\")
       assert line =~ "--dangerously-bypass-approvals-and-sandbox"
       assert line =~ "--output-schema"
@@ -617,7 +653,7 @@ defmodule Kogen.LifecycleTest do
              "harness" => "claude",
              "shaping" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
              "developer" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
-             "reviewer" => %{"model" => "gpt-6-sol", "effort" => "high"},
+             "reviewer" => %{"model" => "gpt-6.1-sol", "effort" => "high"},
              "helpers" => %{
                "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
                "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
@@ -633,7 +669,7 @@ defmodule Kogen.LifecycleTest do
     # Every role view derived for a launch after the edit comes from the
     # frozen role_assignment: the Expert assignment and each harness's native
     # helper profiles.
-    {:ok, mutated} = File.cd!(dest, fn -> Kogen.Intent.read_config(".kogen/config.yaml") end)
+    {:ok, mutated} = Kogen.Intent.read_config(Path.join(dest, ".kogen/config.yaml"))
     refute Map.has_key?(mutated, :auditor)
     refute Map.has_key?(mutated.roles, :auditor)
     frozen = Kogen.Build.assigned_config(mutated, record)
@@ -681,7 +717,7 @@ defmodule Kogen.LifecycleTest do
   # A role failure names the role's frozen harness, model and effort, even
   # after a mid-Build edit moved that role to another harness and profile.
   test "a failing hybrid Reviewer's stop reason names its frozen harness, model and effort" do
-    project_root = File.cwd!()
+    project_root = @project_root
     dest = Kogen.CompiledFixture.create!(project_root, "hybrid-failure")
     copy_launch_receipt!(project_root, dest)
     on_exit(fn -> File.rm_rf(dest) end)
@@ -723,7 +759,7 @@ defmodule Kogen.LifecycleTest do
              @hybrid_config_mutated
 
     assert output =~ "Reviewer failure: "
-    assert output =~ "(reviewer on harness codex, gpt-6-sol at high)"
+    assert output =~ "(reviewer on harness codex, gpt-6.1-sol at high)"
     refute output =~ "reviewer on harness claude"
     refute File.dir?(Path.join(dest, ".kogen/intents/complete/#{@hybrid_slug}"))
   end
@@ -773,11 +809,11 @@ defmodule Kogen.LifecycleTest do
 
   defp await_harness_home!(dest, attempts \\ 1500) do
     # Records unrelated to a Build (e.g. a prior `mix kogen.shape`) carry no
-    # `candidate` block; find the Build's own record specifically.
-    dest
-    |> Kogen.CandidateFixture.records()
-    |> Enum.reverse()
-    |> Enum.find_value(&Map.get(&1, "candidate"))
+    # `candidate` block; find the Build's own record specifically. The
+    # controller can be rewriting record.json while this polling task reads
+    # it, so a transient incomplete read means "not ready yet" here. Settled
+    # reads through CandidateFixture.records/1 remain strict.
+    live_candidate_record(dest)
     |> case do
       nil when attempts > 0 ->
         Process.sleep(20)
@@ -789,6 +825,16 @@ defmodule Kogen.LifecycleTest do
       candidate ->
         Map.fetch!(candidate, "harness_home")
     end
+  end
+
+  defp live_candidate_record(dest) do
+    dest
+    |> Kogen.CandidateFixture.records()
+    |> Enum.reverse()
+    |> Enum.find_value(&Map.get(&1, "candidate"))
+  rescue
+    Jason.DecodeError -> nil
+    File.Error -> nil
   end
 
   defp await_file!(path, attempts \\ 1500) do
@@ -876,7 +922,7 @@ defmodule Kogen.LifecycleTest do
   end
 
   defp install_target_evidence_fixture!(dest) do
-    source = File.cwd!()
+    source = @project_root
 
     for relative <- [
           "test/test_helper.exs",
@@ -1017,7 +1063,8 @@ defmodule Kogen.LifecycleTest do
         assert prompt =~ "continue accepting steering while helpers work"
 
       :developer ->
-        assert prompt =~ "non-overlapping paths within `may_change_guarded_paths`"
+        assert prompt =~ "A worker may edit only explicitly assigned, non-overlapping paths"
+        assert prompt =~ "even when absent from the predicted path list"
         assert prompt =~ "No helper may edit either of those protected inputs"
         assert prompt =~ "Wait for every child before Candidate capture"
         assert prompt =~ "run or delegate a declared verification gate"

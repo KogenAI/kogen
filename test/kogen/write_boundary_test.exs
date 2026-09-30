@@ -291,6 +291,7 @@ defmodule Kogen.WriteBoundaryTest do
                )
 
       other = Candidate.candidate(control)
+      reapprove_fixture!(control)
       tmp_alias = "/tmp/" <> Path.basename(sentinel)
       File.ln_s!(sentinel, tmp_alias)
       on_exit(fn -> File.rm(tmp_alias) end)
@@ -340,6 +341,15 @@ defmodule Kogen.WriteBoundaryTest do
       }
     end
 
+    defp reapprove_fixture!(control) do
+      draft = Path.join(control, ".kogen/intents/drafts/#{@slug}")
+      approved = Path.join(control, ".kogen/intents/approved/#{@slug}")
+      File.rename!(draft, approved)
+      intent = Path.join(approved, "intent.yaml")
+      File.write!(intent, String.replace(File.read!(intent), "status: draft", "status: approved"))
+      File.write!(Path.join(approved, "approval.md"), "Explicit fixture reapproval.\n", [:append])
+    end
+
     test "the Build is accepted and published although every role ran inside the boundary",
          %{result: result, record: record} do
       assert result == :ok
@@ -350,9 +360,12 @@ defmodule Kogen.WriteBoundaryTest do
          %{record: record, receipts: receipts} do
       sha = record["boundary"]["profile_sha256"]
       assert record["boundary"]["mode"] == "applied"
-      roles = Enum.map(receipts, & &1["role"])
-      assert Enum.count(roles, &(&1 == "developer")) == 3
-      assert Enum.count(roles, &(&1 == "reviewer")) == 2
+      regular = Enum.filter(receipts, &(&1["turn_kind"] == "regular"))
+      addenda = Enum.filter(receipts, &(&1["turn_kind"] == "evidence_addendum"))
+      regular_roles = Enum.map(regular, & &1["role"])
+      assert Enum.count(regular_roles, &(&1 == "developer")) == 3
+      assert Enum.count(regular_roles, &(&1 == "reviewer")) == 2
+      assert Enum.map(addenda, & &1["role"]) == ["reviewer", "reviewer"]
 
       for receipt <- receipts do
         assert receipt["write_boundary"] == sha
@@ -411,10 +424,20 @@ defmodule Kogen.WriteBoundaryTest do
       end
     end
 
-    test "a background child that outlives its role is still refused", %{receipts: receipts} do
+    test "a background child that outlives its role is still refused", %{
+      receipts: receipts,
+      sentinel: sentinel
+    } do
       for receipt <- receipts do
         path = receipt["results"]["background_child"]["result_path"]
-        assert wait_for(path) == "1\n", "background child of #{receipt["role"]} was not refused"
+
+        # Process custody may reap the descendant before its delayed write.
+        # A child that finishes must report EPERM; either way it must leave no
+        # write in the protected sentinel.
+        assert wait_for(path, System.monotonic_time(:millisecond) + 2_000) in ["1\n", :enoent],
+               "background child of #{receipt["role"]} was not refused or reaped"
+
+        refute File.exists?(Path.join(sentinel, Path.basename(path)))
       end
     end
 
@@ -474,7 +497,11 @@ defmodule Kogen.WriteBoundaryTest do
     test "the controller's raw log is not granted; roles log to the harness home, which the controller copies at exit",
          %{record: record, raw: raw} do
       notes = Path.wildcard(Path.join([raw, "boundary-role-note-*"]))
-      assert length(notes) == 5
+      regular_notes = Path.wildcard(Path.join([raw, "boundary-role-note-*-regular-*"]))
+      addendum_notes = Path.wildcard(Path.join([raw, "boundary-role-note-*-evidence_addendum-*"]))
+      assert length(regular_notes) == 5
+      assert length(addendum_notes) == 2
+      assert length(notes) == length(regular_notes) + length(addendum_notes)
       assert File.dir?(Path.join(record["candidate"]["harness_home"], "raw-log"))
 
       refute File.exists?(record["boundary"]["grants"]["tmp_dir"]),
@@ -740,6 +767,9 @@ defmodule Kogen.WriteBoundaryTest do
       {"KOGEN_HARNESS", Fixture.support("fake_boundary_role")},
       {"KOGEN_JEV_TRANSPORT", Fixture.support("fake_jev")},
       {"KOGEN_JEV_SECURITY", Fixture.support("fake_security")},
+      # This confined fixture has its own evidence scope. The warm gate's
+      # trace file is outside the enclosing profile and must not leak in.
+      {"KOGEN_REHEARSAL_TRACE", nil},
       {"FAKE_JEV_LOG_DIR", Path.join(outer.tmp, "fake-jev")}
     ]
 
@@ -837,17 +867,22 @@ defmodule Kogen.WriteBoundaryTest do
     end
   end
 
-  defp wait_for(path, attempts \\ 100) do
+  defp wait_for(path, deadline) do
     case File.read(path) do
       {:ok, bytes} ->
         bytes
 
-      {:error, _} when attempts > 0 ->
-        Process.sleep(100)
-        wait_for(path, attempts - 1)
-
       {:error, reason} ->
-        reason
+        if System.monotonic_time(:millisecond) < deadline do
+          # The role writes the receipt asynchronously; wait in short bounded
+          # condition checks so the assertion follows the write event promptly.
+          receive do
+          after
+            10 -> wait_for(path, deadline)
+          end
+        else
+          reason
+        end
     end
   end
 end

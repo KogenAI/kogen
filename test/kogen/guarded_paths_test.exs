@@ -39,6 +39,120 @@ defmodule Kogen.GuardedPathsTest do
              GuardedPaths.check(snapshot, ["guarded.txt"])
   end
 
+  test "policy-aware assessment admits ordinary extras and derives their actual hunks" do
+    root = Path.join(System.tmp_dir!(), "kogen-guarded-assess-#{unique()}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    git!(root, ["init", "-q"])
+    git!(root, ["config", "user.email", "fixture@example.invalid"])
+    git!(root, ["config", "user.name", "Fixture"])
+    File.write!(Path.join(root, "predicted.txt"), "before\n")
+    git!(root, ["add", "predicted.txt"])
+    git!(root, ["commit", "-qm", "fixture"])
+
+    assert {:ok, snapshot} = GuardedPaths.capture(root)
+    File.write!(Path.join(root, "predicted.txt"), "after\n")
+    File.write!(Path.join(root, "generated-fixture.txt"), "generated\n")
+
+    assert {{:ok, assessment}, _refreshed, []} = GuardedPaths.assess(snapshot, ["predicted.txt"])
+    assert assessment.changed_paths == ["generated-fixture.txt", "predicted.txt"]
+    assert assessment.extra_paths == ["generated-fixture.txt"]
+
+    assert {:ok, %{"items" => [item]}} =
+             GuardedPaths.repair_disclosures(snapshot, assessment.extra_paths)
+
+    assert item["path"] == "generated-fixture.txt"
+    assert item["reason"] == "unknown"
+    assert item["feature_relationship"] == "unknown"
+    assert item["failure_evidence"] == "unknown"
+    assert item["hunks"] =~ "+generated"
+    assert item["hunks_sha256"] == sha256(item["hunks"])
+    assert item["hunks_byte_count"] == byte_size(item["hunks"])
+  end
+
+  test "explicit gate-change authority is independent of the predicted footprint" do
+    root = Path.join(System.tmp_dir!(), "kogen-guarded-gate-#{unique()}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    git!(root, ["init", "-q"])
+    git!(root, ["config", "user.email", "fixture@example.invalid"])
+    git!(root, ["config", "user.name", "Fixture"])
+    File.write!(Path.join(root, "Makefile"), "check:\n\t@true\n")
+    git!(root, ["add", "Makefile"])
+    git!(root, ["commit", "-qm", "fixture"])
+
+    assert {:ok, snapshot} = GuardedPaths.capture(root)
+    File.write!(Path.join(root, "Makefile"), "check:\n\t@false\n")
+    File.write!(Path.join(root, "generated-fixture.txt"), "extra\n")
+
+    assert {{:stop, "protected-path", reason}, _refreshed, []} =
+             GuardedPaths.assess(snapshot, ["Makefile"], [])
+
+    assert reason =~ "gate-sensitive"
+    assert reason =~ "Makefile"
+
+    assert {{:ok, assessment}, _refreshed, []} =
+             GuardedPaths.assess(snapshot, [], ["Makefile"])
+
+    assert assessment.changed_paths == ["Makefile", "generated-fixture.txt"]
+    assert assessment.extra_paths == ["Makefile", "generated-fixture.txt"]
+
+    # Old packages without a separate gate list retain the prior guard-based
+    # authority interpretation.
+    assert {{:ok, legacy}, _refreshed, []} = GuardedPaths.assess(snapshot, ["Makefile"])
+    assert legacy.extra_paths == ["generated-fixture.txt"]
+  end
+
+  test "a guard cannot authorize edits to current hard-protected hook controls" do
+    root = Path.join(System.tmp_dir!(), "kogen-guarded-hard-protected-#{unique()}")
+    hook = ".codex/hooks/check.sh"
+    File.mkdir_p!(Path.join(root, Path.dirname(hook)))
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    git!(root, ["init", "-q"])
+    git!(root, ["config", "user.email", "fixture@example.invalid"])
+    git!(root, ["config", "user.name", "Fixture"])
+    File.write!(Path.join(root, hook), "#!/bin/sh\nexit 0\n")
+    git!(root, ["add", hook])
+    git!(root, ["commit", "-qm", "fixture"])
+
+    assert {:ok, snapshot} = GuardedPaths.capture(root)
+    File.write!(Path.join(root, hook), "#!/bin/sh\nexit 1\n")
+
+    assert {{:stop, "protected-path", reason}, _refreshed, []} =
+             GuardedPaths.assess(snapshot, [hook], [hook])
+
+    assert reason =~ hook
+  end
+
+  test "a harmless unpredicted .gitignore edit is disclosed while a newly hidden path stops" do
+    root = Path.join(System.tmp_dir!(), "kogen-guarded-extra-ignore-#{unique()}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    File.write!(Path.join(root, ".gitignore"), "*.log\n")
+    git!(root, ["init", "-q"])
+    git!(root, ["config", "user.email", "fixture@example.invalid"])
+    git!(root, ["config", "user.name", "Fixture"])
+    git!(root, ["add", ".gitignore"])
+    git!(root, ["commit", "-qm", "fixture"])
+
+    assert {:ok, snapshot} = GuardedPaths.capture(root)
+    File.write!(Path.join(root, ".gitignore"), "*.log\n*.tmp\n")
+
+    assert {{:ok, assessment}, _refreshed, []} = GuardedPaths.assess(snapshot, [], [])
+    assert assessment.extra_paths == [".gitignore"]
+
+    File.write!(Path.join(root, "hidden.tmp"), "not publishable\n")
+
+    assert {{:stop, "git-policy", reason}, _refreshed, []} =
+             GuardedPaths.assess(snapshot, [], [])
+
+    assert reason =~ "hidden.tmp"
+  end
+
   test "capture of a linked worktree snapshots Git's own config and exclude through git rev-parse --git-path, and a control-side config change is one environment event" do
     control =
       Path.join(System.tmp_dir!(), "kogen-guarded-paths-control-#{unique()}")

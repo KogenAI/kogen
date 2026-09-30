@@ -2,7 +2,14 @@ defmodule Kogen.Codex.Compatibility do
   @moduledoc false
   use Boundary,
     top_level?: true,
-    deps: [Kogen.Codex, Kogen.Harness, Kogen.Intent, Kogen.VerificationPolicy]
+    deps: [
+      Kogen.Codex,
+      Kogen.Codex.AccountPlugins,
+      Kogen.Codex.AccountObservation,
+      Kogen.Harness,
+      Kogen.Intent,
+      Kogen.VerificationPolicy
+    ]
 
   # This is deliberately a small, direct boundary used by update and the live
   # acceptance slice.  It receives a runtime and login scope that have already
@@ -10,7 +17,7 @@ defmodule Kogen.Codex.Compatibility do
   # authenticating here would make candidate verification able to change the
   # state it is meant to assess.
 
-  alias Kogen.Codex.{Environment, ProviderOutcome}
+  alias Kogen.Codex.{AccountObservation, AccountPlugins, Environment, ProviderOutcome}
 
   @type runtime :: %{
           required(String.t()) => String.t()
@@ -24,7 +31,7 @@ defmodule Kogen.Codex.Compatibility do
   @rework_findings [
     %{
       "description" =>
-        "The exact-resume marker and scout helper evidence (resume-rework.txt, helper-environment.json, helper-receipt.txt, helper-context.txt) are missing.",
+        "The exact-resume marker and scout helper evidence (resume-rework.txt, helper-environment.json, helper-receipt.txt, helper-context.json, resume-context.json) are missing.",
       "scenario_ids" => ["compatibility-runner"]
     }
   ]
@@ -248,6 +255,7 @@ defmodule Kogen.Codex.Compatibility do
          {:ok, fixture, evidence, discovery} <- prepare_fixture(project_root, config) do
       result =
         with {:ok, context} <- launch_context(runtime, scope, config, fixture, discovery),
+             context = Map.put(context, :runtime_identity, runtime),
              {:ok, receipts} <-
                exercise_in_fixture(context, config, fixture, discovery, deadline),
              do: settle_evidence(receipts)
@@ -309,24 +317,27 @@ defmodule Kogen.Codex.Compatibility do
   # its exact-session resume, and the scout helper.
   @doc false
   @spec verify_evidence(map()) :: :ok | {:error, term()}
-  def verify_evidence(%{
-        "shaping" => %{"status" => 0, "marker" => true, "cleanup" => true},
-        "developer" => %{"session_id" => developer_id},
-        "resume" => %{"session_id" => developer_id},
-        "discovery_controls" => %{"ok" => true},
-        "blocked_gate" => true,
-        "hostile_discovery" => %{
-          "personal_marker" => false,
-          "project_marker" => true,
-          "root_receipt" => true,
-          "shell_modes" => true,
-          "helper_receipt" => true,
-          "helper_environment" => true,
-          "helper_context" => true,
-          "resume_rework" => true
-        }
-      }) do
-    validate_sessions([developer_id])
+  def verify_evidence(
+        %{
+          "shaping" => %{"status" => 0, "marker" => true, "cleanup" => true},
+          "developer" => %{"session_id" => developer_id},
+          "resume" => %{"session_id" => developer_id},
+          "discovery_controls" => %{"ok" => true},
+          "blocked_gate" => true,
+          "hostile_discovery" => %{
+            "personal_marker" => false,
+            "project_marker" => true,
+            "root_receipt" => true,
+            "shell_modes" => true,
+            "helper_receipt" => true,
+            "helper_environment" => true,
+            "helper_context" => true,
+            "resume_rework" => true
+          }
+        } = receipts
+      ) do
+    with :ok <- validate_sessions([developer_id]),
+         do: account_plugin_acceptance(receipts["account_plugins"])
   end
 
   def verify_evidence(receipts) do
@@ -340,9 +351,24 @@ defmodule Kogen.Codex.Compatibility do
   defp evidence_failures(receipts) when is_map(receipts) do
     environment = Map.get(receipts, "hostile_discovery", %{})
 
-    for key <- ~w(root_receipt helper_environment shell_modes),
-        Map.get(environment, key) == false,
-        do: {key, :caller_environment_mismatch}
+    environment_failures =
+      for key <- ~w(root_receipt helper_environment shell_modes),
+          Map.get(environment, key) == false,
+          do: {key, :caller_environment_mismatch}
+
+    account =
+      case Map.fetch(receipts, "account_plugins") do
+        {:ok, verdict} ->
+          case account_plugin_acceptance(verdict) do
+            :ok -> []
+            {:error, reason} -> [{"account_plugins", reason}]
+          end
+
+        :error ->
+          []
+      end
+
+    environment_failures ++ account
   end
 
   defp evidence_failures(_), do: []
@@ -369,6 +395,8 @@ defmodule Kogen.Codex.Compatibility do
         )
       end
 
+      oracle = run_isolation_oracle(context, fixture, discovery)
+
       {:ok,
        %{
          "shaping" => shaping,
@@ -376,7 +404,9 @@ defmodule Kogen.Codex.Compatibility do
          "resume" => %{"session_id" => resumed.session_id},
          "discovery_controls" => discovery_receipt,
          "blocked_gate" => blocked_gate?(developer),
-         "hostile_discovery" => hostile_discovery(fixture, context, discovery)
+         "hostile_discovery" => hostile_discovery(fixture, context, discovery, oracle),
+         "isolation_oracle" => oracle,
+         "account_plugins" => account_plugins(context, fixture)
        }}
     end
   end
@@ -464,6 +494,8 @@ defmodule Kogen.Codex.Compatibility do
     `.kogen/runtime/root-nonlogin-environment.json` and with tool-level shell=/bin/zsh in
     `.kogen/runtime/root-explicit-shell-environment.json`. The first root receipt must use
     login=true. Do not emulate explicit shell selection by running sh inside a different shell.
+    Your working directory is already the fixture: never pass a `workdir` to a tool and never
+    type an absolute path (a mistyped path silently fails); use only the relative paths above.
     Report unsupported shell controls as failure, without fabricating receipts. Do not ask a
     helper to write files or run a gate, and finish this turn once every receipt above is
     written.
@@ -478,28 +510,45 @@ defmodule Kogen.Codex.Compatibility do
     ])
   end
 
-  defp resume_turn(context, config, fixture, session_id, findings) do
-    prompt = """
+  # Kogen's role policy maps the scout to the native `explorer` kind (see
+  # Kogen.ExecutionPolicy). `codex exec` registers no custom `scout` kind, so a
+  # prompt that only says "scout" lets the model guess an unknown agent_type and
+  # spawn nothing. The prompt therefore names the native kind explicitly.
+  @doc false
+  @spec resume_prompt(Kogen.Intent.config(), [map()]) :: String.t()
+  def resume_prompt(config, findings) do
+    """
     This is the exact compatibility rework resume. Rework was requested with these findings:
     #{Jason.encode!(findings)}
 
     Add `.kogen/runtime/resume-rework.txt` containing exactly `EXACT_RESUME_REWORK`, and repair
     the concrete missing resume/helper evidence named by the rework request. Do not run `make
     check` or any other gate yourself.
-    Before finishing, ask one configured native scout helper using model
+    Before finishing, ask one configured native scout helper (spawn it with the native kind
+    `explorer`; a native `codex exec` session has no `scout` kind) using model
     #{config.helpers.scout.model} at effort #{config.helpers.scout.effort}, read-only, to identify
-    the project skill from its automatically supplied catalog, state whether any personal skill
-    or instruction was supplied, and run the focused `python3 environment-receipt.py` command.
-    That script only prints JSON. The root saves the helper's returned exact JSON in
-    `.kogen/runtime/helper-environment.json`, its project skill name in
-    `.kogen/runtime/helper-receipt.txt`, and its report of personal context in
-    `.kogen/runtime/helper-context.txt`. The helper-context receipt must contain exactly
-    `PERSONAL_CONTEXT_ABSENT` only when the helper found no supplied personal skill or instruction;
-    otherwise preserve the helper's actual report and stop rather than claiming the fixture passed.
+    the project skill from its automatically supplied catalog, list the exact names in its
+    supplied skill catalog and any supplied plugin or MCP server names, and run this one focused
+    command, verbatim, with no argument added or removed (the next sentence is not part of it):
+    `python3 environment-receipt.py --write .kogen/runtime/helper-environment.json`
+    The script itself writes the helper's exact environment JSON to that
+    file, so nobody retypes long paths. The helper's cwd is already the fixture; it must not pass
+    a `workdir` and must not type any absolute path. The root saves the helper's project skill
+    name in `.kogen/runtime/helper-receipt.txt`, and the helper's structured catalog as JSON
+    `{"skills": [<every catalog skill name>], "skill_origins": {<skill name>: <that skill's
+    catalog root path exactly as the catalog's skill roots list shows it>}, "plugins": [<names or
+    empty>], "mcp_servers": [<names or empty>]}` in `.kogen/runtime/helper-context.json`. The root also saves its own
+    catalog in the same JSON shape in `.kogen/runtime/resume-context.json`. Report only names
+    you actually see; do not summarize them as an absence claim.
     Do not substitute a model or inherit your own profile; report unavailable configured profiles
-    as a failure. The helper must not write files or run a gate. Wait for its completed reply before
+    as a failure. The helper must not write any file other than through that one script option,
+    and must not run a gate. Wait for its completed reply before
     you finish.
     """
+  end
+
+  defp resume_turn(context, config, fixture, session_id, findings) do
+    prompt = resume_prompt(config, findings)
 
     invoke_harness(:resume_developer, [
       session_id,
@@ -667,10 +716,13 @@ defmodule Kogen.Codex.Compatibility do
 
     File.write!(
       Path.join(fixture, "environment-receipt.py"),
-      "import json, os\n" <>
+      "import json, os, sys\n" <>
         "keys = ['HOME', 'CODEX_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME']\n" <>
         "data = {'home': os.getenv('HOME'), 'codex_home': os.getenv('CODEX_HOME'), 'xdg': {key: os.getenv(key) for key in keys if key.startswith('XDG_')}}\n" <>
-        "print(json.dumps(data))\n"
+        "print(json.dumps(data))\n" <>
+        "if '--write' in sys.argv[1:-1]:\n" <>
+        "    with open(sys.argv[sys.argv.index('--write') + 1], 'w') as out:\n" <>
+        "        out.write(json.dumps(data) + '\\n')\n"
     )
 
     File.write!(
@@ -766,10 +818,9 @@ defmodule Kogen.Codex.Compatibility do
 
   defp blocked_gate?(_), do: false
 
-  defp hostile_discovery(fixture, context, discovery) do
+  defp hostile_discovery(fixture, context, discovery, oracle) do
     root_receipt = Path.join(fixture, ".kogen/runtime/root-environment.json")
     helper_receipt = Path.join(fixture, ".kogen/runtime/helper-receipt.txt")
-    helper_context = Path.join(fixture, ".kogen/runtime/helper-context.txt")
 
     %{
       "personal_marker" =>
@@ -790,7 +841,9 @@ defmodule Kogen.Codex.Compatibility do
           context.env
         ),
       "helper_receipt" => file_contains?(helper_receipt, discovery["project_sentinel"]),
-      "helper_context" => file_equals?(helper_context, "PERSONAL_CONTEXT_ABSENT"),
+      # Decided only from structured observed names; a free-text absence claim
+      # is never read. See isolation_oracle/2.
+      "helper_context" => oracle["status"] == "pass",
       "resume_rework" =>
         file_equals?(
           Path.join(fixture, ".kogen/runtime/resume-rework.txt"),
@@ -798,6 +851,575 @@ defmodule Kogen.Codex.Compatibility do
         )
     }
   end
+
+  # ---------------------------------------------------------------------------
+  # Deterministic isolation oracle.
+  #
+  # Decisions come only from structured observed names (native `debug
+  # prompt-input` skill catalogs run by Kogen, or structured JSON a native
+  # agent saved).  A free-text absence claim is never read.  Every observed
+  # name is classified as bundled (in an inventory bound to the running
+  # runtime), project (the project sentinel), forbidden (planted personal or
+  # hostile content) or unclassified.  Unclassified names are neither
+  # allowlisted nor called leakage: the result is `unproven`.
+  # ---------------------------------------------------------------------------
+
+  @oracle_surfaces ~w(root helper resume interactive)
+  @observation_kinds ~w(skills plugins mcp_servers)
+
+  @doc false
+  def bundled_inventory_path, do: Path.join(priv_dir(), "bundled_inventory.json")
+
+  @doc false
+  def load_bundled_inventory do
+    with {:ok, body} <- File.read(bundled_inventory_path()),
+         {:ok, %{"runtimes" => runtimes} = inventory} when is_list(runtimes) <-
+           Jason.decode(body) do
+      {:ok, inventory}
+    else
+      _ -> {:error, :inventory_unreadable}
+    end
+  end
+
+  @doc """
+  Digest of a materialized `.system` skill tree: sha256 over sorted
+  `relative path TAB file sha256 NEWLINE` lines, excluding the Codex marker.
+  """
+  @spec system_tree_digest(Path.t()) :: {:ok, String.t()} | {:error, term()}
+  def system_tree_digest(directory) do
+    if File.dir?(directory) do
+      lines =
+        directory
+        |> Path.join("**")
+        |> Path.wildcard(match_dot: true)
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.map(&Path.relative_to(&1, directory))
+        |> Enum.reject(&(&1 == ".codex-system-skills.marker"))
+        |> Enum.map(fn relative ->
+          digest = :crypto.hash(:sha256, File.read!(Path.join(directory, relative)))
+          relative <> "\t" <> Base.encode16(digest, case: :lower) <> "\n"
+        end)
+        |> Enum.sort()
+
+      {:ok, Base.encode16(:crypto.hash(:sha256, lines), case: :lower)}
+    else
+      {:error, :system_tree_missing}
+    end
+  end
+
+  @doc """
+  Binds the inventory to the running runtime.  Returns `{:ok, names}` or
+  `{:error, reason}`; any mismatch or missing evidence makes it unusable.
+  `binding` carries the observed `version`, `platform`, `executable_sha256`,
+  `system_tree_digest` and `system_marker`.
+  """
+  @spec bind_inventory(map() | term(), map() | term()) ::
+          {:ok, [String.t()]} | {:error, atom()}
+  def bind_inventory(%{"runtimes" => runtimes}, binding)
+      when is_list(runtimes) and is_map(binding) do
+    case Enum.find(runtimes, &(&1["version"] == binding["version"])) do
+      nil ->
+        {:error, :inventory_version_mismatch}
+
+      entry ->
+        bind_inventory_entry(entry, binding)
+    end
+  end
+
+  def bind_inventory(_, _), do: {:error, :inventory_unusable}
+
+  defp bind_inventory_entry(
+         %{"system_skills" => %{"names" => names} = skills} = entry,
+         binding
+       )
+       when is_list(names) do
+    cond do
+      entry["platform"] != binding["platform"] ->
+        {:error, :inventory_platform_mismatch}
+
+      not present?(binding["executable_sha256"]) ->
+        {:error, :runtime_digest_unobserved}
+
+      entry["executable_sha256"] != binding["executable_sha256"] ->
+        {:error, :inventory_runtime_digest_mismatch}
+
+      not present?(binding["system_tree_digest"]) ->
+        {:error, :system_tree_unobserved}
+
+      skills["tree_digest"] != binding["system_tree_digest"] ->
+        {:error, :inventory_tree_digest_mismatch}
+
+      skills["marker"] != binding["system_marker"] ->
+        {:error, :inventory_marker_mismatch}
+
+      true ->
+        {:ok, names}
+    end
+  end
+
+  defp bind_inventory_entry(_, _), do: {:error, :inventory_malformed}
+
+  defp present?(value), do: is_binary(value) and value != ""
+
+  @doc """
+  Evaluates structured observations.
+
+  `observations` maps each of root, helper, resume and interactive to
+  `%{"skills" => [...], "plugins" => [...], "mcp_servers" => [...]}` (plus
+  optional `"forbidden_hits"` from a raw-output scan).  A surface without a
+  structured `skills` list is unproven.  `options` supplies `:inventory`,
+  `:binding`, `:project_sentinel`, `:project_root` (the only root the
+  project sentinel may originate from) and `:forbidden` (planted sentinel names).
+  """
+  @spec isolation_oracle(map(), keyword() | map()) :: map()
+  def isolation_oracle(observations, options) do
+    options = Map.new(options)
+    project = options[:project_sentinel]
+    forbidden = Enum.map(options[:forbidden] || [], &String.downcase/1)
+
+    system_root = canonical_root(get_in(options, [:binding, "system_root"]))
+    project_root = canonical_root(options[:project_root])
+
+    {inventory_state, bundled} =
+      case bind_inventory(options[:inventory], options[:binding]) do
+        {:ok, names} ->
+          {%{"usable" => true}, MapSet.new(names)}
+
+        {:error, reason} ->
+          {%{"usable" => false, "reason" => Atom.to_string(reason)}, MapSet.new()}
+      end
+
+    observations = if is_map(observations), do: observations, else: %{}
+
+    surfaces =
+      Map.new(@oracle_surfaces, fn surface ->
+        {surface,
+         classify_surface(
+           observations[surface],
+           project,
+           forbidden,
+           bundled,
+           inventory_state["usable"],
+           {system_root, project_root}
+         )}
+      end)
+
+    {status, reason} = oracle_verdict(surfaces, inventory_state, project)
+
+    unclassified =
+      surfaces
+      |> Map.values()
+      |> Enum.flat_map(& &1["unclassified"])
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    leaked =
+      surfaces |> Map.values() |> Enum.flat_map(& &1["forbidden"]) |> Enum.uniq() |> Enum.sort()
+
+    %{
+      "status" => status,
+      "reason" => reason,
+      "inventory" => inventory_state,
+      "unclassified" => unclassified,
+      "forbidden" => leaked,
+      "foreign" =>
+        surfaces |> Map.values() |> Enum.flat_map(& &1["foreign"]) |> Enum.uniq() |> Enum.sort(),
+      "surfaces" => surfaces
+    }
+  end
+
+  defp classify_surface(
+         %{"skills" => skills} = observation,
+         project,
+         forbidden,
+         bundled,
+         usable,
+         roots
+       )
+       when is_list(skills) do
+    origins = if is_map(observation["skill_origins"]), do: observation["skill_origins"], else: %{}
+
+    entries =
+      for kind <- @observation_kinds,
+          list = observation[kind],
+          is_list(list),
+          name <- list,
+          do: {kind, to_string(name)}
+
+    hits = for hit <- List.wrap(observation["forbidden_hits"]), do: {"raw", to_string(hit)}
+
+    classified =
+      Enum.map(entries ++ hits, fn {kind, name} ->
+        origin = if kind == "skills", do: canonical_origins(origins[name])
+
+        {classify_name(kind, name, project, forbidden, bundled, usable, origin, roots), name}
+      end)
+
+    names = fn class ->
+      classified
+      |> Enum.filter(&(elem(&1, 0) == class))
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.uniq()
+      |> Enum.sort()
+    end
+
+    %{
+      "observed" => true,
+      "source" => observation["source"],
+      "bundled" => names.(:bundled),
+      "project" => names.(:project),
+      "forbidden" => names.(:forbidden),
+      "foreign" => names.(:foreign),
+      "unclassified" => names.(:unclassified),
+      "origins" => Map.new(origins, fn {name, root} -> {to_string(name), root} end)
+    }
+  end
+
+  defp classify_surface(_, _, _, _, _, _),
+    do: %{
+      "observed" => false,
+      "bundled" => [],
+      "project" => [],
+      "forbidden" => [],
+      "foreign" => [],
+      "unclassified" => [],
+      "origins" => %{}
+    }
+
+  # A name is bundled only when the skill was observed under the pinned
+  # `.system` tree (its inventory digest is checked by the binding). The same
+  # name from another catalog root is foreign; a name with no recorded origin
+  # cannot be proven bundled.
+  defp classify_name(kind, name, project, forbidden, bundled, usable, origin, roots) do
+    {system_root, project_root} = roots
+    lowered = String.downcase(name)
+
+    cond do
+      Enum.any?(forbidden, &(lowered == &1 or String.contains?(lowered, &1))) ->
+        :forbidden
+
+      kind == "skills" and name == project ->
+        origin_class(origin, project_root, :project)
+
+      kind == "skills" and usable and MapSet.member?(bundled, name) ->
+        origin_class(origin, system_root, :bundled)
+
+      true ->
+        :unclassified
+    end
+  end
+
+  # Every catalog entry of a name is checked; one foreign-origin entry makes the
+  # name foreign even when another entry of the same name is in the right root.
+  defp origin_class([], _root, _class), do: :unclassified
+  defp origin_class(_origins, nil, _class), do: :unclassified
+
+  defp origin_class(origins, root, class) when is_list(origins),
+    do: if(Enum.all?(origins, &(&1 == root)), do: class, else: :foreign)
+
+  defp canonical_origins(value) do
+    value
+    |> List.wrap()
+    |> Enum.map(&canonical_root/1)
+    |> case do
+      [] -> []
+      roots -> if Enum.any?(roots, &is_nil/1), do: [:unknown], else: roots
+    end
+  end
+
+  defp canonical_root(root) when is_binary(root) and root != "" do
+    expanded = Path.expand(root)
+
+    if String.starts_with?(expanded, "/private/"),
+      do: binary_part(expanded, 8, byte_size(expanded) - 8),
+      else: expanded
+  end
+
+  defp canonical_root(_), do: nil
+
+  defp project_absent?(surface, project),
+    do: surface["project"] == [] and project not in surface["unclassified"]
+
+  defp oracle_verdict(surfaces, inventory, project) do
+    values = Map.values(surfaces)
+
+    cond do
+      Enum.any?(values, &(&1["forbidden"] != [])) ->
+        {"leak", "forbidden_sentinel_present"}
+
+      Enum.any?(values, &(not &1["observed"])) ->
+        {"unproven", "no_structured_observation"}
+
+      Enum.any?(values, &(&1["foreign"] != [])) ->
+        {"fail", "bundled_name_from_foreign_root"}
+
+      Enum.any?(values, &project_absent?(&1, project)) ->
+        {"fail", "project_sentinel_missing"}
+
+      Enum.any?(values, &(&1["unclassified"] != [])) and inventory["usable"] ->
+        {"unproven", "unclassified_names"}
+
+      not inventory["usable"] ->
+        {"unproven", inventory["reason"]}
+
+      true ->
+        {"pass", "all_names_classified"}
+    end
+  end
+
+  # Account/remote plugin exclusion is evaluated per surface by
+  # Kogen.Codex.AccountPlugins from native and model-visible observation
+  # receipts.  Missing or unrecognized receipts are `unproven`; it is never
+  # inferred from the local isolation oracle or from the bundled inventory.
+  defp account_plugins(context, fixture) do
+    dir = Path.join(fixture, ".kogen/runtime/account-plugin-observations")
+    runtime = Map.get(context, :runtime_identity, %{})
+    receipts = AccountObservation.observe(context, fixture, runtime, dir)
+    account_plugin_verdict(context, fixture, receipts)
+  end
+
+  @doc """
+  Judges this run's own fresh native observations (never an external or
+  earlier directory) bound to the effective launch: the pinned runtime and
+  executable, the selected scope home the server reported, the exact
+  production arguments for the disabled session and one launch binding
+  shared with the enabled positive control. The written receipt files are
+  named with their digests so acceptance can refuse a tampered one.
+  """
+  @spec account_plugin_verdict(map(), Path.t(), [map()], keyword()) :: map()
+  def account_plugin_verdict(context, cwd, receipts, opts \\ []) do
+    runtime = Map.get(context, :runtime_identity, %{})
+    home = AccountObservation.codex_home(context)
+
+    observations =
+      Enum.flat_map(receipts, fn receipt ->
+        case AccountPlugins.parse(receipt) do
+          {:ok, parsed} -> parsed
+          _ -> []
+        end
+      end)
+
+    observations
+    |> AccountPlugins.evaluate(
+      runtime: runtime["version"],
+      executable_sha256: file_sha256(runtime["executable"]),
+      codex_home: home,
+      launch_binding: AccountObservation.launch_binding(context.args, home, cwd),
+      production_args_sha256: AccountObservation.args_sha256(context.args),
+      now: opts[:now]
+    )
+    |> Map.put("receipts", Enum.map(receipts, &Map.take(&1, ~w(mode path sha256))))
+  end
+
+  # Live compatibility accepts only native discovery demonstrated excluded
+  # from this run's untampered receipts. The model-visible surfaces stay
+  # reported as they are (normally unproven) and are not claimed here.
+  defp account_plugin_acceptance(
+         %{"surfaces" => %{"native_discovery" => %{"status" => "excluded"}}} = verdict
+       ) do
+    case verdict["receipts"] do
+      [_ | _] = receipts ->
+        case Enum.reject(receipts, &receipt_intact?/1) do
+          [] ->
+            :ok
+
+          tampered ->
+            {:error, {:account_plugin_receipts_changed, Enum.map(tampered, & &1["path"])}}
+        end
+
+      _ ->
+        {:error, {:account_plugins_not_excluded, "no native observation receipts"}}
+    end
+  end
+
+  defp account_plugin_acceptance(%{"surfaces" => %{"native_discovery" => native}}),
+    do: {:error, {:account_plugins_not_excluded, native}}
+
+  defp account_plugin_acceptance(_),
+    do: {:error, {:account_plugins_not_excluded, "no account plugin evidence"}}
+
+  defp receipt_intact?(%{"path" => path, "sha256" => sha}) when is_binary(path),
+    do: file_sha256(path) == sha
+
+  defp receipt_intact?(_), do: false
+
+  defp run_isolation_oracle(context, fixture, discovery) do
+    runtime = Map.get(context, :runtime_identity, %{})
+    observations = isolation_observations(context, fixture, discovery)
+    binding = isolation_binding(runtime, isolation_system_tree(observations, context))
+
+    binding = Map.put(binding, "system_root", isolation_system_tree(observations, context))
+
+    isolation_oracle(observations,
+      inventory: bundled_inventory(),
+      binding: binding,
+      project_sentinel: discovery["project_sentinel"],
+      project_root: Path.join(fixture, ".agents/skills"),
+      forbidden: [discovery["personal_sentinel"], "personal-fixture"]
+    )
+    |> Map.put("binding", binding)
+  end
+
+  defp isolation_observations(context, fixture, discovery) do
+    %{
+      "root" => prompt_input_observation(context, fixture, discovery, []),
+      "interactive" =>
+        prompt_input_observation(context, fixture, discovery, ["--enable", "hooks"]),
+      "helper" =>
+        structured_observation(Path.join(fixture, ".kogen/runtime/helper-context.json")),
+      "resume" => structured_observation(Path.join(fixture, ".kogen/runtime/resume-context.json"))
+    }
+  end
+
+  # The pinned tree is the isolated CODEX_HOME's `.system`; the observed root
+  # is only a fallback and every skill's own origin is checked against it.
+  defp isolation_system_tree(observations, context) do
+    case env_value(context.env, "CODEX_HOME") do
+      home when is_binary(home) and home != "" ->
+        Path.join(home, "skills/.system")
+
+      _ ->
+        case get_in(observations, ["root", "system_root"]) do
+          root when is_binary(root) -> root
+          _ -> ""
+        end
+    end
+  end
+
+  defp isolation_binding(runtime, tree) do
+    digest = tree_digest(tree)
+    marker = tree_marker(tree)
+
+    %{
+      "version" => runtime["version"],
+      "platform" => runtime["platform"],
+      "executable_sha256" => file_sha256(runtime["executable"]),
+      "system_tree_digest" => digest,
+      "system_marker" => marker
+    }
+  end
+
+  defp tree_digest(tree) do
+    case system_tree_digest(tree) do
+      {:ok, value} -> value
+      _ -> nil
+    end
+  end
+
+  defp tree_marker(tree) do
+    case File.read(Path.join(tree, ".codex-system-skills.marker")) do
+      {:ok, value} -> String.trim(value)
+      _ -> nil
+    end
+  end
+
+  defp bundled_inventory do
+    case load_bundled_inventory() do
+      {:ok, inventory} -> inventory
+      _ -> nil
+    end
+  end
+
+  defp file_sha256(path) when is_binary(path) do
+    case File.read(path) do
+      {:ok, body} -> Base.encode16(:crypto.hash(:sha256, body), case: :lower)
+      _ -> nil
+    end
+  end
+
+  defp file_sha256(_), do: nil
+
+  defp structured_observation(path) do
+    with {:ok, body} <- File.read(path),
+         {:ok, %{"skills" => skills} = decoded} when is_list(skills) <- Jason.decode(body) do
+      Map.put(decoded, "source", "native-agent-json")
+    else
+      _ -> nil
+    end
+  end
+
+  # Kogen-run native `debug prompt-input` for the selected launch arguments.
+  defp prompt_input_observation(context, fixture, discovery, extra_args) do
+    task =
+      Task.async(fn ->
+        System.cmd(context.executable, context.args ++ extra_args ++ ["debug", "prompt-input"],
+          cd: fixture,
+          env: context.env,
+          stderr_to_stdout: false
+        )
+      end)
+
+    case Task.yield(task, 30_000) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {output, 0}} -> parse_prompt_input(output, [discovery["personal_sentinel"]])
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  @doc """
+  Parses `debug prompt-input` JSON into a structured observation: the skill
+  catalog names, the catalog's `.system` root, and any planted sentinel found
+  anywhere in the raw output.
+  """
+  @spec parse_prompt_input(binary(), [String.t()]) :: map() | nil
+  def parse_prompt_input(output, sentinels) do
+    with {:ok, decoded} <- Jason.decode(output),
+         [_ | _] = catalogs <- skill_catalogs(decoded) do
+      text = Enum.join(catalogs, "\n")
+
+      names =
+        Regex.scan(~r/^- ([^\s:]+): .*\(file: r\d+\//m, text)
+        |> Enum.map(&Enum.at(&1, 1))
+        |> Enum.uniq()
+
+      system_root =
+        case Regex.run(~r/`r\d+` = `([^`]*\/skills\/\.system)`/, text) do
+          [_, root] -> root
+          _ -> nil
+        end
+
+      origins = catalog_skill_origins(text)
+
+      %{
+        "skills" => names,
+        "skill_origins" => origins,
+        "system_root" => system_root,
+        "source" => "prompt-input",
+        "forbidden_hits" =>
+          Enum.filter(sentinels, &(is_binary(&1) and &1 != "" and String.contains?(output, &1)))
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  # Maps each catalog skill name to the root its `file:` alias names.  A name
+  # listed more than once keeps every distinct origin (a list) so a foreign
+  # entry cannot be hidden behind a bundled one.
+  defp catalog_skill_origins(text) do
+    aliases =
+      Map.new(Regex.scan(~r/`(r\d+)` = `([^`]*)`/, text), fn [_, alias_, root] ->
+        {alias_, root}
+      end)
+
+    for [_, name, alias_] <- Regex.scan(~r/^- ([^\s:]+): .*\(file: (r\d+)\//m, text),
+        is_binary(aliases[alias_]),
+        reduce: %{} do
+      acc -> Map.update(acc, name, [aliases[alias_]], &Enum.uniq(&1 ++ [aliases[alias_]]))
+    end
+    |> Map.new(fn
+      {name, [only]} -> {name, only}
+      other -> other
+    end)
+  end
+
+  defp skill_catalogs(value) when is_binary(value),
+    do: if(String.contains?(value, "<skills_instructions>"), do: [value], else: [])
+
+  defp skill_catalogs(value) when is_list(value), do: Enum.flat_map(value, &skill_catalogs/1)
+  defp skill_catalogs(value) when is_map(value), do: value |> Map.values() |> skill_catalogs()
+  defp skill_catalogs(_), do: []
 
   defp file_equals?(path, expected) do
     case File.read(path) do

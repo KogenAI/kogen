@@ -152,7 +152,7 @@ defmodule Kogen.ClaudeCodeHarnessTest do
 
       refute "Edit" in args
 
-      settings = args |> flag("--settings") |> File.read!() |> Jason.decode!()
+      settings = args |> flag("--settings") |> Jason.decode!()
       [stop] = settings["hooks"]["Stop"]
       assert hd(stop["hooks"])["command"] =~ ".codex/hooks/check.sh"
       [pre] = settings["hooks"]["PreToolUse"]

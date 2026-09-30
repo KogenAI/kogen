@@ -199,7 +199,13 @@ defmodule Kogen.TargetEvidenceTest do
   end
 
   test "ordinary output without a frame remains optional" do
-    assert {:ok, nil} = TargetEvidence.capture("ordinary target output", "ordinary", "attempt-1")
+    assert {:ok, nil} =
+             TargetEvidence.capture(
+               "ordinary target output",
+               "ordinary",
+               "attempt-1",
+               Path.expand("../..", __DIR__)
+             )
   end
 
   defp fixture! do

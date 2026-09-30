@@ -146,18 +146,17 @@ class InstallerTest(unittest.TestCase):
         finally:
             artifact["integrity"] = artifact_integrity
 
-    def test_production_pin_is_exactly_2_1_281_with_registry_integrity(self):
-        self.assertEqual(installer.INITIAL_VERSION, "2.1.281")
+    def test_production_pin_is_exactly_2_1_284_with_registry_integrity(self):
         self.assertEqual(installer.PINNED_ARTIFACTS, {
             "darwin-arm64": {
-                "version": "2.1.281",
-                "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-2.1.281.tgz",
-                "integrity": "sha512-rEI/YGBDX4YTfdq5w1B86NicoLgpFHGp4IrKM6sDrmUemruePSXF7ybICthHClIsRY8a/Kp7PQ6UJah1VWTbSA==",
+                "version": installer.INITIAL_VERSION,
+                "tarball": f"https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-{installer.INITIAL_VERSION}.tgz",
+                "integrity": "sha512-82pac0p/rTdZvxSspGJsEdqELADhd5aR9AC6JRSJx8kx8q0ggHjOHSCEH/LZeufREACAZv13TcsOPs0AMAptCQ==",
             },
             "darwin-x64": {
-                "version": "2.1.281",
-                "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-x64/-/claude-code-darwin-x64-2.1.281.tgz",
-                "integrity": "sha512-nGJBmWAMlyHAlf0i/vwBzjvTfEC86KcGZT4VNlpInL03jufnBztZr8+ILcXcwg5h94McpmvI/tu8lgHJtHKLVQ==",
+                "version": installer.INITIAL_VERSION,
+                "tarball": f"https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-x64/-/claude-code-darwin-x64-{installer.INITIAL_VERSION}.tgz",
+                "integrity": "sha512-iCewQN1vqZSQ1JdvM4NLm6GhhiEjmvdOrJM/mJBxhe/sPpr8yvouC3hR29Jcap15otWilL4fZ97C02K1kcKP0w==",
             },
         })
 
@@ -200,12 +199,12 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual((self.root / "default.json").read_bytes(), default)
             self.assertEqual(installer.inspect(self.root, platform=self.platform)["version"], "2.1.280")
             self.assertIsNone(installer.required(self.root, platform=self.platform))
-            self.assertFalse((self.root / "runtimes/2.1.281-darwin-arm64").exists())
+            self.assertFalse((self.root / f"runtimes/{installer.INITIAL_VERSION}-darwin-arm64").exists())
         result = installer.install(self.root, platform=self.platform, registry=registry_for(payload),
                                    fetch=lambda _url: payload, native_check=lambda _runtime: None,
                                    progress=lambda _message: None)
-        self.assertEqual(result["version"], "2.1.281")
-        self.assertEqual(installer.inspect(self.root, platform=self.platform)["version"], "2.1.281")
+        self.assertEqual(result["version"], installer.INITIAL_VERSION)
+        self.assertEqual(installer.inspect(self.root, platform=self.platform)["version"], installer.INITIAL_VERSION)
         self.assertEqual({p: p.read_bytes() for p in sorted(old.rglob("*")) if p.is_file()}, before)
         self.assertTrue(os.access(old / "claude", os.X_OK))
         self.assertEqual(marker.read_bytes(), marker_content)
@@ -396,11 +395,11 @@ class InstallerTest(unittest.TestCase):
             installer.inspect(self.root, platform=self.platform)
 
     def test_native_probe_uses_private_minimal_environment_and_checks_pinned_version_stdout(self):
-        runtime = {"executable": "/fixture/claude", "version": "2.1.281"}
+        runtime = {"executable": "/fixture/claude", "version": installer.INITIAL_VERSION}
         calls = []
         def fake_run(*args, **kwargs):
             calls.append(kwargs)
-            return mock.Mock(returncode=0, stdout="2.1.281\n", stderr="")
+            return mock.Mock(returncode=0, stdout=f"{installer.INITIAL_VERSION}\n", stderr="")
         with mock.patch.object(installer.subprocess, "run", side_effect=fake_run):
             installer._native_check(runtime)
         self.assertEqual(len(calls), 1)

@@ -46,18 +46,44 @@ defmodule Kogen.GenericProjectBuildTest do
 
     # Handoffs and signatures: the fallback (no `KOGEN_FAILURE_SIGNATURE`
     # frame anywhere in this project's output).
-    # One signature per cycle; the three failures come from the normalized
-    # tail. The two identical `test` failures share a digest (the second is
-    # `repeated`), and the `e2e` failure differs.
+    # Only failed cycles receive signatures; the successful fourth cycle
+    # must not acquire a Review-stop signature. The three failures come from
+    # the normalized tail. The two identical `test` failures share a digest
+    # (the second is `repeated`), and the `e2e` failure differs.
     signatures = attempt["failure_signatures"]
-    assert length(signatures) == length(cycles)
-    [first, second, third | _] = signatures
+    assert length(signatures) == Enum.count(cycles, &(&1["status"] == "failed"))
+    [first, second, third] = signatures
     assert Enum.map([first, second, third], & &1["source"]) == ["tail", "tail", "tail"]
     assert Enum.map([first, second, third], & &1["target"]) == ["test", "test", "e2e"]
     assert first["digest"] == second["digest"]
     assert second["repeated"]
     refute third["digest"] == first["digest"]
     refute third["repeated"]
+
+    # The earlier provisional Review cited dummy.txt before a legitimate
+    # Developer repair changed the Candidate. Its live citation guard is
+    # superseded for the repaired tree, while its exact bytes remain in the
+    # tracking record's append-only sidecar history.
+    old_reference =
+      Enum.find_value(attempt["reference_snapshot_history"], fn entry ->
+        case entry["snapshots"]["dummy.txt"] do
+          %{} = snapshot -> {entry, snapshot}
+          _ -> nil
+        end
+      end)
+
+    assert {old_revision, snapshot} = old_reference
+    refute old_revision["candidate_id"] == attempt["candidate_id"]
+
+    retained_bytes =
+      File.read!(Path.expand(snapshot["sidecar"], dir))
+
+    assert byte_size(retained_bytes) == snapshot["byte_count"]
+
+    assert Base.encode16(:crypto.hash(:sha256, retained_bytes), case: :lower) ==
+             snapshot["sha256"]
+
+    refute retained_bytes == File.read!(Path.join(dir, "dummy.txt"))
 
     # Each failed receipt's retained log carries the plain shell failure
     # text, with no Kogen frame.

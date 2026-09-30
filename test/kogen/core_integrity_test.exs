@@ -14,8 +14,10 @@ defmodule Kogen.CoreIntegrityTest do
       %{scenario: :handoff_report_documentation}
     ]
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.{Build, Check}
-  alias Kogen.Build.Workspace
+  alias Kogen.Build.{Tracking, Workspace}
 
   @slug "core-integrity-intent"
 
@@ -23,6 +25,7 @@ defmodule Kogen.CoreIntegrityTest do
   id: 01960000-0000-7000-8000-00000000c0de
   slug: #{@slug}
   title: Core integrity intent
+  status: approved
   may_change_guarded_paths:
     - dummy.txt
   """
@@ -156,13 +159,13 @@ defmodule Kogen.CoreIntegrityTest do
 
   defp run_scenario(:same_reviewer_session) do
     fixture = setup_fixture!(:same_reviewer_session)
+    head_before = git!(fixture, ["rev-parse", "HEAD"])
 
     assert {:error, reason} = run_build_with_fixture_harness(fixture)
     assert reason =~ "Reviewer session must differ from the Developer session"
     assert reason =~ "tracking record:"
 
-    refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
-    assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
+    assert_unpublished!(fixture, head_before)
     assert_retained!(fixture, reason, "review-failure")
   end
 
@@ -195,23 +198,24 @@ defmodule Kogen.CoreIntegrityTest do
 
   defp run_scenario(:late_dangling_complete) do
     fixture = setup_fixture!(:late_dangling_complete)
+    head_before = git!(fixture, ["rev-parse", "HEAD"])
 
     assert {:error, reason} = run_build_with_fixture_harness(fixture)
-    assert reason =~ "Candidate changed paths outside Approved guards"
+    assert reason =~ "Complete Intent already exists: #{@slug}"
     assert reason =~ "tracking record:"
 
     # The dangling `complete/<slug>` symlink was fabricated by the fake
-    # Developer inside its own Candidate cwd; control's reserved Complete
-    # path was never created, and its Approved package stays untouched.
-    refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
-    assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
-
-    # An unguarded stray path is now reworked: the fake Developer recreates
-    # the symlink on every turn, so after the two guard reworks the third
-    # occurrence stops the Build as `guard-violation` (was `integrity`).
-    assert_retained!(fixture, reason, "guard-violation")
+    # Developer inside its own Candidate cwd. The ordinary extra path is
+    # disclosed to Review; publication still refuses the reserved Complete
+    # collision, leaves control unpublished, and returns approval to Draft.
+    assert_unpublished!(fixture, head_before)
+    assert_retained!(fixture, reason, "integrity")
     [attempt] = Kogen.CandidateFixture.record(fixture)["attempts"]
-    assert length(attempt["guard_violations"]) == 3
+    refute Map.has_key?(attempt, "guard_violations")
+
+    assert Enum.any?(attempt["repair_disclosures"]["items"], fn item ->
+             item["path"] == ".kogen/intents/complete/#{@slug}"
+           end)
 
     candidate = Kogen.CandidateFixture.candidate(fixture)
     worktree = candidate["worktree_path"]
@@ -250,7 +254,7 @@ defmodule Kogen.CoreIntegrityTest do
   end
 
   defp setup_fixture!(mode) do
-    project_root = File.cwd!()
+    project_root = @project_root
 
     dir =
       Path.join(System.tmp_dir!(), "kogen-core-integrity-#{System.unique_integer([:positive])}")
@@ -415,16 +419,65 @@ defmodule Kogen.CoreIntegrityTest do
 
   defp assert_unpublished!(fixture, head_before) do
     assert git!(fixture, ["rev-parse", "HEAD"]) == head_before
-    assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
     refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
+
+    approved = Path.join(fixture, ".kogen/intents/approved/#{@slug}")
+    draft = Path.join(fixture, ".kogen/intents/drafts/#{@slug}")
+    refute File.dir?(approved)
+    assert File.dir?(draft)
+    assert Enum.sort(File.ls!(draft)) == ["intent.yaml", "scenarios.yaml"]
+
+    assert File.read!(Path.join(draft, "intent.yaml")) ==
+             String.replace(@intent_yaml, "status: approved", "status: draft")
+
+    assert File.regular?(Path.join(draft, "scenarios.yaml"))
+
+    record = Kogen.CandidateFixture.record(fixture)
+    assert record["approved_package_digest"] == returned_draft_digest(draft)
+  end
+
+  defp returned_draft_digest(path) do
+    path
+    |> package_entries("")
+    |> Enum.map(fn
+      {"intent.yaml", :regular, mode, bytes} ->
+        {"intent.yaml", :regular, mode,
+         Regex.replace(~r/^status:[ \t]*draft[ \t]*$/m, bytes, "status: approved")}
+
+      entry ->
+        entry
+    end)
+    |> Tracking.approved_digest()
+  end
+
+  defp package_entries(root, relative) do
+    path = Path.join(root, relative)
+    stat = File.lstat!(path)
+
+    case stat.type do
+      :directory ->
+        [
+          {relative, :directory, stat.mode}
+          | path
+            |> File.ls!()
+            |> Enum.sort()
+            |> Enum.flat_map(&package_entries(root, Path.join(relative, &1)))
+        ]
+
+      :regular ->
+        [{relative, :regular, stat.mode, File.read!(path)}]
+
+      _ ->
+        raise "unsupported Draft package entry: #{path}"
+    end
   end
 
   # A stop keeps the Candidate worktree, branch and harness home exactly as
-  # they are: control (its checkout and Approved package) is unchanged, the
-  # tracking record's `candidate` block is `retained`, the stop message names
-  # the slug, build id, worktree, branch and harness home next to the
-  # tracking record path plus the removal command, and the Candidate's own
-  # owner record independently agrees on `stopped: <category>`.
+  # they are. Terminal admitted stops return the control package to Draft;
+  # preflight refusals leave it Approved. The tracking record's `candidate`
+  # block is `retained`, the stop message names the slug, build id, worktree,
+  # branch and harness home next to the tracking record path plus the removal
+  # command, and the Candidate's owner record agrees on `stopped: <category>`.
   defp assert_retained!(fixture, reason, expected_category) do
     candidate = Kogen.CandidateFixture.candidate(fixture)
     assert candidate["disposition"] == "retained"

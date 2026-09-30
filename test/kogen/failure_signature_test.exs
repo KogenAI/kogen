@@ -336,4 +336,49 @@ defmodule Kogen.FailureSignatureTest do
       assert excerpt =~ "the tail marker"
     end
   end
+
+  describe "primary_lines/2 keeps a make target's own failing output" do
+    @tag :tmp_dir
+    test "a target echoing a marker-free message then exiting 1 keeps that line", %{
+      tmp_dir: dir
+    } do
+      File.write!(
+        Path.join(dir, "Makefile"),
+        "check:\n\t@echo 'dummy.txt is missing. Required exact content: shape2build-k4q9z'\n\t@exit 1\n"
+      )
+
+      {output, 2} =
+        System.cmd("make", ["check"],
+          cd: dir,
+          stderr_to_stdout: true,
+          env: [{"MAKELEVEL", nil}, {"MAKEFLAGS", nil}, {"MFLAGS", nil}]
+        )
+
+      assert output =~ "Error 1"
+
+      excerpt = FailureSignature.primary_lines(output)
+      assert excerpt =~ "Required exact content: shape2build-k4q9z"
+      assert excerpt =~ ~r/make(\[\d+\])?: \*\*\* \[(?:[^\]]*: )?check\] Error 1/
+    end
+
+    test "long unrelated output before the message does not crowd it out" do
+      output =
+        String.duplicate("compiling noise\n", 100) <>
+          "dummy.txt is missing. Required exact content: abc123\nmake: *** [check] Error 1\n"
+
+      excerpt = FailureSignature.primary_lines(output, 400)
+      assert excerpt =~ "Required exact content: abc123"
+      assert excerpt =~ "make: *** [check] Error 1"
+    end
+
+    test "the lead-in also works for a nested make[1] marker" do
+      output =
+        String.duplicate("compiling noise\n", 100) <>
+          "dummy.txt is missing. Required exact content: abc123\nmake[1]: *** [check] Error 1\n"
+
+      excerpt = FailureSignature.primary_lines(output, 400)
+      assert excerpt =~ "Required exact content: abc123"
+      assert excerpt =~ "make[1]: *** [check] Error 1"
+    end
+  end
 end

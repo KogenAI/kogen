@@ -122,6 +122,11 @@ defmodule Kogen.ApprovedMutationTest do
     File.write!(Path.join(intent_dir, "evidence.md"), "original user evidence")
     Kogen.VerificationFixture.install!(dest)
 
+    approved_bytes_before =
+      Map.new(~w(intent.yaml scenarios.yaml evidence.md), fn name ->
+        {name, File.read!(Path.join(intent_dir, name))}
+      end)
+
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},
       {"GIT_AUTHOR_EMAIL", "kogen-fixture@example.invalid"},
@@ -138,6 +143,13 @@ defmodule Kogen.ApprovedMutationTest do
 
     {_out, 0} =
       System.cmd("git", ["commit", "-q", "-m", "fixture baseline"], cd: dest, env: env)
+
+    assert git!(dest, [
+             "check-ignore",
+             "-q",
+             "--",
+             ".kogen/intents/approved/#{@slug}/evidence.md"
+           ]) == ""
 
     head_before = git!(dest, ["rev-parse", "HEAD"])
 
@@ -187,16 +199,19 @@ defmodule Kogen.ApprovedMutationTest do
 
     refute File.dir?(Path.join(dest, ".kogen/intents/complete/#{@slug}"))
 
-    assert git!(dest, ["status", "--porcelain"]) == "", "the mutation is invisible to Git"
-
     # The edit happened inside the Build's own Candidate copy of the Approved
-    # package (the fake Developer/Reviewer's cwd), never in control: control's
-    # Approved package is untouched and the Candidate is retained for
-    # inspection, named next to the tracking record.
+    # package (the fake Developer/Reviewer's cwd). The terminal failure returns
+    # control's unchanged package to Draft, so check Git visibility in the
+    # retained Candidate where the ignored mutation occurred.
     candidate = Kogen.CandidateFixture.candidate(dest)
     assert candidate["disposition"] == "retained"
     worktree = candidate["worktree_path"]
     assert File.dir?(worktree)
+
+    candidate_status = git!(worktree, ["status", "--porcelain", "--untracked-files=all"])
+
+    assert candidate_status == "",
+           "the ignored Approved mutation is invisible to Git; Candidate status: #{inspect(candidate_status)}"
 
     owner_record = candidate["owner_record"] |> File.read!() |> Jason.decode!()
     assert owner_record["status"] =~ ~r/^stopped: /
@@ -211,10 +226,15 @@ defmodule Kogen.ApprovedMutationTest do
     assert reason =~ "tracking record:"
     assert reason =~ "mix kogen.candidates.remove #{owner_record["build_id"]}"
 
-    assert File.read!(Path.join(intent_dir, "evidence.md")) == "original user evidence",
-           "control's own Approved package must stay untouched"
+    draft_intent_dir = Path.join(dest, ".kogen/intents/drafts/#{@slug}")
+    refute File.dir?(intent_dir), "terminal failure returns the Approved package to Draft"
 
-    refute File.exists?(Path.join(intent_dir, "new-evidence.md"))
+    for {name, bytes} <- approved_bytes_before do
+      assert File.read!(Path.join(draft_intent_dir, name)) == bytes,
+             "control's Approved package bytes must return to Draft unchanged"
+    end
+
+    refute File.exists?(Path.join(draft_intent_dir, "new-evidence.md"))
 
     worktree_intent_dir = Path.join(worktree, ".kogen/intents/approved/#{@slug}")
     assert_mutation_happened(worktree_intent_dir, mutation)

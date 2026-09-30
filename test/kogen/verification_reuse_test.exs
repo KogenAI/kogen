@@ -246,6 +246,73 @@ defmodule Kogen.VerificationReuseTest do
     end
   end
 
+  test "a passed cycle rejects missing, extra, or duplicate planned target receipts",
+       %{root: root, plan: plan, env: env} do
+    {:ok, exec0} =
+      Verification.initialize(
+        Fixture.tracking_path(root, "exact-target-set"),
+        "token-exact-target-set",
+        0,
+        plan.targets,
+        @retries,
+        plan
+      )
+
+    candidate = Fixture.candidate_id!(root)
+    {:ok, execution, state} = Fixture.run_cycle(exec0, "session-1", candidate, env)
+    cycle = List.last(state["cycles"])
+
+    assert cycle["status"] == "passed"
+    assert Enum.map(cycle["receipts"], & &1["target"]) == ["check", "a", "b"]
+    assert :ok = Verification.validate_state(state, execution)
+
+    missing_offline =
+      update_in(state, ["cycles"], fn cycles ->
+        List.update_at(cycles, -1, fn cycle ->
+          update_in(
+            cycle,
+            ["receipts"],
+            &Enum.reject(&1, fn receipt -> receipt["target"] == "check" end)
+          )
+        end)
+      end)
+
+    missing_live =
+      update_in(state, ["cycles"], fn cycles ->
+        List.update_at(cycles, -1, fn cycle ->
+          update_in(
+            cycle,
+            ["receipts"],
+            &Enum.reject(&1, fn receipt -> receipt["target"] == "b" end)
+          )
+        end)
+      end)
+
+    duplicate_offline =
+      update_in(state, ["cycles"], fn cycles ->
+        List.update_at(cycles, -1, fn cycle ->
+          check = Enum.find(cycle["receipts"], &(&1["target"] == "check"))
+          update_in(cycle, ["receipts"], &(&1 ++ [check]))
+        end)
+      end)
+
+    extra_target =
+      update_in(state, ["cycles"], fn cycles ->
+        List.update_at(cycles, -1, fn cycle ->
+          extra =
+            cycle["receipts"]
+            |> Enum.find(&(&1["target"] == "check"))
+            |> Map.put("target", "unplanned")
+
+          update_in(cycle, ["receipts"], &(&1 ++ [extra]))
+        end)
+      end)
+
+    for malformed <- [missing_offline, missing_live, duplicate_offline, extra_target] do
+      assert {:error, _reason} = Verification.validate_state(malformed, execution)
+    end
+  end
+
   defp tamper_reused_receipt(state, fun) do
     update_in(state, ["cycles"], &tamper_last_cycle(&1, fun))
   end

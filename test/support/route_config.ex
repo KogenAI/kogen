@@ -6,13 +6,13 @@ defmodule Kogen.RouteConfig do
 
   @codex %{
     "harness" => "codex",
-    "shaping" => %{"model" => "gpt-6-sol", "effort" => "medium"},
-    "developer" => %{"model" => "gpt-6-sol", "effort" => "medium"},
-    "reviewer" => %{"model" => "gpt-6-sol", "effort" => "high"},
+    "shaping" => %{"model" => "gpt-6.1-sol", "effort" => "medium"},
+    "developer" => %{"model" => "gpt-6.1-sol", "effort" => "medium"},
+    "reviewer" => %{"model" => "gpt-6.1-sol", "effort" => "high"},
     "helpers" => %{
       "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
       "worker" => %{"model" => "gpt-6-luna", "effort" => "high"},
-      "expert" => %{"model" => "gpt-6-sol", "effort" => "high"}
+      "expert" => %{"model" => "gpt-6.1-sol", "effort" => "high"}
     }
   }
 
@@ -28,7 +28,7 @@ defmodule Kogen.RouteConfig do
     }
   }
 
-  @key_order ~w(default_route routes harness shaping developer reviewer helpers scout worker expert model effort outer_resumptions verification_retries offline_retries)
+  @key_order ~w(default_route routes harness shaping developer reviewer helpers scout worker expert model effort outer_resumptions verification_retries offline_retries max_developer_resumptions)
 
   @doc "The Codex route profiles restored from before the Claude Code switch."
   def codex_route(overrides \\ %{}), do: deep_merge(@codex, overrides)
@@ -49,7 +49,8 @@ defmodule Kogen.RouteConfig do
       "routes" => Map.new(routes),
       "outer_resumptions" => Keyword.get(opts, :outer_resumptions, 2),
       "verification_retries" => Keyword.get(opts, :verification_retries, 2),
-      "offline_retries" => Keyword.get(opts, :offline_retries, 4)
+      "offline_retries" => Keyword.get(opts, :offline_retries, 4),
+      "max_developer_resumptions" => Keyword.get(opts, :max_developer_resumptions, 40)
     }
     |> Map.reject(fn {_key, value} -> is_nil(value) end)
     |> render(0)

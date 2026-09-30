@@ -1,5 +1,12 @@
 # Upgrade Kogen's pinned Claude Code runtime
 
+The current exact pin is Claude Code 2.1.285. Confirm both platform package
+tarballs and their sha512 integrity directly from the official npm registry.
+Installing a new pin keeps earlier version-keyed runtimes side by side, so an
+admitted Build that froze an older runtime is never mutated. `optimum`'s
+`live-reviewer-rework` proof must show the pinned `claude_code_version` on the
+Developer stream and two separate native `claude-sonnet-5-5` helper dispatches.
+
 Use this procedure only when maintaining the exact runtime selected by a Kogen release. Start at the repository root with the requested version, a clean checkout baseline, the current pin in `priv/kogen/claude_code/install.py`, this README and runtime contract, official release notes, an explicitly authenticated Kogen scope, installed dependencies, and the `check`, live-general, live-reviewer-rework, live-shape-to-build, and causally affected narrow lifecycle evidence owners.
 
 1. Confirm the exact requested version and inspect its official release changes and native artifacts. Do not resolve or substitute upstream latest.

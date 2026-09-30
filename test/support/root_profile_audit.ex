@@ -68,7 +68,7 @@ defmodule Kogen.RootProfileAudit do
   # so a caller auditing a role passes that role. `route` names the resolved
   # route the role's harness is read from; `nil` (the default) resolves the
   # project's own `default_route`, exactly as on main.
-  def sessions_root(project \\ File.cwd!(), role \\ :developer, route \\ nil) do
+  def sessions_root(project \\ Path.expand("../..", __DIR__), role \\ :developer, route \\ nil) do
     project = Path.expand(project)
 
     if claude?(project, role, route),
@@ -251,6 +251,52 @@ defmodule Kogen.RootProfileAudit do
   end
 
   defp efforts(_value), do: []
+
+  @doc "The native session store of `harness` for `project`, as `sessions_root/3` returns it."
+  def harness_sessions_root(project, "claude"),
+    do: {:claude, claude_sessions_root(Path.expand(project))}
+
+  def harness_sessions_root(project, "codex"), do: codex_sessions_root(Path.expand(project))
+
+  @doc """
+  The runtime versions each native session in `ids` recorded: Claude Code
+  transcript `version` fields, or the Codex rollout `session_meta.cli_version`.
+  """
+  def runtime_versions!({:claude, root}, ids) do
+    index = claude_index!(root, {:ids, ids})
+
+    Map.new(ids, fn id ->
+      %{path: path} = Map.get(index, id) || fail!("missing Claude Code transcript for #{id}")
+
+      versions =
+        path
+        |> File.read!()
+        |> transcript_lines()
+        |> Enum.map(& &1["version"])
+        |> Enum.filter(&is_binary/1)
+        |> Enum.uniq()
+
+      {id, versions}
+    end)
+  end
+
+  def runtime_versions!(root, ids),
+    do: root |> codex_cli_versions!(ids) |> Map.new(fn {id, version} -> {id, [version]} end)
+
+  @doc """
+  The `session_meta.cli_version` of each native Codex rollout session in
+  `ids`, read from the native session store; a missing session fails.
+  """
+  def codex_cli_versions!(sessions_root, ids) do
+    index = session_index!(sessions_root, &(&1.id in ids))
+
+    Map.new(ids, fn id ->
+      case Map.fetch(index, id) do
+        {:ok, session} -> {id, session.meta["cli_version"]}
+        :error -> fail!("native Codex rollout session is missing: #{id}")
+      end
+    end)
+  end
 
   defp session_index!(root, selected?) do
     require!(File.dir?(root), "native session directory is missing: #{root}")

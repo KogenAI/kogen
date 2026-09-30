@@ -78,7 +78,7 @@ defmodule Kogen.ScenarioTrackingTest do
                "harness" => "claude",
                "shaping" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
                "developer" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
-               "reviewer" => %{"model" => "gpt-6-sol", "effort" => "high"},
+               "reviewer" => %{"model" => "gpt-6.1-sol", "effort" => "high"},
                "helpers" => %{
                  "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
                  "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
@@ -96,8 +96,8 @@ defmodule Kogen.ScenarioTrackingTest do
                  "model" => "claude-opus-5-5",
                  "effort" => "medium"
                },
-               "reviewer" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
-               "expert" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+               "reviewer" => %{"harness" => "codex", "model" => "gpt-6.1-sol", "effort" => "high"},
+               "expert" => %{"harness" => "codex", "model" => "gpt-6.1-sol", "effort" => "high"},
                "helpers" => %{
                  "claude" => %{
                    "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
@@ -106,7 +106,7 @@ defmodule Kogen.ScenarioTrackingTest do
                  "codex" => %{
                    "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
                    "worker" => %{"model" => "gpt-6-luna", "effort" => "high"},
-                   "expert" => %{"model" => "gpt-6-sol", "effort" => "high"}
+                   "expert" => %{"model" => "gpt-6.1-sol", "effort" => "high"}
                  }
                }
              }
@@ -346,6 +346,45 @@ defmodule Kogen.ScenarioTrackingTest do
       assert {:error, reason} = Tracking.verify_reference(updated, updated.path, snapshot)
       assert reason =~ "changed outside Build"
       assert {:error, _} = Tracking.update(updated, Map.put(updated.record, "status", "accepted"))
+    end)
+  end
+
+  test "verification state and fixed-file evidence use digest sidecars and validate their bytes" do
+    in_private_cwd(fn ->
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
+
+      assert {:ok, verification} =
+               Tracking.retain_artifact(state, "verification_state", "state.json", "state bytes")
+
+      assert {:ok, reference} =
+               Tracking.retain_artifact(state, "fixed_file", "proof.txt", "proof bytes")
+
+      assert verification["file"] == "state.json"
+      assert reference["path"] == "proof.txt"
+      assert verification["sidecar"] =~ "/artifacts/"
+      refute Map.has_key?(verification, "content_base64")
+      refute Map.has_key?(reference, "content_base64")
+
+      assert File.read!(Path.expand(verification["sidecar"], Tracking.root(state))) ==
+               "state bytes"
+
+      assert {:ok, with_attempt} = Tracking.start_attempt(state, "artifact-attempt", 0)
+
+      attempt =
+        with_attempt.record["attempts"]
+        |> List.last()
+        |> Map.merge(%{
+          "verification_state" => verification,
+          "reference_snapshots" => %{"proof.txt" => reference}
+        })
+
+      record = Map.put(with_attempt.record, "attempts", [attempt])
+      assert {:ok, retained} = Tracking.update(with_attempt, record)
+      assert :ok = Tracking.verify_artifacts(retained)
+
+      File.write!(Path.expand(reference["sidecar"], Tracking.root(retained)), "altered")
+      assert {:error, reason} = Tracking.verify_artifacts(retained)
+      assert reason =~ "sidecar mutated"
     end)
   end
 

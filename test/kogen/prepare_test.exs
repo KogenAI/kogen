@@ -22,7 +22,7 @@ defmodule Kogen.PrepareTest do
   """
   use ExUnit.Case, async: true
 
-  alias Kogen.Build.VerificationPlan
+  alias Kogen.Build.{Contract, VerificationPlan}
   alias Kogen.LiveReviewerReworkFixture
 
   @root Path.expand("../..", __DIR__)
@@ -52,9 +52,14 @@ defmodule Kogen.PrepareTest do
              "#{name} must declare prepare_trace_assertions for rehearsals.exs to trace"
     end
 
-    # Untouched: live-general, live-native and live-shape-to-build declare no
-    # prepare (adding one for them is a non-goal of this Intent).
-    for name <- ~w(live-general live-native live-shape-to-build) do
+    # The selected Build-owned live targets share the exact-pin prepare; the
+    # generic Reviewer target has no managed-runtime prepare of its own.
+    for name <- ~w(live-native live-reviewer-rework live-shape-to-build) do
+      assert Enum.join(catalog.targets[name]["prepare"], " ") =~
+               "Kogen.ManagedRuntimeReady.prepare"
+    end
+
+    for name <- ~w(live-general) do
       refute Map.has_key?(catalog.targets[name], "prepare")
     end
   end
@@ -81,6 +86,21 @@ defmodule Kogen.PrepareTest do
     assert guarded != []
     assert Enum.sort(guarded) == Enum.sort(driver)
     assert Enum.sort(guarded) == Enum.sort(fixture)
+  end
+
+  # The live owner loads its written package before any provider dispatch.
+  # A heredoc `\n` once put a raw line break into the scenario's plain YAML
+  # scalar, so Contract.load failed only inside the paid target.
+  test "the reviewer-rework fixture package loads as a contract with its literal check command" do
+    fixture = tmp_dir!("prepare-rework-package")
+    on_exit(fn -> File.rm_rf!(fixture) end)
+
+    LiveReviewerReworkFixture.write_package!(fixture)
+    approved = Path.join(fixture, ".kogen/intents/approved/live-reviewer-rework-probe")
+
+    assert {:ok, contract} = Contract.load(approved, @root)
+    assert [%{"id" => "reviewer-directed-rework", "then" => then}] = contract.scenarios
+    assert then =~ ~S"printf 'reviewer-rework-k4q9z\n' | cmp -s - dummy.txt && echo A OK"
   end
 
   test "Kogen.LiveReviewerReworkFixture.copy_source!/2 excludes every volatile path" do
@@ -150,7 +170,8 @@ defmodule Kogen.PrepareTest do
     {output, 0} =
       System.cmd("python3", ["-B", "-c", code],
         stderr_to_stdout: true,
-        env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}]
+        env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}],
+        cd: @root
       )
 
     assert output =~ "VOLATILE_COPIED=[]"
@@ -163,6 +184,29 @@ defmodule Kogen.PrepareTest do
   test "the live-reviewer-rework prepare argv reports the one KOGEN_PREPARE_RESULT frame on a forced logged-out scope" do
     assert {:ok, catalog} = VerificationPlan.load(@root)
     [cmd | args] = catalog.targets["live-reviewer-rework"]["prepare"]
+    codex_root = tmp_dir!("prepare-codex")
+    claude_root = tmp_dir!("prepare-claude")
+    on_exit(fn -> File.rm_rf!(codex_root) end)
+    on_exit(fn -> File.rm_rf!(claude_root) end)
+
+    for {script, root, installer} <- [
+          {"managed_codex_fixture.py", codex_root, "codex/install.py"},
+          {"managed_claude_fixture.py", claude_root, "claude_code/install.py"}
+        ] do
+      {output, 0} =
+        System.cmd(
+          "python3",
+          [
+            Path.join(@root, "test/support/#{script}"),
+            root,
+            Path.join(@root, "priv/kogen/#{installer}")
+          ],
+          stderr_to_stdout: true,
+          cd: @root
+        )
+
+      refute output =~ "Traceback"
+    end
 
     {output, status} =
       System.cmd(cmd, args,
@@ -170,8 +214,12 @@ defmodule Kogen.PrepareTest do
         stderr_to_stdout: true,
         env: [
           {"MIX_ENV", "test"},
+          {"KOGEN_CODEX_ROOT", codex_root},
+          {"KOGEN_CLAUDE_ROOT", claude_root},
+          {"KOGEN_TEST_NATIVE_TRACE", Path.join(codex_root, "native-trace.jsonl")},
           {"KOGEN_PREPARE_FORCE_SCOPE", "fail"},
           {"KOGEN_ROLE", nil},
+          {"KOGEN_WRITE_BOUNDARY", nil},
           {"KOGEN_HARNESS_HOME", nil}
         ]
       )

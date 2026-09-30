@@ -46,6 +46,7 @@ defmodule Kogen.CompiledFixture do
   outer_resumptions: 2
   verification_retries: 2
   offline_retries: 4
+  max_developer_resumptions: 40
   """
 
   @doc "Creates a private lifecycle fixture that loads this test build's BEAM files."
@@ -93,7 +94,7 @@ defmodule Kogen.CompiledFixture do
   def mix_task!(fixture, task, env) when is_list(task) do
     # A fixture Build never reaches TypeSafe: unless the caller selects its own
     # Jev fakes, the offline Keychain lookup and transport are used.
-    env = offline_jev_env(env) ++ env
+    env = offline_jev_env(env) ++ hermetic_env(env) ++ env
 
     {output, exit_code} =
       System.cmd(
@@ -106,6 +107,19 @@ defmodule Kogen.CompiledFixture do
       )
 
     {output, exit_code}
+  end
+
+  # Concurrent in-VM tests select their own fake harness and native roots with
+  # System.put_env/2. A fixture child inherits the parent's process-global
+  # environment, so a value another test set a moment ago silently replaced the
+  # fixture's real readiness path: a fake harness that reads stdin to EOF then
+  # hung the child forever on `auth status`. A caller that needs one of these
+  # passes it explicitly; otherwise the child starts without it.
+  @inherited_selectors ~w(KOGEN_HARNESS KOGEN_HARNESS_HOME KOGEN_ROLE KOGEN_CLAUDE_ROOT KOGEN_CODEX_ROOT)
+
+  defp hermetic_env(env) do
+    configured = Enum.map(env, fn {key, _value} -> to_string(key) end)
+    for key <- @inherited_selectors, key not in configured, do: {key, nil}
   end
 
   @doc false

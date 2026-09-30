@@ -11,6 +11,27 @@ defmodule Kogen.Build.Breakers do
 
   @runtime_glob ".kogen/runtime/scenario-tracking/*/failure-report.json"
   @clear_glob ".kogen/runtime/scenario-tracking/*/environment-clear.json"
+  @agreement_files ~w(INTENT.md IMPLEMENTATION.md scenarios.yaml risks.yaml questions.md questions.yaml)
+
+  @doc "Stable item-breaker identity across approval bookkeeping and package moves."
+  def contract_digest(package, intent_id) when is_binary(package) and is_binary(intent_id) do
+    intent =
+      case YamlElixir.read_from_file(Path.join(package, "intent.yaml")) do
+        {:ok, data} when is_map(data) ->
+          Map.drop(data, ~w(status approval shaping_continuations build_failure))
+
+        _ ->
+          %{}
+      end
+
+    files =
+      for name <- @agreement_files,
+          File.regular?(Path.join(package, name)),
+          do: {name, File.read!(Path.join(package, name))}
+
+    :crypto.hash(:sha256, :erlang.term_to_binary({intent_id, intent, files}))
+    |> Base.encode16(case: :lower)
+  end
 
   @doc "Returns decoded failure reports, with their absolute paths, in run order."
   @spec reports(Path.t()) :: [%{path: Path.t(), report: map()}]
@@ -35,50 +56,6 @@ defmodule Kogen.Build.Breakers do
 
   def reports(_control), do: []
 
-  @doc "Checks whether an unchanged Approved package has a repeated item failure."
-  @spec item_refusal(Path.t(), String.t(), String.t(), String.t() | nil) ::
-          :ok | {:error, String.t()}
-  def item_refusal(control, intent_id, package_digest, slug \\ nil)
-
-  def item_refusal(control, intent_id, package_digest, slug)
-      when is_binary(control) and is_binary(intent_id) and is_binary(package_digest) do
-    matching =
-      reports(control)
-      |> Enum.filter(fn %{report: report} ->
-        report["counts_toward"] == "item" and
-          report["intent_id"] == intent_id and
-          report["approved_package_digest"] == package_digest and
-          is_map(report["signature"]) and is_binary(report["signature"]["digest"])
-      end)
-
-    groups = Enum.group_by(matching, &get_in(&1, [:report, "signature", "digest"]))
-
-    case groups
-         |> Enum.filter(fn {_digest, entries} -> length(entries) >= 2 end)
-         |> latest_group() do
-      nil ->
-        :ok
-
-      {digest, entries} ->
-        entries = Enum.sort_by(entries, &report_sort_key/1)
-        first = List.first(entries).report
-        signature = first["signature"] || %{}
-
-        action =
-          if Enum.any?(entries, &(get_in(&1, [:report, "class"]) == "shaping")),
-            do: "reshape_scope",
-            else: "reshape_details"
-
-        name = slug || first["slug"] || intent_id
-        paths = Enum.map_join(entries, ", ", & &1.path)
-
-        {:error,
-         "Build refused (item breaker): #{name} stopped #{length(entries)} times with the same failure signature on this Approved package; next action: #{action}; first failure: #{signature["first_failure"]}; signature: #{digest}; failure reports: #{paths}"}
-    end
-  end
-
-  def item_refusal(_control, _intent_id, _package_digest, _slug), do: :ok
-
   @doc "Returns the latest matching non-stop item report, if any."
   @spec latest_item_report(Path.t(), String.t(), String.t()) ::
           nil | %{path: Path.t(), report: map()}
@@ -88,7 +65,7 @@ defmodule Kogen.Build.Breakers do
     |> Enum.filter(fn %{report: report} ->
       report["counts_toward"] == "item" and
         report["intent_id"] == intent_id and
-        report["approved_package_digest"] == package_digest and
+        (report["contract_digest"] || report["approved_package_digest"]) == package_digest and
         get_in(report, ["signature", "source"]) != "stop"
     end)
     |> List.last()
@@ -158,14 +135,6 @@ defmodule Kogen.Build.Breakers do
   @doc "Returns the clear-file path for a tracking record path or directory."
   def clear_path(tracking_path) when is_binary(tracking_path) do
     Path.join(tracking_directory(tracking_path), "environment-clear.json")
-  end
-
-  defp latest_group(groups) do
-    groups
-    |> Enum.sort_by(fn {_digest, entries} ->
-      entries |> Enum.map(&report_sort_key/1) |> Enum.max(fn -> {-1, ""} end)
-    end)
-    |> List.last()
   end
 
   defp tracking_directory(path) do

@@ -11,10 +11,7 @@ defmodule Kogen.Git do
   """
   use Boundary, deps: []
 
-  @publication_file_limit 5_242_880
-  @publication_total_limit 10_485_760
-
-  @doc "Validates added/modified blobs in the real staged tree against Kogen's fixed publication budget."
+  @doc "Rejects runtime evidence paths from the real staged tree."
   @spec validate_staged_publication(Path.t()) :: :ok | {:error, String.t()}
   def validate_staged_publication(root \\ ".") do
     with :ok <- reject_candidate_blinding_index_flags(root),
@@ -23,36 +20,15 @@ defmodule Kogen.Git do
              cd: root,
              stderr_to_stdout: true
            ) do
-      entries =
+      runtime =
         paths
         |> String.split(<<0>>, trim: true)
-        |> Enum.flat_map(&staged_blob(&1, root))
+        |> Enum.filter(&String.starts_with?(&1, ".kogen/runtime/"))
 
-      runtime =
-        Enum.filter(entries, fn {path, _size} -> String.starts_with?(path, ".kogen/runtime/") end)
-
-      oversized = Enum.filter(entries, fn {_path, size} -> size > @publication_file_limit end)
-      total = Enum.reduce(entries, 0, fn {_path, size}, sum -> sum + size end)
-
-      if runtime == [] and oversized == [] and total <= @publication_total_limit do
+      if runtime == [] do
         :ok
       else
-        details =
-          [
-            if(runtime != [], do: "staged runtime paths: " <> format_sizes(runtime)),
-            if(oversized != [],
-              do: "files over #{@publication_file_limit} bytes: " <> format_sizes(oversized)
-            ),
-            if(total > @publication_total_limit,
-              do:
-                "changed blob total #{total} exceeds #{@publication_total_limit} bytes; largest: " <>
-                  format_sizes(Enum.take(Enum.sort_by(entries, &(-elem(&1, 1))), 8))
-            )
-          ]
-          |> Enum.reject(&is_nil/1)
-          |> Enum.join("; ")
-
-        {:error, "publication budget refused: " <> details}
+        {:error, "staged runtime paths: " <> inspect(runtime)}
       end
     else
       {:error, _reason} = error -> error
@@ -60,32 +36,93 @@ defmodule Kogen.Git do
     end
   end
 
-  defp staged_blob(path, root) do
-    case System.cmd("git", ["ls-files", "--stage", "-z", "--", path],
-           cd: root,
-           stderr_to_stdout: true
-         ) do
-      {"", 0} ->
-        []
+  @doc """
+  Validates a prospective publication *before* any staging happens: the
+  Candidate working tree's added/modified paths relative to `base` (tracked
+  changes plus untracked non-ignored files, mirroring exactly what
+  `validate_staged_publication/1` later sees staged), combined with the
+  prospective Complete package -- the Approved package `package_entries`
+  (as produced by `Kogen.Build`'s `package_entries/2`) relocated under
+  `package_dest` -- ensuring neither contains a `.kogen/runtime/` path.
 
-      {entry, 0} ->
-        [metadata | _] = String.split(entry, <<0>>, trim: true)
-        [mode, object | _] = String.split(metadata, " ", parts: 3)
-        [{path, staged_object_size!(path, mode, object, root)}]
+  Reads only the working tree and Git's read-only diff/ls-files output;
+  never touches the index or the working tree.
+  """
+  @spec validate_prospective_publication(Path.t(), String.t(), [tuple()], String.t()) ::
+          :ok | {:error, String.t()}
+  def validate_prospective_publication(root, base, package_entries, package_dest) do
+    with {:ok, implementation} <- prospective_implementation_entries(root, base) do
+      package = prospective_package_entries(package_entries, package_dest)
+      entries = implementation ++ package
+
+      runtime =
+        Enum.filter(entries, fn {path, _size} -> String.starts_with?(path, ".kogen/runtime/") end)
+
+      if runtime == [] do
+        :ok
+      else
+        {:error, "prospective runtime paths: " <> inspect(Enum.map(runtime, &elem(&1, 0)))}
+      end
     end
   end
 
-  defp staged_object_size!(_path, "160000", _object, _root), do: 0
+  defp prospective_implementation_entries(root, base) do
+    with {tracked, 0} <-
+           System.cmd("git", mode_aware(["diff", "--name-status", "-z", base, "--"]),
+             cd: root,
+             stderr_to_stdout: true
+           ),
+         {untracked, 0} <-
+           System.cmd("git", mode_aware(["ls-files", "--others", "--exclude-standard", "-z"]),
+             cd: root,
+             stderr_to_stdout: true
+           ) do
+      changed_paths =
+        tracked
+        |> String.split(<<0>>, trim: true)
+        |> parse_name_status([])
 
-  defp staged_object_size!(path, _mode, object, root) do
-    case System.cmd("git", ["cat-file", "-s", object], cd: root, stderr_to_stdout: true) do
-      {size, 0} -> String.trim(size) |> String.to_integer()
-      {out, _code} -> raise "could not size staged blob #{inspect(path)}: #{String.trim(out)}"
+      untracked_paths = untracked |> String.split(<<0>>, trim: true)
+
+      paths = (changed_paths ++ untracked_paths) |> Enum.uniq()
+
+      {:ok, Enum.map(paths, &{&1, working_tree_size(root, &1)})}
+    else
+      {out, _code} ->
+        {:error, "could not enumerate prospective implementation changes: #{String.trim(out)}"}
     end
   end
 
-  defp format_sizes(entries),
-    do: Enum.map_join(entries, ", ", fn {path, size} -> "#{inspect(path)}=#{size}" end)
+  # `git diff --name-status -z` emits `<status>\0<path>\0` for ordinary
+  # changes and `<statusNNN>\0<old_path>\0<new_path>\0` for renames/copies,
+  # where the leading digit-free letter of `status` decides the shape.
+  defp parse_name_status(["D", _path | rest], acc), do: parse_name_status(rest, acc)
+
+  defp parse_name_status([status, path | rest], acc) when status in ["A", "M", "T"],
+    do: parse_name_status(rest, [path | acc])
+
+  defp parse_name_status([status, _old_path, new_path | rest], acc) do
+    case String.first(status) do
+      kind when kind in ["R", "C"] -> parse_name_status(rest, [new_path | acc])
+      _ -> parse_name_status(rest, acc)
+    end
+  end
+
+  defp parse_name_status(_, acc), do: acc
+
+  defp working_tree_size(root, path) do
+    case File.lstat(Path.join(root, path)) do
+      {:ok, %{type: :regular, size: size}} -> size
+      _ -> 0
+    end
+  end
+
+  defp prospective_package_entries(package_entries, package_dest) do
+    for {path, :regular, _mode, bytes} <- package_entries do
+      full_path = Path.join(package_dest, path) |> String.trim_leading("/")
+      {full_path, byte_size(bytes)}
+    end
+  end
 
   @doc "Raw `git status --porcelain` output of the checkout at `root`."
   def status_porcelain!(root \\ ".") do

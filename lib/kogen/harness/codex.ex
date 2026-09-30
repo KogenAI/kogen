@@ -40,7 +40,7 @@ defmodule Kogen.Harness.Codex do
   def launch_build_developer(prompt, model, effort, policy_environment, context) do
     with_context(
       context,
-      &notes_turn(developer_args(model, effort), prompt, policy_environment, &1)
+      &notes_turn(developer_args(model, effort), prompt, policy_environment, nil, &1)
     )
   end
 
@@ -48,7 +48,13 @@ defmodule Kogen.Harness.Codex do
   def resume_build_developer(session_id, text, model, effort, policy_environment, context) do
     with_context(
       context,
-      &notes_turn(developer_args(model, effort, session_id), text, policy_environment, &1)
+      &notes_turn(
+        developer_args(model, effort, session_id),
+        text,
+        policy_environment,
+        session_id,
+        &1
+      )
     )
   end
 
@@ -303,16 +309,38 @@ defmodule Kogen.Harness.Codex do
   # A Build Developer turn carries no handoff schema and owns no output file.
   # The final completed agent message (possibly empty) is the unverified notes;
   # provider, transport and session failures stay failures.
-  defp notes_turn(args, stdin_text, policy_environment, context) do
-    {output, exit_code} =
-      run_with_stdin(
+  defp notes_turn(args, stdin_text, policy_environment, resumed_id, context) do
+    context = if resumed_id, do: context, else: Map.put(context, :await_session, true)
+
+    {output, exit_code, timed_out} =
+      run_with_stdin_facts(
         context,
         context.args ++ args,
         stdin_text,
         merge_environment(context.env, [{"KOGEN_ROLE", "developer"} | policy_environment])
       )
 
-    case parse_turn(decode_events(output), exit_code, output) do
+    # A turn that completed inside the TERM grace is a settled turn, not a
+    # timeout.
+    parsed =
+      case {timed_out, parse_turn(decode_events(output), exit_code, output)} do
+        {true, {:ok, _turn} = settled} -> settled
+        {true, _incomplete} -> :timed_out
+        {false, parsed} -> parsed
+      end
+
+    case parsed do
+      :timed_out ->
+        {:error,
+         {:developer_turn_timeout,
+          %{
+            harness: "codex",
+            outcome: :turn_timeout,
+            diagnostics: output,
+            session_id: observed_thread(output) || resumed_id,
+            output_tail: output_tail(output)
+          }}}
+
       {:ok, turn} ->
         evidence = %{
           harness: "codex",
@@ -481,7 +509,7 @@ defmodule Kogen.Harness.Codex do
   # group: a stray grandchild the CLI forks cannot outlive this turn, and the
   # controller's death (Ctrl-C, SIGHUP, SIGTERM, `kill -9`, a crash) reaps it
   # too, through the supervisor's own parent-death watchdog.
-  defp run_with_stdin(context, args, stdin_text, extra_env) do
+  defp run_with_stdin_facts(context, args, stdin_text, extra_env) do
     dir = temporary_directory("stdin")
     tmp = Path.join(dir, "prompt")
     File.write!(tmp, stdin_text)
@@ -489,17 +517,47 @@ defmodule Kogen.Harness.Codex do
     argv = Map.get(context, :prefix, []) ++ [context.executable | args]
 
     custody_opts =
-      [stdin_path: tmp, tmp_dir: dir, env: extra_env] ++ custody_registration(context, extra_env)
+      [stdin_path: tmp, tmp_dir: dir, env: extra_env] ++
+        custody_registration(context, extra_env) ++
+        turn_time_box(context, extra_env) ++
+        on_start_option(context)
 
-    result =
+    {output, exit_code, timed_out} =
       case Kogen.ProcessCustody.run(argv, context[:cwd] || File.cwd!(), custody_opts) do
-        {:ok, facts} -> {facts["output"] || "", facts["exit_code"]}
-        {:error, reason} -> {reason, 1}
+        {:ok, facts} -> {facts["output"] || "", facts["exit_code"], facts["timed_out"] == true}
+        {:error, reason} -> {reason, 1, false}
       end
 
-    persist_raw_stream(result)
-    result
+    persist_raw_stream({output, exit_code})
+    {output, exit_code, timed_out}
   end
+
+  defp run_with_stdin(context, args, stdin_text, extra_env) do
+    {output, exit_code, _timed_out} = run_with_stdin_facts(context, args, stdin_text, extra_env)
+    {output, exit_code}
+  end
+
+  # The Developer turn time-box: the Build sets `:turn_timeout_ms` on the
+  # Developer launch context only, so Reviewer, Expert and Shaper launches
+  # (and verification targets) never carry a soft timeout.
+  defp turn_time_box(%{turn_timeout_ms: ms} = context, extra_env)
+       when is_integer(ms) and ms > 0 do
+    if role_label(extra_env) == "developer",
+      do:
+        [timeout_ms: ms, soft_timeout: true, grace_ms: Map.get(context, :turn_grace_ms, 45_000)] ++
+          session_ready(context),
+      else: []
+  end
+
+  defp turn_time_box(_context, _extra_env), do: []
+
+  # A fresh turn (no thread id yet) is never interrupted before its thread
+  # identity appears in the stream, so the nudge can always resume it; a
+  # resumed turn already has one.
+  defp session_ready(%{await_session: true}),
+    do: [soft_ready_pattern: ~S("type"\s*:\s*"thread\.started")]
+
+  defp session_ready(_context), do: []
 
   # Inside a Build the launch context carries `:control` (the control
   # checkout); the launched group is then recorded on the Build's lock, so a
@@ -510,6 +568,11 @@ defmodule Kogen.Harness.Codex do
     do: [control: control, role: role_label(extra_env)]
 
   defp custody_registration(_context, _extra_env), do: []
+
+  defp on_start_option(%{on_start: on_start}) when is_function(on_start, 1),
+    do: [on_start: on_start]
+
+  defp on_start_option(_context), do: []
 
   defp role_label(extra_env) do
     case List.keyfind(extra_env, "KOGEN_ROLE", 0) do

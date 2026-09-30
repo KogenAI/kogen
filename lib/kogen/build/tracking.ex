@@ -148,20 +148,28 @@ defmodule Kogen.Build.Tracking do
   """
   @spec verify_record_versions(state()) :: :ok | {:error, String.t()}
   def verify_record_versions(%{record: record} = state) do
-    record
-    |> Map.get("attempts", [])
-    |> Enum.flat_map(fn attempt ->
-      ~w(developer_reference_snapshots reviewer_reference_snapshots reference_snapshots)
-      |> Enum.flat_map(&Map.values(Map.get(attempt, &1) || %{}))
-    end)
-    |> Enum.filter(&(is_map(&1) and Map.has_key?(&1, "sidecar")))
+    with {:ok, snapshots} <- reference_snapshot_values(record) do
+      verify_record_version_snapshots(state, snapshots)
+    end
+  end
+
+  defp verify_record_version_snapshots(state, snapshots) do
+    snapshots
+    |> Enum.filter(&record_version_snapshot?/1)
     |> Enum.uniq()
-    |> Enum.reduce_while(:ok, fn snapshot, :ok ->
-      case verify_record_version(state, snapshot) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
-      end
-    end)
+    |> Enum.reduce_while(:ok, &verify_record_version_step(state, &1, &2))
+  end
+
+  defp record_version_snapshot?(%{"binding" => "controller_record_version", "sidecar" => _}),
+    do: true
+
+  defp record_version_snapshot?(_snapshot), do: false
+
+  defp verify_record_version_step(state, snapshot, :ok) do
+    case verify_record_version(state, snapshot) do
+      :ok -> {:cont, :ok}
+      error -> {:halt, error}
+    end
   end
 
   defp verify_record_version(state, %{"sidecar" => sidecar} = snapshot) do
@@ -180,6 +188,236 @@ defmodule Kogen.Build.Tracking do
 
   # Records written before sidecars inline the cited record version.
   defp verify_record_version(_state, _legacy_snapshot), do: :ok
+
+  @doc """
+  Retains bytes owned by the tracking record as a small immutable sidecar.
+
+  Only verification state and fixed-file reference snapshots are accepted.
+  `name` is preserved in the returned metadata (`file` for verification state,
+  `path` for a cited fixed file); it never affects the sidecar path.
+  """
+  @spec retain_artifact(state(), String.t(), String.t(), binary()) ::
+          {:ok, map()} | {:error, String.t()}
+  def retain_artifact(state, kind, name, bytes)
+      when kind in ["verification_state", "fixed_file"] and is_binary(name) and name != "" and
+             is_binary(bytes) do
+    sha256 = Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+    sidecar = artifact_path(state.path, sha256)
+
+    with :ok <- verify(state),
+         :ok <- mkdir_owned(Path.dirname(sidecar)),
+         :ok <- write_artifact(sidecar, bytes) do
+      locator = checkout_relative(state, sidecar)
+
+      metadata = %{
+        if(kind == "verification_state", do: "file", else: "path") => name,
+        "sha256" => sha256,
+        "byte_count" => byte_size(bytes),
+        "binding" => kind,
+        "sidecar" => locator
+      }
+
+      {:ok, metadata}
+    end
+  end
+
+  def retain_artifact(_state, _kind, _name, _bytes),
+    do: {:error, "invalid tracking artifact"}
+
+  @doc "Validates retained verification-state and fixed-file evidence and legacy inline forms."
+  @spec verify_artifacts(state()) :: :ok | {:error, String.t()}
+  def verify_artifacts(%{record: record} = state) do
+    with {:ok, references} <- reference_snapshot_values(record) do
+      verification =
+        record
+        |> Map.get("attempts", [])
+        |> Enum.flat_map(&List.wrap(Map.get(&1, "verification_state")))
+
+      verify_artifact_snapshots(state, verification ++ references)
+    end
+  end
+
+  def verify_artifacts(_state), do: {:error, "invalid scenario tracking state"}
+
+  defp verify_artifact_snapshots(state, snapshots) do
+    snapshots
+    |> Enum.filter(&artifact_snapshot?/1)
+    |> Enum.uniq()
+    |> Enum.reduce_while(:ok, &verify_artifact_step(state, &1, &2))
+  end
+
+  defp verify_artifact_step(state, snapshot, :ok) do
+    case verify_artifact(state, snapshot) do
+      :ok -> {:cont, :ok}
+      error -> {:halt, error}
+    end
+  end
+
+  defp reference_snapshot_values(%{"attempts" => attempts}) when is_list(attempts) do
+    Enum.reduce_while(attempts, {:ok, []}, &reference_snapshots_for_attempt/2)
+  end
+
+  defp reference_snapshot_values(_record),
+    do: {:error, "invalid scenario tracking attempts"}
+
+  defp reference_snapshots_for_attempt(attempt, {:ok, acc}) when is_map(attempt) do
+    with {:ok, current} <- references_for_attempt(attempt),
+         {:ok, archived} <-
+           archived_reference_snapshots(Map.get(attempt, "reference_snapshot_history", [])) do
+      {:cont, {:ok, current ++ archived ++ acc}}
+    else
+      {:error, _reason} = error -> {:halt, error}
+    end
+  end
+
+  defp reference_snapshots_for_attempt(_attempt, _acc),
+    do: {:halt, {:error, "invalid scenario tracking attempt"}}
+
+  defp references_for_attempt(attempt) do
+    Enum.reduce_while(
+      ~w(developer_reference_snapshots reviewer_reference_snapshots reference_snapshots),
+      {:ok, []},
+      &reference_snapshot_field(attempt, &1, &2)
+    )
+  end
+
+  defp reference_snapshot_field(attempt, key, {:ok, acc}) do
+    case Map.fetch(attempt, key) do
+      :error -> {:cont, {:ok, acc}}
+      {:ok, nil} -> {:cont, {:ok, acc}}
+      {:ok, snapshots} when is_map(snapshots) -> add_reference_snapshots(snapshots, acc)
+      _ -> {:halt, {:error, "invalid reference snapshot map"}}
+    end
+  end
+
+  defp add_reference_snapshots(snapshots, acc) do
+    if valid_snapshot_map?(snapshots),
+      do: {:cont, {:ok, Map.values(snapshots) ++ acc}},
+      else: {:halt, {:error, "invalid reference snapshot map"}}
+  end
+
+  defp valid_snapshot_map?(snapshots) do
+    Enum.all?(snapshots, fn {path, _snapshot} -> is_binary(path) and path != "" end)
+  end
+
+  defp valid_archived_snapshot_map?(snapshots) do
+    map_size(snapshots) > 0 and
+      Enum.all?(snapshots, fn {path, snapshot} ->
+        is_binary(path) and path != "" and valid_archived_snapshot?(snapshot)
+      end)
+  end
+
+  defp valid_archived_snapshot?(%{"sha256" => digest, "sidecar" => sidecar} = snapshot)
+       when is_binary(sidecar) and sidecar != "" do
+    valid_digest?(digest) and is_integer(snapshot["byte_count"]) and snapshot["byte_count"] >= 0 and
+      snapshot["binding"] in ["controller_record_version", "verification_state", "fixed_file"]
+  end
+
+  defp valid_archived_snapshot?(%{"sha256" => digest, "content_base64" => content} = snapshot)
+       when is_binary(content) do
+    valid_digest?(digest) and
+      (is_nil(snapshot["byte_count"]) or
+         (is_integer(snapshot["byte_count"]) and snapshot["byte_count"] >= 0))
+  end
+
+  defp valid_archived_snapshot?(_snapshot), do: false
+
+  defp archived_reference_snapshots(history) do
+    if is_list(history), do: reduce_archived_reference_snapshots(history), else: invalid_history()
+  end
+
+  defp reduce_archived_reference_snapshots(history) do
+    Enum.reduce_while(history, {:ok, []}, fn
+      %{"candidate_id" => candidate_id, "snapshots" => snapshots}, {:ok, acc}
+      when is_binary(candidate_id) and candidate_id != "" and is_map(snapshots) ->
+        if valid_archived_snapshot_map?(snapshots) do
+          {:cont, {:ok, Map.values(snapshots) ++ acc}}
+        else
+          {:halt, {:error, "invalid historical reference snapshots"}}
+        end
+
+      _entry, _acc ->
+        {:halt, {:error, "invalid historical reference snapshot entry"}}
+    end)
+  end
+
+  defp invalid_history, do: {:error, "invalid historical reference snapshot list"}
+
+  defp artifact_snapshot?(%{"binding" => binding})
+       when binding in ["verification_state", "fixed_file"],
+       do: true
+
+  defp artifact_snapshot?(%{"content_base64" => _content, "sha256" => _sha}), do: true
+  defp artifact_snapshot?(_snapshot), do: false
+
+  defp verify_artifact(state, %{"binding" => kind, "sidecar" => sidecar} = snapshot)
+       when kind in ["verification_state", "fixed_file"] and is_binary(sidecar) do
+    digest = snapshot["sha256"]
+    expected = checkout_relative(state, artifact_path(state.path, digest))
+
+    with true <- valid_digest?(digest) and sidecar == expected,
+         {:ok, bytes} <- File.read(Path.expand(sidecar, root(state))),
+         true <- byte_size(bytes) == snapshot["byte_count"],
+         true <- sha256(bytes) == digest,
+         true <- snapshot["binding"] == kind do
+      :ok
+    else
+      {:error, _reason} -> {:error, "retained artifact sidecar missing: #{inspect(sidecar)}"}
+      false -> {:error, "retained artifact sidecar mutated: #{inspect(sidecar)}"}
+    end
+  end
+
+  defp verify_artifact(_state, %{"binding" => kind} = snapshot)
+       when kind in ["verification_state", "fixed_file"],
+       do: verify_inline_artifact(snapshot)
+
+  # Pre-sidecar evidence records stored bytes inline. Keep those records
+  # inspectable and bind them to their original digest.
+  defp verify_artifact(_state, snapshot), do: verify_inline_artifact(snapshot)
+
+  defp verify_inline_artifact(%{"content_base64" => encoded, "sha256" => digest} = snapshot)
+       when is_binary(encoded) and is_binary(digest) do
+    with {:ok, bytes} <- Base.decode64(encoded),
+         true <- sha256(bytes) == String.downcase(digest),
+         true <- is_nil(snapshot["byte_count"]) or snapshot["byte_count"] == byte_size(bytes) do
+      :ok
+    else
+      _ -> {:error, "retained artifact inline content mismatch"}
+    end
+  end
+
+  defp verify_inline_artifact(_snapshot),
+    do: {:error, "retained artifact has an invalid locator or inline content"}
+
+  defp artifact_path(record_path, digest),
+    do: Path.join([Path.dirname(record_path), "artifacts", to_string(digest) <> ".bin"])
+
+  defp valid_digest?(digest), do: is_binary(digest) and digest =~ ~r/\A[0-9a-f]{64}\z/
+
+  defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+
+  defp write_artifact(path, bytes) do
+    case File.open(path, [:write, :exclusive, :binary]) do
+      {:ok, io} ->
+        try do
+          case IO.binwrite(io, bytes) do
+            :ok -> :file.sync(io)
+            error -> error
+          end
+        after
+          File.close(io)
+        end
+
+      {:error, :eexist} ->
+        case File.read(path) do
+          {:ok, ^bytes} -> :ok
+          _ -> {:error, "retained artifact integrity failure: different bytes under #{path}"}
+        end
+
+      {:error, reason} ->
+        {:error, "could not create retained artifact sidecar: #{inspect(reason)}"}
+    end
+  end
 
   defp record_version_path(record_path, sha256) when is_binary(sha256),
     do: Path.join([Path.dirname(record_path), "record-versions", sha256 <> ".json"])
@@ -232,8 +470,34 @@ defmodule Kogen.Build.Tracking do
 
   # Locators are relative to the control root the Build passed; a state built
   # without one (a legacy caller) keeps its checkout-relative form.
-  defp checkout_relative(state, path),
-    do: Path.relative_to(Path.expand(path), root(state))
+  defp checkout_relative(state, path) do
+    expanded = Path.expand(path)
+    root = root(state)
+
+    case Path.relative_to(expanded, root) do
+      ^expanded ->
+        # Not lexically under the root: the two may name the same directory
+        # through a symlink (macOS /var vs /private/var).
+        Path.relative_to(real_path(expanded), real_path(root))
+
+      relative ->
+        relative
+    end
+  end
+
+  defp real_path(path) do
+    [first | rest] = Path.split(path)
+    Enum.reduce(rest, first, fn segment, acc -> resolve_link(Path.join(acc, segment), 0) end)
+  end
+
+  defp resolve_link(path, depth) when depth < 16 do
+    case File.read_link(path) do
+      {:ok, target} -> path |> Path.dirname() |> Path.join(target) |> Path.expand() |> real_path()
+      _ -> path
+    end
+  end
+
+  defp resolve_link(path, _depth), do: path
 
   @doc "The control root a tracking state's locators are relative to."
   def root(state), do: Map.get(state, :root) || File.cwd!()
@@ -244,9 +508,10 @@ defmodule Kogen.Build.Tracking do
   defp verify_frozen_reference(path, snapshot) do
     case File.read(path) do
       {:ok, bytes} ->
-        if Base.encode16(:crypto.hash(:sha256, bytes)) == snapshot["sha256"],
-          do: :ok,
-          else: {:error, "bound evidence reference mutated: #{path}"}
+        if Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) ==
+             String.downcase(snapshot["sha256"] || ""),
+           do: :ok,
+           else: {:error, "bound evidence reference mutated: #{path}"}
 
       _ ->
         {:error, "bound evidence reference missing: #{path}"}
@@ -263,11 +528,7 @@ defmodule Kogen.Build.Tracking do
   @spec update(state(), tracking_record()) :: {:ok, state()} | {:error, String.t()}
   def update(%{path: path, record: previous} = state, record)
       when is_binary(path) and is_map(previous) and is_map(record) do
-    with :ok <- verify(state),
-         :ok <- string_keyed_map(record),
-         :ok <- record_has_only_string_keys(record),
-         :ok <- preserve_frozen_fields(previous, record),
-         :ok <- preserve_finding_history(previous, record),
+    with :ok <- validate_update(state, record),
          {:ok, bytes} <- encode(record),
          :ok <- atomic_replace(path, bytes) do
       {:ok, %{state | bytes: bytes, record: record}}
@@ -275,6 +536,18 @@ defmodule Kogen.Build.Tracking do
   end
 
   def update(_state, _record), do: {:error, "invalid scenario tracking update"}
+
+  defp validate_update(%{record: previous} = state, record) do
+    with :ok <- verify(state),
+         :ok <- string_keyed_map(record),
+         :ok <- record_has_only_string_keys(record),
+         :ok <- preserve_frozen_fields(previous, record),
+         :ok <- preserve_finding_history(previous, record),
+         :ok <- preserve_reference_snapshot_history(previous, record),
+         {:ok, _snapshots} <- reference_snapshot_values(record) do
+      :ok
+    end
+  end
 
   @doc "Adds a pending Build-owned attempt to the record."
   @spec start_attempt(state(), String.t(), non_neg_integer()) ::
@@ -316,16 +589,21 @@ defmodule Kogen.Build.Tracking do
           {:ok, state()} | {:error, String.t()}
   def apply_verdict(state, verdict, reviewer_session, reference_snapshots)
       when is_map(verdict) and is_binary(reviewer_session) and reviewer_session != "" do
-    with {:ok, decision} <- verdict_decision(verdict),
-         :ok <- valid_reference_snapshots(reference_snapshots),
-         {:ok, record} <-
-           verdict_record(state.record, verdict, reviewer_session, decision, reference_snapshots) do
+    with {:ok, record} <-
+           proposed_verdict_record(state, verdict, reviewer_session, reference_snapshots) do
       update(state, record)
     end
   end
 
   def apply_verdict(_state, _verdict, _reviewer_session, _reference_snapshots),
     do: {:error, "invalid scenario tracking verdict"}
+
+  defp proposed_verdict_record(state, verdict, reviewer_session, reference_snapshots) do
+    with {:ok, decision} <- verdict_decision(verdict),
+         :ok <- valid_reference_snapshots(reference_snapshots) do
+      verdict_record(state.record, verdict, reviewer_session, decision, reference_snapshots)
+    end
+  end
 
   defp initial_record(
          intent,
@@ -586,6 +864,58 @@ defmodule Kogen.Build.Tracking do
   defp preserve_finding_history(_previous, _record),
     do: {:error, "scenario tracking record has invalid findings"}
 
+  defp preserve_reference_snapshot_history(previous, record) do
+    previous_attempts = Map.get(previous, "attempts", [])
+    current_attempts = Map.get(record, "attempts", [])
+
+    preserved? =
+      is_list(previous_attempts) and is_list(current_attempts) and
+        length(current_attempts) >= length(previous_attempts) and
+        previous_attempts
+        |> Enum.with_index()
+        |> Enum.all?(fn {attempt, index} ->
+          current = Enum.at(current_attempts, index)
+
+          is_map(attempt) and is_map(current) and
+            attempt_history_preserved?(attempt, current) == :ok
+        end)
+
+    if preserved?,
+      do: :ok,
+      else: {:error, "scenario tracking update changed historical reference snapshots"}
+  end
+
+  defp attempt_history_preserved?(previous, current) do
+    prior_history = Map.get(previous, "reference_snapshot_history", [])
+    current_history = Map.get(current, "reference_snapshot_history", [])
+    prior_reviewer = Map.get(previous, "reviewer_reference_snapshots", %{})
+    current_reviewer = Map.get(current, "reviewer_reference_snapshots", %{})
+
+    with true <- is_list(prior_history) and is_list(current_history),
+         true <- List.starts_with?(current_history, prior_history),
+         true <- is_map(prior_reviewer) and is_map(current_reviewer),
+         true <- reviewer_history_preserved?(previous, current, prior_reviewer, current_reviewer) do
+      :ok
+    else
+      _ -> {:error, "scenario tracking update changed historical reference snapshots"}
+    end
+  end
+
+  defp reviewer_history_preserved?(_previous, _current, prior, current) when prior == current,
+    do: true
+
+  defp reviewer_history_preserved?(_previous, _current_record, prior, _current_reviewer)
+       when map_size(prior) == 0,
+       do: true
+
+  defp reviewer_history_preserved?(previous, current, prior, _current) do
+    candidate_id = Map.get(previous, "candidate_id")
+
+    Enum.any?(Map.get(current, "reference_snapshot_history", []), fn entry ->
+      entry["candidate_id"] == candidate_id and entry["snapshots"] == prior
+    end)
+  end
+
   defp preserved_finding?(%{"id" => id, "origin" => origin} = finding, current)
        when is_binary(id) and is_map(origin) do
     case Enum.find(current, &(Map.get(&1, "id") == id)) do
@@ -719,7 +1049,8 @@ defmodule Kogen.Build.Tracking do
     with true <- is_list(dispositions) and is_list(new_findings),
          {:ok, updated_findings} <- apply_dispositions(findings, dispositions, session, decision),
          {:ok, appended_findings} <-
-           append_findings(updated_findings, new_findings, latest, session) do
+           append_findings(updated_findings, new_findings, latest, session),
+         {:ok, latest} <- archive_replaced_reviewer_snapshots(latest, reference_snapshots) do
       updated_attempt =
         latest
         |> Map.put("verdict", normalize_verdict(verdict))
@@ -754,6 +1085,47 @@ defmodule Kogen.Build.Tracking do
 
   defp valid_reference_snapshots(_),
     do: {:error, "scenario tracking reference snapshots must be a string-keyed JSON map"}
+
+  defp archive_replaced_reviewer_snapshots(attempt, nil), do: {:ok, attempt}
+
+  defp archive_replaced_reviewer_snapshots(attempt, _snapshots) do
+    previous = Map.get(attempt, "reviewer_reference_snapshots", %{})
+
+    case previous do
+      snapshots when is_map(snapshots) and map_size(snapshots) == 0 ->
+        {:ok, attempt}
+
+      snapshots when is_map(snapshots) ->
+        append_reviewer_snapshot_history(attempt, snapshots)
+
+      _ ->
+        {:error, "scenario tracking has invalid prior Reviewer reference snapshots"}
+    end
+  end
+
+  defp append_reviewer_snapshot_history(attempt, snapshots) do
+    candidate_id = Map.get(attempt, "candidate_id")
+
+    if is_binary(candidate_id) and candidate_id != "" and valid_archived_snapshot_map?(snapshots) do
+      append_reference_snapshot_history(attempt, candidate_id, snapshots)
+    else
+      {:error,
+       "scenario tracking cannot archive prior Reviewer references without a Candidate id"}
+    end
+  end
+
+  defp append_reference_snapshot_history(attempt, candidate_id, snapshots) do
+    history = Map.get(attempt, "reference_snapshot_history", [])
+
+    case archived_reference_snapshots(history) do
+      {:ok, _snapshots} ->
+        entry = %{"candidate_id" => candidate_id, "snapshots" => snapshots}
+        {:ok, Map.put(attempt, "reference_snapshot_history", history ++ [entry])}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
 
   defp merge_reference_snapshots(attempt, nil), do: attempt
 

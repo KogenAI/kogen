@@ -23,7 +23,7 @@ defmodule Kogen.ClaudeCode do
   """
   use Boundary, deps: [Kogen.ProjectScope], exports: []
 
-  @pinned_version "2.1.281"
+  @pinned_version "2.1.285"
   @installer Path.expand("../../priv/kogen/claude_code/install.py", __DIR__)
 
   # Provider credentials and routing switches must never fund or redirect a

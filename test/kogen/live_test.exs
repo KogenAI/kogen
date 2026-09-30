@@ -9,6 +9,8 @@ defmodule Kogen.LiveTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Build.Contract
 
   @moduletag :live
@@ -32,7 +34,7 @@ defmodule Kogen.LiveTest do
   test "independent real Reviewer catches semantic fixture defects and accepts their corrected counterpart" do
     {:ok, config} = Kogen.Intent.read_config()
     assert_selected_root_profiles!(config)
-    project_root = File.cwd!()
+    project_root = @project_root
     log_dir = primitive_log_dir(project_root)
     fixture = primitive_fixture(project_root)
     setup_fixture(project_root, fixture)

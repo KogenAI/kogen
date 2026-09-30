@@ -1,20 +1,34 @@
 Code.require_file("../support/native_helper_fixture.ex", __DIR__)
-Code.require_file("../support/route_config.ex", __DIR__)
 
 defmodule Kogen.NativeHelperLiveTest do
   @moduledoc false
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.NativeHelperFixture
-  alias Kogen.RouteConfig
   alias Mix.Tasks.Kogen.Expert
 
   @moduletag :live
   @moduletag timeout: 1_200_000
 
   test "a bounded fresh native dispatch records actual child routing evidence" do
-    config = RouteConfig.codex_route!()
-    project_root = File.cwd!()
+    # This probe is a Codex-native Developer helper dispatch: it opens a
+    # managed Codex scope directly and reads Codex's own native session
+    # store, so it always selects the explicit route whose Developer is
+    # assigned to Codex, never the public default (`optimum` assigns the
+    # Developer to Claude).
+    {:ok, config} =
+      Kogen.Intent.read_config(
+        ".kogen/config.yaml",
+        "codex-dominant-adversarial-claude"
+      )
+
+    assert Kogen.Intent.role_harness(config, :developer) == "codex"
+    assert config.developer == %{model: "gpt-6.1-sol", effort: "high"}
+    assert config.helpers.scout == %{model: "gpt-6-luna", effort: "low"}
+    assert config.helpers.worker == %{model: "gpt-6-luna", effort: "high"}
+    project_root = @project_root
     log_dir = log_dir!(project_root)
     fixture = fixture_dir!(project_root)
     previous_raw_log_dir = System.get_env("KOGEN_RAW_LOG_DIR")
@@ -27,7 +41,8 @@ defmodule Kogen.NativeHelperLiveTest do
 
     fixture = setup_fixture!(fixture)
     protocol = NativeHelperFixture.protocol(config, "developer")
-    prompt = NativeHelperFixture.prompt(config, "developer")
+    candidate_prompt = NativeHelperFixture.candidate_prompt(config, project_root)
+    prompt = NativeHelperFixture.prompt(config, "developer", candidate_prompt)
     File.write!(Path.join(log_dir, "protocol.json"), Jason.encode!(protocol) <> "\n")
     File.write!(Path.join(log_dir, "parent-prompt.md"), prompt)
     System.put_env("KOGEN_RAW_LOG_DIR", log_dir)
@@ -66,7 +81,7 @@ defmodule Kogen.NativeHelperLiveTest do
   @hybrid_route "claude-dominant-adversarial-codex"
 
   test "the hybrid route's Codex Expert runs on its assigned harness with its exact profile" do
-    project_root = File.cwd!()
+    project_root = @project_root
     log_dir = log_dir!(project_root)
     {:ok, route} = Kogen.Intent.read_config(".kogen/config.yaml", @hybrid_route)
 

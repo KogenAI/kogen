@@ -19,6 +19,31 @@ defmodule Kogen.VerificationSurfaceLedgerTest do
   alias Kogen.Harness.Verdict
   alias Kogen.IntegrityFixture, as: Fixture
 
+  test "real Candidate identity tracks immediate same-size edits after commits" do
+    %{dir: dir} = Fixture.create()
+
+    head_tree = fn ->
+      {tree, 0} = System.cmd("git", ["rev-parse", "HEAD^{tree}"], cd: dir)
+      String.trim(tree)
+    end
+
+    admission_tree = head_tree.()
+    assert Fixture.candidate_id!(dir) == admission_tree
+
+    # Both values have the same byte length, so Git must re-read the contents
+    # instead of relying on a stat-cache size change.
+    Fixture.write!(dir, "priv/value.txt", "next\n")
+    first_candidate_tree = Fixture.candidate_id!(dir)
+    refute first_candidate_tree == admission_tree
+
+    assert Fixture.commit!(dir, "same-size value edit") == Fixture.head!(dir)
+    committed_tree = head_tree.()
+    assert Fixture.candidate_id!(dir) == committed_tree
+
+    Fixture.write!(dir, "priv/value.txt", "else\n")
+    refute Fixture.candidate_id!(dir) == committed_tree
+  end
+
   describe "Ledger.compute/1" do
     test "includes an edited test outside affected_paths and a weakened runner, excludes an added test" do
       %{dir: dir, base_commit: _base_commit} = Fixture.create()
@@ -587,6 +612,7 @@ defmodule Kogen.VerificationSurfaceLedgerTest do
 
   describe "fake Reviewer schema recording" do
     test "fake Claude records --json-schema and answers a required ledger" do
+      isolate_harness_home()
       dir = fake_harness_dir()
       File.mkdir_p!(Path.join(dir, ".kogen/runtime"))
       claude = Path.join(dir, "fake_claude")
@@ -676,6 +702,7 @@ defmodule Kogen.VerificationSurfaceLedgerTest do
     end
 
     test "fake Codex records --output-schema and answers a required ledger" do
+      isolate_harness_home()
       dir = fake_harness_dir()
       File.mkdir_p!(Path.join(dir, ".kogen/runtime"))
       codex = Path.join(dir, "fake_codex")
@@ -732,6 +759,17 @@ defmodule Kogen.VerificationSurfaceLedgerTest do
       schema2 = File.read!(Path.join(dir, ".kogen/runtime/reviewer-schema-2.json"))
       assert schema2 == Verdict.schema()
     end
+  end
+
+  defp isolate_harness_home do
+    prior = System.get_env("KOGEN_HARNESS_HOME")
+    System.delete_env("KOGEN_HARNESS_HOME")
+
+    on_exit(fn ->
+      if prior,
+        do: System.put_env("KOGEN_HARNESS_HOME", prior),
+        else: System.delete_env("KOGEN_HARNESS_HOME")
+    end)
   end
 
   defp scenario_entry(id) do

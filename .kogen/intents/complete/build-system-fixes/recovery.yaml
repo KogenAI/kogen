@@ -1,0 +1,10 @@
+{
+  "base": "7c4fdabb9150280425d41564ccedfd49b5c5ada5",
+  "commit": "28ea4c858272f7e530335aa0e7894a5dd67c30dc",
+  "tree": "79a17e9be12298958e6da7802eb82fad371061d4",
+  "ref": "refs/kogen-recovery/build-system-fixes/native-evidence-2026-09-29",
+  "source_build": "Sfdi1-chWMxm8BsbJPgn14tR",
+  "worktree": "/Users/almirsarajcic/Library/Application Support/Kogen/single-gate-workspaces/f57c88512ea0cd5a4e6c07fdaea8f27e2749a2fa3f0f3389caa5323ef017927c/build-system-fixes-Sfdi1-chWMxm8BsbJPgn14tR",
+  "status": "historical recovery provenance; implementation already preserved and repaired in current Candidate; not accepted",
+  "next_action": "Do not replay this historical patch. Use the seeded operations/manual-controller/candidate-next for fresh explicit codex admission and required verification/independent Review; operations/manual-controller/manifest.json owns current execution state."
+}

@@ -2,6 +2,8 @@ defmodule Kogen.CommitProvenanceTest do
   @moduledoc "Automated first and subsequent Builds must never claim manual bootstrap provenance."
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   @makefile """
   .PHONY: check
   check:
@@ -26,7 +28,7 @@ defmodule Kogen.CommitProvenanceTest do
   """
 
   test "first and subsequent Builds record truthful automated provenance" do
-    project_root = File.cwd!()
+    project_root = @project_root
     dest = Path.join(System.tmp_dir!(), "kogen-provenance-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
     on_exit(fn -> File.rm_rf(dest) end)

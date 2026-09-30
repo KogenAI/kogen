@@ -1,6 +1,9 @@
 defmodule Kogen.ColdOfflineContractTest do
   use ExUnit.Case, async: true
 
+  # Subprocesses run from this checkout, never the shared VM's mutable cwd.
+  @project_root Path.expand("../..", __DIR__)
+
   test "cold environment consumer rejects warm, credentialed, and provider-touched inputs" do
     root = Path.expand("../..", __DIR__)
     warm = Path.join(System.tmp_dir!(), "warm-#{System.unique_integer([:positive])}")
@@ -28,7 +31,8 @@ defmodule Kogen.ColdOfflineContractTest do
       System.cmd(
         "python3",
         ["-c", program, Path.join(root, "scripts/check/offline.py"), absent, warm, receipt],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     result = Jason.decode!(String.trim(output))
@@ -58,7 +62,8 @@ defmodule Kogen.ColdOfflineContractTest do
 
     {output, 0} =
       System.cmd("python3", ["-c", program, Path.join(root, "scripts/check/offline.py"), receipt],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     result = Jason.decode!(String.trim(output))
@@ -101,7 +106,8 @@ defmodule Kogen.ColdOfflineContractTest do
 
     {output, 0} =
       System.cmd("python3", ["-c", program, Path.join(root, "scripts/check/offline.py"), fixture],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     result = Jason.decode!(String.trim(output))

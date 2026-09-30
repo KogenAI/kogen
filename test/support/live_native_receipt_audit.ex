@@ -2,8 +2,11 @@ defmodule Kogen.LiveNativeReceiptAudit do
   @moduledoc false
   alias Kogen.Build.VerificationPlan
 
-  def audit!(raw_log_dir, expected_sessions, reviewer_sessions \\ [])
-      when is_map(expected_sessions) and is_list(reviewer_sessions) do
+  # `attempts` are the tracked attempt records; an attempt whose
+  # `evidence_addendum` names a Reviewer session permits a second (confirming)
+  # accept receipt for that session.
+  def audit!(raw_log_dir, expected_sessions, reviewer_sessions \\ [], attempts \\ [])
+      when is_map(expected_sessions) and is_list(reviewer_sessions) and is_list(attempts) do
     VerificationPlan.trace("Kogen.LiveNativeReceiptAudit.audit!")
 
     streams =
@@ -28,7 +31,7 @@ defmodule Kogen.LiveNativeReceiptAudit do
       )
     end)
 
-    audit_reviewer_receipts!(raw_log_dir, reviewer_sessions)
+    audit_reviewer_receipts!(raw_log_dir, reviewer_sessions, attempts)
 
     %{
       provider_invocations: length(streams),
@@ -43,9 +46,9 @@ defmodule Kogen.LiveNativeReceiptAudit do
     }
   end
 
-  defp audit_reviewer_receipts!(_raw_log_dir, []), do: :ok
+  defp audit_reviewer_receipts!(_raw_log_dir, [], _attempts), do: :ok
 
-  defp audit_reviewer_receipts!(raw_log_dir, reviewer_sessions) do
+  defp audit_reviewer_receipts!(raw_log_dir, reviewer_sessions, attempts) do
     path = Path.join(raw_log_dir, "reviewer-verdicts.jsonl")
     require!(File.regular?(path), "missing native Reviewer receipt log")
 
@@ -62,11 +65,38 @@ defmodule Kogen.LiveNativeReceiptAudit do
 
     Enum.each(reviewer_sessions, fn session_id ->
       matching = Enum.filter(receipts, &(&1["session_id"] == session_id))
-      require!(length(matching) == 1, "expected one Reviewer receipt for session #{session_id}")
-      [receipt] = matching
-      require_reviewer_schema!(receipt)
+      addendum? = Enum.any?(attempts, &addendum_names?(&1, session_id))
+
+      case {matching, addendum?} do
+        {[receipt], _} ->
+          require_reviewer_schema!(receipt)
+
+        {[first, second], true} ->
+          require_reviewer_schema!(first)
+          require_reviewer_schema!(second)
+
+          require!(
+            second["verdict"] == "accept",
+            "evidence addendum Reviewer receipt must be accept"
+          )
+
+          require!(
+            second["attempt_token"] == first["attempt_token"] and
+              second["candidate_id"] == first["candidate_id"],
+            "evidence addendum must resume the Reviewer on the same attempt and Candidate"
+          )
+
+        _ ->
+          raise ArgumentError,
+                "expected one Reviewer receipt for session #{session_id} (two only with a matching evidence addendum), got #{length(matching)}"
+      end
     end)
   end
+
+  defp addendum_names?(attempt, session_id) when is_map(attempt),
+    do: match?(%{"reviewer_session_id" => ^session_id}, attempt["evidence_addendum"])
+
+  defp addendum_names?(_attempt, _session_id), do: false
 
   defp require_reviewer_schema!(receipt) do
     require!(nonblank?(receipt["candidate_id"]), "Reviewer receipt needs a candidate binding")
@@ -129,28 +159,48 @@ defmodule Kogen.LiveNativeReceiptAudit do
     %{path: path, session_id: hd(starts), usage: completion["usage"]}
   end
 
-  # Claude Code `-p --output-format stream-json`: one init binds the session
-  # and exactly one successful result settles the turn with its usage.
+  # Claude Code `-p --output-format stream-json`. Pinned 2.1.284 re-emits
+  # system/init and result events each time background helper tasks finish
+  # inside one `-p` process, so one capture holds one or more inits and results.
+  # They must all share exactly one session_id, every result must be a
+  # non-error success, and the stream must end on a result. Each result's usage
+  # covers only its own segment (not cumulative), so the capture's usage is the
+  # sum across results; taking only the final one would drop earlier work.
   defp claude_stream!(path, events) do
+    name = Path.basename(path)
     starts = for event <- events, claude_init?(event), do: event["session_id"]
     results = Enum.filter(events, &(&1["type"] == "result"))
 
-    require!(length(starts) == 1, "#{Path.basename(path)} must bind exactly one native session")
-    require!(length(results) == 1, "#{Path.basename(path)} must contain one result event")
-    [result] = results
-    require!(is_map(result["usage"]), "#{Path.basename(path)} result needs a usage map")
+    require!(starts != [], "#{name} must bind exactly one native session")
+    require!(results != [], "#{name} must contain one result event")
+    require!(List.last(events)["type"] == "result", "#{name} must end with a result event")
+    require!(Enum.all?(results, &is_map(&1["usage"])), "#{name} result needs a usage map")
 
     require!(
-      result["subtype"] == "success" and result["is_error"] != true,
-      "#{Path.basename(path)} contains a failed provider event"
+      Enum.all?(results, &(&1["subtype"] == "success" and &1["is_error"] != true)),
+      "#{name} contains a failed provider event"
     )
+
+    session_ids =
+      for event <- events, is_binary(event["session_id"]), uniq: true, do: event["session_id"]
+
+    require!(length(session_ids) == 1, "#{name} must bind exactly one native session")
 
     require!(
-      Enum.all?(events, &(not is_binary(&1["session_id"]) or &1["session_id"] == hd(starts))),
-      "#{Path.basename(path)} must bind exactly one native session"
+      Enum.all?(starts, &(&1 == hd(session_ids))),
+      "#{name} must bind exactly one native session"
     )
 
-    %{path: path, session_id: hd(starts), usage: result["usage"]}
+    usage = results |> Enum.map(& &1["usage"]) |> Enum.reduce(&sum_usage(&2, &1))
+    %{path: path, session_id: hd(session_ids), usage: usage}
+  end
+
+  defp sum_usage(left, right) do
+    Map.merge(left, right, fn
+      _key, a, b when is_number(a) and is_number(b) -> a + b
+      _key, a, b when is_map(a) and is_map(b) -> sum_usage(a, b)
+      _key, _a, b -> b
+    end)
   end
 
   defp claude_init?(event), do: event["type"] == "system" and event["subtype"] == "init"

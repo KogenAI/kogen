@@ -7,6 +7,8 @@ defmodule Kogen.ReviewPacketAuditTest do
   # concurrently running suite.
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Codex.State
   alias Kogen.ReviewPacketAudit
 
@@ -107,6 +109,47 @@ defmodule Kogen.ReviewPacketAuditTest do
   end
 
   describe "packet audit against retained evidence" do
+    test "the accepting Reviewer's addendum stream is accepted as its one extra capture" do
+      {log_dir, candidate_dir} = passing_fixture!(addendum?: true, extra_streams: 1)
+      summary = ReviewPacketAudit.audit!(log_dir, @build_id, {:dir, candidate_dir})
+      [call] = summary["reviewer_tool_calls"]
+      assert call["stream"] == "raw-stream-100-1.jsonl"
+      assert call["addendum_stream"] == "raw-stream-100-2.jsonl"
+    end
+
+    test "an addendum stream that never names the addendum packet is rejected" do
+      {log_dir, candidate_dir} =
+        passing_fixture!(addendum?: true, extra_streams: 1, addendum_names_packet?: false)
+
+      assert_raise ExUnit.AssertionError, ~r/no tool call naming .*0-addendum\.json/, fn ->
+        ReviewPacketAudit.audit!(log_dir, @build_id, {:dir, candidate_dir})
+      end
+    end
+
+    test "a duplicate stream without an addendum record is still rejected" do
+      {log_dir, candidate_dir} = passing_fixture!(extra_streams: 1)
+
+      assert_raise ExUnit.AssertionError, ~r/more than one retained raw provider stream/, fn ->
+        ReviewPacketAudit.audit!(log_dir, @build_id, {:dir, candidate_dir})
+      end
+    end
+
+    test "an addendum session with two extra streams is rejected" do
+      {log_dir, candidate_dir} = passing_fixture!(addendum?: true, extra_streams: 2)
+
+      assert_raise ExUnit.AssertionError, ~r/exactly two retained raw provider streams/, fn ->
+        ReviewPacketAudit.audit!(log_dir, @build_id, {:dir, candidate_dir})
+      end
+    end
+
+    test "an addendum record with only one stream is rejected" do
+      {log_dir, candidate_dir} = passing_fixture!(addendum?: true)
+
+      assert_raise ExUnit.AssertionError, ~r/exactly two retained raw provider streams/, fn ->
+        ReviewPacketAudit.audit!(log_dir, @build_id, {:dir, candidate_dir})
+      end
+    end
+
     test "a well-formed retained Build passes the audit" do
       {log_dir, candidate_dir} = passing_fixture!()
 
@@ -144,6 +187,14 @@ defmodule Kogen.ReviewPacketAuditTest do
       end
     end
 
+    test "fails when historical snapshots inline the record's own bytes" do
+      {log_dir, candidate_dir} = passing_fixture!(inline_history_self_reference?: true)
+
+      assert_raise ExUnit.AssertionError, ~r/reference_snapshot_history must not inline/, fn ->
+        ReviewPacketAudit.audit!(log_dir, @build_id, {:dir, candidate_dir})
+      end
+    end
+
     test "fails when the accepting verdict cites no Candidate file" do
       {log_dir, candidate_dir} = passing_fixture!(no_candidate_citation?: true)
 
@@ -154,8 +205,17 @@ defmodule Kogen.ReviewPacketAuditTest do
   end
 
   describe "Codex login and scope preflight (adversarial reviewer/expert routes)" do
+    # `Kogen.IsolatedCase` also runs setup in the parent VM, where the process-
+    # global environment is shared with every other async module; the managed
+    # root and env belong only to the child VM that runs the test body.
     setup do
-      source = File.cwd!()
+      if Kogen.WorkspaceFixture.isolated_child?(),
+        do: child_context(),
+        else: {:ok, root: nil, source: @project_root}
+    end
+
+    defp child_context do
+      source = @project_root
 
       root =
         Path.join(
@@ -192,6 +252,7 @@ defmodule Kogen.ReviewPacketAuditTest do
 
     test "passes for a fixture that resolves to an installed and authenticated Codex scope",
          ctx do
+      assert System.find_executable("python3") =~ "mise/installs/python"
       install_fixture!(ctx)
       authenticate_shared!(ctx)
       fixture_root = unique_tmp_dir!("codex-logged-in")
@@ -313,8 +374,39 @@ defmodule Kogen.ReviewPacketAuditTest do
         else
           %{}
         end,
-      "reference_snapshots" => %{}
+      "reference_snapshots" => %{},
+      "reference_snapshot_history" =>
+        if Keyword.get(options, :inline_history_self_reference?, false) do
+          [
+            %{
+              "candidate_id" => "candidate-1",
+              "snapshots" => %{
+                ".kogen/runtime/scenario-tracking/#{@build_id}/record.json" => %{
+                  "content_base64" => Base.encode64("{}")
+                }
+              }
+            }
+          ]
+        else
+          []
+        end
     }
+
+    addendum_path = ".kogen/runtime/scenario-tracking/#{@build_id}/review-packets/0-addendum.json"
+
+    attempt =
+      if Keyword.get(options, :addendum?, false) do
+        Map.put(attempt, "evidence_addendum", %{
+          "reviewer_session_id" => "reviewer-1",
+          "packet" => %{
+            "path" => addendum_path,
+            "attempt_token" => "attempt-token-1",
+            "candidate_id" => "candidate-1"
+          }
+        })
+      else
+        attempt
+      end
 
     record = %{"attempts" => [attempt]}
     File.write!(Path.join(tracking, "record.json"), Jason.encode!(record))
@@ -359,6 +451,35 @@ defmodule Kogen.ReviewPacketAuditTest do
 
     body = Enum.map_join(events, "\n", &Jason.encode!/1)
     File.write!(Path.join(raw_log_dir, "raw-stream-100-1.jsonl"), body <> "\n")
+
+    extra_streams = Keyword.get(options, :extra_streams, 0)
+
+    for n <- 1..extra_streams//1 do
+      names? = Keyword.get(options, :addendum_names_packet?, true)
+
+      extra =
+        [
+          %{"type" => "system", "subtype" => "init", "session_id" => "reviewer-1"},
+          %{
+            "type" => "assistant",
+            "message" => %{
+              "content" => [
+                %{
+                  "type" => "tool_use",
+                  "name" => "Read",
+                  "input" => %{"file_path" => if(names?, do: addendum_path, else: "dummy.txt")}
+                }
+              ]
+            }
+          },
+          %{"type" => "result", "subtype" => "success", "duration_ms" => 100}
+        ]
+
+      File.write!(
+        Path.join(raw_log_dir, "raw-stream-100-#{n + 1}.jsonl"),
+        Enum.map_join(extra, "\n", &Jason.encode!/1) <> "\n"
+      )
+    end
 
     {log_dir, candidate_dir}
   end

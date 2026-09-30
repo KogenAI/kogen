@@ -106,14 +106,28 @@ class InstallerTest(unittest.TestCase):
         first = installer.install(self.root, platform=self.platform, registry=registry,
             fetch=lambda _: payload, native_check=lambda runtime: launches.append(runtime["version"]),
             progress=lambda _: None)
-        self.assertEqual(selected, ["0.156.1-darwin-arm64"])
-        self.assertEqual(launches, ["0.156.1"])
+        self.assertEqual(selected, [f"{installer.INITIAL_VERSION}-darwin-arm64"])
+        self.assertEqual(launches, [installer.INITIAL_VERSION])
         account = self.root / "account-state"
         account.write_bytes(b"synthetic-credentials-and-retained-conversations")
         repeated = installer.install(self.root, platform=self.platform,
             registry=lambda *_: self.fail("repeated install fetched metadata"))
         self.assertEqual(repeated, first)
         self.assertEqual(account.read_bytes(), b"synthetic-credentials-and-retained-conversations")
+
+    def test_production_pin_names_both_exact_macos_artifacts_and_registry_integrity(self):
+        self.assertEqual(installer.PINNED_ARTIFACTS, {
+            "darwin-arm64": {
+                "version": f"{installer.INITIAL_VERSION}-darwin-arm64",
+                "tarball": f"https://registry.npmjs.org/@openai/codex/-/codex-{installer.INITIAL_VERSION}-darwin-arm64.tgz",
+                "integrity": "sha512-7SPaPFU0tdqapQ5VEgrF+wb+p9dxfWfLMXMKZMRKoWPn/tLMajlMjYBBnu8o6VtaVH2DHQ6kpnp5TMkv5bqvrg==",
+            },
+            "darwin-x64": {
+                "version": f"{installer.INITIAL_VERSION}-darwin-x64",
+                "tarball": f"https://registry.npmjs.org/@openai/codex/-/codex-{installer.INITIAL_VERSION}-darwin-x64.tgz",
+                "integrity": "sha512-VPZGYHH2yVn8S3IuxJk38vxhBADJZp68IBL8hr4quJ2R7jM16l43TLCwRemN+1J27V/cs771fbx63aGRf5F8JA==",
+            },
+        })
 
     def test_production_pin_uses_tracked_artifact_metadata_without_registry_lookup(self):
         payload = package_tar()
@@ -142,8 +156,7 @@ class InstallerTest(unittest.TestCase):
             fetch=lambda _url: payload, native_check=lambda _runtime: None,
             progress=lambda _message: None,
         )
-        self.assertEqual(installer.INITIAL_VERSION, "0.156.1")
-        self.assertEqual(result["version"], "0.156.1")
+        self.assertEqual(result["version"], installer.INITIAL_VERSION)
         self.assertEqual(installer.inspect(self.root, platform=self.platform), result)
         # The retained 0.154.0 tree still verifies at its original executable,
         # so an operation that selected it before activation keeps working.
@@ -175,14 +188,14 @@ class InstallerTest(unittest.TestCase):
                                   native_check=failure.get("native_check", lambda _runtime: None),
                                   progress=lambda _message: None)
             self.assertEqual((self.root / "default.json").read_bytes(), default)
-            self.assertFalse((self.root / "runtimes/0.156.1-darwin-arm64").exists())
+            self.assertFalse((self.root / f"runtimes/{installer.INITIAL_VERSION}-darwin-arm64").exists())
             self.assertIsNone(installer.required(self.root, platform=self.platform))
             self.assertEqual(installer.inspect(self.root, platform=self.platform), previous)
             self.assertEqual(account.read_bytes(), b"synthetic-account")
         retried = installer.install(self.root, platform=self.platform, registry=registry_for(payload),
                                     fetch=lambda _url: payload, native_check=lambda _runtime: None,
                                     progress=lambda _message: None)
-        self.assertEqual(retried["version"], "0.156.1")
+        self.assertEqual(retried["version"], installer.INITIAL_VERSION)
         self.assertEqual(installer.verify_runtime(self.root, "0.154.0", self.platform), previous)
 
     def test_download_and_incomplete_tree_failures_preserve_working_default_and_credentials(self):

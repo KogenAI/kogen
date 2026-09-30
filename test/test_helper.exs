@@ -1,14 +1,165 @@
 # Test modules that need VM-global cwd/environment state are reloaded in a
 # private child VM by Kogen.IsolatedCase.  Loading this support module before
 # the tests makes the replacement available to every test source.
-{python, python_status} = System.cmd("mise", ["which", "python3"], stderr_to_stdout: true)
+python_bin =
+  if System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1" do
+    # The parent resolved mise before launching this fresh VM. Repeating
+    # `mise which` for every selected test pays a process launch and config
+    # lookup without changing that per-invocation toolchain decision.
+    bin = System.fetch_env!("KOGEN_TEST_PYTHON_BIN")
 
-if python_status != 0 do
-  raise "project Python is unavailable through mise: #{String.trim(python)}"
+    unless File.regular?(Path.join(bin, "python3")),
+      do: raise("isolated Python is unavailable: #{bin}")
+
+    bin
+  else
+    {python, python_status} = System.cmd("mise", ["which", "python3"], stderr_to_stdout: true)
+
+    if python_status != 0 do
+      raise "project Python is unavailable through mise: #{String.trim(python)}"
+    end
+
+    python
+    |> String.split("\n")
+    |> Enum.reverse()
+    |> Enum.map(&String.trim/1)
+    |> Enum.find(fn path -> Path.type(path) == :absolute and File.regular?(path) end)
+    |> case do
+      nil -> raise "mise did not return an installed Python executable: #{python}"
+      path -> Path.dirname(path)
+    end
+  end
+
+System.put_env("PATH", python_bin <> ":" <> System.fetch_env!("PATH"))
+System.put_env("KOGEN_TEST_PYTHON_BIN", python_bin)
+
+# The check proof records only this Mix invocation's ExUnit results. Fixture
+# Builds inherit the environment and may run nested suites; an explicitly new
+# event-log path starts a new owner, while an inherited path keeps its owner.
+case System.get_env("KOGEN_TEST_EVENT_LOG") do
+  path when is_binary(path) and path != "" ->
+    if System.get_env("KOGEN_TEST_EVENT_OWNER_PATH") != path do
+      System.put_env("KOGEN_TEST_EVENT_OWNER_PATH", path)
+      System.put_env("KOGEN_TEST_EVENT_OWNER_PID", System.pid())
+    end
+
+  _ ->
+    :ok
 end
 
-python_bin = python |> String.trim() |> Path.dirname()
-System.put_env("PATH", python_bin <> ":" <> System.fetch_env!("PATH"))
+# Each suite's parent owns a fresh shared-outcome directory for its isolated
+# children (see test/support/shared_outcome.ex); a nested suite never reuses
+# an outer suite's outcomes.
+unless System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1" do
+  shared_outcomes =
+    Path.join(
+      System.tmp_dir!(),
+      "kogen-shared-outcomes-#{System.pid()}-#{System.unique_integer([:positive])}"
+    )
+
+  File.mkdir_p!(shared_outcomes)
+  System.put_env("KOGEN_SHARED_OUTCOME_DIR", shared_outcomes)
+  System.at_exit(fn _status -> File.rm_rf(shared_outcomes) end)
+end
+
+compile_isolated_modules = fn cache ->
+  root = Path.expand("..", __DIR__)
+
+  sources =
+    Path.wildcard(Path.join(root, "test/**/*.exs"))
+    |> Enum.filter(fn source ->
+      supported_tree? = String.contains?(source, "/test/kogen/")
+
+      case {supported_tree?, File.read(source)} do
+        {false, _} -> false
+        {true, {:ok, contents}} -> String.contains?(contents, "use Kogen.IsolatedCase")
+        _ -> false
+      end
+    end)
+    |> Enum.sort()
+
+  compiler =
+    """
+    Code.require_file(System.fetch_env!("KOGEN_TEST_HELPER"))
+    ExUnit.configure(autorun: false)
+    cache = System.fetch_env!("KOGEN_ISOLATED_BEAM_CACHE")
+
+    {modules_by_source, unavailable_sources} =
+      Enum.reduce(System.argv(), {%{}, %{}}, fn source, {modules, unavailable} ->
+        File.write!(Path.join(cache, "progress"), source)
+        try do
+          compiled = Code.compile_file(source)
+
+          test_modules =
+            Enum.filter(compiled, fn {module, _beam} ->
+              function_exported?(module, :__ex_unit__, 1)
+            end)
+
+          Enum.each(compiled, fn {module, beam} ->
+            File.write!(Path.join(cache, Atom.to_string(module) <> ".beam"), beam)
+          end)
+
+          case test_modules do
+            [{module, _beam} | _] ->
+              {Map.put(modules, Path.expand(source), Atom.to_string(module)), unavailable}
+
+            [] ->
+              {modules, unavailable}
+          end
+        rescue
+          exception ->
+            {modules, Map.put(unavailable, Path.expand(source), Exception.message(exception))}
+        catch
+          kind, reason ->
+            {modules, Map.put(unavailable, Path.expand(source), "\#{kind}: \#{inspect(reason)}")}
+        end
+      end)
+
+    # A cached test module does not execute its source-level require_file calls
+    # in the isolated child. Retain the support modules those calls loaded in
+    # this compiler VM, including transitive support dependencies.
+    support_root = Path.join(System.fetch_env!("KOGEN_TEST_ROOT"), "test/support") <> "/"
+
+    Code.required_files()
+    |> Enum.filter(&String.starts_with?(&1, support_root))
+    |> Enum.each(fn source ->
+      source
+      |> Code.compile_file()
+      |> Enum.each(fn {module, beam} ->
+        File.write!(Path.join(cache, Atom.to_string(module) <> ".beam"), beam)
+      end)
+    end)
+
+    manifest = %{modules_by_source: modules_by_source, unavailable_sources: unavailable_sources}
+    File.write!(Path.join(cache, "modules.json"), Jason.encode!(manifest))
+    """
+
+  code_paths =
+    :code.get_path()
+    |> Enum.map(&List.to_string/1)
+    |> Enum.filter(&(Path.type(&1) == :absolute))
+    |> Enum.uniq()
+    |> Enum.flat_map(fn path -> ["-pa", path] end)
+
+  args = code_paths ++ ["-pa", cache, "-e", compiler, "--" | sources]
+
+  {output, status} =
+    System.cmd(
+      System.find_executable("elixir") || raise("elixir executable was not found"),
+      args,
+      stderr_to_stdout: true,
+      env: [
+        {"KOGEN_ISOLATED_CASE_CHILD", "1"},
+        {"KOGEN_ISOLATED_COMPILER", "1"},
+        {"KOGEN_ISOLATED_BEAM_CACHE", cache},
+        {"KOGEN_TEST_HELPER", Path.join(root, "test/test_helper.exs")}
+      ]
+    )
+
+  if status != 0 do
+    raise "isolated test module cache compile failed (#{status}): #{output}"
+  end
+end
 
 if System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1" do
   Code.ensure_loaded!(Kogen.IsolatedCase)
@@ -25,16 +176,19 @@ else
 
   Code.require_file("support/timing_formatter.ex", __DIR__)
 
-  cache =
-    Path.join(
-      System.tmp_dir!(),
-      "kogen-test-code-#{System.pid()}-#{System.unique_integer([:positive])}"
-    )
+  external_cache = System.get_env("KOGEN_ISOLATED_BEAM_CACHE")
 
-  File.mkdir!(cache)
+  cache =
+    external_cache ||
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-test-code-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
+  File.mkdir_p!(cache)
   # From this point the bootstrap owns a writable private directory. Register
   # its cleanup before any compiler or cache-preparation step can fail.
-  System.at_exit(fn _ -> File.rm_rf(cache) end)
+  if is_nil(external_cache), do: System.at_exit(fn _ -> File.rm_rf(cache) end)
 
   # The gate builds this concurrently with its other preparation, into a fresh
   # private directory. Focused tests prepare their own copy here instead.
@@ -63,10 +217,23 @@ else
   System.put_env("KOGEN_TEST_PROCESS_GUARD", guard)
 
   Enum.each(support, fn {module, beam} ->
-    File.write!(Path.join(cache, Atom.to_string(module) <> ".beam"), beam)
+    path = Path.join(cache, Atom.to_string(module) <> ".beam")
+
+    if is_nil(external_cache) or System.get_env("KOGEN_ISOLATED_BEAM_PREPARE") == "1" do
+      File.write!(path, beam)
+    else
+      unless File.regular?(path), do: raise("isolated support cache is missing #{path}")
+    end
   end)
 
-  Code.prepend_path(cache)
+  System.put_env("KOGEN_ISOLATED_BEAM_CACHE", cache)
+
+  if System.get_env("KOGEN_ISOLATED_BEAM_PREPARE") == "1" do
+    compile_isolated_modules.(cache)
+  end
+
+  manifest = Path.join(cache, "modules.json")
+  if File.regular?(manifest), do: System.put_env("KOGEN_ISOLATED_BEAM_MANIFEST", manifest)
 
   # Every fixture Build creates its Candidate worktrees and harness homes in a
   # disposable per-run workspaces root whose path contains a space, never
@@ -81,6 +248,20 @@ else
   File.mkdir_p!(workspaces)
   System.at_exit(fn _ -> File.rm_rf(workspaces) end)
   System.put_env("KOGEN_WORKSPACES_ROOT", workspaces)
+
+  # A non-live run never reads the machine's managed Codex or Claude Code
+  # install: an admission that forgets to set its own root fails closed on a
+  # root that does not exist. Live runs (`--only live`, `--include live`) use
+  # the real runtimes. Child VMs inherit this; a test that needs a runtime
+  # sets its own root explicitly.
+  live_run? =
+    Enum.any?(System.argv(), &(&1 in ["live", "--only=live", "--include=live"]))
+
+  unless live_run? do
+    missing_runtime_root = Path.join(workspaces, "no-managed-runtime")
+    System.put_env("KOGEN_CODEX_ROOT", Path.join(missing_runtime_root, "codex"))
+    System.put_env("KOGEN_CLAUDE_ROOT", Path.join(missing_runtime_root, "claude"))
+  end
 end
 
 # Capture this once while the test VM is still at the checkout root.  Child
@@ -104,8 +285,12 @@ System.put_env("GIT_CONFIG_KEY_#{config_count}", "commit.gpgsign")
 System.put_env("GIT_CONFIG_VALUE_#{config_count}", "false")
 System.put_env("GIT_CONFIG_COUNT", Integer.to_string(config_count + 1))
 
-# Each isolated case also starts a child VM. One case per parent scheduler
-# avoids doubling process startup pressure while independent fixtures overlap.
+# Each isolated case starts a fresh child VM that mostly waits on
+# subprocesses. Case concurrency follows the same capacity-based limit as the
+# child VM pool (one and a half times the schedulers unless KOGEN_ISOLATED_POOL says
+# otherwise), so neither number caps the other.
+isolated_case_pool = Kogen.IsolatedCase.Pool.limit()
+
 formatters =
   if System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1",
     do: [ExUnit.CLIFormatter],
@@ -125,7 +310,10 @@ confined? =
     )
 
 ExUnit.start(
+  # Mix and isolated children each invoke ExUnit.run/0 explicitly. An at-exit
+  # autorun prints a second empty suite and repeats formatter bookkeeping.
+  autorun: false,
   exclude: if(confined?, do: [:live, :unconfined], else: [:live]),
   formatters: formatters,
-  max_cases: System.schedulers_online()
+  max_cases: isolated_case_pool
 )

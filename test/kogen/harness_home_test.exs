@@ -23,8 +23,11 @@ defmodule Kogen.HarnessHomeTest do
 
   @moduletag timeout: 120_000
 
+  # `Kogen.IsolatedCase` also runs setup in the parent VM, where the process-
+  # global environment is shared with every other async module; only the
+  # child VM that runs the test body may touch it.
   setup do
-    System.delete_env("KOGEN_ROLE")
+    if Kogen.WorkspaceFixture.isolated_child?(), do: System.delete_env("KOGEN_ROLE")
     :ok
   end
 

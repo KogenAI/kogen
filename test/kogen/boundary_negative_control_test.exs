@@ -20,10 +20,12 @@ defmodule Kogen.BoundaryNegativeControlTest do
   """
   use ExUnit.Case, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   @moduletag timeout: 120_000
 
   test "the Boundary compiler rejects an undeclared cross-boundary reference" do
-    boundary_path = Path.expand("deps/boundary", File.cwd!())
+    boundary_path = Path.expand("deps/boundary", @project_root)
     assert File.dir?(boundary_path), "expected #{boundary_path} to exist (already-fetched dep)"
 
     fixture_dir =

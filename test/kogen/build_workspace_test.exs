@@ -9,7 +9,7 @@ defmodule Kogen.BuildWorkspaceTest do
 
   Code.require_file("../support/live_tracking_retention.ex", __DIR__)
 
-  alias Kogen.Build.{Evidence, Workspace}
+  alias Kogen.Build.{Evidence, FailureReport, Workspace}
   alias Kogen.CandidateFixture, as: Candidate
   alias Kogen.WorkspaceFixture, as: Fixture
 
@@ -166,7 +166,7 @@ defmodule Kogen.BuildWorkspaceTest do
 
       for name <- ["intent.yaml", "scenarios.yaml"] do
         assert File.read!(Path.join([worktree, ".kogen/intents/approved", @slug, name])) ==
-                 File.read!(Path.join([control, ".kogen/intents/approved", @slug, name]))
+                 File.read!(Path.join([control, ".kogen/intents/drafts", @slug, name]))
       end
 
       assert Fixture.git!(worktree, ["check-ignore", ".kogen/intents/approved/#{@slug}"]) != ""
@@ -457,6 +457,30 @@ defmodule Kogen.BuildWorkspaceTest do
     end
   end
 
+  test "post-merge validation failure is still reported as published when HEAD is the accepted commit",
+       %{control: control} do
+    hook = Path.join(control, ".git/hooks/post-merge")
+    File.write!(hook, "#!/bin/sh\nprintf 'post-merge control mutation\\n' >> README.md\n")
+    File.chmod!(hook, 0o755)
+    before = Fixture.git!(control, ["rev-parse", "HEAD"])
+
+    warning =
+      ExUnit.CaptureIO.capture_io(:stderr, fn ->
+        assert :ok = Fixture.build!(control)
+      end)
+
+    published = Fixture.git!(control, ["rev-parse", "HEAD"])
+    assert Fixture.git!(control, ["rev-parse", "HEAD^"]) == before
+    assert File.read!(Path.join(control, "README.md")) =~ "post-merge control mutation"
+    assert warning =~ "published #{published}"
+    assert warning =~ "control post-merge assertion failed"
+    block = Candidate.candidate(control)
+    assert block["disposition"] == "published-retained"
+    assert block["candidate_commit"] == published
+    [owner] = Fixture.owner_records(control)
+    assert owner["status"] =~ "published: cleanup refused: "
+  end
+
   describe "publication-refused" do
     for {cause, script, expected} <- [
           {"B moved",
@@ -513,8 +537,10 @@ defmodule Kogen.BuildWorkspaceTest do
         assert File.dir?(block["worktree_path"])
         assert File.dir?(block["harness_home"])
 
-        assert File.read!(Path.join(control, ".kogen/intents/approved/#{@slug}/intent.yaml")) ==
-                 approved
+        refute File.dir?(Path.join(control, ".kogen/intents/approved/#{@slug}"))
+
+        assert File.read!(Path.join(control, ".kogen/intents/drafts/#{@slug}/intent.yaml")) ==
+                 String.replace(approved, "status: approved", "status: draft")
 
         refute Fixture.git!(control, ["rev-parse", "main"]) == commit
       end
@@ -636,7 +662,9 @@ defmodule Kogen.BuildWorkspaceTest do
              ) =~
                "mutated"
 
-      refute File.read!(Path.join(control, ".kogen/intents/approved/#{@slug}/intent.yaml")) =~
+      refute File.dir?(Path.join(control, ".kogen/intents/approved/#{@slug}"))
+
+      refute File.read!(Path.join(control, ".kogen/intents/drafts/#{@slug}/intent.yaml")) =~
                "mutated"
     end
 
@@ -660,10 +688,55 @@ defmodule Kogen.BuildWorkspaceTest do
   end
 
   describe "failure-retention" do
+    test "restart completes a durable package move before refusing Build without fresh approval",
+         %{control: control} do
+      tools = Fixture.tmp_dir!("terminal-provider")
+      role = Fixture.fake!(tools, "failing_provider", "#!/bin/sh\ncat >/dev/null\nexit 1\n")
+      approved_intent = Path.join(control, ".kogen/intents/approved/#{@slug}/intent.yaml")
+      File.write!(approved_intent, File.read!(approved_intent) <> "status: approved\n")
+
+      assert {:error, _} = Fixture.build!(control, harness: role)
+      first = Candidate.candidate(control)
+      build_id = record_id(control)
+
+      report_path =
+        Path.join(control, ".kogen/runtime/scenario-tracking/#{build_id}/failure-report.json")
+
+      report_bytes = File.read!(report_path)
+      owner_path = Workspace.owner_path(control, build_id)
+      owner = owner_path |> File.read!() |> Jason.decode!()
+      draft = Path.join(control, ".kogen/intents/drafts/#{@slug}")
+      draft_intent = Path.join(draft, "intent.yaml")
+
+      # Model a crash immediately after the directory rename and before status
+      # reconciliation. The report and original package digest remain durable.
+      File.write!(
+        draft_intent,
+        String.replace(File.read!(draft_intent), "status: draft", "status: approved")
+      )
+
+      File.write!(owner_path, Jason.encode!(Map.put(owner, "status", "running"), pretty: true))
+
+      assert {:error, recovery} = Fixture.build!(control, harness: role)
+      assert recovery =~ "terminal failed Build returned #{@slug} to Draft"
+      refute File.dir?(Path.join(control, ".kogen/intents/approved/#{@slug}"))
+      assert File.regular?(draft_intent)
+      assert File.read!(report_path) == report_bytes
+      assert File.dir?(first["worktree_path"])
+      assert Candidate.candidate(control)["worktree_path"] == first["worktree_path"]
+
+      assert owner_path |> File.read!() |> Jason.decode!() |> Map.fetch!("status") ==
+               "stopped: provider-failure"
+
+      assert length(Candidate.records(control)) == 1
+    end
+
     for {category, status, opts} <- [
           {"offline exhaustion", "stopped: offline-exhausted",
            harness: "fake_codex", env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]},
-          {"outer-allowance exhaustion", "stopped: outer-allowance-exhausted",
+          # Keep the admission-base identity; convergence now stops the same
+          # unchanged fake before spending the outer allowance.
+          {"outer-allowance exhaustion", "stopped: unchanged-candidate",
            harness: "fake_codex_always_rework", env: []},
           {"a Jev cannot-comply stop", "stopped: cannot-comply",
            harness: "fake_codex_simple_accept",
@@ -671,15 +744,16 @@ defmodule Kogen.BuildWorkspaceTest do
              {"FAKE_JEV_ANSWERS",
               ~s({"objection:scenario:fixture-scenario": ["objection", 0.99]})}
            ]},
-          # An unguarded dummy.txt that fake_codex never cleans up is now
-          # reworked twice, then stops as `guard-violation`; an Approved-copy
-          # edit keeps the `integrity` stop.
+          # An added frozen Approved-copy entry that the fake never removes
+          # spends its guard reworks; editing an existing frozen file is integrity.
           {"a guard-violation stop", "stopped: guard-violation",
-           harness: "fake_codex", env: [], guards: ["unrelated.txt"]},
+           harness: :approved_added, env: []},
           {"an integrity failure", "stopped: integrity", harness: :approved_edit, env: []},
           {"a provider failure", "stopped: provider-failure", harness: :failing, env: []},
           {"a malformed Review", "stopped: review-failure", harness: :malformed, env: []}
         ] do
+      # The historical name remains a warm base ID. Assertions below require
+      # the newly approved Draft return as well as Candidate retention.
       test "a Build stopped by #{category} keeps its Candidate, names it and is never reused by the next Build",
            %{control: control} do
         opts = unquote(Macro.escape(opts))
@@ -702,22 +776,34 @@ defmodule Kogen.BuildWorkspaceTest do
         assert File.dir?(first["worktree_path"])
         assert File.dir?(first["harness_home"])
         assert Fixture.control_state(control) == before
-        assert File.dir?(Path.join(control, ".kogen/intents/approved/#{@slug}"))
+        approved = Path.join(control, ".kogen/intents/approved/#{@slug}")
+        draft = Path.join(control, ".kogen/intents/drafts/#{@slug}")
+        refute File.exists?(approved)
+        assert File.dir?(draft)
+        assert File.regular?(Path.join(draft, "intent.yaml"))
+
+        report =
+          Path.join(control, ".kogen/runtime/scenario-tracking/#{build_id}/failure-report.json")
+          |> File.read!()
+          |> Jason.decode!()
+
+        assert report["class"] == elem(FailureReport.classify(report["category"]), 0)
+        assert report["next_action"] == elem(FailureReport.classify(report["category"]), 1)
+
+        assert report["record_sha256"] ==
+                 Base.encode16(
+                   :crypto.hash(
+                     :sha256,
+                     File.read!(Path.join(control, report["record"]))
+                   ),
+                   case: :lower
+                 )
+
         snapshot = tree_snapshot(first)
 
-        # The next Build of the same Intent gets its own Candidate and home.
         assert {:error, _} = Fixture.build!(control, harness: harness, env: opts[:env])
-
-        [second] =
-          control
-          |> Candidate.records()
-          |> Enum.map(& &1["candidate"])
-          |> Enum.reject(&(&1["worktree_path"] == first["worktree_path"]))
-
-        refute second["worktree_path"] == first["worktree_path"]
-        refute second["harness_home"] == first["harness_home"]
+        assert length(Fixture.owner_records(control)) == 1
         assert tree_snapshot(first) == snapshot
-        assert length(Fixture.owner_records(control)) == 2
       end
     end
   end
@@ -836,6 +922,13 @@ defmodule Kogen.BuildWorkspaceTest do
       printf '%s' "$input" | python3 #{inspect(Fixture.support("launch_receipt.py"))} "$@"
       out=; prev=
       for a in "$@"; do [ "$prev" = --output-last-message ] && out="$a"; prev="$a"; done
+      case "$input" in KOGEN_EVIDENCE_ADDENDUM*)
+        # An evidence addendum is not a new Review: it confirms the same
+        # session's verdict and does not cite the record again.
+        printf '%s' "$input" | python3 #{inspect(Fixture.support("scenario_response.py"))} reviewer accept >"$out"
+        printf '{"type":"thread.started","thread_id":"citing-reviewer"}\\n{"type":"turn.completed","thread_id":"citing-reviewer"}\\n'
+        exit 0 ;;
+      esac
       tracking="$(printf '%s' "$input" | python3 -c 'import json,sys; lines=sys.stdin.read().splitlines(); i=max(i for i,v in enumerate(lines) if v=="KOGEN_TASK_CONTEXT"); print(json.loads(lines[i+1])["tracking_path"])')"
       printf '%s' "$input" | python3 #{inspect(Fixture.support("scenario_response.py"))} reviewer accept |
         python3 -c 'import json,sys; v=json.load(sys.stdin); t=sys.argv[1]; ev=[{"path":t[t.index(".kogen/runtime/"):],"locator":"the Build own tracking record","receipt":None}]; v["scenarios"][0]["evidence"]=ev; print(json.dumps(v))' "$tracking" >"$out"
@@ -859,6 +952,16 @@ defmodule Kogen.BuildWorkspaceTest do
     #!/bin/sh
     if [ "${KOGEN_ROLE:-}" = developer ]; then
       printf 'mutated\\n' >> .kogen/intents/approved/#{@slug}/intent.yaml
+    fi
+    exec #{inspect(Fixture.support("fake_codex_simple_accept"))} "$@"
+    """)
+  end
+
+  defp retention_harness(:approved_added) do
+    Fixture.fake!(Fixture.tmp_dir!("approved-added-role"), "approved_added_role", """
+    #!/bin/sh
+    if [ "${KOGEN_ROLE:-}" = developer ]; then
+      touch .kogen/intents/approved/#{@slug}/extra-entry
     fi
     exec #{inspect(Fixture.support("fake_codex_simple_accept"))} "$@"
     """)

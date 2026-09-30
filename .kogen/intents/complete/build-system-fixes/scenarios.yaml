@@ -1,0 +1,593 @@
+---
+- id: convergent-rework
+  given: A Candidate revision T passes the complete offline gate and the frozen route selects provider-backed targets
+  when: The automatic Build controller (`mix kogen.build`) schedules verification and independent Review for T
+  then: >-
+    Run every selected live target and a provisional read-only Review concurrently on the same immutable T; wait
+    for all started jobs, then hand the Developer one aggregate of every target failure, Review finding, signature
+    and evidence reference. Keep the Developer idle during settlement. A finding never cancels live work. Cancelled
+    work is recorded as neither pass nor fail. Live targets always run on the Build's selected route. Repair within explicit frozen progress and work budgets
+    (`max_developer_resumptions` is 3; `max_no_progress` is derived from the round allowances); same-tree
+    Review no-change rounds count against progress allowance. Completion requires all selected checks, no blocking
+    findings, a final T-bound verdict, and the evidence-addendum join; progress-only turns or unfinished helpers
+    never complete a phase.
+    Elapsed time is diagnostic. Measure and report active elapsed time per phase, cycle and Build, and warn once
+    past `build_time_nudge_minutes`. Every `developer_turn_minutes` the Developer is nudged by interrupting and
+    resuming the same session with a progress and narrow-scope prompt; it is never stopped for duration, and a nudge
+    is not charged as a repair resumption. No Build, turn or stage ever fails solely for elapsed time. A plain paid
+    live-target failure (catalog flag `same_tree_retry`) is retried once on the same tree; both attempts are
+    recorded and shown to the Reviewer and in the handoffs, and a pass on retry is flaky and counts as no progress.
+    Timeouts, cancellations and provider or environment classes are never retried. The Developer-resumption ceiling
+    is charged per repair handoff.
+  wrong_result: >-
+    Verification stops after the first live failure, Review waits until every target passes, aggregate evidence
+    is split across handoffs, or a provisional verdict authorizes a changed tree.
+  verified_by:
+  - check
+  evidence: >-
+    Focused controller fake-harness run with changed and unchanged Candidate controls Full check also retains coverage
+    in: test/kogen/controller_verification_test.exs, test/kogen/two_outer_resumptions_test.exs. Focused proof selectors
+    are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/controller_verification_test.exs
+    - test/kogen/parallel_settlement_test.exs
+    - test/kogen/review_packet_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: fake-harness convergence and failure-class controls'
+    affected_paths:
+    - lib/kogen/build.ex
+    - lib/kogen/build/failure_handoff.ex
+    - lib/kogen/build/failure_signature.ex
+    - test/kogen/controller_verification_test.exs
+    - test/kogen/two_outer_resumptions_test.exs
+    - README.md
+    - lib/kogen/harness.ex
+    - priv/kogen/prompts/expert.md
+    - priv/kogen/prompts/developer.md
+    - lib/kogen/harness/claude.ex
+    - lib/kogen/claude_code.ex
+    - test/kogen/parallel_settlement_test.exs
+    - test/kogen/review_packet_test.exs
+- id: failed-build-returns-to-draft
+  given: >-
+    An admitted automatic Build (`mix kogen.build`) owns a frozen Approved package, Candidate, phase state and controller tracking
+    record
+  when: A terminal failure, resumable interruption or successful publication is settled
+  then: >-
+    Persist typed failure evidence, completed and cancelled phase receipts, actual dispatch/spend ledger, remaining
+    budgets, exact Candidate/base/context identity and next action before disposition. Terminal admitted failure
+    returns the selected package atomically to Draft without changing its identity, provenance or history; continuable
+    provider/interruption state retains custody. Recovery reuses only digest-verified exact-tree receipts, rejects
+    stale/missing refs and exhausted budgets, and carries no copied attempt diary or historical patch. Successful
+    publication retains concise final acceptance provenance; interruption or a pre-admission refusal cannot masquerade
+    as terminal failure.
+  wrong_result: >-
+    A failure or restart loses the Candidate, replays stale receipts, appends transcripts as requirements, erases
+    breaker lineage, or changes package state before the controlling record settles.
+  verified_by:
+  - check
+  evidence: >-
+    Actual controller failure/continuation/reapproval controls, missing/tampered recovery references, Draft collision
+    and unchanged-contract breaker controls; original Candidate and latest code retained without patch duplication.
+    Full check also retains coverage in: test/kogen/build_workspace_test.exs, test/kogen/failure_report_test.exs,
+    test/kogen/build_breakers_test.exs, test/kogen/build_continuation_test.exs, test/kogen/build_reconcile_test.exs,
+    test/kogen/lifecycle_test.exs. Focused proof selectors are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/build_workspace_test.exs
+    - test/kogen/manual_controller_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: package custody and failure-class lifecycle controls through the Build controller'
+    affected_paths:
+    - lib/kogen/build.ex
+    - lib/kogen/build/failure_report.ex
+    - lib/kogen/build/breakers.ex
+    - lib/kogen/build/continuation.ex
+    - lib/kogen/intent.ex
+    - test/kogen/build_workspace_test.exs
+    - test/kogen/failure_report_test.exs
+    - test/kogen/build_breakers_test.exs
+    - test/kogen/build_continuation_test.exs
+    - test/kogen/build_reconcile_test.exs
+    - test/kogen/lifecycle_test.exs
+    - README.md
+    - test/kogen/manual_controller_test.exs
+- id: process-and-capacity
+  given: >-
+    Multiple selected live jobs and a provisional Reviewer are active under the admitted controller with an explicit
+    finite concurrency ceiling
+  when: A job fails, an accepted stop or shutdown arrives, the controller restarts, or owned descendants outlive their role
+  then: >-
+    Give each target/cycle separate fixture, log and evidence roots. Record actual dispatches and owned process
+    identities, settle every started job, cancel only on explicit stop/shutdown or classified provider/environment
+    failure, and reap the owned groups without signaling ancestors or unrelated groups. On restart, verify custody
+    and re-use only passed receipts bound to identical tree/context/catalog; rerun unsettled jobs and retain cancelled
+    receipts as neither result. Concurrency is a resource cap, never a paid-spend counter. Unknown exit or transport
+    evidence stays honestly classified.
+    Live fan-out uses a finite configured concurrency ceiling (default 4), so the provisional Review and all
+    selected live targets run at once, longest first. Capacity for the initial fan-out is reserved before any start
+    and each start is logged at launch. The provisional Reviewer dispatch is ledgered for every outcome, and jobs
+    still active at an accepted stop are recorded as cancelled.
+  wrong_result: >-
+    A child survives cleanup, unrelated process is signaled, target outputs collide, cancelled work counts as a
+    pass/failure, or an unknown exit is guessed to be provider failure.
+  verified_by:
+  - check
+  evidence: >-
+    Disposable process-tree and provider-marker controls; missing/tampered sidecar controls through tracking, evidence
+    resolution, and retained live fixture copy Full check also retains coverage in: test/kogen/process_custody_test.exs,
+    test/kogen/controller_verification_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/build_evidence_test.exs,
+    test/kogen/review_packet_audit_test.exs. Focused proof selectors are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/process_custody_test.exs
+    - test/kogen/parallel_settlement_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: process tree and explicit marker controls'
+    affected_paths:
+    - lib/kogen/process_custody.ex
+    - lib/kogen/build.ex
+    - lib/kogen/build/failure_signature.ex
+    - test/kogen/process_custody_test.exs
+    - test/kogen/controller_verification_test.exs
+    - lib/kogen/build/tracking.ex
+    - lib/kogen/build/evidence.ex
+    - test/support/live_reviewer_rework_fixture.ex
+    - test/kogen/scenario_tracking_test.exs
+    - test/kogen/build_evidence_test.exs
+    - test/kogen/review_packet_audit_test.exs
+    - test/kogen/parallel_settlement_test.exs
+- id: exact-tests-and-readiness
+  given: A scenario declares exact selectors and a Candidate changes a module, package artifact or verification
+    owner
+  when: The controller settles the offline phase and prepares the final evidence review
+  then: >-
+    Resolve required proof.offline selectors to runnable evidence. Treat optional predicted test names and path-owner
+    mappings as advisory disclosures for independent Review; allow legitimate test evolution and related repairs.
+    Normalize verified_by ordering and duplicates and run every explicitly selected target. Report missing required proof before live dispatch. Preserve frozen Approved bytes and complete package custody; check
+    publication sizes diagnostically and recheck exact staged contents at commit; no arbitrary byte cap rejects valid code.
+    Review may cite only digest-bound references from the settled receipt/evidence set. No broad smoke test substitutes
+    for an exact selector, and finalization fails closed on mutated or missing required evidence.
+    The acceptance join enforces exactly one receipt per selected live target.
+  wrong_result: >-
+    A nonexistent test passes, Review begins before offline readiness, publication silently drops required evidence, or changed evidence is treated as its frozen snapshot.
+  verified_by:
+  - check
+  evidence: >-
+    Required-selector missing/present controls and advisory-name/coverage disclosure controls in focused verification plan tests Full check also retains coverage
+    in: test/kogen/pre_verification_settlement_test.exs, test/kogen/proof_selector_verification_test.exs, test/kogen/review_packet_test.exs.
+    Focused proof selectors are witnesses, not a reduced full-suite obligation. Publication-size diagnostics and
+    forbidden-runtime publication controls live in test/kogen/git_test.exs and actual controller publication preflight
+    tests.
+  proof:
+    offline:
+    - test/kogen/proof_selector_verification_test.exs
+    - test/kogen/git_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: exact test resolution and pre-Review control'
+    affected_paths:
+    - lib/kogen/build.ex
+    - lib/kogen/build/verification_plan.ex
+    - priv/kogen/prompts/developer.md
+    - priv/kogen/prompts/reviewer.md
+    - test/kogen/pre_verification_settlement_test.exs
+    - test/kogen/proof_selector_verification_test.exs
+    - test/kogen/review_packet_test.exs
+    - lib/kogen/git.ex
+    - lib/kogen/build/evidence.ex
+    - priv/kogen/prompts/shaping.md
+    - priv/kogen/prompts/shaping-fresh.md
+    - priv/kogen/prompts/shaping-continuation.md
+    - test/kogen/manual_controller_test.exs
+- id: selected-route-catalog
+  given: Admission reads the selected route, target catalog and all actual changed owners
+  when: The controller freezes a run and plans its offline preparations and live fan-out
+  then: >-
+    Every required selected live target is gating even if it has not passed before. Disclose predicted changed-owner
+    coverage gaps from the frozen catalog to Review as advisory; path mappings alone never add or block a target.
+    Independent Review assesses actual coverage and requests repair of a concrete gap. Resolve every applicable
+    selected-target prepare before any provider dispatch, and run
+    each preparation with provider access denied. `optimum` remains the default for Shape and Build, explicit legacy
+    routes remain valid, and the exact harness/model/effort/catalog are frozen and recorded for every phase and
+    restart. A later config edit cannot silently substitute a route or suppress a required target.
+  wrong_result: >-
+    A cached pass hides a required target, a prepare launches a provider, changed live ownership is omitted, or
+    a resume silently loads a different route/catalog.
+  verified_by:
+  - check
+  evidence: >-
+    Catalog coverage and fake authentication rejection controls; frozen route reaches a fake make child and survives
+    live-tagged test_helper. Mutate config after admission then resume, asserting unchanged bound role profiles.
+    Wrong default and explicit override cases reject silent substitution; native team proof is supplied by the selected
+    live scenarios. Full check also retains coverage in: test/kogen/selective_verification_targets_test.exs, test/kogen/proof_selector_verification_test.exs,
+    test/kogen/configuration_support_contract_test.exs, test/kogen/harness_args_test.exs, test/kogen/controller_verification_test.exs,
+    test/kogen/route_env_preservation_test.exs. Focused proof selectors are witnesses, not a reduced full-suite
+    obligation.
+  proof:
+    offline:
+    - test/kogen/selective_verification_targets_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: catalog, routing and fake authentication controls'
+    affected_paths:
+    - ".kogen/config.yaml"
+    - priv/kogen/verification_targets.yaml
+    - lib/kogen/build/verification_plan.ex
+    - lib/kogen/build/verification.ex
+    - lib/kogen/build/verification_runner.ex
+    - lib/kogen/build.ex
+    - test/kogen/selective_verification_targets_test.exs
+    - test/kogen/proof_selector_verification_test.exs
+    - test/kogen/configuration_support_contract_test.exs
+    - test/kogen/harness_args_test.exs
+    - test/kogen/controller_verification_test.exs
+    - test/support/live_reviewer_rework_fixture.ex
+    - test/support/route_config.ex
+    - test/test_helper.exs
+    - README.md
+    - test/kogen/route_env_preservation_test.exs
+    - priv/kogen/claude_code/models.yaml
+    - lib/kogen/intent.ex
+- id: native-codex-upgrade
+  given: >-
+    Kogen stages managed Codex 0.159.2 and Claude Code 2.1.285 with artifact integrity verification and runs the selected native compatibility
+    target
+  when: The native harness captures root, helper, resume and interactive context observations
+  then: >-
+    Prove actual managed-runtime execution and bound session/model/effort evidence, not a config-only pin. The deterministic
+    isolation oracle requires planted forbidden sentinels absent, the project sentinel present, and bundled `.system`
+    names to match an allowlisted inventory whose digest and provenance bind to the pinned runtime. Separately demonstrate
+    that account/remote plugins are excluded, including a real plugin-enabled-account observation run in a
+    disposable `CODEX_HOME`. Retain actual
+    helper outputs and negative controls; an unclassified name fails as unsupported/unproven until provenance is
+    established; it is neither silently allowlisted nor called leakage without evidence.
+    The managed runtime pins are Codex 0.159.2 and Claude Code 2.1.285, and tests read the pins from one source. The
+    skill-isolation oracle binds bundled and project-sentinel classification to the observed origin (the pinned
+    `.system` tree or the project skill root); duplicate names keep every origin and a foreign same-name entry
+    fails. A fresh operation's Codex state db is seeded so the 0.159.x TUI backfill cannot time out.
+  wrong_result: >-
+    A textual version bump passes without native execution, bundled skills are mistaken for remote plugins, or remote
+    account content is silently accepted without a disconfirming control.
+  verified_by:
+  - check
+  - live-native
+  evidence: >-
+    Installer integrity controls, compatibility probe, then one native provider receipt; common provider-denied
+    runtime prepare installs/checks both Candidate pins before launch and rejects missing/wrong pins without a provider
+    call; for this self-hosted Build the orchestrator stages exact runtime artifacts before admission, because existing-target
+    prepare metadata stays frozen; Candidate prepare improvements govern later Builds Full check also retains coverage
+    in: test/kogen/codex_management_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/managed_runtime_ready_test.exs.
+    Focused proof selectors are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/codex_management_test.exs
+    paid_target: live-native
+    paid_reason: >-
+      provider-required: live-native; observation: real Codex 0.159.2 native session; offline-limit: installer and
+      fake transport cannot prove provider interaction
+    affected_paths:
+    - ".kogen/config.yaml"
+    - priv/kogen/codex/install.py
+    - priv/kogen/codex/native_settings.py
+    - priv/kogen/codex/compatibility/pty_driver.py
+    - test/kogen/codex_management_test.exs
+    - test/kogen/codex_compatibility_preparation_test.exs
+    - test/support/codex_installer_test.py
+    - test/kogen/codex_native_live_test.exs
+    - lib/kogen/managed_runtime_ready.ex
+    - test/kogen/managed_runtime_ready_test.exs
+    - priv/kogen/verification_targets.yaml
+    - test/support/managed_codex_fixture.py
+    - test/kogen/codex_public_tasks_test.exs
+    - test/kogen/codex_environment_test.exs
+    - test/kogen/harness_role_test.exs
+- id: claude-reviewer-rework
+  given: The managed runtimes execute the selected frozen route and its resolved role assignments
+  when: >-
+    A fresh independent Reviewer provisionally reviews T while selected live verification runs, then an actionable
+    finding is repaired
+  then: >-
+    Retain actual harness/model/effort/session receipts matching the frozen route. The independent Reviewer reports
+    a real finding, the same route-selected Developer resolves it within budget, and the T-bound verdict is invalidated
+    on any changed tree. Review resumes on the delta with open findings or restarts against the full base diff if the
+    Reviewer session is unavailable. Final evidence-addendum confirmation is a distinct post-settlement turn. A
+    Codex-only execution proves no Claude/Opus/Sonnet behavior; route-specific claims require their own receipts.
+  wrong_result: >-
+    A fixture substitutes a hidden route default, config is mistaken for execution, a provisional verdict survives
+    changed code, or the evidence addendum is skipped.
+  verified_by:
+  - check
+  - live-reviewer-rework
+  evidence: >-
+    Installer and actual route-resolution controls, then one native Reviewer-to-Developer rework sequence with exact
+    managed versions. Cover per-helper effort, built-in Agent denial, Stop continuation, exact resume, schema and
+    stream model/session linkage under the new runtime. Old Codex-Developer/Claude-Reviewer receipts do not prove
+    this claim. Sonnet model metadata cites the small retained evidence/probe-native-team/RESULT.md, carried into
+    Complete; allowlisted efforts are limited to observed passing probes. Full check also retains coverage in: test/kogen/claude_code_management_test.exs,
+    test/kogen/controller_verification_test.exs, test/kogen/managed_runtime_ready_test.exs. Focused proof selectors
+    are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/controller_verification_test.exs
+    paid_target: live-reviewer-rework
+    paid_reason: >-
+      provider-required: live-reviewer-rework; observation: actual Developer and independent Reviewer rework under
+      the selected route; offline-limit: fakes cannot establish provider behavior
+    affected_paths:
+    - ".kogen/config.yaml"
+    - priv/kogen/claude_code/install.py
+    - lib/kogen/claude_code.ex
+    - test/support/live_reviewer_rework_fixture.ex
+    - test/kogen/claude_code_management_test.exs
+    - test/support/claude_code_installer_test.py
+    - test/kogen/live_reviewer_rework_test.exs
+    - lib/kogen/managed_runtime_ready.ex
+    - test/kogen/managed_runtime_ready_test.exs
+    - priv/kogen/verification_targets.yaml
+    - test/kogen/build_preconditions_test.exs
+    - test/kogen/shape_task_test.exs
+- id: shape-to-build
+  given: A real Shape session has produced a Draft that is current and human-approved
+  when: '`mix kogen.build` runs the approved Intent automatically from admission through publication'
+  then: >-
+    The connected consumer uses Astra Low Shaping, Opus High audit, Opus Medium Development and Sol High Review
+    on `optimum`, retaining actual role/session evidence. Build applies the established clean-control admission,
+    frozen route/package, Candidate ownership, lock, custody supervisor, write boundary, phase receipts and final
+    publication guards in order, with no operator phase API and no raw role launches. Developer code cannot commit or
+    push. When a check fails, the repair handoff carries that check's own failing output. Only settled final receipts,
+    independent verdict and evidence addendum on the same final tree can enter guarded publication.
+    The live shape-to-build test runs a real Shape session, approval, then `mix kogen.build` to publication.
+    Live targets always run on the Build's selected route.
+  wrong_result: >-
+    A stale audit or config-only team passes, Build skips admission/custody or write receipts, the repair handoff
+    omits the failing check's output, or the Developer publishes directly.
+  verified_by:
+  - check
+  - live-shape-to-build
+  evidence: >-
+    Actual-path provider-denied lifecycle controls and one connected selected-route native receipt; no older role
+    sequence counts as current evidence. Full check also retains coverage in: test/kogen/lifecycle_test.exs, test/kogen/build_workspace_test.exs,
+    test/kogen/selective_verification_targets_test.exs, test/kogen/managed_runtime_ready_test.exs. Focused proof
+    selectors are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/lifecycle_test.exs
+    - test/kogen/manual_controller_test.exs
+    paid_target: live-shape-to-build
+    paid_reason: >-
+      provider-required: live-shape-to-build; observation: real combined selected-route producer-to-consumer sequence;
+      offline-limit: fake orchestration cannot prove provider roles
+    affected_paths:
+    - ".kogen/config.yaml"
+    - lib/kogen/build.ex
+    - test/kogen/live_shape_to_build_test.exs
+    - test/kogen/selective_verification_targets_test.exs
+    - lib/kogen/managed_runtime_ready.ex
+    - test/kogen/managed_runtime_ready_test.exs
+    - priv/kogen/verification_targets.yaml
+    - test/kogen/manual_controller_test.exs
+- id: codex-developer-effort
+  given: >-
+    The frozen route assigns explicit models and efforts to Developer, Reviewer, Expert, Shaper, auditor and native
+    helpers
+  when: Build starts, resumes or dispatches any phase
+  then: >-
+    `optimum` uses Opus 5.5 Medium Developer, native Sonnet 5.5 Medium workers, Sol High Reviewer/Expert, Astra
+    Low Shaper and Opus High auditor; its Codex worker is Luna Max. Existing named routes keep their settings. Receipts
+    capture the actual launch arguments, harness, session and resolved runtime identity; all phases and resumed
+    work use the assignment frozen at admission. No cross-provider helper substitution or silently lowered profile.
+    Named routes' Sol roles use model `gpt-6.1-sol`; this is the settled owner decision.
+  wrong_result: Effective launch settings differ from the admitted role assignment or a helper silently crosses
+    provider.
+  verified_by:
+  - check
+  evidence: >-
+    Role resolution and actual launch-argument controls, including wrong-effort and explicit-override negatives.
+    Full check also retains coverage in: test/kogen/configuration_support_contract_test.exs, test/kogen/harness_args_test.exs.
+    Focused proof selectors are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/harness_args_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: selected profile and exact launch-argument control'
+    affected_paths:
+    - ".kogen/config.yaml"
+    - lib/kogen/build.ex
+    - test/kogen/configuration_support_contract_test.exs
+    - test/kogen/harness_args_test.exs
+- id: offline-runner-stability
+  given: The complete provider-denied check runs in a clean Candidate copy under mise with inherited KOGEN variables
+  when: >-
+    Offline targets, selected-target prepares, fixture generation and focused cold setup/dependency regression settle
+  then: >-
+    Scrub only the existing controller-owned variables at their defined boundaries; preserve KOGEN_ROUTE, KOGEN_PROVIDERS_DENIED
+    and KOGEN_LIVE_LOG_DIR where live-tagged fixtures need them. Use condition-based terminal and boundary assertions.
+    Generated fixtures must be the exact inputs later consumed by targets, all selected prepares finish with provider
+    dispatch denied, and the focused cold setup/dependency regression remains inside `make check`. Keep standalone
+    `cold-offline` for explicit diagnosis only.
+    The isolated test pool is capacity-based (1.5 x schedulers, `KOGEN_ISOLATED_POOL` override), and a shared-VM
+    guard fails any test that mutates the process cwd or environment without restoring it.
+  wrong_result: >-
+    The gate passes while an inherited role variable leaks, preparation dispatches a provider, generated YAML differs
+    from consumed inputs, or a full cold suite becomes routine acceptance.
+  verified_by:
+  - check
+  evidence: >-
+    Focused cold setup/dependency regression and deterministic process synchronization tests are part of check.
+    The standalone cold-offline command remains available for explicit diagnosis, not routine acceptance. Check
+    also retains coverage in test/kogen/cold_offline_test.exs, test/kogen/terminal_probe_test.exs, test/kogen/write_boundary_test.exs,
+    and test/kogen/route_env_preservation_test.exs. Focused proof selectors are witnesses, not a reduced full-suite
+    obligation.
+  proof:
+    offline:
+    - test/kogen/cold_offline_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: cold copy and process controls'
+    affected_paths:
+    - test/test_helper.exs
+    - test/kogen/cold_offline_test.exs
+    - test/kogen/terminal_probe_test.exs
+    - test/kogen/write_boundary_test.exs
+    - test/kogen/route_env_preservation_test.exs
+- id: offline-gate-time
+  given: The admission-base commit supplies a diagnostic test inventory and Candidate tree T is frozen
+  when: Build runs T's offline gate
+  then: >-
+    One complete `make check` execution per relevant exact tree/context runs formatting, compile, analysis, every
+    current non-live test, Candidate-added tests, catalog-derived rehearsals, all selected-target prepares,
+    fixture validation and focused cold setup/dependency regression. The controller binds the whole-gate and per-stage
+    receipts to T, base, catalog and frozen context, reports baseline-to-Candidate test changes for Review and records timings/cache state/bottlenecks.
+    Remove the unused standalone kogen-ctx implementation, dedicated tests, Cargo gate stages and exclusive Rust setup; the remaining complete gate must not depend on it. Preserve ordinary source discovery and historical acceptance evidence.
+    Timings are diagnostic only; do not add 100/300-second acceptance cutoffs, duplicate warm suites or routine
+    standalone `cold-offline`. Reuse only digest-validated exact-tree receipts.
+    Independent stages run concurrently. Rehearsal receipts are bound to their own test identities, or the rehearsal
+    command is executed. Active elapsed time is measured per stage and reported; no stage fails solely for elapsed
+    time. The hang guard fails only on no output for a period and classifies it as a stall; elapsed time alone never fails.
+  wrong_result: >-
+    A correct gate fails solely for elapsed time or a legitimate test rename, coverage is silently removed to shorten it, a second full
+    suite runs routinely, or stale evidence covers changed code.
+  verified_by:
+  - check
+  evidence: >-
+    Provider-denied controller controls assert one complete warm offline execution, acceptance of a correct run
+    above 300 seconds, acceptance and disclosure of legitimate test evolution, rejection of failed current tests or missing required rehearsal/prepare outcomes, and rejection of stale/tampered
+    receipts. Focused cold setup/dependency regression is included in check; full cold-offline execution is explicit
+    diagnostic only. Keep focused tests in the existing warm_check_test and verification owners; legacy scenario
+    ID retained.
+  proof:
+    offline:
+    - test/kogen/warm_check_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: make check stage timing and test-change disclosure controls'
+    affected_paths:
+    - Makefile
+    - priv/kogen/verification_targets.yaml
+    - scripts/check/offline.py
+    - scripts/check/rehearsals.exs
+    - lib/kogen/build.ex
+    - test/support/isolated_case.ex
+    - test/kogen/cold_offline_test.exs
+    - test/kogen/review_packet_test.exs
+    - test/kogen/scenario_semantic_test.exs
+    - test/kogen/warm_check_test.exs
+    - test/support/timing_formatter.ex
+    - lib/kogen/build/verification.ex
+    - lib/kogen/build/verification_runner.ex
+- id: repair-authority-and-review-disclosure
+  given: >-
+    Implementation repairs touch ordinary files outside the predicted footprint, generated fixtures or verification
+    owners
+  when: The controller settles the repaired tree and assembles Review evidence
+  then: >-
+    Permit ordinary related changes in the owned Candidate without model approval per file. Derive actual changed
+    paths/hunks and require a distinct Reviewer assessment of relevance, semantic test strength and available failure
+    evidence. Disclose changed-owner coverage predictions from the frozen catalog to Review; predicted mappings alone
+    are advisory. All selected targets remain required, and a concrete newly discovered proof gap is explicit
+    Review rework through the responsible repair phase, not silent mutation of frozen selection. Keep Approved bytes, tracking/verification records, credentials, write boundaries and named protected
+    controls immutable. A disputed unrelated edit is explicit Review rework, not an automatic path-list stop.
+  wrong_result: >-
+    An ordinary path alone forces restart, an extra change is hidden, tests are weakened, a newly required target
+    is omitted, or a protected control mutates.
+  verified_by:
+  - check
+  evidence: >-
+    Retained controller-path positive and disconfirming controls; exact Candidate revision and native model/session
+    receipts where selected. Full check also retains coverage in: test/kogen/build_repair_authority_test.exs, test/kogen/guarded_paths_test.exs,
+    test/kogen/review_packet_test.exs, test/kogen/selective_verification_targets_test.exs, test/kogen/shaping_audit_checks_test.exs,
+    test/kogen/scenario_contract_test.exs. Focused proof selectors are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/build_repair_authority_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: controller fake-harness controls establish authority and verification semantics'
+    affected_paths:
+    - lib/kogen/build.ex
+    - lib/kogen/build/guarded_paths.ex
+    - lib/kogen/build/review_packet.ex
+    - lib/kogen/build/verification_plan.ex
+    - lib/kogen/shaping_audit/deterministic.ex
+    - priv/kogen/prompts/developer.md
+    - priv/kogen/prompts/reviewer.md
+    - test/kogen/build_repair_authority_test.exs
+    - test/kogen/guarded_paths_test.exs
+    - test/kogen/review_packet_test.exs
+    - test/kogen/selective_verification_targets_test.exs
+    - test/kogen/shaping_audit_checks_test.exs
+    - test/kogen/scenario_contract_test.exs
+- id: targeted-development-readiness
+  given: The Developer has one coherent Candidate tree and controller receipts from a prior phase or exact restart
+  when: Readiness is rendered, the Candidate changes, or Build continues after interruption
+  then: >-
+    Give the Developer relevant failed/changed selectors and actionable evidence without replaying the whole selector
+    list after every small edit. The complete offline gate and every selected target still pass on the final tree
+    before the evidence Review join. Reuse only passed receipts for identical Candidate ID, catalog, frozen context
+    and verified input digests; a changed tree invalidates verification and Review decisions. Targeted checks are
+    development feedback, never acceptance; every actual retry/dispatch consumes its frozen budget.
+  wrong_result: >-
+    A one-line fix reruns every selector as routine feedback, targeted evidence is accepted as the full gate, changed-tree
+    receipts authorize Review, or restart resets budgets.
+  verified_by:
+  - check
+  evidence: >-
+    Retained controller-path positive and disconfirming controls; exact Candidate revision and native model/session
+    receipts where selected. Full check also retains coverage in: test/kogen/targeted_readiness_test.exs, test/kogen/controller_verification_test.exs.
+    Focused proof selectors are witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/targeted_readiness_test.exs
+    - test/kogen/parallel_settlement_test.exs
+    paid_target: none
+    paid_reason: 'offline-sufficient: controller fake-harness controls establish authority and verification semantics'
+    affected_paths:
+    - lib/kogen/build.ex
+    - lib/kogen/build/verification_plan.ex
+    - lib/kogen/execution_policy.ex
+    - priv/kogen/prompts/developer.md
+    - test/kogen/targeted_readiness_test.exs
+    - test/kogen/controller_verification_test.exs
+    - test/kogen/parallel_settlement_test.exs
+- id: bounded-luna-development-delegation
+  given: The selected route's Developer has independent implementation slices and helpers native to its harness
+  when: The Developer delegates, integrates outputs and submits a Candidate revision
+  then: >-
+    Each selected-route-native helper receives non-overlapping ownership, a concrete deliverable, focused completion
+    checks, a finite work budget and blocker reporting. The parent waits for all assigned work, integrates and checks combined
+    behavior, and owns the single aggregate handoff; partial progress, unstarted commands and syntax-only checks
+    do not count as completion. Prove two explicit native dispatches in the fixed live fixture. No recursive fan-out,
+    duplicate full gate, unrelated helper or secondary Review fan-out. `optimum`'s Codex worker is Luna Max; existing
+    named routes retain their settings.
+  wrong_result: >-
+    Configuration alone proves delegation, helpers collide or omit checks, failed work is ignored, or extra fan-out
+    consumes unbounded provider resources.
+  verified_by:
+  - check
+  - live-reviewer-rework
+  evidence: >-
+    Deterministic ownership/completion/failure controls plus actual native helper dispatch receipts matching the
+    selected route in the team fixture. The `optimum` profile's Sonnet 5.5 and Luna Max claims remain model-specific;
+    a Codex-only execution proves only its native Luna helpers. Full check also retains coverage in:
+    test/kogen/developer_delegation_test.exs, test/kogen/native_helper_fixture_test.exs. Focused proof selectors are
+    witnesses, not a reduced full-suite obligation.
+  proof:
+    offline:
+    - test/kogen/developer_delegation_test.exs
+    - test/kogen/parallel_settlement_test.exs
+    paid_target: live-reviewer-rework
+    paid_reason: >-
+      provider-required: live-reviewer-rework; observation: selected-route Developer explicitly dispatches its native
+      helpers that execute bounded completion tests; offline-limit: fake/helper config cannot prove native
+      execution
+    affected_paths:
+    - lib/kogen/harness/codex.ex
+    - lib/kogen/codex.ex
+    - priv/kogen/codex/native_settings.py
+    - priv/kogen/prompts/developer.md
+    - test/kogen/developer_delegation_test.exs
+    - test/kogen/native_helper_fixture_test.exs
+    - test/kogen/native_helper_live_test.exs
+    - ".kogen/config.yaml"
+    - lib/kogen/harness/claude.ex
+    - lib/kogen/claude_code.ex
+    - test/support/live_reviewer_rework_fixture.ex
+    - test/kogen/live_reviewer_rework_test.exs
+    - test/kogen/parallel_settlement_test.exs

@@ -1,11 +1,39 @@
 defmodule Kogen.ExecutionPolicyTest do
   use ExUnit.Case, async: true
 
+  # Resolved from this file, never the shared VM's mutable working directory.
+  @root Path.expand("../..", __DIR__)
+  @config_path Path.join(@root, ".kogen/config.yaml")
+
+  # The controller renders the policy from its control checkout. Changing the
+  # VM-wide working directory for that raced concurrently loading test files
+  # (a `__DIR__`-relative `Code.require_file` failed with :enoent).
+  test "a named policy root is read without changing the working directory" do
+    {:ok, config} = Kogen.Intent.read_config(@config_path)
+    root = Path.join(System.tmp_dir!(), "kogen-policy-root-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(root) end)
+    source = File.read!(Path.join(@root, "priv/kogen/prompts/execution-policy.md"))
+    File.mkdir_p!(Path.join(root, "priv/kogen/prompts"))
+
+    File.write!(
+      Path.join(root, "priv/kogen/prompts/execution-policy.md"),
+      "Named control policy marker.\n" <> source
+    )
+
+    cwd = File.cwd!()
+    policy = Kogen.ExecutionPolicy.render(config, "developer", root)
+    assert File.cwd!() == cwd
+    assert policy =~ "Named control policy marker."
+
+    refute Kogen.ExecutionPolicy.render(config, "developer", @root) =~
+             "Named control policy marker."
+  end
+
   test "all roles receive the complete shared policy without expanding role authority" do
-    {:ok, config} = Kogen.Intent.read_config()
+    {:ok, config} = Kogen.Intent.read_config(@config_path)
 
     for role <- ["shaping", "developer", "reviewer"] do
-      policy = Kogen.ExecutionPolicy.render(config, role)
+      policy = Kogen.ExecutionPolicy.render(config, role, @root)
       assert length(Regex.scan(~r/## Shared execution and delegation policy/, policy)) == 1
       refute policy =~ "{{"
 
@@ -35,17 +63,26 @@ defmodule Kogen.ExecutionPolicyTest do
 
   test "each role template has one insertion and retains its authoritative completion contract" do
     for role <- ["shaping", "developer", "reviewer"] do
-      template = File.read!("priv/kogen/prompts/#{role}.md")
+      template = File.read!(Path.join(@root, "priv/kogen/prompts/#{role}.md"))
       assert length(Regex.scan(~r/\{\{execution_policy\}\}/, template)) == 1
       refute template =~ "{{scout_model}}"
       refute template =~ "## Proactive native delegation"
     end
 
-    assert File.read!("priv/kogen/prompts/developer.md") =~ "{{verification_ownership}}"
-    assert File.read!("priv/kogen/prompts/developer.md") =~ "## Final Developer notes"
-    assert File.read!("priv/kogen/prompts/reviewer.md") =~ "You must not modify the Candidate"
-    assert File.read!("priv/kogen/prompts/reviewer.md") =~ "schema-valid final verdict yourself"
-    assert File.read!("priv/kogen/prompts/shaping.md") =~ "in this same conversation"
+    assert File.read!(Path.join(@root, "priv/kogen/prompts/developer.md")) =~
+             "{{verification_ownership}}"
+
+    assert File.read!(Path.join(@root, "priv/kogen/prompts/developer.md")) =~
+             "## Final Developer notes"
+
+    assert File.read!(Path.join(@root, "priv/kogen/prompts/reviewer.md")) =~
+             "You must not modify the Candidate"
+
+    assert File.read!(Path.join(@root, "priv/kogen/prompts/reviewer.md")) =~
+             "schema-valid final verdict yourself"
+
+    assert File.read!(Path.join(@root, "priv/kogen/prompts/shaping.md")) =~
+             "in this same conversation"
   end
 
   test "Claude Code roles name the configured Claude Code agents instead of Codex native kinds" do
@@ -62,7 +99,7 @@ defmodule Kogen.ExecutionPolicyTest do
     }
 
     for role <- ["shaping", "developer", "reviewer"] do
-      policy = Kogen.ExecutionPolicy.render(config, role)
+      policy = Kogen.ExecutionPolicy.render(config, role, @root)
       assert policy =~ "- **scout:** `claude-sonnet-5` at `low`; Claude Code agent `kogen-scout`."
 
       assert policy =~
@@ -76,42 +113,43 @@ defmodule Kogen.ExecutionPolicyTest do
       refute policy =~ "native agent-kind enums"
     end
 
-    codex = Kogen.ExecutionPolicy.render(%{config | harness: "codex"}, "developer")
+    codex = Kogen.ExecutionPolicy.render(%{config | harness: "codex"}, "developer", @root)
     assert codex =~ "native kind `explorer`"
     assert codex =~ "not native agent-kind enums: use the supported kinds above."
   end
 
   test "each tracked route renders its own helper profiles and harness-specific delegation" do
-    {:ok, claude} = Kogen.Intent.read_config(".kogen/config.yaml", "claude")
-    {:ok, codex} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
+    {:ok, claude} = Kogen.Intent.read_config(@config_path, "claude")
+    {:ok, codex} = Kogen.Intent.read_config(@config_path, "codex")
 
     for role <- ["shaping", "developer", "reviewer"] do
-      claude_policy = Kogen.ExecutionPolicy.render(claude, role)
-      codex_policy = Kogen.ExecutionPolicy.render(codex, role)
+      claude_policy = Kogen.ExecutionPolicy.render(claude, role, @root)
+      codex_policy = Kogen.ExecutionPolicy.render(codex, role, @root)
 
       assert claude_policy =~
                "- **scout:** `claude-sonnet-5` at `low`; Claude Code agent `kogen-scout`."
 
       assert codex_policy =~ "- **scout:** `gpt-6-luna` at `low`; native kind `explorer`."
       assert codex_policy =~ "- **worker:** `gpt-6-luna` at `high`; native kind `worker`."
-      assert codex_policy =~ "- **expert:** `gpt-6-sol` at `high`; native kind `default`."
+      assert codex_policy =~ "- **expert:** `gpt-6.1-sol` at `high`; native kind `default`."
       refute codex_policy =~ "claude-"
       refute codex_policy =~ "Claude Code agent"
       refute claude_policy =~ "gpt-"
     end
 
-    assert Kogen.ExecutionPolicy.render(codex, "reviewer") =~
-             "Configured root (reviewer): `gpt-6-sol` at `high`."
+    assert Kogen.ExecutionPolicy.render(codex, "reviewer", @root) =~
+             "Configured root (reviewer): `gpt-6.1-sol` at `high`."
   end
 
   test "rendering dispatches only on an explicit claude or codex harness" do
-    {:ok, codex} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
+    {:ok, codex} = Kogen.Intent.read_config(@config_path, "codex")
 
     for invalid <- ["pi", "", nil] do
       assert_raise ArgumentError, ~r/unsupported harness/, fn ->
         Kogen.ExecutionPolicy.render(
           %{Map.drop(codex, [:roles, :native_helpers]) | harness: invalid},
-          "developer"
+          "developer",
+          @root
         )
       end
     end
@@ -119,44 +157,45 @@ defmodule Kogen.ExecutionPolicyTest do
     assert_raise KeyError, fn ->
       Kogen.ExecutionPolicy.render(
         Map.drop(codex, [String.to_existing_atom("harness"), :roles, :native_helpers]),
-        "developer"
+        "developer",
+        @root
       )
     end
   end
 
   test "hybrid roles render their own harness's native helpers and never a substituted expert" do
     {:ok, config} =
-      Kogen.Intent.read_config(".kogen/config.yaml", "claude-dominant-adversarial-codex")
+      Kogen.Intent.read_config(@config_path, "claude-dominant-adversarial-codex")
 
     for role <- ["shaping", "developer"] do
-      policy = Kogen.ExecutionPolicy.render(config, role)
+      policy = Kogen.ExecutionPolicy.render(config, role, @root)
       assert policy =~ "- **scout:** `claude-sonnet-5` at `low`; Claude Code agent `kogen-scout`."
 
       assert policy =~
                "- **worker:** `claude-sonnet-5` at `medium`; Claude Code agent `kogen-worker`."
 
-      assert policy =~ "- **expert:** `gpt-6-sol` at `high` on the Codex harness"
+      assert policy =~ "- **expert:** `gpt-6.1-sol` at `high` on the Codex harness"
       assert policy =~ "`mix kogen.expert`"
       refute policy =~ "kogen-expert"
       refute policy =~ "gpt-6-luna"
     end
 
-    reviewer = Kogen.ExecutionPolicy.render(config, "reviewer")
-    assert reviewer =~ "Configured root (reviewer): `gpt-6-sol` at `high`."
+    reviewer = Kogen.ExecutionPolicy.render(config, "reviewer", @root)
+    assert reviewer =~ "Configured root (reviewer): `gpt-6.1-sol` at `high`."
     assert reviewer =~ "- **scout:** `gpt-6-luna` at `low`; native kind `explorer`."
-    assert reviewer =~ "- **expert:** `gpt-6-sol` at `high`; native kind `default`."
+    assert reviewer =~ "- **expert:** `gpt-6.1-sol` at `high`; native kind `default`."
     refute reviewer =~ "claude-"
     refute reviewer =~ "mix kogen.expert"
 
     {:ok, codex_dominant} =
-      Kogen.Intent.read_config(".kogen/config.yaml", "codex-dominant-adversarial-claude")
+      Kogen.Intent.read_config(@config_path, "codex-dominant-adversarial-claude")
 
-    developer = Kogen.ExecutionPolicy.render(codex_dominant, "developer")
+    developer = Kogen.ExecutionPolicy.render(codex_dominant, "developer", @root)
     assert developer =~ "- **scout:** `gpt-6-luna` at `low`; native kind `explorer`."
     assert developer =~ "- **expert:** `claude-opus-5-5` at `high` on the Claude Code harness"
     refute developer =~ "native kind `default`"
 
-    reviewer = Kogen.ExecutionPolicy.render(codex_dominant, "reviewer")
+    reviewer = Kogen.ExecutionPolicy.render(codex_dominant, "reviewer", @root)
 
     assert reviewer =~
              "- **expert:** `claude-opus-5-5` at `high`; Claude Code agent `kogen-expert`."

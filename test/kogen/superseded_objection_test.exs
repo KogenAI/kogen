@@ -75,17 +75,31 @@ defmodule Kogen.SupersededObjectionTest do
     assert superseded["developer_session_id"] == attempt["developer_session_id"]
     assert superseded["candidate_id"] == attempt["candidate_id"]
 
-    # The Reviewer's packet carries it as a labelled advisory item.
-    packet =
+    # The first Review packet was provisionally built before verification
+    # settled, so it cannot claim the later-proven supersession.
+    provisional_packet =
       Jason.decode!(File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-packet-1.json")))
+
+    assert provisional_packet["superseded_objection"] == nil
+
+    # The settled evidence addendum resumes this Reviewer's session with a
+    # packet containing the now-proven advisory; its accepted verdict is the
+    # one joined with the settled receipts for publication.
+    addendum = attempt["addendum_packet"]
+    packet = Jason.decode!(File.read!(Path.expand(addendum["path"], dir)))
 
     assert packet["superseded_objection"]["label"] =~ "advisory"
     assert packet["superseded_objection"]["label"] =~ "Judge every scenario yourself"
 
     assert Map.delete(packet["superseded_objection"], "label") == superseded
     assert packet["developer_notes"] == @objection
+    assert attempt["evidence_addendum"]["outcome"] == "confirm"
+    assert attempt["acceptance_join"] == "passed"
 
-    assert Fixture.reviewer_prompt!(dir, 1) =~ "superseded_objection"
+    addendum_prompt =
+      File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-addendum-prompt-1"))
+
+    assert addendum_prompt =~ Path.expand(addendum["path"], dir)
   end
 
   test "a single passing Stop cycle keeps an objection a cannot-comply stop" do
@@ -145,6 +159,11 @@ defmodule Kogen.SupersededObjectionTest do
                notes: ["All scenarios are done.", @objection],
                reviews: "rework",
                fail_first: [1],
+               # The rework continuation starts on the Candidate the Reviewer
+               # just rejected. Change it before the second attempt's
+               # pre-verification Jev check, which is where its objection
+               # must stop the Build.
+               edits: %{2 => "printf 'changed\\n' >> dummy.txt"},
                # Attempt 1 has two cycles (a failure the resume fixes), so
                # Jev is asked once before each; no `F1` finding exists yet.
                # Attempt 2's own first (and only) cycle is asked once more,

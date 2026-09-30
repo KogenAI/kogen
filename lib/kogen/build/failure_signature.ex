@@ -24,6 +24,10 @@ defmodule Kogen.Build.FailureSignature do
   @head_limit 320
   @primary_default_limit 2_000
   @tail_lines 40
+  # Lines kept above a `make: *** [t] Error N` marker: the target's own message
+  # (`echo "X is missing. Required exact content: Y"`) carries no marker word
+  # and sits just above it.
+  @lead_lines 15
   @digest_tail_lines 20
 
   @exunit_header_re ~r/^[ \t]*\d+\)[ \t]+test .+?\(\S+\)[ \t]*\n[ \t]*\S+\.exs?:\d+/m
@@ -45,15 +49,57 @@ defmodule Kogen.Build.FailureSignature do
   @hex_digest_re ~r/\b[0-9a-f]{12,}\b/
   @codex_bypass_re ~r/^.*--dangerously-bypass-hook-trust.*\n?/m
 
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
-  def derive(cycle, context, catalog, previous \\ []) do
+  def derive(cycle, context, catalog, previous \\ [])
+
+  def derive(%{"status" => "passed"}, _context, _catalog, _previous), do: %{}
+
+  def derive(cycle, context, catalog, previous) do
     receipts = cycle["receipts"] || []
 
     # A controller cycle can also fail outside a target receipt (catalog,
     # proof selector, target evidence or Candidate mutation).
     failed =
-      Enum.find(receipts, &(not passed?(&1))) || cycle["failure"] || List.last(receipts) || %{}
+      Enum.find(receipts, &(not passed?(&1))) || cycle["failure"] || %{}
 
+    build(cycle, failed, context, catalog, previous)
+  end
+
+  @doc """
+  One signature per failed item of a cycle: every failed receipt, then every
+  failure that has no receipt (catalog, proof, cancelled), each derived
+  exactly as `derive/4` derives the first. Cancelled and not-started jobs are
+  neither pass nor fail and get no signature.
+  """
+  @spec derive_all(map(), map(), map(), [map()]) :: [map()]
+  def derive_all(cycle, context, catalog, previous \\ [])
+
+  def derive_all(%{"status" => "passed"}, _context, _catalog, _previous), do: []
+
+  def derive_all(cycle, context, catalog, previous) do
+    receipts = cycle["receipts"] || []
+    failed_receipts = Enum.reject(receipts, &passed?/1)
+    covered = MapSet.new(failed_receipts, & &1["target"])
+
+    failures = cycle["failures"] || List.wrap(cycle["failure"])
+
+    loose =
+      for failure <- failures,
+          is_map(failure),
+          not MapSet.member?(covered, failure["target"]) or failure["kind"] in ~w(proof catalog),
+          do: failure
+
+    items = failed_receipts ++ loose
+    items = if items == [], do: [cycle["failure"] || %{}], else: items
+
+    Enum.map(items, fn item ->
+      signature = build(cycle, item, context, catalog, previous)
+      if item["class"], do: Map.put(signature, "class", item["class"]), else: signature
+    end)
+  end
+
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
+  defp build(cycle, failed, context, catalog, previous) do
+    receipts = cycle["receipts"] || []
     output = to_string(failed["output"] || failed["reason"] || "")
     target = failed["target"] || cycle["failed_target"] || "unknown"
 
@@ -198,8 +244,16 @@ defmodule Kogen.Build.FailureSignature do
 
     case Enum.find_index(lines, &Regex.match?(@generic_marker_re, &1)) do
       nil -> nil
-      index -> lines |> Enum.drop(index) |> Enum.join("\n")
+      index -> lines |> Enum.drop(lead_start(lines, index)) |> Enum.join("\n")
     end
+  end
+
+  # When the first marker is make's own `make: *** [t] Error N` line, the
+  # target's echoed message is the lines just above it.
+  defp lead_start(lines, index) do
+    if String.starts_with?(Enum.at(lines, index), "make"),
+      do: max(index - @lead_lines, 0),
+      else: index
   end
 
   defp last_nonblank_lines(output, n) do

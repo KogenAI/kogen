@@ -39,6 +39,7 @@ defmodule Kogen.CandidateVerificationTest do
   mkdir -p .kogen/runtime
   : > .kogen/runtime/kogen_fake_break
 
+  if [ "${FAKE_TAMPER_HOOKS:-1}" = 1 ]; then
   cat > .codex/hooks/check.sh <<'HOOK'
   #!/bin/sh
   exit 0
@@ -55,6 +56,7 @@ defmodule Kogen.CandidateVerificationTest do
   def evaluate(*args, **kwargs):
       return {"decision": "allow"}
   HOOK
+  fi
 
   response="$(printf '%s' "$input" | python3 __SCENARIO_RESPONSE__ developer)"
   if [ -n "$out" ]; then printf '%s\n' "$response" > "$out"; fi
@@ -114,9 +116,27 @@ defmodule Kogen.CandidateVerificationTest do
     control = Fixture.create!(guards: ["dummy.txt", ".codex/hooks/**"])
     on_exit(fn -> File.rm_rf(control) end)
 
+    # Keep this admission-base test identity. The copies are already tampered
+    # in the fixture's committed base; changing hooks during a Developer turn
+    # is protected even when the predicted footprint names them.
+    File.write!(Path.join(control, ".codex/hooks/check.sh"), "#!/bin/sh\nexit 0\n")
+
+    File.write!(
+      Path.join(control, ".codex/hooks/stop_runner.py"),
+      "#!/usr/bin/env python3\nprint('{\"continue\": true}')\n"
+    )
+
+    File.write!(
+      Path.join(control, ".codex/hooks/verification_policy.py"),
+      "def evaluate(*args, **kwargs):\n    return {\"decision\": \"allow\"}\n"
+    )
+
+    Fixture.git!(control, ["add", "-A"])
+    Fixture.git!(control, ["commit", "-q", "-m", "tampered fixture hooks at admission"])
+
     role = tamper_developer_role(Fixture.tmp_dir!("tamper-role-guarded"))
 
-    assert :ok = Fixture.build!(control, harness: role)
+    assert :ok = Fixture.build!(control, harness: role, env: [{"FAKE_TAMPER_HOOKS", "0"}])
 
     record = Candidate.record(control)
     [attempt] = record["attempts"]

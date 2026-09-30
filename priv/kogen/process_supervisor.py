@@ -39,6 +39,7 @@ Two IO modes:
 import datetime
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -105,6 +106,11 @@ def main():
     poll = spec.get("poll", 0.2)
     grace = spec.get("grace", 2.0)
     timeout = spec.get("timeout")
+    soft_timeout = bool(spec.get("soft_timeout"))
+    # A soft time-box is held (never a stop, never an interrupt) until the
+    # turn's session identity appears in the log, so the nudge can resume it.
+    ready_pattern = spec.get("soft_ready_pattern")
+    ready_re = re.compile(ready_pattern.encode()) if ready_pattern else None
 
     started = now()
     clock = time.monotonic()
@@ -121,6 +127,13 @@ def main():
     # controller pid cannot mask.
     parent = os.getppid()
 
+    def session_seen():
+        try:
+            with open(spec["log"], "rb") as handle:
+                return ready_re.search(handle.read(4 * 1024 * 1024)) is not None
+        except OSError:
+            return False
+
     def watchdog():
         deadline = clock + timeout if timeout else None
         while not stop_watchdog.is_set():
@@ -128,8 +141,31 @@ def main():
             if "child" not in child_holder:
                 continue
             if deadline and time.monotonic() >= deadline:
-                signal_group(child_holder["child"].pid, signal.SIGKILL)
+                if soft_timeout and ready_re and not session_seen():
+                    continue
+                # `timed_out` is set before any signal so the supervisor never
+                # reports a soft-stopped child as an ordinary exit.
                 child_holder["timed_out"] = True
+                if soft_timeout:
+                    # Developer turn time-box: TERM only the Developer process
+                    # (never its group, so native helper children are not
+                    # reaped) lets the CLI persist its session, then KILL that
+                    # process alone after the grace.
+                    proc = child_holder["child"]
+                    try:
+                        os.kill(proc.pid, signal.SIGTERM)
+                    except (ProcessLookupError, PermissionError):
+                        pass
+                    end = time.monotonic() + grace
+                    while proc.poll() is None and time.monotonic() < end:
+                        time.sleep(0.05)
+                    if proc.poll() is None:
+                        try:
+                            os.kill(proc.pid, signal.SIGKILL)
+                        except (ProcessLookupError, PermissionError):
+                            pass
+                else:
+                    signal_group(child_holder["child"].pid, signal.SIGKILL)
                 return
             if os.getppid() != parent or not controller_alive(controller_pid):
                 child_holder["watchdog_reaped"] = True
@@ -184,6 +220,11 @@ def main():
                 code = 128 - code
             timed_out = bool(child_holder.get("timed_out"))
             watchdog_reaped = bool(child_holder.get("watchdog_reaped"))
+
+            if timed_out and soft_timeout:
+                # Helpers the Developer left running finish within the grace
+                # before any group reap.
+                settle(pgid, grace)
 
             if alive(pgid):
                 cleanup = "terminated"

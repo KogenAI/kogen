@@ -4,14 +4,18 @@ defmodule Kogen.CommitFailureRollbackTest do
   recovery engine. Installs a real `commit-msg` git hook that always
   rejects the commit (simulating a pre-commit hook rejection, disk
   issue, or any other real `git commit` failure) and asserts:
-  `Kogen.Build.run/1` restores the Approved Intent directory exactly as
-  it was, deletes the never-committed `complete/<slug>/`, leaves
-  `git status --porcelain` empty again, and returns an honest error
-  instead of ever reporting success — no CAS, no `commit-tree`, no
-  general recovery machinery, just restoring the two directories from
-  data already on disk.
+  `Kogen.Build.run/1` restores the Candidate's Approved Intent exactly as
+  it was, deletes the never-committed `complete/<slug>/`, returns the
+  control package to Draft with its approved digest intact, and returns
+  an honest error instead of ever reporting success — no CAS,
+  no `commit-tree`, no general recovery machinery, just restoring the
+  Candidate directories from data already on disk.
   """
   use Kogen.IsolatedCase, async: true
+
+  @project_root Path.expand("../..", __DIR__)
+
+  alias Kogen.Build.Tracking
 
   @slug "commit-fails-intent"
 
@@ -19,6 +23,7 @@ defmodule Kogen.CommitFailureRollbackTest do
   id: 01960000-0000-7000-8000-00000000fa17
   slug: #{@slug}
   title: Commit fails intent
+  status: approved
   may_change_guarded_paths:
     - dummy.txt
   """
@@ -27,8 +32,8 @@ defmodule Kogen.CommitFailureRollbackTest do
   - id: fixture-scenario
     given: a fixture Candidate whose git commit is rejected by a hook
     when: Kogen.Build.run/1 reaches the accept step
-    then: the Approved Intent is restored, no Complete is left uncommitted, and the worktree is clean again
-    wrong_result: approved/<slug>/ is gone, complete/<slug>/ is left untracked, or git status is dirty afterward
+    then: the Candidate's Approved Intent is restored, no Complete is left uncommitted, and control returns the package to Draft
+    wrong_result: the Candidate loses its Approved Intent, complete/<slug>/ is left uncommitted, or the Draft package digest changes
     verified_by: [check]
     evidence: a real commit-msg hook that always rejects the commit
   """
@@ -57,7 +62,7 @@ defmodule Kogen.CommitFailureRollbackTest do
   """
 
   test "restores the Approved Intent and leaves a clean worktree when git commit fails" do
-    project_root = File.cwd!()
+    project_root = @project_root
     dest = Path.join(System.tmp_dir!(), "kogen-commitfail-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
     on_exit(fn -> File.rm_rf(dest) end)
@@ -65,11 +70,10 @@ defmodule Kogen.CommitFailureRollbackTest do
     setup_fixture(project_root, dest)
     install_rejecting_commit_hook(dest)
 
-    intent_dir_original_files =
-      dest
-      |> Path.join(".kogen/intents/approved/#{@slug}")
-      |> File.ls!()
-      |> Enum.sort()
+    approved_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
+    draft_dir = Path.join(dest, ".kogen/intents/drafts/#{@slug}")
+    intent_dir_original_files = approved_dir |> File.ls!() |> Enum.sort()
+    original_package_digest = package_digest(approved_dir)
 
     fake_harness = Path.join(project_root, "test/support/fake_codex_simple_accept")
     prior_harness = System.get_env("KOGEN_HARNESS")
@@ -92,32 +96,36 @@ defmodule Kogen.CommitFailureRollbackTest do
     head_after = git!(dest, ["rev-parse", "HEAD"])
     assert head_after == head_before, "no Commit should have been made"
 
-    approved_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
     complete_dir = Path.join(dest, ".kogen/intents/complete/#{@slug}")
 
-    # A failed accept/commit happens entirely inside the Candidate; control's
-    # own on-disk checkout, including its Approved copy, is never touched.
-    assert File.dir?(approved_dir), "control's Approved Intent must stay exactly as it was"
+    # The rejected commit leaves control unpublished and returns its package
+    # to Draft. Candidate rollback separately restores its own Approved copy.
+    refute File.dir?(approved_dir), "control must no longer offer failed approval to Build"
+    assert File.dir?(draft_dir), "the terminally failed package must return to Draft"
     refute File.dir?(complete_dir), "no uncommitted Complete may be left looking like success"
 
-    restored_files = approved_dir |> File.ls!() |> Enum.sort()
+    restored_files = draft_dir |> File.ls!() |> Enum.sort()
     assert restored_files == intent_dir_original_files
 
-    assert File.read!(Path.join(approved_dir, "intent.yaml")) == @intent_yaml
-    assert File.read!(Path.join(approved_dir, "evidence.md")) == <<0, 255, 10, 13>>
-    assert File.read!(Path.join(approved_dir, "build-evidence-1.md")) == "also supplied"
-    assert File.read!(Path.join(approved_dir, "scenario-tracking.json")) == "user tracking zero\n"
+    assert File.read!(Path.join(draft_dir, "intent.yaml")) ==
+             String.replace(@intent_yaml, "status: approved", "status: draft")
 
-    assert File.read!(Path.join(approved_dir, "scenario-tracking-1.json")) ==
+    assert File.read!(Path.join(draft_dir, "evidence.md")) == <<0, 255, 10, 13>>
+    assert File.read!(Path.join(draft_dir, "build-evidence-1.md")) == "also supplied"
+    assert File.read!(Path.join(draft_dir, "scenario-tracking.json")) == "user tracking zero\n"
+
+    assert File.read!(Path.join(draft_dir, "scenario-tracking-1.json")) ==
              "user tracking one\n"
 
     [failed_runtime] = runtime_tracking_records(dest)
     failed_runtime_bytes = File.read!(failed_runtime)
-    assert Jason.decode!(failed_runtime_bytes)["status"] == "failed"
+    failed_record = Jason.decode!(failed_runtime_bytes)
+    assert failed_record["status"] == "failed"
+    assert failed_record["approved_package_digest"] == original_package_digest
+    assert package_digest(draft_dir, :returned_draft) == original_package_digest
     refute File.dir?(Path.join(dest, ".kogen/runtime/raw"))
 
-    assert git!(dest, ["status", "--porcelain"]) == "",
-           "the worktree must be exactly as clean as before this failed attempt"
+    assert_only_custody_paths_dirty!(dest, intent_dir_original_files)
 
     # The actual accept/commit/restore cycle ran in the Candidate: its own
     # copy of the Approved Intent (staged into Complete, then restored after
@@ -156,9 +164,23 @@ defmodule Kogen.CommitFailureRollbackTest do
                "branch #{candidate["branch"]}, harness home #{candidate["harness_home"]}; " <>
                "remove it with `mix kogen.candidates.remove #{build_id}`"
 
+    # Model a human explicitly reapproving the returned Draft before a new
+    # Build. The package bytes, after the status transition, match the
+    # original Approved digest again.
+    draft_intent = Path.join(draft_dir, "intent.yaml")
+
+    File.write!(
+      draft_intent,
+      String.replace(File.read!(draft_intent), "status: draft", "status: approved")
+    )
+
+    :ok = File.rename(draft_dir, approved_dir)
+    assert package_digest(approved_dir) == original_package_digest
+
     File.rm!(Path.join(dest, ".git/hooks/commit-msg"))
     assert :ok = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
     refute File.exists?(approved_dir)
+    refute File.exists?(draft_dir)
     assert File.read!(Path.join(complete_dir, "evidence.md")) == <<0, 255, 10, 13>>
     assert File.read!(Path.join(complete_dir, "build-evidence-1.md")) == "also supplied"
     assert File.read!(Path.join(complete_dir, "build-evidence-2.md")) =~ "Complete evidence"
@@ -279,5 +301,72 @@ defmodule Kogen.CommitFailureRollbackTest do
     |> Path.join(".kogen/runtime/scenario-tracking/*/record.json")
     |> Path.wildcard()
     |> Enum.sort()
+  end
+
+  defp assert_only_custody_paths_dirty!(dest, files) do
+    {porcelain, 0} =
+      System.cmd("git", ["status", "--porcelain", "--untracked-files=all"], cd: dest)
+
+    actual =
+      porcelain
+      |> String.split("\n", trim: true)
+      |> Enum.map(fn <<status::binary-size(2), " ", path::binary>> -> {status, path} end)
+
+    approved_paths = Enum.map(files, &".kogen/intents/approved/#{@slug}/#{&1}")
+    draft_paths = Enum.map(files, &".kogen/intents/drafts/#{@slug}/#{&1}")
+    expected_paths = Enum.sort(approved_paths ++ draft_paths)
+    actual_paths = actual |> Enum.map(&elem(&1, 1)) |> Enum.sort()
+
+    assert actual_paths == expected_paths,
+           "only paths in the approved-to-draft move may be dirty"
+
+    assert Enum.all?(actual, fn
+             {status, ".kogen/intents/approved/" <> _path} -> status in ["D ", " D"]
+             {"??", ".kogen/intents/drafts/" <> _path} -> true
+             _ -> false
+           end),
+           "Approved paths must be deleted and Draft files must be untracked"
+  end
+
+  defp package_digest(path, mode \\ :approved) do
+    entries = package_entries(path, "")
+
+    entries =
+      if mode == :returned_draft do
+        Enum.map(entries, fn
+          {"intent.yaml", :regular, permissions, bytes} ->
+            {"intent.yaml", :regular, permissions,
+             Regex.replace(~r/^status:[ \t]*draft[ \t]*$/m, bytes, "status: approved")}
+
+          entry ->
+            entry
+        end)
+      else
+        entries
+      end
+
+    Tracking.approved_digest(entries)
+  end
+
+  defp package_entries(root, relative) do
+    path = Path.join(root, relative)
+    stat = File.lstat!(path)
+
+    case stat.type do
+      :directory ->
+        children =
+          path
+          |> File.ls!()
+          |> Enum.sort()
+          |> Enum.flat_map(&package_entries(root, Path.join(relative, &1)))
+
+        [{relative, :directory, stat.mode} | children]
+
+      :regular ->
+        [{relative, :regular, stat.mode, File.read!(path)}]
+
+      _ ->
+        raise "unsupported package entry: #{path}"
+    end
   end
 end

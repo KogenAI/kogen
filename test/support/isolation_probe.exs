@@ -10,6 +10,7 @@ defmodule Kogen.IsolationProbe do
     peer = System.fetch_env!("PROBE_PEER")
     dir = Path.join(root, name)
     File.mkdir_p!(dir)
+    File.write!(Path.join(root, name <> ".start_cwd"), File.cwd!())
     File.cd!(dir)
     System.put_env("PROBE_LOCAL", name)
     File.write!(Path.join(root, name <> ".started"), System.pid())

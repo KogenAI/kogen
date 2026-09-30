@@ -38,6 +38,14 @@ defmodule Kogen.VerificationCycleFixture do
     File.write!(Path.join(root, ".gitignore"), "#{@counter}\n#{@marker}\n.kogen/\n")
     File.write!(Path.join(root, "tracked.txt"), "original\n")
 
+    # Live targets resolve the Candidate's own product route from its config.
+    File.mkdir_p!(Path.join(root, ".kogen"))
+
+    File.cp!(
+      Path.join(@harness_root, ".kogen/config.yaml"),
+      Path.join(root, ".kogen/config.yaml")
+    )
+
     # Build admission copies control deps/ into each Candidate.
 
     File.mkdir_p!(Path.join(root, "deps"))
@@ -70,18 +78,48 @@ defmodule Kogen.VerificationCycleFixture do
   removal at publication; it is read from control here.
   """
   def calls(root) do
-    case File.read(counter_path(root)) do
-      {:ok, bytes} -> bytes |> String.split("\n", trim: true)
+    per_target =
+      root
+      |> live_evidence_dir()
+      |> Path.join("cycle-*/**/#{@counter}")
+      |> Path.wildcard()
+      |> Enum.sort_by(&per_target_key(&1, root))
+
+    Enum.flat_map([counter_path(root) | per_target], &read_lines/1)
+  end
+
+  # Fan-out gives each paid target its own evidence root
+  # (`live-evidence/cycle-N/<target>/`), so concurrent targets never share a
+  # file; calls are read back cycle by cycle, targets in name order.
+  defp per_target_key(path, root) do
+    relative = Path.relative_to(path, live_evidence_dir(root))
+    [cycle | rest] = Path.split(relative)
+    {cycle |> String.replace_prefix("cycle-", "") |> String.to_integer(), rest}
+  end
+
+  defp read_lines(path) do
+    case File.read(path) do
+      {:ok, bytes} -> String.split(bytes, "\n", trim: true)
       {:error, :enoent} -> []
     end
   end
 
+  defp live_evidence_dir(root), do: Path.join([root, ".kogen", "runtime", "live-evidence"])
+
   @doc "Removes the counter so the next cycle's calls can be observed alone."
-  def reset_calls!(root), do: File.rm(counter_path(root))
+  def reset_calls!(root) do
+    File.rm(counter_path(root))
+
+    root
+    |> live_evidence_dir()
+    |> Path.join("cycle-*")
+    |> Path.wildcard()
+    |> Enum.each(&File.rm_rf/1)
+  end
 
   @doc "The Candidate id (private-index write-tree) of `root`."
   def candidate_id!(root) do
-    {:ok, id} = File.cd!(root, fn -> Kogen.Git.candidate_id() end)
+    {:ok, id} = Kogen.Git.candidate_id(root)
     id
   end
 
@@ -91,12 +129,13 @@ defmodule Kogen.VerificationCycleFixture do
 
     %{
       root: root,
+      route: "selected-route",
       control_root: root,
       catalog: catalog,
       plan: plan,
       scenarios: plan.scenarios,
       base_commit: nil,
-      candidate_id: fn -> File.cd!(root, fn -> Kogen.Git.candidate_id() end) end
+      candidate_id: fn -> Kogen.Git.candidate_id(root) end
     }
   end
 
@@ -580,6 +619,20 @@ defmodule Kogen.VerificationCycleFixture do
         path = runtime / name
         value = int(path.read_text()) + 1 if path.exists() else 1
         path.write_text(str(value)); return value
+    if os.environ.get("KOGEN_ROLE") == "reviewer" and prompt.startswith("KOGEN_EVIDENCE_ADDENDUM"):
+        # The evidence addendum resumes the accepting Reviewer's own session
+        # after settlement: not a new Review, so it is counted apart, and it
+        # confirms unless HANDOFF_ADDENDUM says otherwise.
+        k = count("addenda")
+        (runtime / f"reviewer-addendum-prompt-{k}").write_text(prompt)
+        out = args[args.index("--output-last-message") + 1]
+        response = subprocess.run([sys.executable, os.environ["HANDOFF_RESPONSE_HELPER"], "reviewer", os.environ.get("HANDOFF_ADDENDUM", "accept")],
+                                  input=prompt, capture_output=True, text=True, check=True).stdout
+        pathlib.Path(out).write_text(response)
+        sid = args[args.index("resume") + 1]
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
+        raise SystemExit(0)
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
         (runtime / f"reviewer-prompt-{n}").write_text(prompt)

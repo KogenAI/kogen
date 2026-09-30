@@ -1,5 +1,8 @@
 defmodule Kogen.OfflineStageResultsTest do
   use ExUnit.Case, async: true
+
+  # Subprocesses run from this checkout, never the shared VM's mutable cwd.
+  @project_root Path.expand("../..", __DIR__)
   @moduletag timeout: 120_000
 
   test "each stage settles one bounded attributable result and receipt keeps the initiating failure" do
@@ -26,7 +29,8 @@ defmodule Kogen.OfflineStageResultsTest do
       System.cmd(
         "python3",
         ["-c", program, Path.join(root, "scripts/check/offline.py"), root, receipt],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     result = output |> String.split("\n", trim: true) |> List.last() |> Jason.decode!()
@@ -60,11 +64,42 @@ defmodule Kogen.OfflineStageResultsTest do
 
     {_output, 0} =
       System.cmd("python3", ["-c", program, Path.join(root, "scripts/check/offline.py"), receipt],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     assert %{"invocation" => "fresh", "schema_version" => 1, "stages" => []} =
              receipt |> File.read!() |> Jason.decode!()
+  end
+
+  test "a reaped or misgrouped stage leader cannot signal another process group" do
+    root = Path.expand("../..", __DIR__)
+
+    program = ~S'''
+    import importlib.util, json, signal, sys
+    spec = importlib.util.spec_from_file_location("offline", sys.argv[1])
+    offline = importlib.util.module_from_spec(spec); spec.loader.exec_module(offline)
+    signals = []
+    offline.os.killpg = lambda pid, sig: signals.append([pid, sig])
+    class Child:
+        pid = 123456789
+        def __init__(self, status): self.status = status
+        def poll(self): return self.status
+    reaped = offline._signal_group(Child(0), signal.SIGTERM)
+    offline.os.getpgid = lambda pid: pid + 1
+    misgrouped = offline._signal_group(Child(None), signal.SIGKILL)
+    print(json.dumps({"reaped": reaped, "misgrouped": misgrouped, "signals": signals}))
+    '''
+
+    {output, 0} =
+      System.cmd("python3", ["-B", "-c", program, Path.join(root, "scripts/check/offline.py")],
+        cd: @project_root
+      )
+
+    result = Jason.decode!(String.trim(output))
+    assert result["signals"] == []
+    assert result["reaped"]["status"] == "failed"
+    assert result["misgrouped"]["status"] == "failed"
   end
 
   test "cleanup failure prevents success and reusable bindings cover every invalidation input" do
@@ -94,7 +129,8 @@ defmodule Kogen.OfflineStageResultsTest do
       System.cmd(
         "python3",
         ["-c", program, Path.join(root, "scripts/check/offline.py"), root, receipt],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     bindings = output |> String.trim() |> Jason.decode!()
@@ -121,7 +157,8 @@ defmodule Kogen.OfflineStageResultsTest do
 
     {output, 0} =
       System.cmd("python3", ["-B", "-c", program, Path.join(root, "scripts/check/offline.py")],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     stages = output |> String.trim() |> Jason.decode!()
@@ -160,7 +197,8 @@ defmodule Kogen.OfflineStageResultsTest do
 
     {output, 0} =
       System.cmd("python3", ["-B", "-c", program, Path.join(root, "scripts/check/offline.py")],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     stage = output |> String.trim() |> Jason.decode!()
@@ -223,7 +261,8 @@ defmodule Kogen.OfflineStageResultsTest do
       System.cmd(
         "python3",
         ["-B", "-c", program, Path.join(root, "scripts/check/offline.py"), workdir],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     result = output |> String.split("\n", trim: true) |> List.last() |> Jason.decode!()
@@ -273,7 +312,8 @@ defmodule Kogen.OfflineStageResultsTest do
       System.cmd(
         "python3",
         ["-B", "-c", program, Path.join(root, "scripts/check/offline.py"), log_path],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     frame = output |> String.trim() |> Jason.decode!()
@@ -326,7 +366,8 @@ defmodule Kogen.OfflineStageResultsTest do
       System.cmd(
         "python3",
         ["-B", "-c", program, Path.join(root, "scripts/check/offline.py"), log_path],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     result = output |> String.trim() |> Jason.decode!()
@@ -367,7 +408,8 @@ defmodule Kogen.OfflineStageResultsTest do
           "-c",
           "python3 -B #{shell_quote(Path.join(root, "scripts/check/offline.py"))} --signature-frame check < #{shell_quote(log_path)}"
         ],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     assert [tag, json] = String.split(String.trim(output), "\t", parts: 2)
@@ -399,7 +441,8 @@ defmodule Kogen.OfflineStageResultsTest do
       System.cmd(
         "python3",
         ["-B", "-c", program, Path.join(root, "scripts/check/offline.py"), root],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     result = output |> String.split("\n", trim: true) |> List.last() |> Jason.decode!()
@@ -408,6 +451,173 @@ defmodule Kogen.OfflineStageResultsTest do
     assert frame["test_id"] == "f.exs:1"
     assert frame["assertion"] == "boom"
     assert frame["reproduce"] =~ "MIX_ENV=dev"
+  end
+
+  test "run_stage records the final formatter block as structured case timings" do
+    root = Path.expand("../..", __DIR__)
+
+    program = ~S'''
+    import importlib.util, json, os, sys
+    spec = importlib.util.spec_from_file_location("offline", sys.argv[1])
+    offline = importlib.util.module_from_spec(spec); spec.loader.exec_module(offline)
+    child = """
+    print("Slowest individual cases (includes isolated process startup):")
+    print("  99.000s Kogen.Nested test stale timing")
+    print("Slowest individual cases (includes isolated process startup):")
+    print("  1.250s Kogen.SampleTest test slow case")
+    print("  0.006s Kogen.SampleTest test fast case")
+    """
+    stage = offline.run_stage([sys.executable, "-c", child], sys.argv[2], os.environ.copy())
+    print(json.dumps(stage))
+    '''
+
+    {output, 0} =
+      System.cmd(
+        "python3",
+        ["-B", "-c", program, Path.join(root, "scripts/check/offline.py"), root],
+        stderr_to_stdout: true,
+        cd: @project_root
+      )
+
+    stage = output |> String.split("\n", trim: true) |> List.last() |> Jason.decode!()
+    assert stage["status"] == "passed"
+
+    assert stage["case_timings"] == [
+             %{
+               "duration_ms" => 1_250,
+               "module" => "Kogen.SampleTest",
+               "name" => "test slow case"
+             },
+             %{"duration_ms" => 6, "module" => "Kogen.SampleTest", "name" => "test fast case"}
+           ]
+  end
+
+  # Keep the admission-base test identity while asserting the stronger
+  # ownership rule for a leader that exited before its descendant closed stdout.
+  test "run_stage bounds concurrent timeouts when descendants hold stdout and group signalling is denied" do
+    root = Path.expand("../..", __DIR__)
+
+    workdir =
+      Path.join(System.tmp_dir!(), "offline-held-pipe-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(workdir)
+    on_exit(fn -> File.rm_rf(workdir) end)
+
+    program = ~S'''
+    import concurrent.futures, importlib.util, json, os, pathlib, signal, sys, time
+    spec = importlib.util.spec_from_file_location("offline", sys.argv[1])
+    offline = importlib.util.module_from_spec(spec); spec.loader.exec_module(offline)
+    root = pathlib.Path(sys.argv[2]); workdir = pathlib.Path(sys.argv[3])
+    real_killpg = os.killpg
+    denied = []
+    def deny_killpg(pgid, sig):
+        denied.append(signal.Signals(sig).name)
+        raise PermissionError(1, "Operation not permitted")
+    offline.os.killpg = deny_killpg
+
+    def run(slot):
+        group_path = workdir / f"group-{slot}"
+        child_path = workdir / f"child-{slot}"
+        stage = """
+    import os, pathlib, subprocess, sys
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    pathlib.Path(sys.argv[1]).write_text(str(os.getpgrp()))
+    pathlib.Path(sys.argv[2]).write_text(str(child.pid))
+    print("descendant-holds-output", flush=True)
+    """
+        env = dict(os.environ, KOGEN_OFFLINE_STAGE_TIMEOUT="0.5")
+        started = time.monotonic()
+        result = offline.run_stage([sys.executable, "-c", stage, str(group_path), str(child_path)], root, env)
+        result["wall_seconds"] = time.monotonic() - started
+        return result
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(run, range(2)))
+    finally:
+        offline.os.killpg = real_killpg
+        for group_path in workdir.glob("group-*"):
+            try:
+                real_killpg(int(group_path.read_text()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    print(json.dumps({"results": results, "denied": denied}))
+    '''
+
+    {output, 0} =
+      System.cmd(
+        "python3",
+        ["-B", "-c", program, Path.join(root, "scripts/check/offline.py"), root, workdir],
+        stderr_to_stdout: true,
+        cd: @project_root
+      )
+
+    result = output |> String.split("\n", trim: true) |> List.last() |> Jason.decode!()
+    assert length(result["results"]) == 2
+    assert result["denied"] == []
+
+    for stage <- result["results"] do
+      assert stage["exit_code"] == 124
+      # Termination is proven by the exit code and cleanup record; wall-clock
+      # duration is diagnostic only and never a gate under a loaded suite.
+      assert is_integer(stage["duration_ms"])
+      assert stage["bounded_log"] =~ "descendant-holds-output"
+      refute stage["bounded_log"] =~ "process group reaped"
+      assert stage["cleanup"]["status"] == "failed"
+      assert stage["cleanup"]["leader_reaped"] == true
+      assert stage["cleanup"]["output_pipe"] == "closed-by-supervisor"
+      assert stage["cleanup"]["descendants"] == "not-independently-verified"
+      assert stage["cleanup"]["reason"] =~ "stage leader exited before group ownership"
+      refute Map.has_key?(stage["cleanup"], "process_group_reaped")
+    end
+  end
+
+  test "run_stage falls back to bounded direct-child termination when killpg is denied" do
+    root = Path.expand("../..", __DIR__)
+
+    program = ~S'''
+    import importlib.util, json, os, signal, sys
+    spec = importlib.util.spec_from_file_location("offline", sys.argv[1])
+    offline = importlib.util.module_from_spec(spec); spec.loader.exec_module(offline)
+    calls = []
+    real_killpg = os.killpg
+    def deny_killpg(pgid, sig):
+        calls.append(signal.Signals(sig).name)
+        raise PermissionError(1, "Operation not permitted")
+    offline.os.killpg = deny_killpg
+    try:
+        stage = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)"
+        env = dict(os.environ, KOGEN_OFFLINE_STAGE_TIMEOUT="0.5")
+        result = offline.run_stage([sys.executable, "-c", stage], sys.argv[2], env)
+    finally:
+        offline.os.killpg = real_killpg
+    print(json.dumps({"result": result, "calls": calls}))
+    '''
+
+    {output, 0} =
+      System.cmd(
+        "python3",
+        ["-B", "-c", program, Path.join(root, "scripts/check/offline.py"), root],
+        stderr_to_stdout: true,
+        cd: @project_root
+      )
+
+    result = output |> String.split("\n", trim: true) |> List.last() |> Jason.decode!()
+    stage = result["result"]
+    assert result["calls"] == ["SIGTERM", "SIGKILL"]
+    assert stage["exit_code"] == 124
+    assert is_integer(stage["duration_ms"])
+    assert stage["cleanup"]["status"] == "failed"
+    assert stage["cleanup"]["leader_reaped"] == true
+
+    assert stage["cleanup"]["signals"]
+           |> Enum.any?(
+             &(&1["scope"] == "direct-child" and &1["signal"] == "SIGKILL" and
+                 &1["status"] == "sent")
+           )
+
+    assert stage["cleanup"]["reason"] =~ "process-group SIGTERM failed"
+    assert stage["cleanup"]["reason"] =~ "process-group SIGKILL failed"
   end
 
   defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"

@@ -8,6 +8,8 @@ defmodule Kogen.ReviewerMutationTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   @slug "reviewer-mutates-intent"
 
   @intent_yaml """
@@ -68,8 +70,8 @@ defmodule Kogen.ReviewerMutationTest do
     hybrid:
       shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
       developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
-      expert:    {harness: codex, model: gpt-6-sol, effort: high}
+      reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+      expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
       helpers:
         claude:
           scout:  {model: claude-sonnet-5, effort: low}
@@ -139,7 +141,7 @@ defmodule Kogen.ReviewerMutationTest do
 
     assert {:error, reason} = result
     assert reason =~ "Reviewer failure: "
-    assert reason =~ "(reviewer on harness codex, gpt-6-sol at high)"
+    assert reason =~ "(reviewer on harness codex, gpt-6.1-sol at high)"
 
     head_after = git!(dest, ["rev-parse", "HEAD"])
     assert head_after == head_before, "no Commit should have been made"
@@ -148,7 +150,7 @@ defmodule Kogen.ReviewerMutationTest do
   end
 
   defp aborts_on_reviewer_mutation!(harness) do
-    project_root = File.cwd!()
+    project_root = @project_root
     dest = Path.join(System.tmp_dir!(), "kogen-revmut-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
     on_exit(fn -> File.rm_rf(dest) end)
@@ -268,7 +270,7 @@ defmodule Kogen.ReviewerMutationTest do
   # (`FAKE_HYBRID_REVIEW`, `FAKE_HYBRID_REVIEWER_MUTATES`, or
   # `FAKE_HYBRID_REVIEWER_MALFORMED`), all restored in `on_exit`.
   defp setup_hybrid_reviewer_fixture! do
-    project_root = File.cwd!()
+    project_root = @project_root
 
     dest =
       Path.join(System.tmp_dir!(), "kogen-revmut-hybrid-#{System.unique_integer([:positive])}")

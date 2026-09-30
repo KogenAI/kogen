@@ -10,6 +10,7 @@ defmodule Kogen.Intent do
   """
 
   @default_config_path ".kogen/config.yaml"
+  @default_offline_retries 4
   @harnesses ["codex", "claude"]
   @claude_models Path.expand("../../priv/kogen/claude_code/models.yaml", __DIR__)
   @claude_roles [
@@ -48,7 +49,14 @@ defmodule Kogen.Intent do
           },
           outer_resumptions: non_neg_integer(),
           verification_retries: non_neg_integer(),
-          offline_retries: non_neg_integer()
+          offline_retries: non_neg_integer(),
+          live_concurrency: pos_integer(),
+          max_rounds: pos_integer(),
+          max_no_progress: pos_integer(),
+          max_dispatches: pos_integer(),
+          max_developer_resumptions: pos_integer(),
+          build_time_nudge_minutes: pos_integer(),
+          developer_turn_minutes: pos_integer()
         }
 
   @type intent :: %{
@@ -57,6 +65,7 @@ defmodule Kogen.Intent do
           title: String.t(),
           commit_subject: String.t() | nil,
           may_change_guarded_paths: [String.t()],
+          gate_change_paths: [String.t()],
           catalog_changes: %{add: [String.t()]},
           raw: map()
         }
@@ -115,30 +124,68 @@ defmodule Kogen.Intent do
     end
   end
 
-  # The global retry policy. Every key is required and has no default; a
-  # project configured before `offline_retries` existed is refused until the
-  # key is added.
+  # The global retry policy. The established offline allowance applies when
+  # older project config omits its newer key; explicit values remain frozen.
   defp retry_policy(data) do
     with {:ok, outer_resumptions} <- config_integer(data, "outer_resumptions"),
          {:ok, verification_retries} <- config_integer(data, "verification_retries"),
-         {:ok, offline_retries} <- offline_retries(data) do
+         {:ok, offline_retries} <- offline_retries(data),
+         {:ok, budgets} <-
+           frozen_budgets(data, outer_resumptions, verification_retries, offline_retries) do
       {:ok,
-       %{
+       Map.merge(budgets, %{
          outer_resumptions: outer_resumptions,
          verification_retries: verification_retries,
          offline_retries: offline_retries
-       }}
+       })}
     end
   end
 
-  defp offline_retries(data) do
-    case require_integer(data, "offline_retries") do
-      {:ok, value} ->
-        {:ok, value}
+  # Optional frozen budget keys; present keys must be positive integers. An
+  # absent key derives from the established allowances so the round and
+  # no-progress ledger never preempts them, except Developer resumptions,
+  # which default to a modest 3.
+  defp budget_defaults(outer, verification, offline) do
+    offline = offline || 0
+    rounds = (outer + 1) * (verification + offline + 1)
 
-      {:error, _key} ->
-        {:error,
-         "config.yaml missing required key: offline_retries (add a top-level `offline_retries: <non-negative integer>` beside `verification_retries` in .kogen/config.yaml; it bounds offline verification failures per attempt and has no default)"}
+    [
+      live_concurrency: 4,
+      max_rounds: rounds,
+      max_no_progress: outer + verification + offline,
+      max_dispatches: 40,
+      max_developer_resumptions: 3,
+      build_time_nudge_minutes: 60,
+      developer_turn_minutes: 30
+    ]
+  end
+
+  defp frozen_budgets(data, outer, verification, offline) do
+    budget_defaults(outer, verification, offline)
+    |> Enum.reduce_while({:ok, %{}}, fn {key, default}, {:ok, acc} ->
+      name = Atom.to_string(key)
+
+      case fetch(data, name) do
+        :error ->
+          {:cont, {:ok, Map.put(acc, key, default)}}
+
+        {:ok, value} when is_integer(value) and value > 0 ->
+          {:cont, {:ok, Map.put(acc, key, value)}}
+
+        {:ok, other} ->
+          {:halt,
+           {:error, "config.yaml #{name} must be a positive integer, got: #{inspect(other)}"}}
+      end
+    end)
+  end
+
+  defp offline_retries(data) do
+    case fetch(data, "offline_retries") do
+      :error ->
+        {:ok, @default_offline_retries}
+
+      {:ok, _value} ->
+        config_integer(data, "offline_retries")
     end
   end
 
@@ -387,6 +434,13 @@ defmodule Kogen.Intent do
     do: Map.fetch!(roles, role)
 
   def role_harness(config, _role), do: Map.fetch!(config, :harness)
+
+  @doc """
+  The distinct harnesses the selected route's roles run on, in launch-readiness
+  order. A clean route names one; a hybrid route names each role's own.
+  """
+  @spec harnesses(config()) :: [String.t()]
+  def harnesses(config), do: @roles |> Enum.map(&role_harness(config, &1)) |> Enum.uniq()
 
   @doc "The route's roles in launch-readiness order."
   def roles, do: @roles
@@ -745,6 +799,7 @@ defmodule Kogen.Intent do
          {:ok, title} <- require_string(data, "title", "title"),
          {:ok, commit_subject} <- optional_string(data, "commit_subject"),
          {:ok, guarded} <- require_nonempty_list(data, "may_change_guarded_paths"),
+         {:ok, gate_changes} <- gate_change_paths(data, guarded),
          {:ok, ^slug} <- require_string(data, "slug", "slug"),
          {:ok, changes} <- catalog_changes(data) do
       {:ok,
@@ -754,6 +809,7 @@ defmodule Kogen.Intent do
          title: title,
          commit_subject: commit_subject,
          may_change_guarded_paths: guarded,
+         gate_change_paths: gate_changes,
          catalog_changes: changes,
          raw: data
        }}
@@ -763,6 +819,30 @@ defmodule Kogen.Intent do
       {:ok, _other_slug} -> {:error, "intent.yaml slug does not match selected slug: #{slug}"}
     end
   end
+
+  @gate_controls ~w(Makefile priv/kogen/verification_targets.yaml priv/kogen/test-reliability.yaml
+                    test/kogen/warm_check_test.exs test/kogen/cold_offline_test.exs)
+
+  defp gate_change_paths(data, guarded) do
+    case fetch(data, "gate_change_paths") do
+      {:ok, paths} when is_list(paths) ->
+        if Enum.all?(paths, &(is_binary(&1) and String.trim(&1) != "")),
+          do: {:ok, Enum.uniq(paths)},
+          else: {:error, {:invalid, "gate_change_paths must contain nonblank paths"}}
+
+      :error ->
+        # Legacy packages used the predicted list for both authorities.
+        {:ok, Enum.filter(guarded, &legacy_gate_control?/1)}
+
+      _ ->
+        {:error, {:invalid, "gate_change_paths must be a list"}}
+    end
+  end
+
+  defp legacy_gate_control?(path),
+    do:
+      path in @gate_controls or String.starts_with?(path, "priv/kogen/prompts/") or
+        String.starts_with?(path, "scripts/check/")
 
   @doc """
   The Intent's declared verification-target catalog changes. Only `add` is

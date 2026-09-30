@@ -179,6 +179,33 @@ defmodule Kogen.JevTest do
     assert read([{:timeout}, {200, FakeJev.answer_body(@items)}])["outcome"] == "answered"
   end
 
+  test "a closed or reset connection is retried once, like a timeout" do
+    for reason <- [
+          :socket_closed_remotely,
+          :econnreset,
+          {:failed_connect,
+           [{:to_address, {~c"api.typesafe.ai", 443}}, {:inet, [:inet], :econnreset}]}
+        ] do
+      assert read([{:error, reason}, {200, FakeJev.answer_body(@items)}])["outcome"] ==
+               "answered"
+
+      assert request_count() == 2
+
+      outcome = read([{:error, reason}, {:error, reason}, {:error, reason}])
+      assert length(outcome["exchanges"]) == 2
+      assert request_count() == 2
+      assert outcome["outcome"] == "unavailable"
+      assert outcome["reason"] =~ "transport failure"
+    end
+
+    for reason <- [:nxdomain, {:failed_connect, [{:inet, [:inet], :econnrefused}]}, "closed"] do
+      assert read([{:error, reason}, {200, FakeJev.answer_body(@items)}])["outcome"] ==
+               "unavailable"
+
+      assert request_count() == 1
+    end
+  end
+
   test "every failure is an explicit unavailable outcome with a precise reason" do
     partial =
       FakeJev.answer_body(@items)

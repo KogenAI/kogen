@@ -70,6 +70,15 @@ class DriverRehearsalTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("rehearsal_driver", DRIVER_PATH)
         self.driver = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.driver)
         self.driver.SESSION_ROOT = self.sessions
+        # The real generated-fixture validation runs `mix run` (see
+        # test_generated_fixture_validation_*); these rehearsals fake every
+        # subprocess, so they record the validation call instead.
+        self.real_validate = self.driver.validate_generated_fixture
+        self.validated = []
+        def recorded_validation(fixture, label, extra_files, draft=None):
+            self.validated.append({"label": label, "draft": draft})
+            return {"label": label, "digest": "0" * 64, "providers_denied": False, "files": 1}
+        self.driver.validate_generated_fixture = recorded_validation
         if old_runtime is None: self.addCleanup(os.environ.pop, "KOGEN_SHAPING_EVALUATION_RUNTIME")
         else: self.addCleanup(os.environ.__setitem__, "KOGEN_SHAPING_EVALUATION_RUNTIME", old_runtime)
 
@@ -313,6 +322,50 @@ class DriverRehearsalTest(unittest.TestCase):
         self.assertEqual("fail", outcome)
         self.assertIn("stateful-flawed", reason)
         self.assertIn("scenarios.yaml", reason)
+
+    def test_generated_fixture_validation_runs_the_real_parsers_and_fails_closed(self):
+        """The driver validates a generated fixture through Kogen.FixtureValidation
+        (`mix run`) and refuses the fixture on any nonzero exit or missing record."""
+        self.driver.RUNTIME = self.runtime
+        fixture = self.root / "fixture"; fixture.mkdir()
+        seen = []
+        record = {"label": "x", "digest": "a" * 64, "providers_denied": True, "files": 3}
+
+        class Completed:
+            def __init__(self, returncode, stdout="", stderr=""):
+                self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+        def run_with(result):
+            def run(argv, **kwargs):
+                seen.append((argv, kwargs.get("cwd"), (kwargs.get("env") or {}).get("MIX_ENV")))
+                spec = json.loads(Path(argv[-1]).read_text())
+                seen.append(spec)
+                return result
+            return run
+
+        extra = {"evidence/facts.json": "{}", "evidence/config.yaml": "a: 1\n"}
+        frame = "KOGEN_FIXTURE_VALIDATION\t" + json.dumps(record) + "\n"
+        with patch.object(self.driver.subprocess, "run", run_with(Completed(0, frame))), \
+             patch.dict(os.environ, {"KOGEN_PROVIDERS_DENIED": "1"}):
+            self.assertEqual(self.real_validate(fixture, "x", extra, draft={"slug": "s"}), record)
+        argv, cwd, mix_env = seen[0]
+        spec = seen[1]
+        self.assertEqual(argv[:2], ["mix", "run"])
+        self.assertIn("Kogen.FixtureValidation.main()", argv)
+        self.assertEqual(mix_env, "test")
+        self.assertEqual(spec["root"], str(fixture))
+        self.assertTrue(spec["require_denied"])
+        self.assertEqual(spec["draft"], {"slug": "s"})
+        self.assertIn("evidence/facts.json", spec["json"])
+        self.assertIn("evidence/config.yaml", spec["yaml"])
+        self.assertEqual(spec["makefile_targets"], ["check", "live"])
+        self.assertFalse(list(self.runtime.glob("*-fixture-validation-spec.json")))
+
+        for bad in (Completed(1, stderr="fixture validation failed: README.md links to a missing file"),
+                    Completed(0, "no frame\n")):
+            with patch.object(self.driver.subprocess, "run", run_with(bad)):
+                with self.assertRaises(RuntimeError):
+                    self.real_validate(fixture, "x", extra)
 
     def test_setup_fixture_excludes_every_guarded_paths_volatile_path(self):
         """Regression (a): a planted .kogen/build.lock (and every other

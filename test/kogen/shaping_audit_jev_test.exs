@@ -22,7 +22,10 @@ defmodule Kogen.ShapingAuditJevTest do
   describe "the shipped question-set-v1 table" do
     test "holds the 14 entries of question-set-v1.json byte for byte, plus fix-check" do
       shipped =
-        "priv/kogen/shaping_audit/questions-v1.json" |> File.read!() |> Jason.decode!()
+        System.fetch_env!("KOGEN_TEST_ROOT")
+        |> Path.join("priv/kogen/shaping_audit/questions-v1.json")
+        |> File.read!()
+        |> Jason.decode!()
 
       evidence_entries =
         "test/support/shaping_audit/calibration/question-set-v1.json"
@@ -40,14 +43,18 @@ defmodule Kogen.ShapingAuditJevTest do
     end
 
     test "priv/kogen/shaping_audit/ ships no finding-routing file" do
-      listing = "priv/kogen/shaping_audit" |> File.ls!()
+      listing =
+        System.fetch_env!("KOGEN_TEST_ROOT")
+        |> Path.join("priv/kogen/shaping_audit")
+        |> File.ls!()
+
       refute Enum.any?(listing, &String.contains?(&1, "finding-routing"))
     end
   end
 
   describe "the README claims" do
     test "state the setup step, the allowlist and that Jev's answers are advisory" do
-      readme = File.read!("README.md")
+      readme = File.read!(Path.join(System.fetch_env!("KOGEN_TEST_ROOT"), "README.md"))
       assert readme =~ "### Jev in the Shaping audit"
 
       assert readme =~
@@ -406,7 +413,8 @@ defmodule Kogen.ShapingAuditJevTest do
 
     test "the table above covers exactly the 14 shipped entry ids" do
       shipped_ids =
-        "priv/kogen/shaping_audit/questions-v1.json"
+        System.fetch_env!("KOGEN_TEST_ROOT")
+        |> Path.join("priv/kogen/shaping_audit/questions-v1.json")
         |> File.read!()
         |> Jason.decode!()
         |> Map.fetch!("entries")

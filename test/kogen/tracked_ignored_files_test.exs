@@ -6,7 +6,7 @@ defmodule Kogen.TrackedIgnoredFilesTest do
   `.DS_Store`). `.gitignore` itself is never edited by this check. The whole
   test skips, naming why, on a tree with no Git: the gitless `cold-offline`
   copy has neither Git nor `.kogen/intents`
-  (`test/kogen/cold_offline_test.exs:36-40`).
+  (`test/kogen/cold_offline_test.exs:188-192`).
   """
   # `Kogen.IsolatedCase`, not plain `ExUnit.Case`: the fake-harness Build test
   # below calls `Kogen.WorkspaceFixture.build!/2`, which mutates process-wide
@@ -24,7 +24,7 @@ defmodule Kogen.TrackedIgnoredFilesTest do
     ".kogen/intents/complete/isolated-candidate-workspace/evidence/reshape-2026-09-26-98ebcfb2/focused-tests.log"
   ]
 
-  # A gitless tree (the `cold-offline` copy, `cold_offline_test.exs:36-40`)
+  # A gitless tree (the `cold-offline` copy, `cold_offline_test.exs:188-192`)
   # has neither `.git` nor `.kogen/intents`; the whole describe block skips
   # there instead of failing. Checked once per compile of this test file,
   # the same tree it will run against.
@@ -36,7 +36,7 @@ defmodule Kogen.TrackedIgnoredFilesTest do
                                  do: false,
                                  else:
                                    "no Git and no .kogen/intents in this tree (the gitless " <>
-                                     "cold-offline copy, test/kogen/cold_offline_test.exs:36-40)"
+                                     "cold-offline copy, test/kogen/cold_offline_test.exs:188-192)"
 
   describe "this repository's own tracked files" do
     @describetag skip: @skip_unless_git_and_intents

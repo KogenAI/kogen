@@ -21,7 +21,8 @@ defmodule Kogen.Build.Evidence do
          :ok <- matching_record_version(full, record),
          :ok <- matching_identity(summary, record, record_path),
          :ok <- matching_route(summary, record),
-         :ok <- record_versions(record, record_path, checkout_root) do
+         :ok <- record_versions(record, record_path, checkout_root),
+         :ok <- retained_artifacts(record, record_path, checkout_root) do
       {:ok, record}
     else
       {:error, %Jason.DecodeError{} = error} ->
@@ -139,11 +140,11 @@ defmodule Kogen.Build.Evidence do
   defp record_versions(record, record_path, root) do
     record
     |> Map.get("attempts", [])
-    |> Enum.flat_map(fn attempt ->
-      ~w(developer_reference_snapshots reviewer_reference_snapshots reference_snapshots)
-      |> Enum.flat_map(&snapshot_values(Map.get(attempt, &1)))
-    end)
-    |> Enum.filter(&(is_map(&1) and Map.has_key?(&1, "sidecar")))
+    |> Enum.flat_map(&reference_snapshots/1)
+    |> Enum.filter(
+      &(is_map(&1) and &1["binding"] == "controller_record_version" and
+          Map.has_key?(&1, "sidecar"))
+    )
     |> Enum.reduce_while(:ok, fn snapshot, :ok ->
       case record_version(snapshot, record_path, root) do
         :ok -> {:cont, :ok}
@@ -154,6 +155,22 @@ defmodule Kogen.Build.Evidence do
 
   defp snapshot_values(snapshots) when is_map(snapshots), do: Map.values(snapshots)
   defp snapshot_values(_snapshots), do: []
+
+  defp reference_snapshots(attempt) do
+    current =
+      ~w(developer_reference_snapshots reviewer_reference_snapshots reference_snapshots)
+      |> Enum.flat_map(&snapshot_values(Map.get(attempt, &1)))
+
+    archived =
+      attempt
+      |> Map.get("reference_snapshot_history", [])
+      |> Enum.flat_map(fn
+        %{"snapshots" => snapshots} -> snapshot_values(snapshots)
+        _entry -> []
+      end)
+
+    current ++ archived
+  end
 
   defp record_version(%{"sidecar" => sidecar, "sha256" => sha256} = snapshot, record_path, root)
        when is_binary(sidecar) and sidecar != "" and is_binary(sha256) do
@@ -191,4 +208,80 @@ defmodule Kogen.Build.Evidence do
       do: :ok,
       else: {:error, "bound full evidence schema version mismatch"}
   end
+
+  defp retained_artifacts(record, record_path, root) do
+    record
+    |> Map.get("attempts", [])
+    |> Enum.flat_map(fn attempt ->
+      verification = Map.get(attempt, "verification_state")
+
+      (List.wrap(verification) ++ reference_snapshots(attempt))
+      |> Enum.filter(&retained_artifact?/1)
+      |> Enum.uniq()
+    end)
+    |> Enum.reduce_while(:ok, fn snapshot, :ok ->
+      case retained_artifact(snapshot, record_path, root) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp retained_artifact?(%{"binding" => binding})
+       when binding in ["verification_state", "fixed_file"],
+       do: true
+
+  defp retained_artifact?(%{"content_base64" => _bytes, "sha256" => _digest}), do: true
+  defp retained_artifact?(_snapshot), do: false
+
+  defp retained_artifact(
+         %{"binding" => binding, "sidecar" => sidecar} = snapshot,
+         record_path,
+         root
+       )
+       when binding in ["verification_state", "fixed_file"] and is_binary(sidecar) do
+    digest = snapshot["sha256"]
+    beside = artifact_path(record_path, digest)
+
+    if valid_digest?(digest) do
+      with {:ok, located} <- resolve_path(sidecar, root),
+           path when is_binary(path) <- Enum.find([beside, located], &File.regular?/1),
+           {:ok, bytes} <- File.read(path),
+           true <- byte_size(bytes) == snapshot["byte_count"],
+           true <- sha256(bytes) == digest do
+        :ok
+      else
+        nil -> {:error, "bound retained artifact sidecar unavailable: #{sidecar}"}
+        {:error, _reason} -> {:error, "bound retained artifact sidecar unavailable: #{sidecar}"}
+        false -> {:error, "bound retained artifact sidecar mismatch: #{sidecar}"}
+      end
+    else
+      {:error, "bound retained artifact has an invalid digest: #{sidecar}"}
+    end
+  end
+
+  # Records predating sidecars retain their original base64 representation.
+  defp retained_artifact(
+         %{"content_base64" => encoded, "sha256" => digest} = snapshot,
+         _record_path,
+         _root
+       )
+       when is_binary(encoded) and is_binary(digest) do
+    with {:ok, bytes} <- Base.decode64(encoded),
+         true <- sha256(bytes) == String.downcase(digest),
+         true <- is_nil(snapshot["byte_count"]) or snapshot["byte_count"] == byte_size(bytes) do
+      :ok
+    else
+      _ -> {:error, "bound retained artifact inline content mismatch"}
+    end
+  end
+
+  defp retained_artifact(_snapshot, _record_path, _root),
+    do: {:error, "bound retained artifact has an invalid locator or content"}
+
+  defp artifact_path(record_path, digest),
+    do: Path.join([Path.dirname(record_path), "artifacts", to_string(digest) <> ".bin"])
+
+  defp valid_digest?(digest), do: is_binary(digest) and digest =~ ~r/\A[0-9a-f]{64}\z/
+  defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
 end

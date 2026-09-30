@@ -97,21 +97,41 @@ defmodule Kogen.Harness do
     }
   end
 
-  @doc "A binding from its recorded form (the inverse of `binding_record/1`)."
-  def binding_from_record(%{"harness" => harness} = record) do
-    scope =
-      if is_binary(record["scope_path"]),
-        do: %{name: String.to_existing_atom(record["scope_name"]), path: record["scope_path"]}
+  # Accepted login scope names, decoded explicitly: a fresh VM (every `mix
+  # kogen.expert` process) has not necessarily loaded the modules that intern
+  # these atoms, so `String.to_existing_atom/1` would depend on load order.
+  @scope_names %{"shared" => :shared, "project" => :project}
 
-    %{
-      harness: harness,
-      runtime: %{
-        "executable" => record["runtime_executable"],
-        "version" => record["runtime_version"]
-      },
-      scope: scope
-    }
+  @doc """
+  A binding from its recorded form (the inverse of `binding_record/1`).
+  An unknown scope name fails explicitly rather than raising.
+  """
+  def binding_from_record(%{"harness" => harness} = record) do
+    with {:ok, scope} <- scope_from_record(record) do
+      {:ok,
+       %{
+         harness: harness,
+         runtime: %{
+           "executable" => record["runtime_executable"],
+           "version" => record["runtime_version"]
+         },
+         scope: scope
+       }}
+    end
   end
+
+  defp scope_from_record(%{"scope_path" => path} = record) when is_binary(path) do
+    case Map.fetch(@scope_names, record["scope_name"]) do
+      {:ok, name} ->
+        {:ok, %{name: name, path: path}}
+
+      :error ->
+        {:error,
+         "unknown login scope name #{inspect(record["scope_name"])} in the recorded binding; accepted: project, shared"}
+    end
+  end
+
+  defp scope_from_record(_record), do: {:ok, nil}
 
   @doc "Returns the Kogen login command for a harness binding."
   def login_command(%{harness: harness, scope: scope}),
@@ -184,7 +204,18 @@ defmodule Kogen.Harness do
     harness = Kogen.Intent.role_harness(config, role)
     selection = tag_current_role(Map.fetch!(selections, harness), role)
     context = launch_context(selection)
-    %{context | env: context.env ++ expert_environment(config, role, Map.get(runtime, :launch))}
+
+    context = %{
+      context
+      | env: context.env ++ expert_environment(config, role, Map.get(runtime, :launch))
+    }
+
+    # A fan-out job's `:on_start` (set on that job's own copy of the runtime)
+    # lets the coordinator reap the launched process group by identity.
+    case Map.get(runtime, :on_start) do
+      on_start when is_function(on_start, 1) -> Map.put(context, :on_start, on_start)
+      _ -> context
+    end
   end
 
   defp tag_current_role(%{config: config} = selection, role) when is_map(config),

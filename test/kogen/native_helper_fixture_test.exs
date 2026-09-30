@@ -1,26 +1,61 @@
 Code.require_file("../support/native_helper_fixture.ex", __DIR__)
-Code.require_file("../support/route_config.ex", __DIR__)
 
 defmodule Kogen.NativeHelperFixtureTest do
   use ExUnit.Case, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.NativeHelperFixture
-  alias Kogen.RouteConfig
 
   test "renders the bounded packets through the production role renderer" do
     config = codex_config!()
-    prompt = NativeHelperFixture.prompt(config, "developer")
+    candidate_prompt = NativeHelperFixture.candidate_prompt(config, @project_root)
+    prompt = NativeHelperFixture.prompt(config, "developer", candidate_prompt)
 
-    assert prompt =~ "Configured root (developer): `gpt-6-sol` at `medium`"
+    assert String.starts_with?(prompt, candidate_prompt)
+    assert candidate_prompt =~ "Title: Fix Build convergence and live selection"
+    assert candidate_prompt =~ "Read the entire selected Approved package"
+    refute candidate_prompt =~ "{{"
+    assert prompt =~ "Configured root (developer): `gpt-6.1-sol` at `high`"
     assert prompt =~ "fresh_scout_route"
     assert prompt =~ "agent_type `explorer`"
     assert prompt =~ "agent_type `worker`"
-    assert prompt =~ "agent_type `default`"
     assert prompt =~ "gpt-6-luna"
-    assert prompt =~ "gpt-6-sol"
+    assert prompt =~ "reasoning_effort `high`"
+    assert prompt =~ "Start both independent child tasks concurrently"
+    assert prompt =~ "If a child fails or returns invalid data"
     assert prompt =~ "Read-only boundary"
+    assert prompt =~ "fixture/scout.json"
+    assert prompt =~ "fixture/worker.json"
+    # Live evidence (Codex 0.159.0): a child received an absolute workdir the
+    # parent had retyped with dropped letters, failed to read, and fabricated
+    # `{"records":[]}`. The prompt now dictates the exact relative message.
+    for task <- NativeHelperFixture.tasks(config) do
+      assert prompt =~
+               "Task #{task.name}: Read-only boundary: inspect only `fixture/#{task.file}`"
+    end
+
+    assert prompt =~ "character for character"
+    assert prompt =~ "pass no `workdir` and never type an absolute path"
+    assert prompt =~ "never guess values"
     refute prompt =~ "r17"
-    refute prompt =~ "provider_error"
+    refute prompt =~ "fresh_expert_route"
+
+    assert_raise ArgumentError, ~r/rendered Candidate prompt/, fn ->
+      NativeHelperFixture.prompt(config, "developer", "  ")
+    end
+  end
+
+  test "uses the actual configured Luna scout and worker profiles of the explicit Codex route" do
+    config = codex_config!()
+    tasks = NativeHelperFixture.tasks(config)
+
+    assert Enum.map(tasks, & &1.name) == ["fresh_scout_route", "fresh_worker_route"]
+    assert Enum.map(tasks, & &1.file) == ["scout.json", "worker.json"]
+    assert tasks |> Enum.map(& &1.file) |> MapSet.new() |> MapSet.size() == 2
+
+    assert Enum.map(tasks, &{&1.model, &1.effort}) ==
+             [{"gpt-6-luna", "low"}, {"gpt-6-luna", "high"}]
   end
 
   test "accepts only complete runner-owned native metadata and task facts" do
@@ -78,7 +113,7 @@ defmodule Kogen.NativeHelperFixtureTest do
 
     assert :ok = NativeHelperFixture.validate_receipt(receipt, protocol)
     assert File.regular?(Path.join(raw, "parent.jsonl"))
-    assert length(Path.wildcard(Path.join(raw, "fresh_*.jsonl"))) == 3
+    assert length(Path.wildcard(Path.join(raw, "fresh_*.jsonl"))) == 2
 
     write_session!(
       Path.join(sessions, "nested.jsonl"),
@@ -159,6 +194,154 @@ defmodule Kogen.NativeHelperFixtureTest do
         protocol
       )
     end
+  end
+
+  test "native collector rejects waiting for a child before dispatching the second slice" do
+    config = codex_config!()
+    protocol = NativeHelperFixture.protocol(config, "developer")
+    root = tmp_dir!()
+    fixture = NativeHelperFixture.write_fixture!(root)
+    sessions = Path.join(root, "sessions")
+    File.mkdir_p!(sessions)
+    rows = parent_rows(protocol)
+    {first, [second | rest]} = Enum.split(rows, 3)
+
+    wait = %{
+      "type" => "response_item",
+      "payload" => %{"type" => "function_call", "name" => "wait_agent", "arguments" => "{}"}
+    }
+
+    write_session!(Path.join(sessions, "parent.jsonl"), first ++ [wait, second | rest])
+
+    assert_raise ArgumentError, ~r/not dispatched before waiting/, fn ->
+      NativeHelperFixture.collect_receipt!(
+        sessions,
+        Path.join(root, "raw"),
+        "parent-thread",
+        fixture,
+        protocol
+      )
+    end
+  end
+
+  describe "Codex 0.159.0 retained multi_agent_v1 records" do
+    @retained Path.expand("../fixtures/native_helper/codex_0_159_0", __DIR__)
+    @parent_id "01a0eef8-13b4-7cf0-b61b-1cadf57a10d6"
+
+    test "the real spawn shape without task_name is bound by message, fork_context and agent_id" do
+      {protocol, fixture, sessions, raw} = retained_setup!(& &1)
+
+      receipt = NativeHelperFixture.collect_receipt!(sessions, raw, @parent_id, fixture, protocol)
+
+      assert :ok = NativeHelperFixture.validate_receipt(receipt, protocol)
+
+      assert Enum.map(receipt["children"], &{&1["name"], &1["requested_kind"]}) ==
+               [{"fresh_scout_route", "explorer"}, {"fresh_worker_route", "worker"}]
+
+      assert Enum.all?(receipt["children"], &(&1["requested_fork_turns"] == "none"))
+      assert Enum.all?(receipt["children"], &(&1["observed_profiles"] != []))
+    end
+
+    test "still rejects genuinely malformed or misrouted 0.159.0 records" do
+      mutations = [
+        {~r/malformed native child call/, &drop_arg(&1, "message")},
+        {~r/malformed native child call/, &drop_arg(&1, "fork_context")},
+        {~r/malformed native child call/, &edit_message(&1, "Task ", "Job ")},
+        {~r/malformed native child call/,
+         &edit_message(&1, "fixture/scout.json", "fixture/scout.json fixture/worker.json")},
+        {~r/malformed native child call/,
+         &edit_message(&1, "fresh_scout_route", "fresh_unknown")},
+        {~r/malformed native child call/,
+         &edit_message(&1, "Task fresh_scout_route", "Task fresh_worker_route")}
+      ]
+
+      for {pattern, mutate} <- mutations do
+        {protocol, fixture, sessions, raw} = retained_setup!(mutate)
+
+        assert_raise ArgumentError, pattern, fn ->
+          NativeHelperFixture.collect_receipt!(sessions, raw, @parent_id, fixture, protocol)
+        end
+      end
+    end
+
+    test "a wrong requested or observed route fails receipt validation" do
+      {protocol, fixture, sessions, raw} =
+        retained_setup!(fn row ->
+          put_arg(row, "model", "gpt-6-luna-wrong", "explorer")
+        end)
+
+      receipt = NativeHelperFixture.collect_receipt!(sessions, raw, @parent_id, fixture, protocol)
+      assert {:error, _} = NativeHelperFixture.validate_receipt(receipt, protocol)
+
+      {protocol, fixture, sessions, raw} =
+        retained_setup!(fn row -> put_arg(row, "fork_context", true, "worker") end)
+
+      receipt = NativeHelperFixture.collect_receipt!(sessions, raw, @parent_id, fixture, protocol)
+      assert {:error, _} = NativeHelperFixture.validate_receipt(receipt, protocol)
+    end
+
+    test "a child whose agent_id the runner never returned is not owned" do
+      {protocol, fixture, sessions, raw} =
+        retained_setup!(fn
+          %{"payload" => %{"type" => "function_call_output", "output" => "{\"agent_id\"" <> _}} =
+              row ->
+            put_in(row, ["payload", "output"], "{\"nickname\":\"anonymous\"}")
+
+          row ->
+            row
+        end)
+
+      assert_raise ArgumentError, ~r/missing, duplicate, or unexpected/, fn ->
+        NativeHelperFixture.collect_receipt!(sessions, raw, @parent_id, fixture, protocol)
+      end
+    end
+
+    defp retained_setup!(mutate) do
+      protocol = NativeHelperFixture.protocol(codex_config!(), "developer")
+      root = tmp_dir!()
+      fixture = NativeHelperFixture.write_fixture!(root)
+      sessions = Path.join(root, "sessions")
+      File.mkdir_p!(sessions)
+
+      for name <- ~w(parent scout worker) do
+        rows =
+          Path.join(@retained, name <> ".jsonl")
+          |> File.read!()
+          |> String.split("\n", trim: true)
+          |> Enum.map(&Jason.decode!/1)
+
+        rows = if name == "parent", do: Enum.map(rows, mutate), else: rows
+        write_session!(Path.join(sessions, name <> ".jsonl"), rows)
+      end
+
+      {protocol, fixture, sessions, Path.join(root, "raw")}
+    end
+
+    defp spawn_row?(%{"payload" => %{"type" => "function_call", "name" => "spawn_agent"}}),
+      do: true
+
+    defp spawn_row?(_), do: false
+
+    defp update_spawn(row, kind, fun) do
+      with true <- spawn_row?(row),
+           args = Jason.decode!(row["payload"]["arguments"]),
+           true <- kind in [nil, args["agent_type"]] do
+        put_in(row, ["payload", "arguments"], Jason.encode!(fun.(args)))
+      else
+        _ -> row
+      end
+    end
+
+    defp drop_arg(row, key), do: update_spawn(row, "explorer", &Map.delete(&1, key))
+    defp put_arg(row, key, value, kind), do: update_spawn(row, kind, &Map.put(&1, key, value))
+
+    defp edit_message(row, from, to),
+      do:
+        update_spawn(
+          row,
+          "explorer",
+          &Map.update!(&1, "message", fn m -> String.replace(m, from, to) end)
+        )
   end
 
   defp valid_receipt(protocol) do
@@ -246,13 +429,23 @@ defmodule Kogen.NativeHelperFixtureTest do
     ]
   end
 
-  # This fixture belongs to the Codex native-helper route (the Codex-only
-  # live-native target), so it renders Codex profiles through the production
-  # config reader regardless of which harness this checkout currently selects.
+  # Use the Candidate's explicit existing Codex route so the native helper proof cannot
+  # pass with a synthetic profile that differs from the frozen Build settings.
   defp codex_config! do
-    path = Path.join(tmp_dir!(), "codex-config.yaml")
-    RouteConfig.write!(path, [{"codex", RouteConfig.codex_route()}])
-    {:ok, config} = Kogen.Intent.read_config(path)
+    {:ok, config} =
+      Kogen.Intent.read_config(
+        Path.join(@project_root, ".kogen/config.yaml"),
+        "codex-dominant-adversarial-claude"
+      )
+
+    assert Kogen.Intent.role_harness(config, :developer) == "codex"
+    assert Kogen.Intent.role_harness(config, :reviewer) == "claude"
+    assert config.developer.model == "gpt-6.1-sol"
+    assert config.developer.effort == "high"
+    assert config.helpers.scout.model == "gpt-6-luna"
+    assert config.helpers.scout.effort == "low"
+    assert config.helpers.worker.model == "gpt-6-luna"
+    assert config.helpers.worker.effort == "high"
     config
   end
 

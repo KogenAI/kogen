@@ -320,19 +320,21 @@ defmodule Kogen.ProofSelectorVerificationTest do
   end
 
   test "a timeout is an error, never a red result" do
-    %{dir: dir, base_commit: base_commit} = Fixture.create()
+    # The timeout classification does not depend on `mix`, so the focused
+    # runner is a shell stand-in: a base workspace run always carries its own
+    # MIX_BUILD_PATH (`Kogen.Build.BaseWorkspace.run_environment/1`; the real
+    # Candidate run never sets it) and blocks there until the controller's
+    # timeout kills it, while the Candidate run exits at once. No compile or
+    # mix boot sits inside the short timeout, so machine load cannot make the
+    # Candidate's own proof run the one that times out.
+    runner = ["sh", "-c", ~S{[ -z "$MIX_BUILD_PATH" ] || sleep 600}, "runner", "{paths}"]
+    %{dir: dir, base_commit: base_commit} = Fixture.create(focused_runner: runner)
 
-    # Base workspace runs always carry their own MIX_BUILD_PATH
-    # (`Kogen.Build.BaseWorkspace.run_environment/1`); the real Candidate run
-    # never sets it. Sleeping only there makes the red-on-base run the one
-    # that times out, without the Candidate's own proof run flaking on a
-    # slow first compile.
     Fixture.write!(dir, "test/slow_test.exs", """
     defmodule SlowTest do
       use ExUnit.Case
 
-      test "sleeps only in a base workspace run" do
-        if System.get_env("MIX_BUILD_PATH"), do: Process.sleep(15_000)
+      test "blocks only in a base workspace run" do
         assert Calc.add(1, 2) == 3
       end
     end

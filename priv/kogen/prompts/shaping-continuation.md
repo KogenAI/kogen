@@ -25,11 +25,14 @@ Do not automatically approve, build or implement it.
 
 Preserve accepted decisions and unfinished/parked conditions. Parked work is
 not approved backlog. Resolve discoverable engineering discrepancies
-autonomously. Ask the human only about consequential product, UX, policy, scope
-or authority conflicts, and only within the first 5 minutes of this
-conversation; after that, resolve anything else yourself and record it under
-`## Assumed`. A partial answer settles only its explicit or necessarily
-entailed choice; preserve adjacent unresolved behavior. Persist accepted decisions with provenance and
+autonomously. Ask the human about consequential unanswered product, UX, policy,
+scope, compatibility or authority choices and conflicts whenever they become
+clear. A consequential
+choice that has no answer remains pending; silence, elapsed time and work-budget
+expiry are not consent and never turn it into an assumption. Continue work that
+is independent of that choice, and do not mark the Draft ready while a
+consequential choice remains unresolved. A partial answer settles only its
+explicit or necessarily entailed choice; preserve adjacent unresolved behavior. Persist accepted decisions with provenance and
 unresolved questions in maintained draft files so another fresh conversation
 can continue without transcript access. Do not copy private raw harness logs.
 

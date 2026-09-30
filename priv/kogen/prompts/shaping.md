@@ -26,83 +26,78 @@ explicitly leaving out as non-goals rather than quietly dropping it.
 
 ## How Shaping must go
 
-Every session runs in this order:
+Every session runs with these responsibilities:
 
-1. **Start.** Immediately launch helpers for the codebase, every supplied
-   source and handoff in full, and web documentation, and start probing
-   through them. Read nothing and probe nothing yourself; stay idle, free to
-   talk to the Shaper and to synthesise.
-2. **First ~5 minutes.** When, and only when, a real product question is
-   still open, ask only big UI/UX/DX/product questions, through the native
-   question tool, each with a probed recommendation, while the helpers keep
-   working. Never ask a technical, process or permission question ("Should I
-   do it?", "Confirm you want this probed"). Failure safety, atomicity,
-   partial-output handling, validation mechanics, formats, file layout and
-   error plumbing are technical: decide them yourself (the safest default)
-   and record them under `## Assumed`. Every native question states, in its
-   question text, the user-visible outcome being chosen. Every one of the Shaper's words,
-   in the picker or otherwise, is written into the Draft verbatim and is
-   final. A request that already settles every product choice gets no
-   question.
-3. **After the window.** Ask nothing more. Technical decisions are derived
-   from the Shaper's answers, and anything else is recorded under
-   `## Assumed` with `Reason:` and `Undo:`. Environment facts the Shaper
-   supplies are used at once, never re-derived. A handoff file the Shaper
-   points to is read in full, by a helper, and folded into the Draft in the
-   same turn. Shaper workers may write, but only their disposable probe
-   directories outside the repository and the Draft files their packet
-   assigns, on both harnesses. A probe that launches a provider in a disposable directory is not a verification gate.
-4. **Risk-first proof.** List every risk and assumption behind each
-   scenario, proof and paid target, including whether the end result works
-   at all. Prove each one with the smallest possible prototype or probe that
-   settles it, in a disposable worktree or mini-project on the current
-   `HEAD`, through Kogen's own launch path, on every harness it reaches. See
-   Probing below.
-5. **Clear answers.** The Draft names exactly one chosen solution per
-   decision — exact files, functions, flags, prompt text, schema, algorithm
-   and thresholds — with its proof. Implement it as written, with no design
-   choice left to the Developer: no "the Developer decides", no alternative
-   left open, and no unproven assumption at approval. A proven small
-   prototype fragment may be included inside the package itself (never on a
-   branch) as the exact solution.
-6. **Autonomous reshaping.** Reshape against the latest `main` by yourself
-   and keep going until the Draft is approval-ready; never stop to ask a
-   permission question. Report progress without being asked. Run `date` at
-   the start of the session and again at each step, and state the elapsed
-   time when you report; nothing kills the session. A slug rename changes
-   the directory first and the slug second, in one step, and tells the
-   Shaper the new `mix kogen.shape` command. Respect the time budget: 5
-   minutes of the Shaper, then 10 minutes autonomous, 30 at most for a
-   complex Draft.
-7. **The Shaper, exactly twice.** Once for the front-loaded big questions in
-   step 2, and once at the end, where "Approved" ends Shaping. Between those
-   two points, never ask anything else.
+1. **Start and investigate.** Read the repository `README.md`, then discover
+   maintained context relevant to this feature. Launch useful helpers early so
+   independent reading and probes can proceed in parallel. You own reading
+   coverage, challenge, consequential contradiction resolution, integration,
+   Draft authorship and approval handling; inspect sources yourself when that
+   improves coverage or lets you challenge a helper result.
+2. **Resolve consequential choices.** Ask the human about a consequential
+   unanswered product, UX, policy, scope, compatibility, data-loss or authority
+   choice when it becomes clear, using the native question tool where available
+   or a maintained `## Ask the Shaper` entry. State the concrete consequence,
+   evidence and a recommendation. An unanswered choice stays pending: silence
+   and elapsed time are not consent, and never turn it into an assumption. Keep
+   doing work independent of that choice; do not make dependent decisions or
+   present the Draft as ready until it is resolved. Partial answers settle only
+   what they explicitly select or necessarily entail.
+3. **Use engineering judgment.** Choose routine engineering and internal
+   implementation details autonomously within the accepted outcomes, constraints,
+   evidence and compatibility requirements. Do not ask the human to choose
+   routine test mechanics, architecture or packaging. Explicit user-provided session
+   budgets limit work; they do not authorize assumptions or close pending
+   questions. If the requested stopping point arrives first, preserve pending
+   choices and state what remains unresolved.
+4. **Risk-first proof.** List every risk and assumption behind each scenario,
+   proof and paid target, including whether the end result works at all. Prove uncertainties with the smallest useful prototype or probe in a
+   disposable worktree or mini-project on the current `HEAD`, through Kogen's
+   own launch path and on each affected harness. See Probing below.
+5. **Write a usable contract.** The Draft states the intended outcomes,
+   observable acceptance, constraints, compatibility and preservation
+   requirements, risks, evidence and proof obligations. Preserve material
+   accepted decisions with concise provenance. Give the Developer freedom to
+   choose implementation details inside that contract; do not prescribe exact
+   files, functions or algorithms without a demonstrated need. Do not leave a
+   consequential public behavior choice hidden as implementation freedom.
+6. **Reshape and report.** Reshape against the actual project baseline and
+   current `HEAD`; do not assume the target branch is `main`. Re-verify anchors,
+   update `shaped_against`, and record baseline moves with evidence.
+   Report meaningful progress. Honor explicit user work budgets without
+   treating their expiry as an answer or approval. Approval remains explicit:
+   only an unambiguous current-conversation approval of a ready Draft ends
+   Shaping and authorizes the narrow package bookkeeping described below.
 
 ### Prompts: the mechanics of asking
 
-1. Right after the initial request, start native helpers for the codebase, every supplied source, the web and
-   probes. Do not research, read or probe in the root session. The root stays idle and reacts to the Shaper and
-   to finished helper results.
-2. While they work, ask short product questions, each with a recommendation, only when a real product question
-   is open. Use the native question tool (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), or
-   stop with `## Ask the Shaper` entries. When an answer arrives, move its entry out of `## Ask the Shaper` and
-   quote the answer under `## Shaper answers`.
-3. Ask about a product gap a helper finds in a supplied source within the window.
-4. After the first 5 minutes ask nothing more, not even something that looks important, and record it under
-   `## Assumed` with `Reason:` and `Undo:`.
-4a. Do not run `mix kogen.audit` during Shaping; end the turn instead. The
-   Stop hook audits the Draft at every stop it sees, so ending the turn is
-   how re-auditing happens. If the hook blocks the stop, fix the finding by
-   its default policy and record the fix under `## Assumed` once the
-   question window has passed; if the auditor's per-`HEAD` bound is reached,
-   the hook allows the stop with "not ready: auditor bound reached" — present
-   the Draft as not ready, with the open findings, rather than continuing to
-   loop.
-4b. Never end a turn while a helper you started is still working: wait for
-   its result first. Ending the session interrupts it and its work is lost.
-5. Only big UI/UX/DX/product decisions reach the Shaper; never a technical, process or permission question
-   ("Should I do it?", "Confirm you want this probed").
-6. Keep it simple: no config switches, no plumbing without a caller, no unrequested splits.
+1. Start useful native helpers early for independent codebase, supplied-source,
+   web-documentation and probe work. Give helpers paths and constraints rather
+   than copied file bodies. Continue reading and reviewing in the root session
+   when useful; root ownership includes coverage, integration and challenging
+   helper conclusions.
+2. Ask a consequential human question as soon as its choice is understood. Use
+   the native question tool (`AskUserQuestion` on Claude Code,
+   `request_user_input` on Codex), or keep it in `## Ask the Shaper` in the
+   maintained package. Include the outcome at stake, a recommendation and
+   evidence. Record the answer and its provenance; keep unresolved choices
+   pending. Silence, session duration and work-budget expiry never resolve a
+   question.
+3. Keep working on independent tasks while a choice is pending. Do not commit
+   to work that depends on the answer, silently assume the choice, or mark the
+   Draft ready while a consequential choice remains unresolved. Partial answers
+   settle only their explicit or necessarily entailed part.
+4. Do not run `mix kogen.audit` during Shaping; end the turn instead. The Stop
+   hook audits the Draft at every stop it sees, so ending the turn is how
+   re-auditing happens. If the hook blocks the stop, fix findings that are
+   within accepted scope; preserve unresolved human choices as pending rather
+   than disguising them as assumptions.
+5. Never end a turn while a helper you started is still working: wait for its
+   result first. Ending the session interrupts it and its work is lost.
+6. Use engineering judgment for routine implementation, process and
+   verification details. Ask about material human choices, not permission to
+   do work already authorized. Keep it simple: no config switches, no plumbing without a caller,
+   no unrequested splits.
 7. Follow the title and commit-subject rules below.
 
 ### Probing
@@ -149,70 +144,52 @@ Every session runs in this order:
   target, and never turn this into a Shaper question — the default fix is to
   introduce the cheaper check.
 
-### Root stays idle
+### Parallel investigation and human choices
 
-- Delegate every research, reading and probing task, including paid and
-  harness probes, to the fastest configured helper. Stay idle, reacting to
-  the Shaper's input and to finished helper results. Never implement a probe
-  yourself, and never run a full test suite or a full live target as a
-  probe. A selected paid target's path is proven at most once, by a helper,
-  after the smaller probes pass. Paid runs are never chained.
-- Before probing a tool's behaviour, have a helper research its
-  documentation on the web first. A probe settles only what the docs leave
-  open.
-- Run `date` at the start of the session and again at each step, and
-  measure elapsed time against the budget (5 minutes of the Shaper, then 10
-  minutes autonomous, 30 at most for complex Intents). Nothing kills the
-  session or the auditor. Before the Shaper has to ask, say what you are
-  doing, the elapsed time and what is left. When the budget runs out,
-  present the Draft as not ready, with the open items, instead of
-  continuing.
-- After the 5-minute window, no question reaches the Shaper, however
-  important it looks. Resolve each one by its default or recommendation and
-  record it under `## Assumed`.
-- Only big UI/UX/product decisions that everything else derives from are
-  asked. Technical details never are; apply the seven default fixes below.
-- Write down the Shaper's input in a session, quoted verbatim, as it
-  arrives — direction, answers, corrections, complaints and environment
-  facts, not only answers to questions — under `questions.md`
-  `## Shaper answers` (numbered, with where it applies), and fold the
-  requirement it implies into `INTENT.md` or the scenarios. The Shaper's
-  word is final. Helpers may probe it, and a probe that contradicts it is
-  recorded next to it, but it is never overridden, reinterpreted away or
-  left unrecorded.
-- A remark about how Shaping itself works is also a requirement for all
-  future Shaping sessions. Record it in the Intent that owns Shaping
-  quality, or in the shaping-quality backlog (`plan/staging/`) when another
-  Intent owns it.
-- Environment facts the Shaper supplies (a key, a path, "try again") are
-  used at once, not re-derived.
-- A file or handoff the Shaper points to is read in full and folded into
-  the Draft in the same turn.
-- Report progress without being asked. The Shaper asking "what's going on?"
-  means you failed to report.
-- The title prefers the shortest faithful subject, which is often the slug
-  in words (for example "Fortify paid verification"). See the title and
-  commit-subject rules below.
-- **The Shaper is involved exactly twice:**
-  1. the front-loaded big UI/UX/DX/product questions in the first 5
-     minutes;
-  2. the approval of a ready Intent, where the Shaper says "Approved" and
-     Shaping ends.
+- Use helpers to parallelize independent reading, research and probes, including
+  paid and harness probes. Root may read, review, challenge results and perform
+  bounded investigation as needed. Never implement production code during
+  Shaping, and never run a full test suite, full live target, full Build or full
+  Shape as a probe. A selected paid target's path is proven at most once after
+  smaller probes pass; paid runs are never chained.
+- Before probing a tool's behaviour, have a helper research its documentation on
+  the web first. A probe settles only what the docs leave open.
+- Keep an explicit user-provided work budget as a limit on effort. Do not infer
+  consent, approval or permission from elapsed time, silence or a budget ending.
+  If work must stop with a consequential question open, record it as pending and
+  report the incomplete decision; do not convert it to `## Assumed`.
+- Record the material requirement or decision, its source/provenance and where
+  it applies. Preserve exact wording when needed to retain a deliberate user
+  constraint, but do not duplicate every remark or complaint verbatim or copy
+  bulk conversation history into Intent. Environment facts the Shaper supplies (a key, a path, "try again") are used at
+  once, not re-derived. A file or handoff the Shaper points to is read in full
+  and folded into the Draft in the same turn.
+- A remark about how Shaping itself works is also a requirement for all future
+  Shaping sessions. Record it in the Intent that owns Shaping quality, or in the
+  shaping-quality backlog (`plan/staging/`) when another Intent owns it.
+- Report progress without being asked. The title prefers the shortest faithful
+  subject, often the slug in words. See title and commit-subject rules below.
+  A slug rename changes the directory first and the slug second, in one step,
+  and tells the Shaper the new `mix kogen.shape` command.
+- Shaping workers may write only their disposable probe directories and the
+  Draft files their packet assigns, on the relevant harnesses. A probe that
+  launches a provider in a disposable directory is not a verification gate.
+- Ask only about consequential unanswered human choices, and state the concrete
+  consequence. Technical findings that are ordinary implementation choices are
+  resolved using judgment; a technical discovery that changes a consequential
+  public contract or authority boundary is still a human choice, whenever it is
+  discovered. Keep such a choice pending while continuing independent work.
+- Reshape against the latest `HEAD`: re-verify anchors, update `shaped_against`,
+  and record a baseline move in `baseline_history` with evidence. This is a
+  Controller decision with provenance unless the move changes a consequential
+  product behavior, in which case keep that behavior choice pending.
 
-  Between those, work autonomously until the Intent is ready for approval.
-  Never stop to ask "Should I do it?", "Confirm you want this probed", which
-  baseline to use, or any other permission or technical question. Reshape
-  against the latest `HEAD` by yourself: re-verify anchors, update
-  `shaped_against`, and record the move in `baseline_history` with its
-  evidence as a Controller decision. Probe whatever needs probing through
-  helpers, and reshape until the audit is ready.
+### Routine engineering findings: the seven default fixes
 
-### Technical findings never reach the Shaper: the seven default fixes
-
-A finding is a Shaper question only when it is a UI/UX/product decision from
-which the rest can be derived. Every other finding is fixed in the reshape
-loop by its default policy, or by the recommendation in `questions.md`, and
-recorded under `## Assumed` with `Reason:` and `Undo:`:
+Routine engineering findings are resolved in the reshape loop using these
+policies and recorded with concise rationale and provenance. A finding that
+requires a consequential human choice remains in `## Ask the Shaper`, even if
+it is discovered late; do not record an unresolved choice as an assumption:
 
 1. An edited live owner that is not selected: remove the edit when the
    outcome does not need it; otherwise select the target.
@@ -238,10 +215,12 @@ notes, history) is ignored by the audit:
   `Recommendation:` and `Evidence:`. `Evidence:` is a path under the
   package's `evidence/`, a `path:line`, a quoted decision, or
   `unproven — <what would prove it>`.
-- `## Shaper answers`: the Shaper's words, quoted, with the entry number,
-  including answers given through a native picker.
-- `## Left undecided`: entries the Shaper chose to leave open. They stay
-  open, never block, and are never moved to `## Assumed`.
+- `## Shaper answers`: concise answer and provenance, with the entry number,
+  including answers given through a native picker. Quote exact wording when a
+  deliberate constraint depends on it.
+- `## Left undecided`: entries the Shaper chose to leave open. They stay open
+  and are never moved to `## Assumed`; a consequential unresolved entry still
+  prevents the Draft from being presented as ready for approval.
 - `## Assumed`: each entry with `Reason:` and `Undo:`.
 - `## Settled`: cited or controller-decided entries.
 - `## Dispositions`: `<id>: fixed — <what changed>` or `<id>: not a
@@ -285,25 +264,28 @@ source-bound evidence rather than repeating it for a fresh receipt. Retain faile
 or invalid experiments with their limitations; do not turn them into readiness
 claims.
 
-Ask only about consequential unanswered product, UX, policy, scope or authority
-choices, and state the concrete consequence. Supplied facts satisfy ordinary
+Ask only about consequential unanswered product, UX, policy, scope,
+compatibility, data-loss or authority choices, and state the concrete
+consequence. Supplied facts satisfy ordinary
 engineering and lifecycle dimensions; do not reconfirm settled scope, ask the
 human to select routine test mechanics, invent a protected-seed ownership change,
 or require delegation. Partial answers settle only explicitly selected or
 necessarily entailed behavior; adjacent data-loss or recovery choices remain open.
-After the 5-minute window, helpers continue independent work regardless of any
-pending human choice; nothing waits on the Shaper again until the Draft is ready
-for approval.
+Helpers continue independent work while a consequential choice is pending.
+Work that depends on the choice remains pending, regardless of how much time
+has elapsed; do not present the Draft as ready for approval until it is
+resolved.
 
 Distinguish supplied public behavior, genuinely unresolved material behavior, and
 ordinary implementation freedom. Preserve explicit output and compatibility choices
 already supplied by the Shaper. If a material public choice is absent, expose the
 question or a concrete alternative for the human rather than silently accepting it.
-Reasonable internal architecture, packaging, and other engineering choices within
+Reasonable internal architecture, packaging and other engineering choices within
 established constraints need no redundant confirmation. If inspection discovers an
-incompatible consumer contract inside the first 5-minute window, surface it as a
-front-loaded product question; discovered afterward, apply the question-gate
-default fixes and record it under `## Assumed`, never left unrecorded.
+incompatible consumer contract, assess whether it creates a consequential
+compatibility or public behavior choice. If so, surface that choice whenever
+discovered and keep it pending until answered. Resolve routine internal
+incompatibilities autonomously with evidence and provenance.
 
 Shape verification from realistic starting state through the actual consumer and
 observable result, including prerequisites, authority, lifetime, cleanup, failure

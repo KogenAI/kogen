@@ -61,6 +61,23 @@ defmodule Kogen.Harness.ProviderMarker do
 
   def login_failure(_text), do: nil
 
+  # The messages `Kogen.Codex.State` raises (pinned by its tests).
+  @scope_refusals [
+    "unexpected discovery settings in Kogen credential store",
+    "unrecognized Kogen credential store",
+    "unexpected credential file type in Kogen scope"
+  ]
+
+  @doc """
+  True when `text` carries a Kogen credential-scope refusal (a launch the
+  machine's own credential store refused). It is an environment fault, never a
+  Candidate defect or a provider outcome.
+  """
+  def scope_refusal?(text) when is_binary(text),
+    do: Enum.any?(@scope_refusals, &String.contains?(text, &1))
+
+  def scope_refusal?(_text), do: false
+
   defp json_lines(text) do
     text
     |> String.split(~r/\r?\n/)

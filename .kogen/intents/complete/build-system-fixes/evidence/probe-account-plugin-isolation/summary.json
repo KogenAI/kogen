@@ -1,0 +1,99 @@
+{
+  "recorded_at": "2026-09-29T10:06:45.403464+00:00",
+  "boundary": "native_app_server_discovery_and_callability_only",
+  "runtime": "0.158.0",
+  "executable_sha256": "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8",
+  "observations": [
+    {
+      "mode": "managed-off",
+      "installed_apps": 11,
+      "enabled_apps": 0,
+      "callable_apps": 0,
+      "installed_plugin_count": 0,
+      "remote_enabled_plugins": [],
+      "discovery": {
+        "id": 2,
+        "result": {
+          "data": [],
+          "nextCursor": null
+        }
+      },
+      "account_fingerprint": "b95d4844be810bfecbeef75c92e197938cb3e2641c7065001574405f5fbdbb1e"
+    },
+    {
+      "mode": "managed-on",
+      "installed_apps": 12,
+      "enabled_apps": 12,
+      "callable_apps": 12,
+      "installed_plugin_count": 10,
+      "remote_enabled_plugins": [
+        "app-69272cb413a081919685ec3c88d1744e@openai-curated-remote",
+        "cloudflare@openai-curated-remote",
+        "openai-templates@openai-curated-remote",
+        "figma@openai-curated-remote",
+        "github@openai-curated-remote",
+        "work-pets@openai-curated-remote",
+        "plugin-management@openai-curated-remote",
+        "stripe@openai-curated-remote",
+        "app-6943b73823548191a9f9216c6790c453@openai-curated-remote",
+        "dev-6a75a0b8da608191b1427cc971833cbb@created-by-me-remote"
+      ],
+      "discovery": {
+        "timeout": true
+      },
+      "account_fingerprint": "b95d4844be810bfecbeef75c92e197938cb3e2641c7065001574405f5fbdbb1e"
+    },
+    {
+      "mode": "personal-off",
+      "installed_apps": 12,
+      "enabled_apps": 0,
+      "callable_apps": 0,
+      "installed_plugin_count": 0,
+      "remote_enabled_plugins": [],
+      "discovery": {
+        "id": 2,
+        "result": {
+          "data": [],
+          "nextCursor": null
+        }
+      },
+      "account_fingerprint": "b95d4844be810bfecbeef75c92e197938cb3e2641c7065001574405f5fbdbb1e"
+    },
+    {
+      "mode": "personal-on",
+      "installed_apps": 12,
+      "enabled_apps": 12,
+      "callable_apps": 12,
+      "installed_plugin_count": 18,
+      "remote_enabled_plugins": [
+        "app-69272cb413a081919685ec3c88d1744e@openai-curated-remote",
+        "cloudflare@openai-curated-remote",
+        "openai-templates@openai-curated-remote",
+        "figma@openai-curated-remote",
+        "github@openai-curated-remote",
+        "work-pets@openai-curated-remote",
+        "plugin-management@openai-curated-remote",
+        "stripe@openai-curated-remote",
+        "app-6943b73823548191a9f9216c6790c453@openai-curated-remote",
+        "dev-6a75a0b8da608191b1427cc971833cbb@created-by-me-remote"
+      ],
+      "discovery": {
+        "error": {
+          "code": -32603,
+          "message": "failed to list apps: Failed to send request"
+        },
+        "id": 2
+      },
+      "account_fingerprint": "b95d4844be810bfecbeef75c92e197938cb3e2641c7065001574405f5fbdbb1e"
+    }
+  ],
+  "receipt_sha256": {
+    "managed-off-result.json": "dbaef68e3d5c760069399b10ae110debe1343cac999bf5251da9a8108edb0812",
+    "managed-on-result.json": "477f6de42b0fb1e3cdeda6dd3d4e15779f5471466efd75e35476998f21067ef8",
+    "personal-off-result.json": "acf0d08c72ec637384ce93a796ae654842f3d330d8426a9fa9f7fe0688ea577c",
+    "personal-on-result.json": "6aa66534621ac417bb112c529a4a85e3ab5ee09a47b6b50a5b5cdbbb863259a0"
+  },
+  "model_turns": 0,
+  "tool_calls": 0,
+  "full_root_helper_resume_acceptance": false
+}

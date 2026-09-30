@@ -3,18 +3,66 @@ Code.require_file("../support/route_config.ex", __DIR__)
 defmodule Kogen.ConfigurationSupportContractTest do
   use ExUnit.Case, async: true
 
-  @config_path ".kogen/config.yaml"
+  @project_root Path.expand("../..", __DIR__)
+  @config_path Path.join(@project_root, ".kogen/config.yaml")
   @readme Path.expand("../../README.md", __DIR__) |> File.read!()
 
-  # The default stays the clean Claude route in this Build; flipping it to the
-  # Claude-dominant hybrid is a separate follow-up.
-  test "the tracked config keeps the clean claude route as default_route" do
+  # Preserve the admission-base test ID; the tracked default is now optimum.
+  test "the tracked config defaults to codex-dominant adversarial Claude" do
     assert {:ok, default} = Kogen.Intent.read_config(@config_path)
-    assert {:ok, explicit} = Kogen.Intent.read_config(@config_path, "claude")
+    assert {:ok, explicit} = Kogen.Intent.read_config(@config_path, "optimum")
 
     assert default == explicit
-    assert default.route == "claude"
+    assert default.route == "optimum"
     assert default.harness == "claude"
+    assert Kogen.Intent.role_harness(default, :shaping) == "codex"
+    assert Kogen.Intent.role_harness(default, :developer) == "claude"
+    assert Kogen.Intent.role_harness(default, :reviewer) == "codex"
+    assert Kogen.Intent.role_harness(default, :expert) == "codex"
+
+    # The explicit existing route stays selectable and unchanged.
+    assert {:ok, codex_dominant} =
+             Kogen.Intent.read_config(@config_path, "codex-dominant-adversarial-claude")
+
+    assert codex_dominant.route == "codex-dominant-adversarial-claude"
+    assert codex_dominant.harness == "codex"
+    assert Kogen.Intent.role_harness(codex_dominant, :reviewer) == "claude"
+  end
+
+  test "optimum assigns Astra Low shaping, Opus Medium Developer, Sol High Reviewer and Expert, Opus High audit and native helpers" do
+    assert {:ok, optimum} = Kogen.Intent.read_config(@config_path, "optimum")
+
+    assert optimum.shaping == %{model: "gpt-6-astra", effort: "low"}
+    assert optimum.developer == %{model: "claude-opus-5-5", effort: "medium"}
+    assert optimum.reviewer == %{model: "gpt-6.1-sol", effort: "high"}
+    assert optimum.expert == %{model: "gpt-6.1-sol", effort: "high"}
+
+    assert Kogen.Intent.auditor_config(optimum) ==
+             {:ok, %{harness: "claude", model: "claude-opus-5-5", effort: "high"}}
+
+    assert optimum.native_helpers == %{
+             "claude" => %{
+               scout: %{model: "claude-sonnet-5-5", effort: "low"},
+               worker: %{model: "claude-sonnet-5-5", effort: "medium"}
+             },
+             "codex" => %{
+               scout: %{model: "gpt-6-luna", effort: "low"},
+               worker: %{model: "gpt-6-luna", effort: "max"}
+             }
+           }
+
+    # Helpers stay native to the launching role's harness.
+    assert Kogen.Intent.role_config(optimum, :developer).helpers.worker ==
+             %{model: "claude-sonnet-5-5", effort: "medium"}
+
+    assert Kogen.Intent.role_config(optimum, :reviewer).helpers.worker ==
+             %{model: "gpt-6-luna", effort: "max"}
+
+    # Other named routes retain their configured Codex worker effort.
+    for route <- ~w(codex claude-dominant-adversarial-codex codex-dominant-adversarial-claude) do
+      {:ok, config} = Kogen.Intent.read_config(@config_path, route)
+      assert config.native_helpers["codex"].worker == %{model: "gpt-6-luna", effort: "high"}
+    end
   end
 
   # The tracked config validates through the reader's whole-config mode: every
@@ -28,17 +76,17 @@ defmodule Kogen.ConfigurationSupportContractTest do
     tracked = File.read!(@config_path)
 
     assert {:ok, default} = Kogen.Intent.validate_config(@config_path)
-    assert default.route == "claude"
+    assert default.route == "optimum"
     assert default.harness == "claude"
 
     {:ok, data} = YamlElixir.read_from_string(tracked)
 
     assert data["routes"] |> Map.keys() |> Enum.sort() ==
-             ~w(claude claude-dominant-adversarial-codex codex codex-dominant-adversarial-claude)
+             ~w(claude claude-dominant-adversarial-codex codex codex-dominant-adversarial-claude optimum)
 
     assert Enum.count(data["routes"], fn {_name, route} -> route["harness"] == "codex" end) == 1
 
-    for hybrid <- ~w(claude-dominant-adversarial-codex codex-dominant-adversarial-claude) do
+    for hybrid <- ~w(claude-dominant-adversarial-codex codex-dominant-adversarial-claude optimum) do
       refute Map.has_key?(data["routes"][hybrid], "harness")
     end
 
@@ -47,12 +95,58 @@ defmodule Kogen.ConfigurationSupportContractTest do
     end
 
     for route <-
-          ~w(claude codex claude-dominant-adversarial-codex codex-dominant-adversarial-claude) do
+          ~w(claude codex claude-dominant-adversarial-codex codex-dominant-adversarial-claude optimum) do
       assert {:ok, config} = Kogen.Intent.read_config(@config_path, route)
       assert is_binary(config.harness)
       assert is_integer(config.outer_resumptions)
       assert is_integer(config.verification_retries)
       assert is_integer(config.offline_retries)
+    end
+  end
+
+  test "frozen budget keys default conservatively, validate, and are tracked" do
+    assert {:ok, config} = Kogen.Intent.read_config(@config_path)
+    # A finite configured ceiling: the provisional Review plus 3 live targets.
+    assert config.live_concurrency == 4
+    assert config.max_rounds > 0 and config.max_no_progress > 0
+    assert config.max_dispatches > 0 and config.max_developer_resumptions > 0
+
+    root = Path.join(System.tmp_dir!(), "kogen-budget-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+    tracked = File.read!(@config_path)
+
+    # Absent keys take the defaults.
+    stripped =
+      tracked
+      |> String.split("\n")
+      |> Enum.reject(&Regex.match?(~r/^(live_concurrency|max_[a-z_]+):/, &1))
+      |> Enum.join("\n")
+
+    path = Path.join(root, "stripped.yaml")
+    File.write!(path, stripped)
+    assert {:ok, defaults} = Kogen.Intent.read_config(path)
+    assert defaults.live_concurrency == 4
+
+    # Resumptions default to a modest 3; the tracked config sets it too.
+    assert defaults.max_developer_resumptions == 3
+    assert config.max_developer_resumptions == 3
+
+    # Absent no-progress limit derives from the established allowances, so it
+    # never preempts them.
+    allowances = defaults.outer_resumptions + defaults.verification_retries
+    assert defaults.max_no_progress == allowances + defaults.offline_retries
+    assert config.max_no_progress == defaults.max_no_progress
+
+    assert defaults.max_rounds ==
+             (defaults.outer_resumptions + 1) *
+               (defaults.verification_retries + defaults.offline_retries + 1)
+
+    for bad <- ["0", "-1", "\"two\"", "1.5"] do
+      bad_path = Path.join(root, "bad.yaml")
+      File.write!(bad_path, stripped <> "\nmax_rounds: #{bad}\n")
+      assert {:error, message} = Kogen.Intent.read_config(bad_path)
+      assert message =~ "max_rounds must be a positive integer"
     end
   end
 
@@ -177,7 +271,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
   test "the tracked config exposes the four-route role-to-harness matrix" do
     matrix =
       for route <-
-            ~w(claude codex claude-dominant-adversarial-codex codex-dominant-adversarial-claude),
+            ~w(claude codex claude-dominant-adversarial-codex codex-dominant-adversarial-claude optimum),
           into: %{} do
         assert {:ok, config} = Kogen.Intent.read_config(@config_path, route)
         {route, config.roles}
@@ -206,6 +300,12 @@ defmodule Kogen.ConfigurationSupportContractTest do
                developer: "codex",
                reviewer: "claude",
                expert: "claude"
+             },
+             "optimum" => %{
+               shaping: "codex",
+               developer: "claude",
+               reviewer: "codex",
+               expert: "codex"
              }
            }
 
@@ -218,15 +318,15 @@ defmodule Kogen.ConfigurationSupportContractTest do
 
     assert claude_dominant.shaping == %{model: "claude-opus-5-5", effort: "medium"}
     assert claude_dominant.developer == %{model: "claude-opus-5-5", effort: "medium"}
-    assert claude_dominant.reviewer == %{model: "gpt-6-sol", effort: "high"}
-    assert claude_dominant.expert == %{model: "gpt-6-sol", effort: "high"}
+    assert claude_dominant.reviewer == %{model: "gpt-6.1-sol", effort: "high"}
+    assert claude_dominant.expert == %{model: "gpt-6.1-sol", effort: "high"}
     assert Map.has_key?(claude_dominant, :auditor)
 
     reviewer = Kogen.Intent.role_config(claude_dominant, :reviewer)
     assert reviewer.harness == "codex"
     assert reviewer.helpers.scout == %{model: "gpt-6-luna", effort: "low"}
     assert reviewer.helpers.worker == %{model: "gpt-6-luna", effort: "high"}
-    assert reviewer.helpers.expert == %{model: "gpt-6-sol", effort: "high"}
+    assert reviewer.helpers.expert == %{model: "gpt-6.1-sol", effort: "high"}
 
     developer = Kogen.Intent.role_config(claude_dominant, :developer)
     assert developer.harness == "claude"
@@ -239,7 +339,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
     {:ok, codex_dominant} =
       Kogen.Intent.read_config(@config_path, "codex-dominant-adversarial-claude")
 
-    assert codex_dominant.developer == %{model: "gpt-6-sol", effort: "medium"}
+    assert codex_dominant.developer == %{model: "gpt-6.1-sol", effort: "high"}
     assert codex_dominant.reviewer == %{model: "claude-opus-5-5", effort: "medium"}
     assert codex_dominant.expert == %{model: "claude-opus-5-5", effort: "high"}
     assert Map.has_key?(codex_dominant, :auditor)
@@ -254,9 +354,21 @@ defmodule Kogen.ConfigurationSupportContractTest do
              "claude-sonnet-5"
 
     assert Kogen.Intent.role_config(codex_dominant, :shaping).helpers.worker.model == "gpt-6-luna"
+    assert Kogen.Intent.role_config(codex_dominant, :developer).helpers.worker.effort == "high"
+  end
+
+  # Preserve the admission-base test ID while the selected default changes.
+  test "the tracked config keeps the clean claude route as default_route" do
+    assert {:ok, selected} = Kogen.Intent.read_config(@config_path)
+    assert selected.route == "optimum"
+    assert_clean_claude_route()
   end
 
   test "the tracked config keeps the clean Claude route unchanged" do
+    assert_clean_claude_route()
+  end
+
+  defp assert_clean_claude_route do
     assert {:ok, config} = Kogen.Intent.read_config(@config_path, "claude")
 
     assert config.route == "claude"
@@ -276,12 +388,12 @@ defmodule Kogen.ConfigurationSupportContractTest do
 
     assert config.route == "codex"
     assert config.harness == "codex"
-    assert config.shaping == %{model: "gpt-6-sol", effort: "medium"}
-    assert config.developer == %{model: "gpt-6-sol", effort: "high"}
-    assert config.reviewer == %{model: "gpt-6-sol", effort: "high"}
+    assert config.shaping == %{model: "gpt-6.1-sol", effort: "medium"}
+    assert config.developer == %{model: "gpt-6.1-sol", effort: "high"}
+    assert config.reviewer == %{model: "gpt-6.1-sol", effort: "high"}
     assert config.helpers.scout == %{model: "gpt-6-luna", effort: "low"}
     assert config.helpers.worker == %{model: "gpt-6-luna", effort: "high"}
-    assert config.helpers.expert == %{model: "gpt-6-sol", effort: "high"}
+    assert config.helpers.expert == %{model: "gpt-6.1-sol", effort: "high"}
     assert config.outer_resumptions == 2
     assert config.verification_retries == 2
   end
@@ -352,7 +464,8 @@ defmodule Kogen.ConfigurationSupportContractTest do
     {_output, status} =
       System.cmd(shim, ["exec"],
         env: [{"KOGEN_PROVIDER_DENIAL_RECEIPT", receipt}],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        cd: @project_root
       )
 
     assert status != 0

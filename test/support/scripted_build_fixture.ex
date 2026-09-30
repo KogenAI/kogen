@@ -21,6 +21,7 @@ defmodule Kogen.ScriptedBuildFixture do
   #     UTF-8 character, so tails are cut at a code point boundary)
   #   * `:packet_mutation` - the Review number whose Reviewer edits its packet
   #   * `:edits` - shell commands the Developer runs, by call
+  #   * `:truncate` - Developer invocations whose stream ends without completion
   #   * `:freeze_resume_edit` - resume numbers (`n`, the controller's own
   #     count of resumed cycles) whose default Candidate-changing resume
   #     edit is suppressed, to exercise the unchanged-Candidate stop
@@ -191,6 +192,7 @@ defmodule Kogen.ScriptedBuildFixture do
         {"HANDOFF_FAIL_FIRST", Enum.join(Keyword.get(opts, :fail_first, []), ",")},
         {"HANDOFF_FAIL_ALL", Enum.join(Keyword.get(opts, :fail_all, []), ",")},
         {"HANDOFF_HANG", Enum.join(Keyword.get(opts, :hang, []), ",")},
+        {"HANDOFF_TRUNCATE", Enum.join(Keyword.get(opts, :truncate, []), ",")},
         {"HANDOFF_FREEZE_RESUME_EDIT",
          Enum.join(Keyword.get(opts, :freeze_resume_edit, []), ",")},
         {"HANDOFF_PACKET_MUTATION", to_string(Keyword.get(opts, :packet_mutation, ""))},
@@ -413,6 +415,8 @@ defmodule Kogen.ScriptedBuildFixture do
     outer_resumptions: #{outer_resumptions}
     verification_retries: 2
     offline_retries: 4
+    # Exhaustion tests spend every offline retry; the resumption default (3) must not preempt them.
+    max_developer_resumptions: 40
     """
   end
 
@@ -458,6 +462,20 @@ defmodule Kogen.ScriptedBuildFixture do
         temporary.write_text(str(os.getpid()))
         os.replace(temporary, marker)
         while True: time.sleep(1)
+    if os.environ.get("KOGEN_ROLE") == "reviewer" and prompt.startswith("KOGEN_EVIDENCE_ADDENDUM"):
+        # The evidence addendum resumes the accepting Reviewer's own session
+        # after settlement: not a new Review, so it is counted apart, and it
+        # confirms unless HANDOFF_ADDENDUM says otherwise.
+        k = count("addenda")
+        (state / f"reviewer-addendum-prompt-{k}").write_text(prompt)
+        out = args[args.index("--output-last-message") + 1]
+        response = subprocess.run([sys.executable, os.environ["HANDOFF_RESPONSE_HELPER"], "reviewer", os.environ.get("HANDOFF_ADDENDUM", "accept")],
+                                  input=prompt, capture_output=True, text=True, check=True).stdout
+        pathlib.Path(out).write_text(response)
+        sid = args[args.index("resume") + 1]
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
+        raise SystemExit(0)
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
         # A `resume` reuses the exact thread id Kogen asked for (the
@@ -554,6 +572,8 @@ defmodule Kogen.ScriptedBuildFixture do
     notes = notes_file.read_text() if notes_file.exists() else "All scenarios are done; nothing is unfinished."
     print(json.dumps({"type": "thread.started", "thread_id": session}))
     print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": notes}}))
+    # A truncated stream: a progress message but no terminal completion.
+    if listed("HANDOFF_TRUNCATE", invocation): raise SystemExit(0)
     print(json.dumps({"type": "turn.completed", "thread_id": session}))
     '''
   end

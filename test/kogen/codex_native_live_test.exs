@@ -2,6 +2,8 @@ Code.require_file("../support/route_config.ex", __DIR__)
 
 defmodule Kogen.Codex.NativeLiveTest do
   use Kogen.IsolatedCase, async: true
+
+  @project_root Path.expand("../..", __DIR__)
   alias Kogen.Codex.{Environment, State}
   alias Kogen.RouteConfig
   @moduletag :live
@@ -12,13 +14,13 @@ defmodule Kogen.Codex.NativeLiveTest do
     System.put_env("KOGEN_CODEX_ROOT", root)
     on_exit(fn -> File.rm_rf!(root) end)
     assert {:ok, runtime} = Kogen.Codex.installer("install")
-    assert runtime["version"] == "0.156.1"
+    assert runtime["version"] == Kogen.ManagedRuntimeReady.codex_version()
     assert {:ok, ^runtime} = Kogen.Codex.installer("install")
     native_home = Path.join(root, "no-personal-home")
     File.mkdir_p!(native_home)
     native_env = ["-i", "HOME=#{native_home}", "CODEX_HOME=#{native_home}", "PATH=/usr/bin:/bin"]
     {version, 0} = System.cmd("/usr/bin/env", native_env ++ [runtime["executable"], "--version"])
-    assert version =~ "0.156.1"
+    assert version =~ Kogen.ManagedRuntimeReady.codex_version()
 
     {help, 0} =
       System.cmd("/usr/bin/env", native_env ++ [runtime["executable"], "login", "--help"])
@@ -38,7 +40,7 @@ defmodule Kogen.Codex.NativeLiveTest do
       scope = %{path: Path.join(root, to_string(name)), name: name}
       State.ensure_scope!(scope.path)
       operation = State.operation!(root)
-      context = Environment.prepare(runtime, scope, config, File.cwd!(), operation)
+      context = Environment.prepare(runtime, scope, config, @project_root, operation)
 
       {help, 0} =
         System.cmd(context.executable, context.args ++ ["login", "--help"], env: context.env)

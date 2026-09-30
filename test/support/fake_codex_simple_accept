@@ -13,15 +13,19 @@ printf '%s' "$input" | python3 "$script_dir/launch_receipt.py" "$@"
 is_reviewer=0; resume_id=; output_file=; previous=; is_resume=0; penultimate=; last=
 [ "${KOGEN_ROLE:-}" = reviewer ] && is_reviewer=1
 for a in "$@"; do
+ [ "$previous" = resume ] && after_resume="$a"
  [ "$a" = resume ] && is_resume=1
  [ "$previous" = --output-last-message ] && output_file="$a"
  previous="$a"; penultimate="$last"; last="$a"
 done
 [ "$is_resume" -eq 1 ] && resume_id="$penultimate"
 if [ "$is_reviewer" -eq 1 ]; then
-  n=0; [ -f "$state_dir/fake-reviewer-calls" ] && n="$(cat "$state_dir/fake-reviewer-calls")"; n=$((n + 1)); echo "$n" > "$state_dir/fake-reviewer-calls"
-  printf '%s' "$input" | python3 "$response_helper" reviewer accept >"$output_file"
-  printf '{"type":"thread.started","thread_id":"reviewer-session-%s"}\n{"type":"turn.completed","thread_id":"reviewer-session-%s"}\n' "$n" "$n"
+  # The evidence addendum resumes the same Reviewer session; it is not a launch.
+  n=0; [ -f "$state_dir/fake-reviewer-calls" ] && n="$(cat "$state_dir/fake-reviewer-calls")"
+  case "$input" in KOGEN_EVIDENCE_ADDENDUM*) rsid="$after_resume" ;; *) n=$((n + 1)); echo "$n" > "$state_dir/fake-reviewer-calls"; rsid="reviewer-session-$n" ;; esac
+  decision=accept; case "$input" in KOGEN_EVIDENCE_ADDENDUM*) decision="${FAKE_ADDENDUM_DECISION:-accept}" ;; esac
+  printf '%s' "$input" | python3 "$response_helper" reviewer "$decision" >"$output_file"
+  printf '{"type":"thread.started","thread_id":"%s"}\n{"type":"turn.completed","thread_id":"%s"}\n' "$rsid" "$rsid"
   exit 0
 fi
 sid="${resume_id:-dev-session-1}"; printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"; printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":false}' "$sid" "$sid" | sh .codex/hooks/check.sh >/dev/null; response="$(printf '%s' "$input" | python3 "$response_helper" developer)"; if [ -n "$output_file" ]; then printf '%s\n' "$response" > "$output_file"; fi; printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"; printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"

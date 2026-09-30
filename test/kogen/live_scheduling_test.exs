@@ -29,17 +29,116 @@ defmodule Kogen.LiveSchedulingTest do
     assert Path.wildcard(Path.join(root, "tmp/kogen-isolated-*")) == []
   end
 
-  test "live selection keeps connected and rework owners in distinct async modules" do
-    source = File.read!(@connected_source)
-    rework_source = File.read!(@rework_source)
+  # These assertions protect properties of the live owner modules' code. They
+  # read the parsed syntax tree, so reflowing, renaming a local or moving a
+  # comment cannot fail them; only a real change to a call, a comparison or a
+  # module definition can.
+  test "live Shape lifecycle carries the selected route and awaits completed Stop auditing" do
+    source = parse!(@connected_source)
+    driver = File.read!(Path.expand("../support/shape_to_build_probe.exp", __DIR__))
 
-    assert source =~ "defmodule Kogen.LiveShapeToBuildTest do"
-    refute source =~ "defmodule Kogen.LiveReviewerReworkTest do"
-    assert rework_source =~ "defmodule Kogen.LiveReviewerReworkTest do"
-    assert length(Regex.scan(~r/use ExUnit.Case, async: true/, source)) == 1
-    assert length(Regex.scan(~r/use ExUnit.Case, async: true/, rework_source)) == 1
-    assert rework_source =~ "Kogen.LiveReviewerReworkFixture.run()"
-    refute rework_source =~ "live_shape_to_build_test.exs"
+    assert has_code?(source, ~s{System.get_env("KOGEN_ROUTE")})
+    assert has_call?(source, [:Intent], :read_config, [".kogen/config.yaml", :_])
+    assert has_code?(source, "copied_config.route == config.route")
+    refute has_code?(source, ~s{copied_config.route == "optimum"})
+
+    # The connected run drives the real automatic Build.
+    assert has_call?(source, [:System], :cmd, ["mix", ["kogen.build", :_], :_])
+    refute mentions?(source, "kogen.phase")
+
+    assert driver =~ "proc wait_for_shape_stop"
+    assert driver =~ "\"decision\"\\s*:\\s*\"allow\""
+    assert driver =~ "set shape_stop_complete 1"
+    assert driver =~ "global spawn_id shape_stop_complete"
+    assert driver =~ "refusing to close a Shape session before a completed Stop/auditor receipt"
+    assert driver =~ "spawn mix kogen.shape --route $route"
+    assert driver =~ "spawn mix kogen.shape --route $route $slug"
+  end
+
+  test "live selection keeps connected and rework owners in distinct async modules" do
+    source = parse!(@connected_source)
+    rework_source = parse!(@rework_source)
+
+    assert defines_module?(source, [:Kogen, :LiveShapeToBuildTest])
+    refute defines_module?(source, [:Kogen, :LiveReviewerReworkTest])
+    assert defines_module?(rework_source, [:Kogen, :LiveReviewerReworkTest])
+    assert count_code(source, "use ExUnit.Case, async: true") == 1
+    assert count_code(rework_source, "use ExUnit.Case, async: true") == 1
+    assert has_code?(rework_source, ~s{System.get_env("KOGEN_ROUTE")})
+    assert has_code?(rework_source, "Kogen.LiveReviewerReworkFixture.run(route.route)")
+    refute has_code?(rework_source, ~s{LiveReviewerReworkFixture.run("optimum")})
+    refute mentions?(rework_source, "live_shape_to_build_test.exs")
+  end
+
+  defp parse!(path), do: path |> File.read!() |> Code.string_to_quoted!()
+
+  defp strip(ast), do: Macro.prewalk(ast, &Macro.update_meta(&1, fn _ -> [] end))
+
+  defp subtrees(ast) do
+    {_, found} = Macro.prewalk(ast, [], fn node, acc -> {node, [strip(node) | acc]} end)
+    found
+  end
+
+  defp count_code(ast, code),
+    do: Enum.count(subtrees(ast), &(&1 == code |> Code.string_to_quoted!() |> strip()))
+
+  defp has_code?(ast, code), do: count_code(ast, code) > 0
+
+  # A remote call `Alias.Tail.function(args...)` whose module alias ends in
+  # `module_tail`. `:_` matches anything; a shorter `args` list is a prefix of
+  # the real arguments only when it ends in `:_` as its last element.
+  defp has_call?(ast, module_tail, function, args) do
+    Enum.any?(subtrees(ast), fn
+      {{:., [], [{:__aliases__, [], aliases}, ^function]}, [], call_args} ->
+        List.starts_with?(Enum.reverse(aliases), Enum.reverse(module_tail)) and
+          args_match?(args, call_args)
+
+      _ ->
+        false
+    end)
+  end
+
+  defp args_match?(:_, _), do: true
+
+  defp args_match?(pattern, actual) when is_list(pattern) do
+    case Enum.reverse(pattern) do
+      [:_ | rest] ->
+        prefix = Enum.reverse(rest)
+        length(actual) >= length(prefix) and match_all?(prefix, Enum.take(actual, length(prefix)))
+
+      _ ->
+        length(pattern) == length(actual) and match_all?(pattern, actual)
+    end
+  end
+
+  defp match_all?(patterns, actuals),
+    do: Enum.all?(Enum.zip(patterns, actuals), fn {p, a} -> shape_match?(p, a) end)
+
+  defp shape_match?(:_, _), do: true
+
+  defp shape_match?({:|, [head, :_]}, {:|, [], [actual_head, _tail]}),
+    do: shape_match?(head, actual_head)
+
+  defp shape_match?(pattern, actual) when is_list(pattern) and is_list(actual),
+    do: length(pattern) == length(actual) and match_all?(pattern, actual)
+
+  defp shape_match?(pattern, actual), do: pattern == actual
+
+  # True when any string literal (heredocs and the literal parts of
+  # interpolated strings included) or atom contains `text`.
+  defp mentions?(ast, text) do
+    Enum.any?(subtrees(ast), fn
+      node when is_binary(node) -> String.contains?(node, text)
+      node when is_atom(node) -> node |> Atom.to_string() |> String.contains?(text)
+      _ -> false
+    end)
+  end
+
+  defp defines_module?(ast, aliases) do
+    Enum.any?(subtrees(ast), fn
+      {:defmodule, [], [{:__aliases__, [], ^aliases} | _]} -> true
+      _ -> false
+    end)
   end
 
   defp run_probe(failing_owner \\ "") do
@@ -63,10 +162,18 @@ defmodule Kogen.LiveSchedulingTest do
 
     args =
       Enum.flat_map(code_paths, fn path -> ["-pa", path] end) ++
-        ["-r", Path.expand("../test_helper.exs", __DIR__), @probe]
+        [
+          "-r",
+          Path.expand("../test_helper.exs", __DIR__),
+          "-r",
+          @probe,
+          "-e",
+          "result = ExUnit.run(); if result.failures != 0, do: System.halt(1)"
+        ]
 
     {output, status} =
       System.cmd("elixir", args,
+        cd: System.fetch_env!("KOGEN_TEST_ROOT"),
         env: [
           {"SCHEDULING_RENDEZVOUS", rendezvous},
           {"SCHEDULING_FAIL", failing_owner},

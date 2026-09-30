@@ -90,7 +90,7 @@ defmodule Kogen.GitIntegrityTest do
     end)
   end
 
-  test "publication budget accepts equality and rejects one byte over each fixed limit" do
+  test "staged publication accepts changed blobs above the former size limits" do
     in_repo!(fn ->
       File.write!("exact.bin", :binary.copy(<<0>>, 5_242_880))
       File.write!("remainder.bin", :binary.copy(<<1>>, 5_242_880))
@@ -99,20 +99,16 @@ defmodule Kogen.GitIntegrityTest do
 
       File.write!("remainder.bin", :binary.copy(<<1>>, 5_242_881))
       assert {_out, 0} = System.cmd("git", ["add", "-A"])
-      assert {:error, aggregate} = Git.validate_staged_publication()
-      assert aggregate =~ "changed blob total 10485761 exceeds 10485760"
-      assert aggregate =~ "remainder.bin"
+      assert :ok = Git.validate_staged_publication()
 
       File.rm!("exact.bin")
       File.write!("remainder.bin", :binary.copy(<<1>>, 5_242_881))
       assert {_out, 0} = System.cmd("git", ["add", "-A"])
-      assert {:error, per_file} = Git.validate_staged_publication()
-      assert per_file =~ "files over 5242880 bytes"
-      assert per_file =~ "remainder.bin"
+      assert :ok = Git.validate_staged_publication()
     end)
   end
 
-  test "publication budget rejects force-staged runtime paths with unambiguous names" do
+  test "staged publication rejects force-staged runtime paths with unambiguous names" do
     in_repo!(fn ->
       File.write!(".gitignore", ".kogen/runtime/\n")
       commit_all!("ignore runtime")

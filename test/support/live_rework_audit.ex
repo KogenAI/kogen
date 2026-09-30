@@ -41,7 +41,13 @@ defmodule Kogen.LiveReworkAudit do
     )
 
     receipts = reviewer_receipts!(raw_log_dir)
-    {rework_receipt, accept_receipt} = ordered_receipts!(receipts, accepting_reviewer, developer)
+
+    {rework_receipt, accept_receipt, addendum_receipt} =
+      ordered_receipts!(receipts, accepting_reviewer, developer)
+
+    # The accepting Reviewer's session is resumed once for the evidence
+    # addendum after its provisional accept, so it owns two captures.
+    accept_captures = if addendum_receipt, do: 2, else: 1
     rework_token = rework_receipt["attempt_token"]
     accept_token = accept_receipt["attempt_token"]
 
@@ -76,6 +82,10 @@ defmodule Kogen.LiveReworkAudit do
 
     reviewer_semantics!(rework_receipt, initial_candidate, rework_token, "rework")
     reviewer_semantics!(accept_receipt, candidate, accept_token, "accept")
+
+    if addendum_receipt,
+      do: reviewer_semantics!(addendum_receipt, candidate, accept_token, "accept")
+
     require_actionable_omission!(rework_receipt)
 
     initial_omission!(fixture, initial_candidate)
@@ -86,7 +96,8 @@ defmodule Kogen.LiveReworkAudit do
       raw_log_dir,
       developer,
       rework_receipt["session_id"],
-      accept_receipt["session_id"]
+      accept_receipt["session_id"],
+      accept_captures
     )
 
     native_summary =
@@ -95,9 +106,12 @@ defmodule Kogen.LiveReworkAudit do
         %{
           developer => 2,
           rework_receipt["session_id"] => 1,
-          accept_receipt["session_id"] => 1
+          accept_receipt["session_id"] => accept_captures
         },
-        [rework_receipt["session_id"], accept_receipt["session_id"]]
+        # The native receipt audit expects one receipt per session; the
+        # accepting session's receipts (provisional accept and addendum
+        # confirmation) are audited above.
+        [rework_receipt["session_id"]]
       )
 
     commit_provenance!(fixture, slug, intent_id)
@@ -248,9 +262,13 @@ defmodule Kogen.LiveReworkAudit do
   end
 
   defp ordered_receipts!(receipts, accepting_reviewer, developer) do
-    require!(length(receipts) == 2, "expected exactly two ordered Reviewer receipts")
+    require!(
+      length(receipts) in [2, 3],
+      "expected two ordered Reviewer receipts, or three with the accepting Reviewer's evidence addendum"
+    )
 
-    [rework, accept] = receipts
+    [rework, accept | addendum] = receipts
+    addendum = List.first(addendum)
 
     require!(rework["verdict"] == "rework", "first Reviewer receipt must be rework")
     require!(accept["verdict"] == "accept", "second Reviewer receipt must be accept")
@@ -277,7 +295,21 @@ defmodule Kogen.LiveReworkAudit do
       "Reviewer sessions must differ from Developer session"
     )
 
-    {rework, accept}
+    if addendum do
+      require!(
+        addendum["verdict"] == "accept",
+        "evidence addendum Reviewer receipt must be accept"
+      )
+
+      require!(
+        addendum["session_id"] == accept["session_id"] and
+          addendum["attempt_token"] == accept["attempt_token"] and
+          addendum["candidate_id"] == accept["candidate_id"],
+        "evidence addendum must resume the accepting Reviewer on the same attempt and Candidate"
+      )
+    end
+
+    {rework, accept, addendum}
   end
 
   defp require_actionable_omission!(receipt) do
@@ -400,7 +432,7 @@ defmodule Kogen.LiveReworkAudit do
     )
   end
 
-  defp developer_resume!(dir, developer, rework_reviewer, accepting_reviewer) do
+  defp developer_resume!(dir, developer, rework_reviewer, accepting_reviewer, accept_captures) do
     streams =
       dir
       |> Path.join("raw-stream-*.jsonl")
@@ -413,8 +445,15 @@ defmodule Kogen.LiveReworkAudit do
     developer_sequences = sequences_for_thread(streams, developer)
     rework_sequence = one_sequence_for_thread!(streams, rework_reviewer, "first Reviewer")
 
-    accepting_sequence =
-      one_sequence_for_thread!(streams, accepting_reviewer, "accepting Reviewer")
+    accepting_sequences =
+      sequences_for_thread(streams, accepting_reviewer)
+
+    require!(
+      length(accepting_sequences) == accept_captures,
+      "accepting Reviewer provider stream must have #{accept_captures} capture(s)"
+    )
+
+    accepting_sequence = List.first(accepting_sequences)
 
     require!(
       length(developer_sequences) == 2,

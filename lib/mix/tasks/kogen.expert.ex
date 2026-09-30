@@ -132,6 +132,7 @@ defmodule Mix.Tasks.Kogen.Expert do
     cwd = Workspace.canonical(File.cwd!())
 
     with :ok <- candidate_cwd(cwd, build.candidate),
+         {:ok, binding} <- recorded_binding(build),
          {:ok, boundary} <- boundary(build) do
       record_launch(build, boundary, harness)
 
@@ -146,9 +147,16 @@ defmodule Mix.Tasks.Kogen.Expert do
            WriteBoundary.environment(boundary) ++
              [{"KOGEN_HARNESS_HOME", build.harness_home}] ++
              Enum.map(~w(MIX_BUILD_PATH MIX_DEPS_PATH MIX_EXS), &{&1, nil}),
-         bindings: %{harness => Kogen.Harness.binding_from_record(build.binding)},
+         bindings: %{harness => binding},
          lease: false
        }}
+    end
+  end
+
+  defp recorded_binding(build) do
+    case Kogen.Harness.binding_from_record(build.binding) do
+      {:ok, binding} -> {:ok, binding}
+      {:error, reason} -> {:error, "mix kogen.expert: #{reason}"}
     end
   end
 

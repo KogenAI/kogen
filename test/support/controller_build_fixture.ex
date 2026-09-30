@@ -31,6 +31,10 @@ defmodule Kogen.ControllerBuildFixture do
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
 
+    # A Candidate carries its own product route: live targets resolve it from
+    # the Candidate's `.kogen/config.yaml` default_route.
+    files = Map.put_new_lazy(Map.new(files), ".kogen/config.yaml", &product_config/0)
+
     Enum.each(files, fn {path, content} ->
       full = Path.join(dir, path)
       File.mkdir_p!(Path.dirname(full))
@@ -47,6 +51,8 @@ defmodule Kogen.ControllerBuildFixture do
     dir
   end
 
+  defp product_config, do: File.read!(Path.expand("../../.kogen/config.yaml", __DIR__))
+
   @doc "Stages and commits every current change in `dir`."
   def commit_all!(dir, message \\ "candidate change") do
     git!(dir, ["add", "-A"])
@@ -55,10 +61,8 @@ defmodule Kogen.ControllerBuildFixture do
 
   @doc "The Candidate id (private-index write-tree) for the worktree at `dir`."
   def candidate_id!(dir) do
-    File.cd!(dir, fn ->
-      {:ok, id} = Kogen.Git.candidate_id()
-      id
-    end)
+    {:ok, id} = Kogen.Git.candidate_id(dir)
+    id
   end
 
   @doc "Loads and validates the verification-target catalog at `dir`."
@@ -134,6 +138,7 @@ defmodule Kogen.ControllerBuildFixture do
   def env(dir, catalog, plan, scenarios, opts \\ []) do
     %{
       root: dir,
+      route: Keyword.get(opts, :route, "selected-route"),
       control_root: Keyword.get(opts, :control_root, dir),
       catalog: catalog,
       plan: plan,

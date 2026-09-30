@@ -7,6 +7,31 @@ defmodule Kogen.BuildBreakersTest do
   alias Kogen.CandidateFixture, as: Candidate
   alias Kogen.WorkspaceFixture, as: Workspace
 
+  # A terminal fixture Build returns its package to Draft. These tests model
+  # an explicit unchanged-contract reapproval before attempting a fresh Build.
+  defp reapprove_if_returned!(control, slug) do
+    draft = Path.join([control, ".kogen/intents/drafts", slug])
+    approved = Path.join([control, ".kogen/intents/approved", slug])
+
+    if File.dir?(draft) and not File.exists?(approved) do
+      File.rename!(draft, approved)
+      intent = Path.join(approved, "intent.yaml")
+      text = File.read!(intent) |> String.replace(~r/^status:\s*draft\s*$/m, "status: approved")
+      File.write!(intent, text)
+
+      File.write!(
+        Path.join(approved, "approval.md"),
+        "\nExplicit fixture reapproval for a fresh Build.\n",
+        [:append]
+      )
+    end
+  end
+
+  defp build!(control, opts) do
+    reapprove_if_returned!(control, Keyword.get(opts, :slug, "workspace-fixture"))
+    Workspace.build!(control, opts)
+  end
+
   defp reports(control), do: Breakers.reports(control)
 
   defp report!(control, build_id, attrs) do
@@ -113,74 +138,65 @@ defmodule Kogen.BuildBreakersTest do
     "## First failure" <> body <> marker
   end
 
-  test "1. repeated unchanged item failures refuse before admission" do
+  test "1. repeated item signatures stay advisory and never refuse a fresh Build" do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
 
-    assert {:error, first_message} = Workspace.build!(control, opts)
+    assert {:error, first_message} = build!(control, opts)
     assert first_message =~ "category: offline-exhausted"
-    assert {:error, second_message} = Workspace.build!(control, opts)
+    assert {:error, second_message} = build!(control, opts)
     assert second_message =~ "category: offline-exhausted"
     [first, second] = reports(control)
     assert first.report["signature"]["digest"] == second.report["signature"]["digest"]
-    before = {admission_counts(control), Workspace.control_state(control)}
+    reapprove_if_returned!(control, "workspace-fixture")
+    assert {:error, admitted_message} = build!(control, opts)
 
-    marker = Workspace.tmp_dir!("item-breaker-marker") |> Path.join("launched")
-
-    sentinel =
-      Workspace.fake!(
-        Workspace.tmp_dir!("item-breaker-sentinel"),
-        "sentinel",
-        "#!/bin/sh\ntouch #{marker}\nexit 1\n"
-      )
-
-    assert {:error, refusal} =
-             Workspace.build!(control, harness: sentinel, env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}])
-
-    expected =
-      "Build refused (item breaker): workspace-fixture stopped 2 times with the same failure signature on this Approved package; next action: reshape_details; first failure: check; signature: #{first.report["signature"]["digest"]}; failure reports: #{first.path}, #{second.path}"
-
-    assert refusal == expected
-    assert admission_counts(control) == elem(before, 0)
-    assert Workspace.control_state(control) == elem(before, 1)
-    assert report_paths(control) == [first.path, second.path]
-    refute File.exists?(marker)
+    assert admitted_message =~ "category: offline-exhausted"
+    [first, second, third] = reports(control)
+    assert first.report["signature"]["digest"] == second.report["signature"]["digest"]
+    assert second.report["signature"]["digest"] == third.report["signature"]["digest"]
   end
 
-  test "2. item counts files on disk after deleting a report" do
+  test "2. deleting a report changes report counts but does not affect admission" do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
 
-    assert {:error, _} = Workspace.build!(control, opts)
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
+    assert {:error, _} = build!(control, opts)
     [first, _second] = reports(control)
     File.rm!(first.path)
 
-    assert {:error, admitted_message} = Workspace.build!(control, opts)
+    assert {:error, admitted_message} = build!(control, opts)
     assert admitted_message =~ "category: offline-exhausted"
     refute String.starts_with?(admitted_message, "Build refused")
     [remaining, new_report] = reports(control)
     assert new_report.report["same_signature_count"] == 2
 
-    assert {:error, refusal} = Workspace.build!(control, opts)
-    assert refusal =~ "failure reports: #{remaining.path}, #{new_report.path}"
-    assert refusal =~ "stopped 2 times with the same failure signature"
+    assert {:error, next_message} = build!(control, opts)
+    assert next_message =~ "category: offline-exhausted"
+    assert length(reports(control)) == 3
+    assert remaining.report["signature"]["digest"] == new_report.report["signature"]["digest"]
   end
 
-  test "3. editing the Approved package changes the item-breaker key" do
+  test "3. editing the Approved package changes the report contract identity" do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
 
-    assert {:error, _} = Workspace.build!(control, opts)
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
+    assert {:error, _} = build!(control, opts)
     before = reports(control)
+    reapprove_if_returned!(control, "workspace-fixture")
     package = Path.join(control, ".kogen/intents/approved/workspace-fixture/intent.yaml")
-    File.write!(package, File.read!(package) <> "# edited\n")
 
-    assert {:error, message} = Workspace.build!(control, opts)
+    File.write!(
+      package,
+      String.replace(File.read!(package), "title: ", "title: changed ", global: false)
+    )
+
+    assert {:error, message} = build!(control, opts)
     assert message =~ "category: offline-exhausted"
     refute String.starts_with?(message, "Build refused")
     after_edit = latest_report!(control)
@@ -194,15 +210,15 @@ defmodule Kogen.BuildBreakersTest do
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
 
-    assert {:error, _} = Workspace.build!(control, opts)
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
+    assert {:error, _} = build!(control, opts)
 
     Workspace.write_intent!(control, "second-intent",
       intent_id: "01a0c467-0000-7000-8000-00000000b2e2"
     )
 
     assert {:error, message} =
-             Workspace.build!(control, Keyword.put(opts, :slug, "second-intent"))
+             build!(control, Keyword.put(opts, :slug, "second-intent"))
 
     assert message =~ "category: offline-exhausted"
     refute String.starts_with?(message, "Build refused")
@@ -214,16 +230,17 @@ defmodule Kogen.BuildBreakersTest do
     assert report["same_signature_count"] == 1
   end
 
-  test "5. two shaping reports select reshape_scope and only name that group" do
+  test "5. repeated shaping reports stay advisory and never refuse a fresh Build" do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
     real = hd(reports(control)).report
 
     base = %{
       "intent_id" => real["intent_id"],
       "approved_package_digest" => real["approved_package_digest"],
+      "contract_digest" => real["contract_digest"],
       "category" => "cannot-comply",
       "class" => "shaping",
       "counts_toward" => "item",
@@ -236,31 +253,31 @@ defmodule Kogen.BuildBreakersTest do
       }
     }
 
-    path_a = report!(control, "shaping-a", Map.put(base, "stopped_at", timestamp(-2)))
-    path_b = report!(control, "shaping-b", Map.put(base, "stopped_at", timestamp(-1)))
-    marker = Workspace.tmp_dir!("shaping-marker") |> Path.join("launched")
+    _ = report!(control, "shaping-a", Map.put(base, "stopped_at", timestamp(-2)))
+    _ = report!(control, "shaping-b", Map.put(base, "stopped_at", timestamp(-1)))
 
     sentinel =
       Workspace.fake!(
         Workspace.tmp_dir!("shaping-sentinel"),
         "sentinel",
-        "#!/bin/sh\ntouch #{marker}\nexit 1\n"
+        "#!/bin/sh\nexit 1\n"
       )
 
-    assert {:error, refusal} = Workspace.build!(control, harness: sentinel)
-    assert refusal =~ "next action: reshape_scope"
-    assert refusal =~ "first failure: cannot-comply"
-    assert refusal =~ "signature: hand-shaping"
-    assert refusal =~ "failure reports: #{path_a}, #{path_b}"
-    refute refusal =~ real["build_id"]
-    refute File.exists?(marker)
+    # Repeated signatures are never an automatic blocker: the fresh Build is
+    # admitted and the sentinel Developer is actually launched and fails.
+    assert {:error, message} = build!(control, harness: sentinel)
+    refute message =~ "item breaker"
+    refute message =~ "next action: reshape_scope"
+    refute String.starts_with?(message, "Build refused")
+    assert message =~ "harness failure during Developer turn"
+    assert length(reports(control)) == 4
   end
 
   test "6. different signatures and environment counts do not preempt the next Build" do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
     real = hd(reports(control)).report
 
     item = fn digest, id ->
@@ -301,7 +318,7 @@ defmodule Kogen.BuildBreakersTest do
     _ = env.("env-1")
     _ = env.("env-2")
 
-    assert {:error, message} = Workspace.build!(control, opts)
+    assert {:error, message} = build!(control, opts)
     assert message =~ "category: offline-exhausted"
     refute String.starts_with?(message, "Build refused")
     assert length(reports(control)) == 6
@@ -320,7 +337,7 @@ defmodule Kogen.BuildBreakersTest do
       cwd = Workspace.tmp_dir!("environment-cwd")
 
       result =
-        Workspace.build!(
+        build!(
           control,
           Keyword.merge(claude_opts(claude_root, cwd, logged_out, extra), slug: slug)
         )
@@ -407,7 +424,7 @@ defmodule Kogen.BuildBreakersTest do
 
     logged_out = fn extra ->
       cwd = Workspace.tmp_dir!("item-reset-cwd")
-      {Workspace.build!(control, claude_opts(claude_root, cwd, true, extra)), cwd}
+      {build!(control, claude_opts(claude_root, cwd, true, extra)), cwd}
     end
 
     assert {{:error, _}, _} = logged_out.([])
@@ -415,7 +432,7 @@ defmodule Kogen.BuildBreakersTest do
     cwd3 = Workspace.tmp_dir!("item-reset-offline")
 
     assert {:error, item_message} =
-             Workspace.build!(
+             build!(
                control,
                claude_opts(claude_root, cwd3, false, [{"FAKE_CHECK_FAIL_ALWAYS", "1"}])
              )
@@ -444,7 +461,7 @@ defmodule Kogen.BuildBreakersTest do
     build = fn slug, logged_out ->
       cwd = Workspace.tmp_dir!("published-clear-cwd")
 
-      {Workspace.build!(
+      {build!(
          control,
          Keyword.merge(claude_opts(claude_root, cwd, logged_out), slug: slug)
        ), cwd}
@@ -476,7 +493,7 @@ defmodule Kogen.BuildBreakersTest do
 
     build = fn logged_out, extra ->
       cwd = Workspace.tmp_dir!("provider-skip-cwd")
-      {Workspace.build!(control, claude_opts(claude_root, cwd, logged_out, extra)), cwd}
+      {build!(control, claude_opts(claude_root, cwd, logged_out, extra)), cwd}
     end
 
     assert {{:error, _}, _} = build.(true, [])
@@ -510,7 +527,7 @@ defmodule Kogen.BuildBreakersTest do
     claude_root = Workspace.claude_root!()
     on_exit(fn -> File.rm_rf(control) end)
     cwd = Workspace.tmp_dir!("fresh-published-cwd")
-    assert Workspace.build!(control, claude_opts(claude_root, cwd, false)) == :ok
+    assert build!(control, claude_opts(claude_root, cwd, false)) == :ok
     assert clear_files(control) == []
     assert probe_lines(cwd) == []
   end
@@ -519,7 +536,7 @@ defmodule Kogen.BuildBreakersTest do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
     first = hd(reports(control)).report
     first_prompt = prompt!(first)
     refute first_prompt =~ "## First failure"
@@ -531,7 +548,7 @@ defmodule Kogen.BuildBreakersTest do
 
     assert rework =~ "## First failure"
 
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
     second = List.last(reports(control)).report
     second_prompt = prompt!(second)
     assert second_prompt =~ "## First failure"
@@ -553,7 +570,7 @@ defmodule Kogen.BuildBreakersTest do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
     prompt = prompt!(latest_report!(control))
     refute prompt =~ "## First failure"
     refute prompt =~ "Previous failure report:"
@@ -563,19 +580,25 @@ defmodule Kogen.BuildBreakersTest do
     control = Workspace.create!()
     on_exit(fn -> File.rm_rf(control) end)
     opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
-    assert {:error, _} = Workspace.build!(control, opts)
+    assert {:error, _} = build!(control, opts)
 
     Workspace.write_intent!(control, "second-intent",
       intent_id: "01a0c467-0000-7000-8000-00000000b2e2"
     )
 
-    assert {:error, _} = Workspace.build!(control, Keyword.put(opts, :slug, "second-intent"))
+    assert {:error, _} = build!(control, Keyword.put(opts, :slug, "second-intent"))
     second_prompt = prompt!(latest_report!(control))
     refute second_prompt =~ "## First failure"
     refute second_prompt =~ "Previous failure report:"
+    reapprove_if_returned!(control, "workspace-fixture")
     package = Path.join(control, ".kogen/intents/approved/workspace-fixture/intent.yaml")
-    File.write!(package, File.read!(package) <> "# edited\n")
-    assert {:error, _} = Workspace.build!(control, opts)
+
+    File.write!(
+      package,
+      String.replace(File.read!(package), "title: ", "title: changed ", global: false)
+    )
+
+    assert {:error, _} = build!(control, opts)
     edited_prompt = prompt!(latest_report!(control))
     refute edited_prompt =~ "## First failure"
     refute edited_prompt =~ "Previous failure report:"
@@ -586,7 +609,7 @@ defmodule Kogen.BuildBreakersTest do
     on_exit(fn -> File.rm_rf(control) end)
 
     assert {:error, cannot_comply} =
-             Workspace.build!(control,
+             build!(control,
                harness: Workspace.support("fake_codex_simple_accept"),
                env: [
                  {"FAKE_JEV_ANSWERS",
@@ -600,7 +623,7 @@ defmodule Kogen.BuildBreakersTest do
     assert stop_report["signature"]["source"] == "stop"
 
     assert {:error, _} =
-             Workspace.build!(control,
+             build!(control,
                harness: Workspace.support("fake_codex"),
                env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]
              )

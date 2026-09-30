@@ -4,6 +4,7 @@
 The caller supplies an already-isolated environment.  This driver never reads
 or creates credentials and records only terminal output and exit status.
 """
+import codecs
 import fcntl
 import json
 import os
@@ -24,6 +25,124 @@ EXECUTION_SECONDS = 180.0
 # enough time to reap the process-group leader after SIGKILL instead of
 # reporting a false cleanup failure while the owned tree is already exiting.
 CLEANUP_SECONDS = 30.0
+
+
+class Screen:
+    """Minimal incremental terminal model for locating rendered text.
+
+    Native Codex streams an answer as fragments drawn at absolute cursor
+    positions between unrelated redraws (status line, window title), so the
+    escape-stripped byte stream need not contain the answer contiguously.
+    Only cursor placement, erasure and printable text are modelled; every
+    other control sequence is consumed without effect.
+    """
+
+    CSI = re.compile(r"\x1b\[([0-?]*)([ -/]*)([@-~])")
+    OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+
+    def __init__(self, rows=40, columns=160):
+        self.rows, self.columns = rows, columns
+        self.grid, self.row, self.column, self.pending = {}, 0, 0, ""
+        self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
+
+    def feed(self, data):
+        text = self.pending + self.decoder.decode(data)
+        self.pending = ""
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if char == "\x1b":
+                match = self.CSI.match(text, index) or self.OSC.match(text, index)
+                if match:
+                    if match.re is self.CSI:
+                        self._csi(match.group(1), match.group(3))
+                    index = match.end()
+                    continue
+                if self._incomplete(text[index:]):
+                    self.pending = text[index:]
+                    return
+                index += 2
+                continue
+            if char == "\r":
+                self.column = 0
+            elif char == "\n":
+                self.row += 1
+            elif char == "\b":
+                self.column = max(0, self.column - 1)
+            elif char >= " ":
+                self.grid.setdefault(self.row, {})[self.column] = char
+                self.column += 1
+            index += 1
+
+    @staticmethod
+    def _incomplete(tail):
+        if len(tail) < 2:
+            return True
+        if tail[1] == "[":
+            return re.fullmatch(r"\x1b\[[0-?]*[ -/]*", tail) is not None
+        if tail[1] == "]":
+            return "\x07" not in tail and "\x1b\\" not in tail
+        return False
+
+    def _csi(self, parameters, final):
+        private = parameters.startswith("?")
+        values = [int(value) if value.isdigit() else None
+                  for value in parameters.lstrip("<=>?").split(";")] if parameters else []
+        first = values[0] if values and values[0] is not None else None
+        if private:
+            if final in "hl" and first in (47, 1047, 1049):
+                self.grid = {}
+            return
+        if final in "Hf":
+            row = values[0] if values and values[0] else 1
+            column = values[1] if len(values) > 1 and values[1] else 1
+            self.row, self.column = row - 1, column - 1
+        elif final == "A":
+            self.row = max(0, self.row - (first or 1))
+        elif final in "Be":
+            self.row += first or 1
+        elif final in "Ca":
+            self.column += first or 1
+        elif final == "D":
+            self.column = max(0, self.column - (first or 1))
+        elif final in "G`":
+            self.column = (first or 1) - 1
+        elif final == "d":
+            self.row = (first or 1) - 1
+        elif final == "E":
+            self.row, self.column = self.row + (first or 1), 0
+        elif final == "F":
+            self.row, self.column = max(0, self.row - (first or 1)), 0
+        elif final == "K":
+            self._erase_line(first or 0)
+        elif final == "J":
+            mode = first or 0
+            if mode in (2, 3):
+                self.grid = {}
+            else:
+                self._erase_line(mode)
+                for row in list(self.grid):
+                    if (mode == 0 and row > self.row) or (mode == 1 and row < self.row):
+                        del self.grid[row]
+        elif final == "X":
+            line = self.grid.get(self.row, {})
+            for column in range(self.column, self.column + (first or 1)):
+                line.pop(column, None)
+
+    def _erase_line(self, mode):
+        line = self.grid.get(self.row, {})
+        for column in list(line):
+            if mode == 2 or (mode == 0 and column >= self.column) or (mode == 1 and column <= self.column):
+                del line[column]
+
+    def lines(self):
+        for row in sorted(self.grid):
+            line = self.grid[row]
+            if line:
+                yield "".join(line.get(column, " ") for column in range(max(line) + 1))
+
+    def contains(self, marker):
+        return any(marker in line for line in self.lines())
 
 
 def seconds(name, default):
@@ -210,6 +329,7 @@ def main():
     matched = timed_out = cleanup_ok = receipt_ok = cancelled = False
     trust_answered = False
     trust_ready_at = None
+    screen = Screen()
     exit_status = None
     pid = master = None
     previous_handlers = {}
@@ -251,6 +371,7 @@ def main():
                     data = b""
                 if data:
                     chunks.append(data)
+                    screen.feed(data)
                     if b"\x1b[6n" in data:
                         try:
                             os.write(master, b"\x1b[1;1R")
@@ -261,9 +382,12 @@ def main():
                     legacy_trust_prompt = (
                         b"Yes, continue" in text and b"Press enter to continue" in text
                     )
-                    # Native 0.156.1 replaced that screen with "Trust this
-                    # folder?" whose first (default) option is "Trust and
-                    # continue". It positions the title's words with cursor
+                    # Native 0.156.1 introduced the "Trust this folder?"
+                    # screen. Keep this bounded recognition for the pinned
+                    # 0.158.0 compatibility fixture; live-native determines
+                    # whether that CLI still presents it. Its first option
+                    # is "Trust and continue". The CLI
+                    # positions the title's words with cursor
                     # moves rather than spaces, so compare whitespace-free text;
                     # the "enter continue" footer is drawn last.
                     compact = re.sub(rb"\s+", b"", text)
@@ -282,7 +406,9 @@ def main():
                         # not discarded. Keep reading terminal queries meanwhile.
                         trust_ready_at = time.monotonic() + 2.0
                         attempts.append({"action": "fixture_trust", "outcome": "rendered"})
-                    if marker.encode() in text and not matched:
+                    # A streamed answer can arrive as fragments positioned
+                    # between redraws; match the rendered screen as well.
+                    if not matched and (marker.encode() in text or screen.contains(marker)):
                         matched, stop_deadline = True, time.monotonic() + 1.0
                         state, status = wait_nonblocking(pid)
                         if state != "running":

@@ -8,6 +8,8 @@ defmodule Kogen.HarnessContractTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Codex.Environment
   alias Kogen.Harness.Verdict
 
@@ -70,7 +72,7 @@ defmodule Kogen.HarnessContractTest do
     )
 
     commit_all!(dest)
-    System.put_env("KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/fake_codex"))
+    System.put_env("KOGEN_HARNESS", Path.join(@project_root, "test/support/fake_codex"))
 
     assert {:error, "unsupported harness: opencode; expected codex or claude"} =
              File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
@@ -79,8 +81,8 @@ defmodule Kogen.HarnessContractTest do
   end
 
   test "the Developer and Reviewer prompts keep main's full placeholder set" do
-    developer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/developer.md"))
-    reviewer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+    developer = File.read!(Path.join(@project_root, "priv/kogen/prompts/developer.md"))
+    reviewer = File.read!(Path.join(@project_root, "priv/kogen/prompts/reviewer.md"))
 
     developer_placeholders = [
       "{{intent_title}}",
@@ -88,6 +90,7 @@ defmodule Kogen.HarnessContractTest do
       "{{approved_path}}",
       "{{may_change_guarded_paths}}",
       "{{verification_ownership}}",
+      "{{readiness_scope}}",
       "{{readiness_commands}}",
       "{{execution_policy}}"
     ]
@@ -122,8 +125,8 @@ defmodule Kogen.HarnessContractTest do
   # unchanged by the tune-up (a new required key would break this Build's
   # own self-hosted Review under main's static schema).
   test "the Developer and Reviewer prompts render identical text for every harness, and the verdict schema keys are unchanged" do
-    developer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/developer.md"))
-    reviewer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+    developer = File.read!(Path.join(@project_root, "priv/kogen/prompts/developer.md"))
+    reviewer = File.read!(Path.join(@project_root, "priv/kogen/prompts/reviewer.md"))
 
     for harness <- ["codex", "claude"] do
       dest = fixture!(harness)
@@ -205,7 +208,7 @@ defmodule Kogen.HarnessContractTest do
       ] do
     test "Harness.open refuses a selection with #{label} before any launch" do
       config = Map.new(unquote(Macro.escape(keys)))
-      assert {:error, unquote(expected)} = Kogen.Harness.open(config, File.cwd!())
+      assert {:error, unquote(expected)} = Kogen.Harness.open(config, @project_root)
     end
   end
 
@@ -268,7 +271,7 @@ defmodule Kogen.HarnessContractTest do
         else: System.delete_env("KOGEN_HARNESS")
     end)
 
-    System.put_env("KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/fake_codex"))
+    System.put_env("KOGEN_HARNESS", Path.join(@project_root, "test/support/fake_codex"))
 
     assert {:ok, selection} = Kogen.Harness.open(%{harness: "codex"}, dir)
     assert selection.harness == "codex"
@@ -292,7 +295,7 @@ defmodule Kogen.HarnessContractTest do
       end)
     end
 
-    fake = Path.join(File.cwd!(), "test/support/fake_claude")
+    fake = Path.join(@project_root, "test/support/fake_claude")
     System.put_env("KOGEN_HARNESS", fake)
     System.put_env("KOGEN_CLAUDE_ROOT", claude_root)
 
@@ -372,7 +375,7 @@ defmodule Kogen.HarnessContractTest do
         else: System.delete_env("KOGEN_HARNESS")
     end)
 
-    System.put_env("KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/fake_codex"))
+    System.put_env("KOGEN_HARNESS", Path.join(@project_root, "test/support/fake_codex"))
     assert {:ok, selection} = Kogen.Harness.open(config, dir)
     assert selection.harness == "codex"
 
@@ -532,7 +535,7 @@ defmodule Kogen.HarnessContractTest do
     File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
     on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
     System.put_env("KOGEN_CLAUDE_ROOT", claude_root)
-    System.put_env("KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/#{fake}"))
+    System.put_env("KOGEN_HARNESS", Path.join(@project_root, "test/support/#{fake}"))
     System.delete_env("KOGEN_ROLE")
     raw_log_dir = Path.join(Path.dirname(claude_root), "raw")
     System.put_env("KOGEN_RAW_LOG_DIR", raw_log_dir)
@@ -602,10 +605,17 @@ defmodule Kogen.HarnessContractTest do
   defp assert_adapter_transport!("codex", log, session) do
     # Two resumes of the exact Developer session: the controller's
     # verification resume (fixing the ignored `kogen_fake_break` marker) and
-    # the Reviewer's one outer-rework resume.
-    resumes = log |> String.split("\n", trim: true) |> Enum.filter(&(&1 =~ "exec resume"))
+    # the Reviewer's one outer-rework resume. Every other resume is a
+    # Reviewer's evidence addendum, resuming that Reviewer's own session.
+    {resumes, addenda} =
+      log
+      |> String.split("\n", trim: true)
+      |> Enum.filter(&(&1 =~ "exec resume"))
+      |> Enum.split_with(&(not (&1 =~ "exec resume reviewer-session-")))
+
     assert length(resumes) == 2
     assert Enum.all?(resumes, &(&1 =~ " #{session} -"))
+    assert addenda != []
     refute log =~ "claude"
     refute log =~ "KOGEN_VERIFICATION_CONTEXT"
   end
@@ -613,7 +623,18 @@ defmodule Kogen.HarnessContractTest do
   defp assert_adapter_transport!("claude", log, session) do
     lines = String.split(log, "\n", trim: true)
     argv = Enum.filter(lines, &String.starts_with?(&1, "argv:"))
-    launches = Enum.reject(argv, &(&1 =~ "argv: auth status"))
+    all_launches = Enum.reject(argv, &(&1 =~ "argv: auth status"))
+
+    # Every evidence addendum resumes a Reviewer's own session (never the
+    # Developer's) under the same verdict schema.
+    {addenda, launches} =
+      Enum.split_with(
+        all_launches,
+        &(&1 =~ "--resume " and not (&1 =~ "--resume #{session}"))
+      )
+
+    assert addenda != []
+    assert Enum.all?(addenda, &(&1 =~ "--json-schema"))
     # Fresh Developer, the controller's verification resume of that same
     # session, the rework Reviewer, the outer-rework resume of that same
     # session, and the accepting Reviewer: five non-auth launches with two
@@ -622,6 +643,7 @@ defmodule Kogen.HarnessContractTest do
     assert Enum.count(launches, &(&1 =~ "--resume #{session}")) == 2
     assert Enum.count(launches, &(&1 =~ "--session-id #{session}")) == 1
     assert Enum.count(launches, &(&1 =~ "--json-schema")) == 2
+    launches = all_launches
     assert Enum.all?(launches, &(&1 =~ "--model claude-opus-5-5 --effort medium"))
     refute log =~ "exec resume"
     refute log =~ "ANTHROPIC_API_KEY=secret"
@@ -655,7 +677,7 @@ defmodule Kogen.HarnessContractTest do
   end
 
   defp fixture!(harness) do
-    source = File.cwd!()
+    source = @project_root
 
     dest =
       Path.join(

@@ -38,13 +38,60 @@ defmodule Kogen.Build.VerificationRunner do
   one, the child's `KOGEN_LIVE_LOG_DIR` is control's
   `.kogen/runtime/live-evidence`, so evidence a live owner retains for a
   Candidate Build survives the Candidate's removal at publication.
+
+  Option `:route` is the Build's selected route, as frozen at admission,
+  exported as `KOGEN_ROUTE` to every child. With `provider_backed: true` (a
+  live target) it is required and is also returned as `"route"` in the facts;
+  the Candidate's `default_route` is never consulted.
   """
   @spec run_target(Path.t(), String.t(), Path.t(), keyword()) ::
           {:ok, map()} | {:error, String.t()}
   def run_target(root, target, log_path, opts \\ []) do
+    with :ok <- valid_target(target),
+         :ok <- live_route(opts),
+         {:ok, facts} <-
+           run(
+             ["make", "-C", Path.expand(root), target],
+             root,
+             log_path,
+             route_env(live_log_dir(opts))
+           ) do
+      {:ok, put_route(facts, opts)}
+    end
+  end
+
+  defp valid_target(target) do
     if Kogen.Check.valid_target_name?(target),
-      do: run(["make", "-C", Path.expand(root), target], root, log_path, live_log_dir(opts)),
+      do: :ok,
       else: {:error, "refused unsafe target name: #{inspect(target)}"}
+  end
+
+  # A provider-backed (live) target runs on the Build's selected route. With
+  # no selected route it fails; there is no fallback to the default route.
+  defp live_route(opts) do
+    route = Keyword.get(opts, :route)
+
+    if Keyword.get(opts, :provider_backed) == true and not (is_binary(route) and route != ""),
+      do: {:error, "a live target needs the Build's selected route; none was given"},
+      else: :ok
+  end
+
+  defp put_route(facts, opts) do
+    route = Keyword.get(opts, :route)
+
+    if Keyword.get(opts, :provider_backed) == true and is_binary(route),
+      do: Map.put(facts, "route", route),
+      else: facts
+  end
+
+  defp route_env(opts) do
+    case Keyword.get(opts, :route) do
+      route when is_binary(route) and route != "" ->
+        Keyword.update(opts, :env, [{"KOGEN_ROUTE", route}], &(&1 ++ [{"KOGEN_ROUTE", route}]))
+
+      _ ->
+        opts
+    end
   end
 
   @doc "The live-evidence directory a target child gets under `control_root`."
@@ -52,8 +99,22 @@ defmodule Kogen.Build.VerificationRunner do
   def live_evidence_dir(control_root),
     do: Path.join([control_root, ".kogen", "runtime", "live-evidence"])
 
+  # An explicit `:live_log_dir` (a fan-out job's own target-specific evidence
+  # root) always wins, so concurrent targets' outputs never collide.
   defp live_log_dir(opts) do
-    case {Keyword.get(opts, :control_root), System.get_env("KOGEN_LIVE_LOG_DIR")} do
+    case {Keyword.get(opts, :live_log_dir), Keyword.get(opts, :control_root),
+          System.get_env("KOGEN_LIVE_LOG_DIR")} do
+      {dir, _control, _caller} when is_binary(dir) ->
+        env = [{"KOGEN_LIVE_LOG_DIR", dir}]
+        Keyword.update(opts, :env, env, &(&1 ++ env))
+
+      other ->
+        default_live_log_dir(opts, other)
+    end
+  end
+
+  defp default_live_log_dir(opts, {_dir, control, caller}) do
+    case {control, caller} do
       {control, caller} when is_binary(control) and caller in [nil, ""] ->
         env = [{"KOGEN_LIVE_LOG_DIR", live_evidence_dir(control)}]
         Keyword.update(opts, :env, env, &(&1 ++ env))
@@ -83,7 +144,8 @@ defmodule Kogen.Build.VerificationRunner do
       timeout_ms: Keyword.get(opts, :timeout_ms),
       grace_ms: Keyword.get(opts, :grace_ms, 2_000),
       control: Keyword.get(opts, :control_root),
-      role: Keyword.get(opts, :role, "verification")
+      role: Keyword.get(opts, :role, "verification"),
+      on_start: Keyword.get(opts, :on_start)
     ]
 
     case Kogen.ProcessCustody.run(argv, cwd, custody_opts) do

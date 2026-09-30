@@ -17,6 +17,7 @@ defmodule Kogen.Harness.Claude do
   message, and helper messages linked to their parent `Agent` tool use. A root
   response from another model fails the turn with a typed error.
   """
+  alias Kogen.Harness.HookInterpreter
   alias Kogen.Harness.Verdict
 
   @builtin_agents ~w(general-purpose Explore Plan claude statusline-setup)
@@ -141,7 +142,7 @@ defmodule Kogen.Harness.Claude do
             "project",
             "--strict-mcp-config",
             "--settings",
-            settings_path(),
+            launch_settings(),
             "--json-schema",
             Jason.encode!(Map.fetch!(resolved, :output_schema))
           ] ++ session_args({:fresh, session_id})
@@ -251,7 +252,7 @@ defmodule Kogen.Harness.Claude do
         "project",
         "--strict-mcp-config",
         "--settings",
-        settings_path(),
+        launch_settings(),
         "--agents",
         Jason.encode!(agents(role, context.config.helpers))
       ]
@@ -267,6 +268,19 @@ defmodule Kogen.Harness.Claude do
 
   @doc "Kogen's hook settings: the unchanged tracked Stop and Bash PreToolUse hooks."
   def settings_path, do: @settings_path
+
+  @doc """
+  The per-launch `--settings` value: Kogen's hook settings with every hook
+  command bound to the absolute interpreter resolved in the controller's own
+  environment (see `Kogen.Harness.HookInterpreter`), passed as inline JSON.
+  """
+  def launch_settings do
+    @settings_path
+    |> File.read!()
+    |> Jason.decode!()
+    |> HookInterpreter.settings!()
+    |> Jason.encode!()
+  end
 
   @doc """
   The configured native helper agents, restricted to the root role's
@@ -299,8 +313,11 @@ defmodule Kogen.Harness.Claude do
   defp helper("developer", :worker) do
     {"Implementation helper for an explicitly assigned, non-overlapping set of guarded paths.",
      "You are a Kogen worker. Edit only the paths your packet explicitly assigns, " <>
-       "within the Intent's guarded paths; never edit the Approved package or Verification Records.",
-     @read_tools ++ ["Bash", "Edit", "Write"]}
+       "within the Intent's guarded paths; never edit the Approved package or Verification Records. " <>
+       "Finish the assigned change and actually run its assigned focused check: a command that " <>
+       "never started or a syntax-only check is not completion. Report partial work as partial " <>
+       "and a blocker as a blocker. After the assigned checks pass, return without unrelated " <>
+       "files and without launching reviewer helpers.", @read_tools ++ ["Bash", "Edit", "Write"]}
   end
 
   defp helper(role, :worker) do
@@ -324,12 +341,31 @@ defmodule Kogen.Harness.Claude do
   # A settled turn's final assistant message (possibly empty) is the notes.
   # Provider, transport, session and executed-model failures stay failures.
   defp notes_turn(context, args, text, policy_environment, session_id, model) do
-    {output, exit_code} =
-      run_with_stdin(context, args, text, [{"KOGEN_ROLE", "developer"} | policy_environment])
+    {output, exit_code, timed_out} =
+      run_with_stdin_facts(context, args, text, [
+        {"KOGEN_ROLE", "developer"} | policy_environment
+      ])
 
     evidence_base = %{harness: "claude", diagnostics: output}
 
-    case parse_stream(output, exit_code, session_id, model) do
+    # A turn that completed inside the TERM grace is a settled turn, not a
+    # timeout.
+    parsed =
+      case {timed_out, parse_stream(output, exit_code, session_id, model)} do
+        {true, {:ok, _turn} = settled} -> settled
+        {true, _incomplete} -> :timed_out
+        {false, parsed} -> parsed
+      end
+
+    case parsed do
+      :timed_out ->
+        {:error,
+         {:developer_turn_timeout,
+          evidence_base
+          |> Map.put(:outcome, :turn_timeout)
+          |> Map.put(:session_id, observed_session(output) || session_id)
+          |> Map.put(:output_tail, output_tail(output))}}
+
       {:ok, turn} ->
         message = if is_binary(turn.result["result"]), do: turn.result["result"], else: ""
 
@@ -457,9 +493,14 @@ defmodule Kogen.Harness.Claude do
       results ->
         result = List.last(results)
 
-        if result["subtype"] == "success" and result["is_error"] != true,
-          do: {:ok, result},
-          else:
+        cond do
+          incomplete_kind(result) ->
+            {:error, {:incomplete_turn, incomplete_kind(result), output_tail(output)}}
+
+          result["subtype"] == "success" and result["is_error"] != true ->
+            {:ok, result}
+
+          true ->
             {:error,
              {:provider_error,
               result
@@ -471,8 +512,15 @@ defmodule Kogen.Harness.Claude do
                 "api_error_status"
               ])
               |> Map.put("output_tail", output_tail(output))}}
+        end
     end
   end
+
+  # A result that stopped on its output limit or turn limit is an incomplete
+  # turn, never a completed one, whatever its final text says.
+  defp incomplete_kind(%{"stop_reason" => "max_tokens"}), do: "truncated"
+  defp incomplete_kind(%{"subtype" => "error_max_turns"}), do: "max_turns"
+  defp incomplete_kind(_result), do: nil
 
   defp root_model(%{"root" => models}, expected) do
     case Enum.reject(models, &(&1 == expected)) do
@@ -553,7 +601,7 @@ defmodule Kogen.Harness.Claude do
   # group: a stray grandchild the CLI forks cannot outlive this turn, and the
   # controller's death (Ctrl-C, SIGHUP, SIGTERM, `kill -9`, a crash) reaps it
   # too, through the supervisor's own parent-death watchdog.
-  defp run_with_stdin(context, args, stdin_text, role_environment) do
+  defp run_with_stdin_facts(context, args, stdin_text, role_environment) do
     dir = temporary_directory("stdin")
     tmp = Path.join(dir, "prompt")
     File.write!(tmp, stdin_text)
@@ -562,17 +610,38 @@ defmodule Kogen.Harness.Claude do
 
     custody_opts =
       [stdin_path: tmp, tmp_dir: dir, env: merge_environment(context.env, role_environment)] ++
-        custody_registration(context, role_environment)
+        custody_registration(context, role_environment) ++
+        turn_time_box(context, role_environment) ++
+        on_start_option(context)
 
-    result =
+    {output, exit_code, timed_out} =
       case Kogen.ProcessCustody.run(argv, context[:cwd] || File.cwd!(), custody_opts) do
-        {:ok, facts} -> {facts["output"] || "", facts["exit_code"]}
-        {:error, reason} -> {reason, 1}
+        {:ok, facts} -> {facts["output"] || "", facts["exit_code"], facts["timed_out"] == true}
+        {:error, reason} -> {reason, 1, false}
       end
 
-    persist_raw_stream(result)
-    result
+    persist_raw_stream({output, exit_code})
+    {output, exit_code, timed_out}
   end
+
+  defp run_with_stdin(context, args, stdin_text, role_environment) do
+    {output, exit_code, _timed_out} =
+      run_with_stdin_facts(context, args, stdin_text, role_environment)
+
+    {output, exit_code}
+  end
+
+  # The Developer turn time-box: the Build sets `:turn_timeout_ms` on the
+  # Developer launch context only, so Reviewer, Expert and Shaper launches
+  # (and verification targets) never carry a soft timeout.
+  defp turn_time_box(%{turn_timeout_ms: ms} = context, role_environment)
+       when is_integer(ms) and ms > 0 do
+    if role_label(role_environment) == "developer",
+      do: [timeout_ms: ms, soft_timeout: true, grace_ms: Map.get(context, :turn_grace_ms, 45_000)],
+      else: []
+  end
+
+  defp turn_time_box(_context, _role_environment), do: []
 
   # Inside a Build the launch context carries `:control` (the control
   # checkout); the launched group is then recorded on the Build's lock, so a
@@ -583,6 +652,11 @@ defmodule Kogen.Harness.Claude do
     do: [control: control, role: role_label(role_environment)]
 
   defp custody_registration(_context, _role_environment), do: []
+
+  defp on_start_option(%{on_start: on_start}) when is_function(on_start, 1),
+    do: [on_start: on_start]
+
+  defp on_start_option(_context), do: []
 
   defp role_label(role_environment) do
     case List.keyfind(role_environment, "KOGEN_ROLE", 0) do

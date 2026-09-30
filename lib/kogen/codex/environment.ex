@@ -11,6 +11,9 @@ defmodule Kogen.Codex.Environment do
 
   @tool_output_token_limit 4000
 
+  # Resolved from the source tree, like the managed installer.
+  @seed_state Path.expand("../../../priv/kogen/codex/seed_state.py", __DIR__)
+
   @executor_environment "environments.toml"
   @executor_entrypoint "executor"
   @executor_variables [
@@ -66,6 +69,7 @@ defmodule Kogen.Codex.Environment do
     sqlite_home = Path.join([invocation_root, "state", "sqlite"])
 
     State.private_directory!(sqlite_home)
+    seed_state_database(executable, sqlite_home)
 
     Enum.each([private_home | Map.values(private_xdg)], fn path ->
       File.mkdir_p!(path)
@@ -106,6 +110,24 @@ defmodule Kogen.Codex.Environment do
 
     retain_test_context(context, caller_env)
     context
+  end
+
+  # Codex 0.159.0 refuses to start its interactive UI when the state database
+  # backfill has not finished within a hard 30 seconds, and a fresh operation
+  # database would index every rollout in the shared credential scope (about
+  # 2,500 files and 2.9 GB in practice). The operation owns its state and
+  # records its own sessions as they are created, so a fresh database is
+  # created complete by the pinned executable itself over an empty disposable
+  # home. Failure to seed is not an error: Codex then starts as it always did.
+  defp seed_state_database(executable, sqlite_home) do
+    python = System.find_executable("python3")
+
+    if python && File.regular?(executable) &&
+         not File.regular?(Path.join(sqlite_home, "state_5.sqlite")) do
+      System.cmd(python, ["-B", @seed_state, executable, sqlite_home], stderr_to_stdout: true)
+    end
+
+    :ok
   end
 
   # The live fixture owns exact-reply transport after its interactive terminal

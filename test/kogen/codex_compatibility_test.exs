@@ -3,6 +3,8 @@ Code.require_file("../support/route_config.ex", __DIR__)
 defmodule Kogen.Codex.CompatibilityTest do
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   alias Kogen.Build.TargetEvidence
   alias Kogen.Codex.Compatibility
   alias Kogen.RouteConfig
@@ -27,8 +29,41 @@ defmodule Kogen.Codex.CompatibilityTest do
     "blocked_gate" => true
   }
 
+  # This run's own native observation: an intact receipt file and the
+  # evaluator's native_discovery verdict for it.
+  defp with_native_proof(evidence, status \\ "excluded") do
+    dir = Path.join(System.tmp_dir!(), "kogen-account-3522")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+    path = Path.join(dir, "scope-off.json")
+    File.write!(path, ~s({"mode":"scope-off"}))
+    sha = Base.encode16(:crypto.hash(:sha256, File.read!(path)), case: :lower)
+
+    Map.put(evidence, "account_plugins", %{
+      "status" => "unproven",
+      "surfaces" => %{"native_discovery" => %{"status" => status}},
+      "receipts" => [%{"mode" => "scope-off", "path" => path, "sha256" => sha}]
+    })
+  end
+
   test "evidence requires the failed-then-passed Check, exact developer resume, and its fresh Check" do
-    assert :ok = Compatibility.verify_evidence(@evidence)
+    assert :ok = Compatibility.verify_evidence(with_native_proof(@evidence))
+
+    # Every other requirement met, but native account/remote plugin
+    # isolation missing, unproven, leaked or tampered: never accepted.
+    assert {:error, {:account_plugins_not_excluded, _}} = Compatibility.verify_evidence(@evidence)
+
+    for status <- ~w(unproven leaked) do
+      assert {:error, {:account_plugins_not_excluded, %{"status" => ^status}}} =
+               Compatibility.verify_evidence(with_native_proof(@evidence, status))
+    end
+
+    tampered = with_native_proof(@evidence)
+    [%{"path" => path}] = tampered["account_plugins"]["receipts"]
+    File.write!(path, ~s({"mode":"scope-off","edited":true}))
+
+    assert {:error, {:account_plugin_receipts_changed, [^path]}} =
+             Compatibility.verify_evidence(tampered)
 
     # No stand-in Reviewer receipt is part of the runner's contract.
     refute Enum.any?(Map.keys(@evidence), &String.contains?(&1, "reviewer"))
@@ -269,6 +304,64 @@ defmodule Kogen.Codex.CompatibilityTest do
     assert [%{"class" => "failed", "fixture" => nil, "evidence" => nil}] = summary["attempts"]
   end
 
+  test "the resume prompt names the native explorer kind for the scout helper" do
+    config = RouteConfig.codex_route!()
+    prompt = Compatibility.resume_prompt(config, [%{"description" => "missing helper evidence"}])
+    flat = String.replace(prompt, ~r/\s+/, " ")
+
+    # A native `codex exec` session registers no custom `scout` kind (live
+    # evidence: spawn_agent agent_type "scout" is "unknown agent_type"), and
+    # Kogen's own role policy maps the scout to the `explorer` kind.
+    assert flat =~ "spawn it with the native kind `explorer`"
+
+    assert flat =~
+             "using model #{config.helpers.scout.model} at effort #{config.helpers.scout.effort}"
+
+    assert flat =~ ".kogen/runtime/helper-environment.json"
+    assert flat =~ "Do not substitute a model or inherit your own profile"
+  end
+
+  test "the helper environment JSON is written by the receipt script, never retyped" do
+    %{root: root, config: config} = setup_attempts("script-write")
+    {:ok, fixture, _evidence, _discovery} = Compatibility.prepare_fixture(root, config)
+    prompt = Compatibility.resume_prompt(config, []) |> String.replace(~r/\s+/, " ")
+
+    # Live evidence (Codex 0.159.0): the model retyped a long home path and
+    # dropped letters ("almirsarajc"), failing the caller-environment check.
+    assert prompt =~
+             "python3 environment-receipt.py --write .kogen/runtime/helper-environment.json"
+
+    assert prompt =~ "must not type any absolute path"
+
+    File.mkdir_p!(Path.join(fixture, ".kogen/runtime"))
+    target = ".kogen/runtime/helper-environment.json"
+
+    {stdout, 0} =
+      System.cmd("python3", ["environment-receipt.py", "--write", target],
+        cd: fixture,
+        env: [{"HOME", "/home/long-user-name-ic"}, {"CODEX_HOME", "/codex/home"}]
+      )
+
+    # A stray trailing argument (seen live: a helper appended ".") must not
+    # silently skip the write.
+    File.rm!(Path.join(fixture, target))
+
+    {_, 0} =
+      System.cmd("python3", ["environment-receipt.py", "--write", target, "."],
+        cd: fixture,
+        env: [{"HOME", "/home/long-user-name-ic"}, {"CODEX_HOME", "/codex/home"}]
+      )
+
+    written = File.read!(Path.join(fixture, target))
+    assert Jason.decode!(written) == Jason.decode!(stdout)
+
+    assert %{"home" => "/home/long-user-name-ic", "codex_home" => "/codex/home"} =
+             Jason.decode!(written)
+
+    {plain, 0} = System.cmd("python3", ["environment-receipt.py"], cd: fixture)
+    assert Jason.decode!(plain)["home"]
+  end
+
   test "a first passing attempt is not rerun" do
     %{root: root, config: config} = setup_attempts("pass")
     parent = self()
@@ -292,8 +385,8 @@ defmodule Kogen.Codex.CompatibilityTest do
   test "selected authenticated managed runtime passes the bounded compatibility runner" do
     config = RouteConfig.codex_route!()
     {:ok, runtime} = Kogen.Codex.installed()
-    {:ok, scope} = Kogen.Codex.effective_scope(File.cwd!())
-    assert :ok = Kogen.Codex.require_login(runtime, scope, File.cwd!())
+    {:ok, scope} = Kogen.Codex.effective_scope(@project_root)
+    assert :ok = Kogen.Codex.require_login(runtime, scope, @project_root)
 
     {status, %{summary: summary, locator: locator}} =
       Compatibility.run_bounded(runtime, scope, config)
@@ -315,7 +408,7 @@ defmodule Kogen.Codex.CompatibilityTest do
 
     root = Path.join(base, "repository")
     File.mkdir_p!(Path.join(root, ".codex/hooks"))
-    source = File.cwd!()
+    source = @project_root
 
     for path <-
           ~w(README.md .codex/hooks.json .codex/hooks/verification_policy.py .codex/hooks/environment.py) do

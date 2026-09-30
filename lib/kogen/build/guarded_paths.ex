@@ -17,11 +17,17 @@ defmodule Kogen.Build.GuardedPaths do
   @config_message "Git configuration or ignore policy changed during Developer turn"
   @violation_prefix "Candidate changed paths outside Approved guards: "
   @exclude_prefix "Control's .git/info/exclude changed the ignored state of Candidate paths: "
+  @candidate_ignore_prefix "Candidate ignore files newly hid Candidate paths during Developer turn: "
+  @gate_prefix "Candidate changed gate-sensitive paths without explicit gate-change authority: "
 
   # Hook registrations, hook scripts and the loaded agent configuration: an
   # unguarded change to any of them is never reworked.
   @protected ~w(.codex/hooks/** .codex/hooks.json .codex/config.toml .claude/settings.json
                 .claude/hooks/** .claude/agents/** .claude/commands/** .claude/skills/**)
+
+  @gate_sensitive ~w(Makefile priv/kogen/verification_targets.yaml priv/kogen/test-reliability.yaml
+                     priv/kogen/prompts/** scripts/check/** test/kogen/warm_check_test.exs
+                     test/kogen/cold_offline_test.exs)
 
   # Control's shared Git files: a change to them is an environment event of
   # the Build, never a Candidate change.
@@ -97,6 +103,70 @@ defmodule Kogen.Build.GuardedPaths do
     end
   end
 
+  @doc """
+  Checks the frozen Git policy and returns the complete Candidate path set plus
+  the paths outside the predicted footprint. Ordinary extra paths are
+  disclosed for Review; current hard-protected paths and Git policy violations
+  remain terminal.
+
+  The first tuple item is `{:ok, %{changed_paths: paths, extra_paths: paths}}`
+  or `{:stop, category, message}`. The refreshed snapshot and environment
+  events have the same meanings as in `check/2`.
+  """
+  def assess(snapshot, guards) when is_map(snapshot) and is_list(guards),
+    do: assess(snapshot, guards, guards)
+
+  def assess(snapshot, guards, gate_changes)
+      when is_map(snapshot) and is_list(guards) and is_list(gate_changes) do
+    case snapshot_files(snapshot.root, snapshot.files) do
+      {:ok, config} ->
+        events = environment_events(snapshot.config, config)
+        refreshed = %{snapshot | config: Map.merge(snapshot.config, Map.take(config, @shared))}
+
+        {assess_candidate(refreshed, config, guards, gate_changes), refreshed, events}
+
+      {:error, reason} ->
+        {{:stop, "integrity", reason}, snapshot, []}
+    end
+  end
+
+  @doc "Returns controller-derived path-specific diffs for disclosed extra paths."
+  def repair_disclosures(snapshot, paths)
+      when is_map(snapshot) and is_list(paths) do
+    paths = Enum.uniq(paths) |> Enum.sort()
+
+    Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, items} ->
+      case path_diff(snapshot, path) do
+        {:ok, diff} ->
+          {:cont, {:ok, [disclosure_item(path, diff) | items]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, %{"items" => Enum.reverse(items)}}
+      error -> error
+    end
+  end
+
+  defp disclosure_item(path, diff) do
+    {diff_field, diff_value} =
+      if String.valid?(diff),
+        do: {"hunks", diff},
+        else: {"hunks_base64", Base.encode64(diff)}
+
+    %{
+      "path" => path,
+      "reason" => "unknown",
+      "feature_relationship" => "unknown",
+      "failure_evidence" => "unknown",
+      "hunks_sha256" => sha256_bytes(diff),
+      "hunks_byte_count" => byte_size(diff)
+    }
+    |> Map.put(diff_field, diff_value)
+  end
+
   defp classify(snapshot, config, guards) do
     with :ok <- same_policy(config, snapshot),
          :ok <- same_ignored_state(snapshot, config),
@@ -105,6 +175,72 @@ defmodule Kogen.Build.GuardedPaths do
     else
       {:stop, _category, _message} = stop -> stop
       {:error, reason} -> {:stop, "integrity", reason}
+    end
+  end
+
+  defp assess_candidate(snapshot, config, guards, gate_changes) do
+    with :ok <- same_policy(config, snapshot),
+         :ok <- same_ignored_state(snapshot, config),
+         {:ok, paths} <- changed_paths(snapshot.root, snapshot.head_tree, snapshot.ignored),
+         :ok <- candidate_ignore_policy(snapshot, paths),
+         :ok <- gate_change_authority(paths, gate_changes) do
+      case hard_violation(paths) do
+        nil ->
+          {:ok, %{changed_paths: paths, extra_paths: Enum.reject(paths, &allowed?(&1, guards))}}
+
+        violation ->
+          violation
+      end
+    else
+      {:stop, _category, _message} = stop -> stop
+      {:error, reason} -> {:stop, "integrity", reason}
+    end
+  end
+
+  defp candidate_ignore_policy(snapshot, paths) do
+    if Enum.any?(paths, &gitignore_path?/1) do
+      case ignored_manifest(snapshot.root) do
+        {:ok, ignored_now} -> newly_hidden_result(snapshot.ignored, ignored_now)
+        {:error, reason} -> {:stop, "integrity", reason}
+      end
+    else
+      :ok
+    end
+  end
+
+  defp newly_hidden_result(before, current) do
+    newly_hidden = Map.keys(current) -- Map.keys(before)
+
+    if newly_hidden == [],
+      do: :ok,
+      else:
+        {:stop, "git-policy",
+         @candidate_ignore_prefix <> Enum.join(Enum.sort(newly_hidden), ", ")}
+  end
+
+  defp gate_change_authority(paths, gate_changes) do
+    unauthorized =
+      paths
+      |> Enum.filter(&Enum.any?(@gate_sensitive, fn pattern -> matches?(&1, pattern) end))
+      |> Enum.reject(&allowed?(&1, gate_changes))
+
+    case unauthorized do
+      [] -> :ok
+      paths -> {:stop, "protected-path", @gate_prefix <> Enum.join(paths, ", ")}
+    end
+  end
+
+  defp hard_violation(paths) do
+    if Enum.any?(paths, fn path -> Enum.any?(@protected, &matches?(path, &1)) end),
+      do: {:stop, "protected-path", violation_message(paths)},
+      else: nil
+  end
+
+  defp gitignore_path?(path), do: Path.basename(path) == ".gitignore"
+
+  defp environment_events(before, config) do
+    for file <- @shared, config[file] != before[file] do
+      %{file: file, before: digest(before[file]), after: digest(config[file])}
     end
   end
 
@@ -260,6 +396,7 @@ defmodule Kogen.Build.GuardedPaths do
 
   defp digest({:file, bytes}), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
   defp digest(_missing), do: nil
+  defp sha256_bytes(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
 
   defp changed_paths(root, tree, frozen_ignored) do
     args = [
@@ -289,6 +426,50 @@ defmodule Kogen.Build.GuardedPaths do
 
       extras = String.split(untracked, <<0>>, trim: true) ++ ignored_changes
       {:ok, (tracked ++ extras) |> Enum.reject(&volatile?/1) |> Enum.uniq() |> Enum.sort()}
+    end
+  end
+
+  defp path_diff(snapshot, path) do
+    if Map.has_key?(snapshot.tracked, path) do
+      git(snapshot.root, [
+        "diff",
+        "--no-ext-diff",
+        "--no-color",
+        "--no-renames",
+        "--summary",
+        "--unified=3",
+        snapshot.head_tree,
+        "--",
+        path
+      ])
+    else
+      absolute = Path.join(snapshot.root, path)
+
+      case System.cmd(
+             "git",
+             [
+               "-c",
+               "core.filemode=true",
+               "diff",
+               "--no-index",
+               "--no-ext-diff",
+               "--no-color",
+               "--summary",
+               "--unified=3",
+               "--",
+               "/dev/null",
+               absolute
+             ],
+             cd: snapshot.root,
+             stderr_to_stdout: true
+           ) do
+        {output, status} when status in [0, 1] ->
+          {:ok, output}
+
+        {output, status} ->
+          {:error,
+           "could not derive diff for #{path} (git exit #{status}): #{String.trim(output)}"}
+      end
     end
   end
 

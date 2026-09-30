@@ -19,10 +19,21 @@ defmodule Kogen.ShapingAuditQuestionGateTest do
 
   describe "the shipped question-gate-v1 table" do
     test "equals evidence/jev-routing-calibration/question-gate-v1.question.json byte for byte" do
-      shipped = File.read!("priv/kogen/shaping_audit/question-gate-v1.json")
+      shipped =
+        File.read!(
+          Path.join(
+            System.fetch_env!("KOGEN_TEST_ROOT"),
+            "priv/kogen/shaping_audit/question-gate-v1.json"
+          )
+        )
 
       evidence =
-        File.read!("test/support/shaping_audit/calibration/question-gate-v1.question.json")
+        File.read!(
+          Path.join(
+            System.fetch_env!("KOGEN_TEST_ROOT"),
+            "test/support/shaping_audit/calibration/question-gate-v1.question.json"
+          )
+        )
 
       assert shipped == evidence
     end
@@ -34,14 +45,23 @@ defmodule Kogen.ShapingAuditQuestionGateTest do
     end
 
     test "priv/kogen/shaping_audit/ ships no finding-routing file" do
-      listing = "priv/kogen/shaping_audit" |> File.ls!()
+      listing =
+        System.fetch_env!("KOGEN_TEST_ROOT")
+        |> Path.join("priv/kogen/shaping_audit")
+        |> File.ls!()
+
       refute Enum.any?(listing, &String.contains?(&1, "finding-routing"))
     end
   end
 
   describe "settled.json" do
     test "ids match their stated DIRECTION/Shaping sources" do
-      settled = File.read!("priv/kogen/shaping_audit/settled.json") |> Jason.decode!()
+      settled =
+        File.read!(
+          Path.join(System.fetch_env!("KOGEN_TEST_ROOT"), "priv/kogen/shaping_audit/settled.json")
+        )
+        |> Jason.decode!()
+
       ids = Enum.map(settled["entries"], & &1["id"])
 
       assert "dir-1.13" in ids
@@ -61,7 +81,12 @@ defmodule Kogen.ShapingAuditQuestionGateTest do
     end
 
     test "includes DIRECTION 1.13 (Plain Kogen always requires explicit human approval)" do
-      settled = File.read!("priv/kogen/shaping_audit/settled.json") |> Jason.decode!()
+      settled =
+        File.read!(
+          Path.join(System.fetch_env!("KOGEN_TEST_ROOT"), "priv/kogen/shaping_audit/settled.json")
+        )
+        |> Jason.decode!()
+
       entry = Enum.find(settled["entries"], &(&1["id"] == "dir-1.13"))
       assert entry
       assert entry["text"] =~ "explicit human approval"

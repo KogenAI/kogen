@@ -25,7 +25,8 @@ defmodule Kogen.IntegrityFixture do
   @doc """
   Creates the fixture repository, commits the admission state and returns
   `%{dir: dir, base_commit: sha}`. `opts[:base_cache]` overrides the catalog's
-  `base_cache` list (default `[]`).
+  `base_cache` list (default `[]`); `opts[:focused_runner]` overrides the
+  catalog's `focused_runner` argv (default `mix test --exclude live {paths}`).
   """
   def create(opts \\ []) do
     # Each isolated test runs in its own fresh OS process, so
@@ -53,7 +54,7 @@ defmodule Kogen.IntegrityFixture do
     git!(dir, ["add", "-A"])
     git!(dir, ["commit", "-q", "-m", "admission"])
     base_commit = head!(dir)
-    avoid_racy_git_mtime()
+    backdate_git_index!(dir)
 
     %{dir: dir, base_commit: base_commit}
   end
@@ -79,29 +80,29 @@ defmodule Kogen.IntegrityFixture do
     git!(dir, ["add", "-A"])
     git!(dir, ["commit", "-q", "-m", message])
     sha = head!(dir)
-    avoid_racy_git_mtime()
+    backdate_git_index!(dir)
     sha
   end
 
-  # Git's stat-cache optimization can reuse a path's cached blob sha when its
-  # mtime does not clearly postdate the index entry it is compared against
-  # (the well-known "racy git" problem), which briefly races a test that
-  # immediately overwrites a path it just committed. This sleeps past a
-  # filesystem's mtime granularity so every subsequent edit's mtime is
-  # unambiguously newer.
-  defp avoid_racy_git_mtime, do: Process.sleep(1_100)
+  # The fixture is disposable, so backdate its real Git index to make every
+  # later worktree edit fall in Git's racy-clean window. `git add` then hashes
+  # file contents even when an immediate same-size edit shares the filesystem's
+  # coarse mtime. This keeps Git's normal identity calculation deterministic
+  # without waiting for the clock to advance. Use second 1 instead of the zero
+  # timestamp, which Git treats as an unset index timestamp.
+  defp backdate_git_index!(dir) do
+    File.touch!(Path.join(dir, ".git/index"), {{1970, 1, 1}, {0, 0, 1}})
+  end
 
   @doc "The write-tree Candidate id of `dir`'s current working tree (uncommitted included)."
   def candidate_id!(dir) do
-    File.cd!(dir, fn ->
-      case Kogen.Git.candidate_id() do
-        {:ok, id} -> id
-        {:error, reason} -> raise "could not derive Candidate id: #{reason}"
-      end
-    end)
+    case Kogen.Git.candidate_id(dir) do
+      {:ok, id} -> id
+      {:error, reason} -> raise "could not derive Candidate id: #{reason}"
+    end
   end
 
-  @scrubbed_mix_vars ~w(MIX_BUILD_PATH MIX_ENV MIX_EXS)
+  @nested_run_env_vars ~w(MIX_BUILD_PATH MIX_ENV MIX_EXS KOGEN_REHEARSAL_TRACE)
 
   @doc """
   Runs `Kogen.Build.Verification.run_cycle/4` with `dir` as the process's
@@ -115,15 +116,16 @@ defmodule Kogen.IntegrityFixture do
   isolated test VM, which would otherwise leak into the fixture's nested
   `mix` invocations (and any `MIX_ENV`/`MIX_EXS` an outer harness carries),
   so this scrubs them for the duration of the call the same way a real
-  top-level `mix kogen.build` invocation would never have them set.
+  top-level `mix kogen.build` invocation would never have them set. The warm
+  gate's trace belongs to its outer run, not this fixture's nested verifier.
   """
   def run_cycle!(dir, execution, session_id, env) do
-    previous = Map.new(@scrubbed_mix_vars, &{&1, System.get_env(&1)})
-    Enum.each(@scrubbed_mix_vars, &System.delete_env/1)
+    previous = Map.new(@nested_run_env_vars, &{&1, System.get_env(&1)})
+    Enum.each(@nested_run_env_vars, &System.delete_env/1)
 
     try do
       File.cd!(dir, fn ->
-        {:ok, candidate_id} = Kogen.Git.candidate_id()
+        {:ok, candidate_id} = Kogen.Git.candidate_id(dir)
 
         {candidate_id, Verification.run_cycle(execution, session_id, candidate_id, env)}
       end)
@@ -156,6 +158,7 @@ defmodule Kogen.IntegrityFixture do
 
     %{
       root: dir,
+      route: Keyword.get(opts, :route, "selected-route"),
       catalog: catalog,
       plan: plan,
       scenarios: scenarios,
@@ -265,6 +268,11 @@ defmodule Kogen.IntegrityFixture do
     base_cache_yaml =
       if base_cache == [], do: "[]", else: "\n" <> Enum.map_join(base_cache, "\n", &"    - #{&1}")
 
+    focused_runner_yaml =
+      opts
+      |> Keyword.get(:focused_runner, ["mix", "test", "--exclude", "live", "{paths}"])
+      |> Jason.encode!()
+
     """
     targets:
       - name: check
@@ -277,7 +285,7 @@ defmodule Kogen.IntegrityFixture do
     verification_surface:
       tests: ["test/*_test.exs", "test/**/*_test.exs"]
       runner: ["mix.exs", "test/test_helper.exs", "Makefile"]
-    focused_runner: ["mix", "test", "--exclude", "live", "{paths}"]
+    focused_runner: #{focused_runner_yaml}
     base_cache: #{base_cache_yaml}
     """
   end

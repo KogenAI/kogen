@@ -16,8 +16,6 @@ defmodule Kogen.ReviewPacketAudit do
 
   import ExUnit.Assertions
 
-  @packet_byte_limit 65_536
-
   ## Canonical, outside-checkout fixture root -------------------------------
 
   @doc """
@@ -326,9 +324,6 @@ defmodule Kogen.ReviewPacketAudit do
     bytes = File.read!(absolute)
     byte_count = byte_size(bytes)
 
-    assert byte_count <= @packet_byte_limit,
-           "review packet #{packet["path"]} is #{byte_count} bytes, over the #{@packet_byte_limit} bound"
-
     assert byte_count == packet["byte_count"],
            "review packet #{packet["path"]} byte count does not match the record"
 
@@ -365,49 +360,116 @@ defmodule Kogen.ReviewPacketAudit do
   defp verify_reviewer_tool_call!(raw_log_dir, build_id, attempt) do
     reviewer_session = attempt["reviewer_session"]
     packet = attempt["review_packet"]
-    full_needle = packet["path"]
-    suffix_needle = "#{build_id}/review-packets/#{attempt["number"]}.json"
+    addendum = addendum_for(attempt, reviewer_session)
 
-    stream_path = find_stream_for_session!(raw_log_dir, reviewer_session)
-    events = json_events(stream_path)
+    # The accepting Reviewer is resumed once for the evidence addendum, so its
+    # session owns exactly two captures: the provisional review, then the
+    # addendum. Every other session owns exactly one.
+    {review_stream, addendum_stream} =
+      split_streams!(
+        find_streams_for_session!(raw_log_dir, reviewer_session),
+        addendum,
+        reviewer_session
+      )
 
-    tool_call_texts = Enum.flat_map(events, &tool_call_texts/1)
+    events =
+      require_packet_tool_call!(
+        review_stream,
+        reviewer_session,
+        packet["path"],
+        build_id,
+        attempt["number"]
+      )
 
-    names_packet? =
-      Enum.any?(tool_call_texts, fn text ->
-        String.contains?(text, full_needle) or String.contains?(text, suffix_needle)
-      end)
+    if addendum_stream do
+      addendum_packet = addendum["packet"] || %{}
 
-    assert names_packet?,
-           "Reviewer #{reviewer_session}'s retained raw stream has no tool call naming #{packet["path"]}"
+      require!(
+        is_binary(addendum_packet["path"]) and
+          addendum_packet["attempt_token"] == attempt["attempt_token"] and
+          addendum_packet["candidate_id"] == attempt["candidate_id"],
+        "evidence addendum packet must bind the attempt token and Candidate"
+      )
+
+      require_packet_tool_call!(
+        addendum_stream,
+        reviewer_session,
+        addendum_packet["path"],
+        build_id,
+        "#{attempt["number"]}-addendum"
+      )
+    end
 
     {elapsed_seconds, elapsed_source} = elapsed_seconds(events)
 
     %{
       "reviewer_session" => reviewer_session,
       "attempt_number" => attempt["number"],
-      "stream" => Path.basename(stream_path),
+      "stream" => Path.basename(review_stream),
+      "addendum_stream" => addendum_stream && Path.basename(addendum_stream),
       "elapsed_seconds" => elapsed_seconds,
       "elapsed_source" => elapsed_source
     }
   end
 
-  defp find_stream_for_session!(raw_log_dir, session_id) do
+  defp split_streams!([single], nil, _session), do: {single, nil}
+  defp split_streams!([first, second], %{}, _session), do: {first, second}
+
+  defp split_streams!(streams, nil, session) when length(streams) > 1,
+    do: flunk("more than one retained raw provider stream binds Reviewer session #{session}")
+
+  defp split_streams!(streams, %{}, session) do
+    flunk(
+      "Reviewer session #{session} has an evidence addendum, so exactly two retained raw provider streams must bind it, got #{length(streams)}"
+    )
+  end
+
+  defp addendum_for(attempt, reviewer_session) do
+    case attempt["evidence_addendum"] do
+      %{"reviewer_session_id" => ^reviewer_session} = addendum -> addendum
+      _ -> nil
+    end
+  end
+
+  defp require!(condition, message), do: assert(condition, message)
+
+  # The stream's tool calls must name the packet; returns the stream events.
+  defp require_packet_tool_call!(stream_path, reviewer_session, packet_path, build_id, label) do
+    events = json_events(stream_path)
+    suffix_needle = "#{build_id}/review-packets/#{label}.json"
+
+    names_packet? =
+      events
+      |> Enum.flat_map(&tool_call_texts/1)
+      |> Enum.any?(fn text ->
+        String.contains?(text, packet_path) or String.contains?(text, suffix_needle)
+      end)
+
+    assert names_packet?,
+           "Reviewer #{reviewer_session}'s retained raw stream has no tool call naming #{packet_path}"
+
+    events
+  end
+
+  # Streams binding the session, in capture order (the sequence suffix of
+  # `raw-stream-<pid>-<sequence>.jsonl`).
+  defp find_streams_for_session!(raw_log_dir, session_id) do
     matches =
       raw_log_dir
       |> Path.join("raw-stream-*.jsonl")
       |> Path.wildcard()
       |> Enum.filter(fn path -> Enum.any?(json_events(path), &stream_binds?(&1, session_id)) end)
+      |> Enum.sort_by(&stream_sequence/1)
 
-    case matches do
-      [single] ->
-        single
+    if matches == [],
+      do: flunk("no retained raw provider stream binds Reviewer session #{session_id}"),
+      else: matches
+  end
 
-      [] ->
-        flunk("no retained raw provider stream binds Reviewer session #{session_id}")
-
-      _ ->
-        flunk("more than one retained raw provider stream binds Reviewer session #{session_id}")
+  defp stream_sequence(path) do
+    case Regex.run(~r/-(\d+)\.jsonl$/, path) do
+      [_, sequence] -> String.to_integer(sequence)
+      _ -> 0
     end
   end
 
@@ -493,12 +555,33 @@ defmodule Kogen.ReviewPacketAudit do
           "reference_snapshots"
         ] do
       snapshots = attempt[key] || %{}
-      entry = if is_map(snapshots), do: snapshots[record_relative_path]
-
-      refute is_map(entry) and Map.has_key?(entry, "content_base64") and
-               not is_nil(entry["content_base64"]),
-             "attempt #{inspect(attempt["number"])} #{key} must not inline the record's own bytes"
+      refute_inline_record_bytes!(attempt, snapshots, record_relative_path, key)
     end
+
+    history = attempt["reference_snapshot_history"] || []
+
+    assert is_list(history),
+           "attempt #{inspect(attempt["number"])} has invalid reference snapshot history"
+
+    for entry <- history do
+      assert is_map(entry) and is_binary(entry["candidate_id"]) and is_map(entry["snapshots"]),
+             "attempt #{inspect(attempt["number"])} has an invalid historical reference snapshot entry"
+
+      refute_inline_record_bytes!(
+        attempt,
+        entry["snapshots"],
+        record_relative_path,
+        "reference_snapshot_history"
+      )
+    end
+  end
+
+  defp refute_inline_record_bytes!(attempt, snapshots, record_relative_path, key) do
+    entry = if is_map(snapshots), do: snapshots[record_relative_path]
+
+    refute is_map(entry) and Map.has_key?(entry, "content_base64") and
+             not is_nil(entry["content_base64"]),
+           "attempt #{inspect(attempt["number"])} #{key} must not inline the record's own bytes"
   end
 
   defp resolve_retained!(log_dir, ".kogen/runtime/" <> rest), do: Path.join(log_dir, rest)

@@ -12,13 +12,14 @@ defmodule Kogen.TestReliabilityCatalogTest do
     %{root: root, catalog: catalog, remediation: remediation}
   end
 
-  test "final catalog is exhaustive, resolved, declaration-bound, and declaration-specific",
+  test "final catalog is exhaustive, resolved, and declaration-specific; name binding is advisory",
        context do
     assert context.catalog["declaration_count"] == length(context.catalog["declarations"])
     assert context.catalog["provisional_count"] == 0
     refute Enum.any?(context.catalog["declarations"], &Map.has_key?(&1, "source_sha256"))
     assert :ok = Catalog.validate(context.catalog, context.root)
     assert :ok = Catalog.validate_remediation(context.catalog, context.remediation)
+    assert is_list(Catalog.advisories(context.catalog, context.root))
 
     [first | rest] = context.remediation["resolved"]
 
@@ -29,7 +30,7 @@ defmodule Kogen.TestReliabilityCatalogTest do
              Catalog.validate_remediation(context.catalog, drifted)
   end
 
-  test "validator rejects blanket keep, copied controls, filename consumers, unresolved declarations, and aliased roles",
+  test "validator rejects blanket keep, copied controls, malformed rows and aliased roles; stale names only advise",
        context do
     [first, second | rest] = context.catalog["declarations"]
 
@@ -52,23 +53,27 @@ defmodule Kogen.TestReliabilityCatalogTest do
     assert {:error, errors} = Catalog.validate(copied, context.root)
     assert "wrong controls must be declaration-specific" in errors
 
-    guessed =
+    stale_witness =
       put_in(context.catalog, ["declarations"], [
         Map.put(first, "consumer_witness", "definitely absent consumer symbol") | [second | rest]
       ])
 
-    assert {:error, errors} = Catalog.validate(guessed, context.root)
-    assert Enum.any?(errors, &String.contains?(&1, "consumer does not expose claimed behavior"))
+    assert :ok = Catalog.validate(stale_witness, context.root)
+
+    assert Enum.any?(
+             Catalog.advisories(stale_witness, context.root),
+             &String.contains?(&1, "consumer does not expose claimed behavior")
+           )
 
     renamed =
       put_in(context.catalog, ["declarations"], [
         Map.put(first, "declaration", "a declaration that no test carries") | [second | rest]
       ])
 
-    assert {:error, errors} = Catalog.validate(renamed, context.root)
+    assert :ok = Catalog.validate(renamed, context.root)
 
     assert Enum.any?(
-             errors,
+             Catalog.advisories(renamed, context.root),
              &(String.contains?(&1, first["id"]) and
                  String.contains?(&1, first["file"]) and
                  String.contains?(&1, "a declaration that no test carries"))
@@ -80,7 +85,31 @@ defmodule Kogen.TestReliabilityCatalogTest do
       ])
 
     assert {:error, errors} = Catalog.validate(deleted_file, context.root)
-    assert Enum.any?(errors, &String.contains?(&1, first["id"]))
+    assert errors == ["maintained source inventory is contradictory"]
+
+    malformed =
+      put_in(context.catalog, ["declarations"], [
+        Map.delete(first, "wrong_control") | [second | rest]
+      ])
+
+    assert {:error, errors} = Catalog.validate(malformed, context.root)
+    assert Enum.any?(errors, &String.contains?(&1, "missing wrong_control"))
+
+    bad_disposition =
+      put_in(context.catalog, ["declarations"], [
+        Map.put(first, "disposition", "obliterate") | [second | rest]
+      ])
+
+    assert {:error, errors} = Catalog.validate(bad_disposition, context.root)
+    assert Enum.any?(errors, &String.contains?(&1, "invalid disposition"))
+
+    unsafe =
+      put_in(context.catalog, ["declarations"], [
+        Map.put(first, "implementation", "../outside.ex") | [second | rest]
+      ])
+
+    assert {:error, errors} = Catalog.validate(unsafe, context.root)
+    assert Enum.any?(errors, &String.contains?(&1, "evidence path is unsafe"))
 
     aliased =
       put_in(context.catalog, ["declarations"], [
@@ -182,11 +211,13 @@ defmodule Kogen.TestReliabilityCatalogTest do
       assert :ok = Catalog.validate(catalog, base)
     end
 
-    test "a renamed test fails naming the row", %{
+    test "a renamed test is not a failure and is only advised", %{
       base: base,
       catalog: catalog,
       exs_path: exs_path
     } do
+      assert [] = Catalog.advisories(catalog, base)
+
       File.write!(
         exs_path,
         String.replace(
@@ -196,14 +227,34 @@ defmodule Kogen.TestReliabilityCatalogTest do
         )
       )
 
-      assert {:error, errors} = Catalog.validate(catalog, base)
-      assert Enum.any?(errors, &String.contains?(&1, "fixture:t001"))
+      assert :ok = Catalog.validate(catalog, base)
+      assert [advisory] = Catalog.advisories(catalog, base)
+      assert advisory =~ "fixture:t001"
+      assert advisory =~ "missing declaration"
     end
 
-    test "a deleted file fails", %{base: base, catalog: catalog, exs_path: exs_path} do
+    test "an added test is not a failure", %{base: base, catalog: catalog, exs_path: exs_path} do
+      File.write!(
+        exs_path,
+        String.replace(
+          File.read!(exs_path),
+          "end\n",
+          "  test \"a brand new test\" do\n    assert true\n  end\nend\n"
+        )
+      )
+
+      assert :ok = Catalog.validate(catalog, base)
+      assert [] = Catalog.advisories(catalog, base)
+    end
+
+    test "a deleted test file is not a failure and is only advised", %{
+      base: base,
+      catalog: catalog,
+      exs_path: exs_path
+    } do
       File.rm!(exs_path)
-      assert {:error, errors} = Catalog.validate(catalog, base)
-      assert Enum.any?(errors, &String.contains?(&1, "fixture:t001"))
+      assert :ok = Catalog.validate(catalog, base)
+      assert Enum.any?(Catalog.advisories(catalog, base), &String.contains?(&1, "fixture:t001"))
     end
 
     test "a Python row resolves by def", %{base: base, catalog: catalog} do
@@ -219,13 +270,30 @@ defmodule Kogen.TestReliabilityCatalogTest do
       assert :ok = Catalog.validate(catalog, base)
     end
 
-    test "a missing consumer witness still fails", %{base: base, catalog: catalog} do
+    test "a stale consumer witness only advises; a blank one is malformed", %{
+      base: base,
+      catalog: catalog
+    } do
       [exs_row, python_row] = catalog["declarations"]
-      broken = Map.put(exs_row, "consumer_witness", "definitely absent text")
-      catalog = put_in(catalog, ["declarations"], [broken, python_row])
 
-      assert {:error, errors} = Catalog.validate(catalog, base)
-      assert Enum.any?(errors, &String.contains?(&1, "consumer does not expose claimed behavior"))
+      stale =
+        put_in(catalog, ["declarations"], [
+          Map.put(exs_row, "consumer_witness", "definitely absent text"),
+          python_row
+        ])
+
+      assert :ok = Catalog.validate(stale, base)
+
+      assert Enum.any?(
+               Catalog.advisories(stale, base),
+               &String.contains?(&1, "consumer does not expose")
+             )
+
+      blank =
+        put_in(catalog, ["declarations"], [Map.put(exs_row, "consumer_witness", " "), python_row])
+
+      assert {:error, errors} = Catalog.validate(blank, base)
+      assert Enum.any?(errors, &String.contains?(&1, "missing consumer_witness"))
     end
   end
 end

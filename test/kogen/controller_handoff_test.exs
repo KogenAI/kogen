@@ -192,14 +192,17 @@ defmodule Kogen.ControllerHandoffTest do
 
   test "Build sends one pinned Jev request per settled attempt with the notes, IDs and calibrated wording" do
     dir = fixture!()
-    notes = ["First attempt notes: s-change is done.", "Rework done for F1."]
+    notes = ["First attempt notes: s-change is done.", "", "Rework done for F1."]
     console = Path.join(dir, ".kogen/runtime/console.txt")
 
     assert :ok =
              run(dir,
                notes: notes,
                reviews: "rework,accept",
-               edits: %{1 => "printf 'changed\\n' > dummy.txt"}
+               edits: %{
+                 1 => "printf 'changed\\n' > dummy.txt",
+                 3 => "printf 'review rework\\n' >> dummy.txt"
+               }
              )
 
     record = record!(dir)
@@ -209,7 +212,7 @@ defmodule Kogen.ControllerHandoffTest do
 
     for {attempt, request, text, items} <- [
           {first, Enum.at(requests, 0), Enum.at(notes, 0), base_items()},
-          {second, Enum.at(requests, 1), Enum.at(notes, 1),
+          {second, Enum.at(requests, 1), Enum.at(notes, 2),
            base_items() ++ [%{"kind" => "finding", "id" => "F1"}]}
         ] do
       assert request["url"] == "https://api.typesafe.ai/v1/systemone"
@@ -392,17 +395,35 @@ defmodule Kogen.ControllerHandoffTest do
 
     assert {:error, reason} =
              run(dir,
-               notes: ["All done.", "F1 cannot be addressed as approved; it needs Shaping."],
+               notes: [
+                 "All done.",
+                 "The Candidate has not changed yet.",
+                 "F1 cannot be addressed as approved; it needs Shaping."
+               ],
                reviews: "rework",
+               edits: %{3 => "printf 'reworked\\n' >> dummy.txt"},
                jev_answers: %{"objection:finding:F1" => ["objection", 0.95]}
              )
 
     assert String.starts_with?(reason, @prefix)
     assert reason =~ "finding `F1` (Jev confidence 0.95)"
     assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
-    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-calls")) == "2"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-calls")) == "3"
     [_reworked, stopped] = record!(dir)["attempts"]
     assert stopped["outcome"] == "cannot_comply"
+  end
+
+  test "an unchanged Candidate after Reviewer rework stops after two same-session continuations" do
+    dir = fixture!()
+
+    assert {:error, reason} = run(dir, reviews: "rework")
+
+    assert reason =~ "Candidate unchanged after a second same-session Review continuation"
+    assert reason =~ "category: unchanged-candidate"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-calls")) == "3"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
+    assert length(FakeJev.requests(jev_log(dir))) == 1
+    refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
   end
 
   test "long notes are visibly truncated in the stop and name the record holding them" do
@@ -751,6 +772,7 @@ defmodule Kogen.ControllerHandoffTest do
     outer_resumptions: 2
     verification_retries: 2
     offline_retries: 4
+    max_developer_resumptions: 40
     """)
 
     intent_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
@@ -1058,6 +1080,7 @@ defmodule Kogen.ControllerHandoffTest do
     outer_resumptions: 2
     verification_retries: 2
     offline_retries: 4
+    max_developer_resumptions: 40
     """
   end
 
@@ -1081,6 +1104,19 @@ defmodule Kogen.ControllerHandoffTest do
         path.write_text(str(value)); return value
     def listed(name, value):
         return str(value) in [item for item in os.environ.get(name, "").split(",") if item]
+    if os.environ.get("KOGEN_ROLE") == "reviewer" and prompt.startswith("KOGEN_EVIDENCE_ADDENDUM"):
+        # The evidence addendum resumes the accepting Reviewer's own session
+        # after settlement: not a new Review, so it is counted apart.
+        k = count("addenda")
+        (runtime / f"reviewer-addendum-prompt-{k}").write_text(prompt)
+        out = args[args.index("--output-last-message") + 1]
+        response = subprocess.run([sys.executable, os.environ["HANDOFF_RESPONSE_HELPER"], "reviewer", "accept"],
+                                  input=prompt, capture_output=True, text=True, check=True).stdout
+        pathlib.Path(out).write_text(response)
+        sid = args[args.index("resume") + 1]
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
+        raise SystemExit(0)
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
         # `reviewer-reask-once`: a resume reuses the exact requested thread
@@ -1457,6 +1493,34 @@ defmodule Kogen.ControllerHandoffTest do
 
       assert fallback =~
                "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build."
+    end
+
+    test "a same-tree retried failure shows both attempts in the handoff" do
+      attempts = [
+        %{"attempt" => "initial", "status" => "failed", "exit_code" => 2, "log_path" => "l1"},
+        %{
+          "attempt" => "same-tree-retry",
+          "status" => "failed",
+          "exit_code" => 2,
+          "log_path" => "l2"
+        }
+      ]
+
+      failed = Map.put(receipt("live-a", "failed", "boom\n", true), "attempts", attempts)
+
+      prompt =
+        render(
+          %{
+            "sequence" => 1,
+            "candidate_id" => "t",
+            "failure" => %{"kind" => "target", "target" => "live-a", "class" => "paid"},
+            "receipts" => [failed]
+          },
+          %{"failures_since_pass" => 1}
+        )
+
+      assert prompt =~ "Attempts (same-tree retry): initial failed"
+      assert prompt =~ "same-tree-retry failed"
     end
 
     test "the mined excerpts carry their provenance headers" do

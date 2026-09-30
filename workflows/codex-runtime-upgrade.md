@@ -1,5 +1,10 @@
 # Upgrade Kogen's pinned Codex runtime
 
+The current exact pin is Codex 0.159.2. Confirm the native macOS arm64 and x64
+package metadata and sha512 integrity directly from the official npm registry;
+the matching platform artifacts are the `@openai/codex` 0.159.2-darwin-arm64
+and 0.159.2-darwin-x64 tarballs.
+
 Use this procedure only when maintaining the exact runtime selected by a Kogen release. Start at the repository root with the requested version, a clean checkout baseline, the current pin in `priv/kogen/codex/install.py`, this README and runtime contract, official release notes, an explicitly authenticated Kogen scope, installed dependencies, and the `check`, `live-native`, and causally affected narrow lifecycle evidence owners.
 
 1. Confirm the exact requested version and inspect its official release changes and native artifacts. Do not substitute upstream latest.

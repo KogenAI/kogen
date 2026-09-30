@@ -193,6 +193,308 @@ defmodule Kogen.ProcessCustodyTest do
     refute File.exists?(stdin_path)
   end
 
+  test "a turn reaps a descendant that starts a new session", %{base: base} do
+    control = control_dir(base)
+    {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
+    child_file = Path.join(base, "detached.pid")
+
+    script =
+      "import os,time; child=os.fork(); (os.setsid(), open(#{inspect(child_file)}, 'w').write(str(os.getpid())), time.sleep(30)) if child == 0 else time.sleep(0.5)"
+
+    assert {:ok, %{"exit_code" => 0}} =
+             Kogen.ProcessCustody.run([System.find_executable("python3"), "-c", script], base,
+               control: control,
+               role: "detached-test"
+             )
+
+    detached_pid = child_file |> File.read!() |> String.to_integer()
+    refute alive?(detached_pid)
+  end
+
+  test "concurrent runs reap detached children and clear their shared lock records", %{
+    base: base
+  } do
+    control = control_dir(base)
+    {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
+
+    on_exit(fn ->
+      Kogen.ProcessCustody.clear_signal_hook(control)
+      Kogen.ProcessCustody.release(control)
+    end)
+
+    child_files = Enum.map(1..4, &Path.join(base, "concurrent-detached-#{&1}.pid"))
+
+    tasks =
+      Enum.map(child_files, fn child_file ->
+        script =
+          """
+          import json, os, time
+          child = os.fork()
+          if child == 0:
+              os.setsid()
+              open(#{inspect(child_file)}, 'w').write(str(os.getpid()))
+              time.sleep(30)
+          else:
+              recorded = False
+              for _ in range(250):
+                  try:
+                      lock = json.load(open(#{inspect(Kogen.ProcessCustody.lock_path(control))}))
+                      recorded = any(descendant.get('pid') == child
+                                     for group in lock.get('groups', [])
+                                     for descendant in group.get('descendants', []))
+                  except (FileNotFoundError, json.JSONDecodeError):
+                      pass
+                  if recorded:
+                      break
+                  time.sleep(0.02)
+              if not recorded:
+                  raise RuntimeError('detached child was not recorded')
+          """
+
+        Task.async(fn ->
+          Kogen.ProcessCustody.run(
+            [System.find_executable("python3"), "-c", script],
+            base,
+            control: control,
+            role: "concurrent-detached"
+          )
+        end)
+      end)
+
+    results = Enum.map(tasks, &Task.await(&1, 8_000))
+    assert Enum.all?(results, &match?({:ok, %{"exit_code" => 0}}, &1))
+
+    child_pids =
+      Enum.map(child_files, fn child_file ->
+        assert wait_until(fn -> File.exists?(child_file) end, 2_000)
+        child_file |> File.read!() |> String.to_integer()
+      end)
+
+    assert wait_until(fn -> Enum.all?(child_pids, &(not alive?(&1))) end, 3_000)
+    assert {:ok, %{"groups" => []}} = Kogen.ProcessCustody.read_lock(control)
+  end
+
+  test "a supervised command may run before a build lock is acquired", %{base: base} do
+    control = control_dir(base)
+    marker = Path.join(base, "started")
+    script = "open(#{inspect(marker)}, 'w').write('started')"
+
+    assert {:ok, %{"exit_code" => 0}} =
+             Kogen.ProcessCustody.run([System.find_executable("python3"), "-c", script], base,
+               control: control,
+               role: "missing-lock"
+             )
+
+    assert File.exists?(marker)
+  end
+
+  test "a failed registration reaps only its own group and leaves a sibling alive", %{
+    base: base
+  } do
+    control = control_dir(base)
+    sibling_out = out_dir(base)
+    {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
+
+    on_exit(fn ->
+      File.chmod(Kogen.ProcessCustody.lock_path(control), 0o600)
+      Kogen.ProcessCustody.clear_signal_hook(control)
+      Kogen.ProcessCustody.release(control)
+    end)
+
+    sibling_task =
+      Task.async(fn ->
+        Kogen.ProcessCustody.run([@provider_script, sibling_out], System.tmp_dir!(),
+          control: control,
+          role: "registration-sibling"
+        )
+      end)
+
+    sibling_pid = wait_for_pid_file(sibling_out, "provider.pid")
+    assert sibling_pid
+
+    assert wait_until(fn ->
+             match?({:ok, %{"groups" => [_]}}, Kogen.ProcessCustody.read_lock(control))
+           end)
+
+    parent = self()
+
+    Kogen.ProcessCustody.set_signal_hook(control, fn
+      :group, pgid, signal ->
+        send(parent, {:registration_abort_signal, pgid, signal})
+        :continue
+
+      _target_type, _target, _signal ->
+        :continue
+    end)
+
+    # Registration itself is readable, but recording its group fails at the
+    # lock write. The old abort path called teardown/1 here and killed the
+    # already registered sibling group too.
+    :ok = File.chmod(Kogen.ProcessCustody.lock_path(control), 0o444)
+    marker = Path.join(base, "failed-registration-command-ran")
+    script = "open(#{inspect(marker)}, 'w').write('started')"
+
+    failed_run =
+      Task.async(fn ->
+        Kogen.ProcessCustody.run(
+          [System.find_executable("python3"), "-c", script],
+          base,
+          control: control,
+          role: "registration-failure"
+        )
+      end)
+
+    assert {:error, reason} = Task.await(failed_run, 8_000)
+    assert reason =~ "process supervision setup failed"
+    assert_receive {:registration_abort_signal, aborted_pgid, :term}, 1_000
+    refute aborted_pgid == sibling_pid
+    refute File.exists?(marker)
+    assert alive?(sibling_pid)
+
+    assert {:ok, %{"groups" => [%{"pid" => ^sibling_pid}]}} =
+             Kogen.ProcessCustody.read_lock(control)
+
+    :ok = File.chmod(Kogen.ProcessCustody.lock_path(control), 0o600)
+    Kogen.ProcessCustody.clear_signal_hook(control)
+    assert :ok = Kogen.ProcessCustody.release(control)
+    assert {:ok, _facts} = Task.await(sibling_task, 5_000)
+    refute alive?(sibling_pid)
+  end
+
+  test "denied group signals return cleanup failure and retain the live group record", %{
+    base: base
+  } do
+    out = out_dir(base)
+    control = control_dir(base)
+    {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
+
+    Kogen.ProcessCustody.set_cleanup_grace_ms(control, 300)
+
+    on_exit(fn ->
+      Kogen.ProcessCustody.clear_cleanup_grace_ms(control)
+      Kogen.ProcessCustody.clear_signal_hook(control)
+      Kogen.ProcessCustody.release(control)
+    end)
+
+    run_task =
+      Task.async(fn ->
+        Kogen.ProcessCustody.run([@provider_script, out], System.tmp_dir!(),
+          control: control,
+          role: "denied-signal"
+        )
+      end)
+
+    provider_pid = wait_for_pid_file(out, "provider.pid")
+    assert provider_pid
+
+    test_pid = self()
+
+    Kogen.ProcessCustody.set_signal_hook(control, fn
+      :group, ^provider_pid, signal ->
+        send(test_pid, {:denied_group_signal, signal})
+        {:error, :eperm}
+
+      _target_type, _target, _signal ->
+        :continue
+    end)
+
+    assert {:error, reason} = Kogen.ProcessCustody.teardown(control)
+
+    assert reason =~ "could not reap process groups"
+
+    # Teardown is bounded by its own escalation, not by a clock: it returned
+    # after a single graceful signal followed by a single forced one, and never
+    # signalled the denied group again.
+    signals = collect_denied_group_signals([])
+    assert length(signals) == length(Enum.uniq(signals))
+    assert length(signals) >= 2
+    assert alive?(provider_pid)
+    assert {:ok, %{"groups" => [_retained_group]}} = Kogen.ProcessCustody.read_lock(control)
+
+    Kogen.ProcessCustody.clear_signal_hook(control)
+    assert :ok = Kogen.ProcessCustody.release(control)
+    assert {:ok, _facts} = Task.await(run_task, 5_000)
+    refute alive?(provider_pid)
+  end
+
+  defp collect_denied_group_signals(acc) do
+    receive do
+      {:denied_group_signal, signal} -> collect_denied_group_signals(acc ++ [signal])
+    after
+      0 -> acc
+    end
+  end
+
+  test "a denied escaped child keeps its record but not a live descendant monitor", %{base: base} do
+    control = control_dir(base)
+    {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
+    parent = self()
+
+    # Denied TERM and KILL each wait a full settle grace; shorten it so the
+    # awaited work is bounded by events, not by 2 x 2 s of fixed waits.
+    Kogen.ProcessCustody.set_cleanup_grace_ms(control, 300)
+
+    Kogen.ProcessCustody.set_monitor_stop_hook(control, fn root_pid ->
+      send(parent, {:descendant_monitor_stopped, root_pid})
+    end)
+
+    on_exit(fn ->
+      Kogen.ProcessCustody.clear_signal_hook(control)
+      Kogen.ProcessCustody.clear_cleanup_grace_ms(control)
+      Kogen.ProcessCustody.clear_monitor_stop_hook(control)
+      Kogen.ProcessCustody.release(control)
+    end)
+
+    child_file = Path.join(base, "denied-detached.pid")
+
+    script =
+      "import os,time; child=os.fork(); (os.setsid(), open(#{inspect(child_file)}, 'w').write(str(os.getpid())), time.sleep(30)) if child == 0 else time.sleep(0.35)"
+
+    run_task =
+      Task.async(fn ->
+        Kogen.ProcessCustody.run([System.find_executable("python3"), "-c", script], base,
+          control: control,
+          role: "denied-detached"
+        )
+      end)
+
+    child_pid =
+      wait_until(
+        fn ->
+          case File.read(child_file) do
+            {:ok, contents} -> String.trim(contents) != "" and contents
+            _ -> false
+          end
+        end,
+        2_000
+      )
+      |> case do
+        false -> nil
+        contents -> contents |> String.trim() |> String.to_integer()
+      end
+
+    assert child_pid
+
+    Kogen.ProcessCustody.set_signal_hook(control, fn
+      :process, ^child_pid, _signal -> {:error, :eperm}
+      _target_type, _target, _signal -> :continue
+    end)
+
+    assert_receive {:descendant_monitor_stopped, _root_pid}, 2_000
+    assert {:error, reason} = Task.await(run_task, 6_000)
+    assert reason =~ "process cleanup failed"
+    assert alive?(child_pid)
+
+    assert {:ok, %{"groups" => [%{"descendants" => descendants}]}} =
+             Kogen.ProcessCustody.read_lock(control)
+
+    assert Enum.any?(descendants, &(&1["pid"] == child_pid))
+
+    Kogen.ProcessCustody.clear_signal_hook(control)
+    assert :ok = Kogen.ProcessCustody.release(control)
+    refute alive?(child_pid)
+  end
+
   test "the parent-death watchdog reaps the group when the controller dies", %{base: base} do
     out = out_dir(base)
     log = Path.join(out, "log")
@@ -333,6 +635,62 @@ defmodule Kogen.ProcessCustodyTest do
     Port.close(unrelated)
   end
 
+  test "a stale lock cannot signal a different live process group", %{base: base} do
+    control = control_dir(base)
+    out = out_dir(base)
+
+    unrelated_task =
+      Task.async(fn -> Kogen.ProcessCustody.run([@provider_script, out], System.tmp_dir!()) end)
+
+    unrelated_pid = wait_for_pid_file(out, "provider.pid")
+    child_pid = wait_for_pid_file(out, "grandchild.pid")
+    assert unrelated_pid && child_pid
+    leader = Port.open({:spawn_executable, "/bin/sleep"}, [:exit_status, args: ["30"]])
+    {:os_pid, leader_pid} = Port.info(leader, :os_pid)
+
+    on_exit(fn ->
+      System.cmd("/bin/kill", ["-KILL", "-#{unrelated_pid}"], stderr_to_stdout: true)
+      System.cmd("/bin/kill", ["-9", to_string(leader_pid)], stderr_to_stdout: true)
+    end)
+
+    stale_lock = %{
+      "pid" => 999_999,
+      "started_at" => "Thu Jan  1 00:00:00 1970",
+      "build_id" => "stale-build",
+      "groups" => [
+        %{
+          "pid" => leader_pid,
+          "pgid" => unrelated_pid,
+          "started_at" => Kogen.ProcessCustody.process_start(leader_pid),
+          "role" => "developer"
+        }
+      ]
+    }
+
+    File.write!(Kogen.ProcessCustody.lock_path(control), Jason.encode!(stale_lock))
+
+    assert {:error, reason} = Kogen.ProcessCustody.acquire(control)
+    assert reason =~ "recorded process group does not match its leader"
+    assert alive?(leader_pid)
+    assert alive?(unrelated_pid)
+    assert alive?(child_pid)
+
+    another = control_dir(base)
+    assert {:ok, :fresh} = Kogen.ProcessCustody.acquire(another)
+
+    assert {:error, :invalid_group_identity} =
+             Kogen.ProcessCustody.record_group(another, "developer", %{
+               "pid" => leader_pid,
+               "pgid" => unrelated_pid,
+               "started_at" => Kogen.ProcessCustody.process_start(leader_pid)
+             })
+
+    assert {:ok, %{"groups" => []}} = Kogen.ProcessCustody.read_lock(another)
+
+    System.cmd("/bin/kill", ["-KILL", "-#{unrelated_pid}"], stderr_to_stdout: true)
+    Task.yield(unrelated_task, 1_000) || Task.shutdown(unrelated_task, :brutal_kill)
+  end
+
   # -- real controller, real exit paths ---------------------------------------
   #
   # A small controller stand-in (`test/support/custody_controller_standin.exs`)
@@ -358,6 +716,10 @@ defmodule Kogen.ProcessCustodyTest do
           :exit_status,
           :use_stdio,
           :hide,
+          # `mix run` needs the project's mix.exs, so the stand-in must start
+          # from the checkout root rather than inherit the shared VM's mutable
+          # cwd (another async module may have `File.cd!`-ed away from it).
+          cd: System.fetch_env!("KOGEN_TEST_ROOT"),
           args: [
             "run",
             Path.expand("../support/custody_controller_standin.exs", __DIR__),
@@ -454,6 +816,7 @@ defmodule Kogen.ProcessCustodyTest do
       System.cmd(
         "python3",
         [driver, mix_executable(), standin, "hang", control, out, @provider_script],
+        cd: System.fetch_env!("KOGEN_TEST_ROOT"),
         stderr_to_stdout: true
       )
 
@@ -500,5 +863,119 @@ defmodule Kogen.ProcessCustodyTest do
     refute alive?(provider_pid)
     refute alive?(grandchild_pid)
     refute File.exists?(Kogen.ProcessCustody.lock_path(control))
+  end
+
+  # -- process-and-capacity: outer-fixture death ------------------------------
+  #
+  # A canceled outer live-test process can leave a *nested* fixture controller
+  # alive (background: a nested `mix kogen.build` launched by a live fixture,
+  # itself launching its own Developer through `Kogen.ProcessCustody.run/3`).
+  # This drives that exact three-level tree through the real production
+  # pieces: an "outer" OS process (standing in for the live-test driver)
+  # launches the real supervisor directly (as the earlier "parent-death
+  # watchdog" test does) around a *nested controller* (the real
+  # `custody_controller_standin.exs`, in "hang" mode), which in turn launches
+  # the fake provider (and its SIGTERM-ignoring grandchild) through its own,
+  # separate `Kogen.ProcessCustody.run/3` and lock. Killing only the outer
+  # process, with no Elixir cleanup code anywhere in the chain, must still
+  # reap every descendant: the nested controller's own parent-death watchdog
+  # reaps it when the outer dies, and the provider's watchdog then reaps it in
+  # turn once the nested controller (its own controller_pid) is gone -- while
+  # an unrelated process group is left alive throughout.
+
+  defp start_unrelated_group do
+    port = Port.open({:spawn_executable, "/bin/sleep"}, [:exit_status, args: ["30"]])
+    {:os_pid, pid} = Port.info(port, :os_pid)
+    %{port: port, pid: pid}
+  end
+
+  test "an outer process's kill -9 reaps a nested fixture controller and its own child, leaving an unrelated group alive",
+       %{base: base} do
+    out = out_dir(base)
+    nested_control = control_dir(base)
+    unrelated = start_unrelated_group()
+
+    on_exit(fn ->
+      System.cmd("/bin/kill", ["-9", to_string(unrelated.pid)], stderr_to_stdout: true)
+    end)
+
+    # The "outer" process: stands in for a canceled live-test driver. It runs
+    # no Kogen code at all; it is simply the process whose death the nested
+    # controller's own supervisor must notice.
+    outer_port = Port.open({:spawn_executable, "/bin/sleep"}, [:exit_status, args: ["60"]])
+    {:os_pid, outer_pid} = Port.info(outer_port, :os_pid)
+
+    log = Path.join(out, "nested-controller-log")
+
+    spec = %{
+      "argv" => [
+        mix_executable(),
+        "run",
+        Path.expand("../support/custody_controller_standin.exs", __DIR__),
+        "hang",
+        nested_control,
+        out
+      ],
+      "cwd" => System.fetch_env!("KOGEN_TEST_ROOT"),
+      "log" => log,
+      "mode" => "batch",
+      "stdin_path" => nil,
+      "tmp_dir" => nil,
+      "timeout" => nil,
+      "grace" => 0.5,
+      "poll" => 0.1,
+      "controller_pid" => outer_pid,
+      "register_path" => nil
+    }
+
+    python3 = System.find_executable("python3") |> to_charlist()
+
+    supervisor_port =
+      Port.open({:spawn_executable, python3}, [
+        :binary,
+        :exit_status,
+        :use_stdio,
+        args: [Kogen.ProcessCustody.supervisor_script_path(), Jason.encode!(spec)],
+        env: [{~c"FAKE_PROVIDER", String.to_charlist(@provider_script)}]
+      ])
+
+    provider_pid = wait_for_pid_file(out, "provider.pid", 10_000)
+    grandchild_pid = wait_for_pid_file(out, "grandchild.pid", 10_000)
+    assert provider_pid && grandchild_pid
+
+    assert wait_until(fn ->
+             match?(
+               {:ok, %{"groups" => [_ | _]}},
+               Kogen.ProcessCustody.read_lock(nested_control)
+             )
+           end)
+
+    # The nested controller is the real `custody_controller_standin.exs`
+    # "hang" process, identified by the top-level pid it recorded on its own
+    # `acquire/1` -- never the supervisor script (S1) that launched it.
+    {:ok, %{"pid" => nested_controller_pid}} = Kogen.ProcessCustody.read_lock(nested_control)
+    assert alive?(nested_controller_pid)
+
+    # Simulate `kill -9` of the outer live-test driver: nothing downstream
+    # ever runs any Elixir (or Python) cleanup code in response.
+    System.cmd("/bin/kill", ["-9", to_string(outer_pid)], stderr_to_stdout: true)
+
+    # The nested controller's own watchdog reaps it once its parent (the
+    # outer process) is gone; then the provider's own watchdog reaps it and
+    # its grandchild once the nested controller (its controller_pid) is gone.
+    assert wait_until(fn -> !alive?(nested_controller_pid) end, 8_000)
+    assert wait_until(fn -> !alive?(provider_pid) end, 8_000)
+    assert wait_until(fn -> !alive?(grandchild_pid) end, 8_000)
+    refute alive?(nested_controller_pid)
+    refute alive?(provider_pid)
+    refute alive?(grandchild_pid)
+
+    assert alive?(unrelated.pid)
+
+    receive do
+      {^supervisor_port, {:exit_status, _}} -> :ok
+    after
+      2_000 -> :ok
+    end
   end
 end

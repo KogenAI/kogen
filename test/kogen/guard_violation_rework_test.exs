@@ -1,8 +1,9 @@
 defmodule Kogen.GuardViolationReworkTest do
   @moduledoc """
-  Unguarded paths a successful Developer turn leaves behind resume the same
-  session to delete or restore them (at most `@guard_reworks` 2 per attempt,
-  no verification cycle), while Git policy, protected hook/agent
+  Ordinary extra paths are disclosed to the Reviewer with controller-derived
+  hunks, while Approved-copy additions resume the same Developer session to
+  delete them (at most `@guard_reworks` 2 per attempt, no verification cycle).
+  Git policy, protected hook/agent
   configuration, Approved-copy edits and failed turns stay terminal, and
   control's shared Git files are environment events. Real Git fixtures with
   test/support/fake_stray_writer_role.
@@ -40,17 +41,16 @@ defmodule Kogen.GuardViolationReworkTest do
 
       assert :ok = stray_build(control, [{"FAKE_STRAY_WRITE", write}])
 
+      # Keep this historical test ID; only the Approved-copy addition now
+      # triggers guard rework, and the two ordinary extras are disclosed.
+
       assert sessions(control) == ["launch dev-session-1", "rework dev-session-1"]
 
       prompt = state!(control, "stray-rework-prompt-1")
 
-      assert listed(prompt) == [
-               {:delete, "#{@approved}/evidence"},
-               {:delete, "mix_lock_user501"},
-               {:delete, "stray.txt"}
-             ]
+      assert listed(prompt) == [{:delete, "#{@approved}/evidence"}]
 
-      assert prompt =~ "Guard reworks left: 1 of 2"
+      assert prompt =~ "Outer Developer resumptions left: 1 of 2"
       assert prompt =~ "restores the frozen package"
       assert prompt =~ "Delete or restore exactly these paths"
 
@@ -61,14 +61,27 @@ defmodule Kogen.GuardViolationReworkTest do
 
       [attempt] = Candidate.record(control)["attempts"]
       assert [entry] = attempt["guard_violations"]
-      assert entry["paths"] == ["#{@approved}/evidence", "mix_lock_user501", "stray.txt"]
+      assert entry["paths"] == ["#{@approved}/evidence"]
       assert entry["cycle"] == 0
       work = entry["developer_notes"]["text"]
       assert is_binary(work) and work != "" and work != @cleanup
       assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ["passed"]
 
-      refute File.exists?(Path.join(control, "stray.txt"))
-      refute File.exists?(Path.join(control, "mix_lock_user501"))
+      assert Enum.map(attempt["repair_disclosures"]["items"], & &1["path"]) == [
+               "mix_lock_user501/lock_0",
+               "stray.txt"
+             ]
+
+      packet = packet!(control, attempt)
+      assert Enum.map(packet["guard_violations"], & &1["paths"]) == [["#{@approved}/evidence"]]
+
+      assert Enum.map(packet["repair_disclosures"]["items"], & &1["path"]) == [
+               "mix_lock_user501/lock_0",
+               "stray.txt"
+             ]
+
+      assert File.read!(Path.join(control, "stray.txt")) == "stray\n"
+      assert File.read!(Path.join(control, "mix_lock_user501/lock_0")) == "lock\n"
     end
 
     test "a modified tracked file is restored with the prompt's git show and chmod command",
@@ -78,13 +91,15 @@ defmodule Kogen.GuardViolationReworkTest do
       assert :ok =
                stray_build(control, [{"FAKE_STRAY_WRITE", "printf 'edited\\n' > README.md"}])
 
-      assert listed(state!(control, "stray-rework-prompt-1")) == [
-               {:restore, "git show HEAD:README.md > README.md && chmod 644 README.md"}
-             ]
-
-      assert sessions(control) == ["launch dev-session-1", "rework dev-session-1"]
-      assert File.read!(Path.join(control, "README.md")) == baseline
-      assert Fixture.git!(control, ["show", "HEAD:README.md"]) <> "\n" == baseline
+      # The historical test title is retained; ordinary tracked extras now
+      # reach Review with their diff and are published after acceptance.
+      assert sessions(control) == ["launch dev-session-1"]
+      assert File.read!(Path.join(control, "README.md")) == "edited\n"
+      assert File.read!(Path.join(control, "README.md")) != baseline
+      [attempt] = Candidate.record(control)["attempts"]
+      refute Map.has_key?(attempt, "guard_violations")
+      assert [%{"path" => "README.md", "hunks" => hunks}] = attempt["repair_disclosures"]["items"]
+      assert hunks =~ "+edited"
     end
 
     test "a mode-only change is undone by the same restore command (2b)", %{control: control} do
@@ -102,26 +117,28 @@ defmodule Kogen.GuardViolationReworkTest do
       home = await_file!(control, "harness/*/review-waiting")
       worktree = Candidate.worktree(control)
 
-      # Review runs only after the rework turn passed the guard: the worktree
-      # mode is back to HEAD's 100644 and nothing differs from HEAD.
-      assert Bitwise.band(File.stat!(Path.join(worktree, "README.md")).mode, 0o777) == 0o644
-      assert Fixture.git!(worktree, ["diff", "--raw", "HEAD", "--", "README.md"]) == ""
+      # The ordinary extra is carried into Review with its actual mode diff.
+      assert Bitwise.band(File.stat!(Path.join(worktree, "README.md")).mode, 0o777) == 0o755
+
+      assert Fixture.git!(worktree, ["diff", "--raw", "HEAD", "--", "README.md"]) =~
+               "100644 100755"
+
       File.write!(Path.join(home, "review-go"), "")
       assert :ok = Task.await(task, 180_000)
 
-      assert listed(state!(control, "stray-rework-prompt-1")) == [
-               {:restore, "git show HEAD:README.md > README.md && chmod 644 README.md"}
-             ]
-
       [attempt] = Candidate.record(control)["attempts"]
-      assert [%{"paths" => ["README.md"]}] = attempt["guard_violations"]
+      refute Map.has_key?(attempt, "guard_violations")
+      assert [%{"path" => "README.md", "hunks" => hunks}] = attempt["repair_disclosures"]["items"]
+      assert hunks =~ "100644"
+      assert sessions(control) == ["launch dev-session-1"]
     end
 
     test "a provider failure after the rework turn cleaned up retries the same session with the rework prompt",
          %{control: control} do
       assert :ok =
                stray_build(control, [
-                 {"FAKE_STRAY_WRITE", "printf 'stray\\n' > stray.txt"},
+                 {"FAKE_STRAY_WRITE",
+                  "mkdir -p #{@approved}/evidence && printf 'stray\\n' > #{@approved}/evidence/probe.txt"},
                  {"FAKE_STRAY_REWORK", "clean_then_capacity"}
                ])
 
@@ -140,7 +157,7 @@ defmodule Kogen.GuardViolationReworkTest do
       assert [%{"role" => "developer", "session_id" => "dev-session-1"}] =
                attempt["provider_retries"]
 
-      assert [%{"paths" => ["stray.txt"]}] = attempt["guard_violations"]
+      assert [%{"paths" => ["#{@approved}/evidence"]}] = attempt["guard_violations"]
     end
   end
 
@@ -152,11 +169,12 @@ defmodule Kogen.GuardViolationReworkTest do
 
       assert {:error, reason} =
                stray_build(control, [
-                 {"FAKE_STRAY_WRITE", "printf 'stray\\n' > stray.txt"},
+                 {"FAKE_STRAY_WRITE",
+                  "mkdir -p #{@approved}/evidence && printf 'stray\\n' > #{@approved}/evidence/probe.txt"},
                  {"FAKE_STRAY_REWORK", "ignore"}
                ])
 
-      assert String.starts_with?(reason, @stray_prefix <> "stray.txt;")
+      assert String.starts_with?(reason, @stray_prefix <> "#{@approved}/evidence/probe.txt;")
       assert owner_status(control) == "stopped: guard-violation"
       assert state!(control, "stray-reworks") == "2\n"
 
@@ -166,15 +184,25 @@ defmodule Kogen.GuardViolationReworkTest do
                "rework dev-session-1"
              ]
 
-      assert state!(control, "stray-rework-prompt-2") =~ "Guard reworks left: 0 of 2"
+      assert state!(control, "stray-rework-prompt-2") =~
+               "Outer Developer resumptions left: 0 of 2"
 
       record = Candidate.record(control)
       assert [attempt] = record["attempts"]
       assert length(attempt["guard_violations"]) == 3
-      assert Enum.all?(attempt["guard_violations"], &(&1["paths"] == ["stray.txt"]))
+
+      assert Enum.all?(
+               attempt["guard_violations"],
+               &(&1["paths"] == ["#{@approved}/evidence"])
+             )
+
       refute Map.has_key?(attempt, "verification")
       refute Map.has_key?(attempt, "offline_failures")
-      assert File.exists?(Path.join(Candidate.worktree(control), "stray.txt"))
+
+      assert File.exists?(
+               Path.join(Candidate.worktree(control), "#{@approved}/evidence/probe.txt")
+             )
+
       assert Candidate.candidate(control)["disposition"] == "retained"
     end
 
@@ -186,7 +214,8 @@ defmodule Kogen.GuardViolationReworkTest do
       assert :ok =
                stray_build(control, [
                  {"FAKE_STRAY_WRAPPED", Fixture.support("fake_codex")},
-                 {"FAKE_STRAY_WRITE", "printf 'stray\\n' > stray.txt"}
+                 {"FAKE_STRAY_WRITE",
+                  "mkdir -p #{@approved}/evidence && printf 'stray\\n' > #{@approved}/evidence/probe.txt"}
                ])
 
       assert state!(control, "stray-reworks") == "1\n"
@@ -195,7 +224,7 @@ defmodule Kogen.GuardViolationReworkTest do
                "Offline (`offline_retries`) retries left: 3 of 4"
 
       [attempt | _] = Candidate.record(control)["attempts"]
-      assert [%{"paths" => ["stray.txt"]}] = attempt["guard_violations"]
+      assert [%{"paths" => ["#{@approved}/evidence"]}] = attempt["guard_violations"]
       assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ["failed", "passed"]
       assert attempt["verification"]["offline_failures"] == 1
     end
@@ -203,8 +232,10 @@ defmodule Kogen.GuardViolationReworkTest do
 
   describe "terminal-guard-failures-stay-terminal" do
     for {label, write, category, message} <- [
-          {"(a) a root .gitignore append", "printf 'extra\\n' >> .gitignore", "git-policy",
-           @stray_prefix <> ".gitignore;"},
+          {"(a) a root .gitignore append",
+           "printf 'hidden.txt\\n' >> .gitignore && printf 'hidden\\n' > hidden.txt",
+           "git-policy",
+           "Candidate ignore files newly hid Candidate paths during Developer turn: hidden.txt"},
           {"(a2) a .gitmodules edit", "printf '[submodule \"x\"]\\n' > .gitmodules", "git-policy",
            "Git configuration or ignore policy changed during Developer turn"},
           {"(b) a .codex/hooks/check.sh edit", "printf '# x\\n' >> .codex/hooks/check.sh",
@@ -267,8 +298,8 @@ defmodule Kogen.GuardViolationReworkTest do
                  {"FAKE_STRAY_EXIT", "3"}
                ])
 
-      assert String.starts_with?(reason, @stray_prefix <> "stray.txt;")
-      assert owner_status(control) == "stopped: integrity"
+      assert reason =~ "harness failure during Developer turn"
+      assert owner_status(control) == "stopped: provider-failure"
       assert sessions(control) == ["launch dev-session-1"]
       [attempt] = Candidate.record(control)["attempts"]
       refute Map.has_key?(attempt, "guard_violations")
@@ -278,23 +309,30 @@ defmodule Kogen.GuardViolationReworkTest do
          %{control: control} do
       assert {:error, reason} =
                stray_build(control, [
-                 {"FAKE_STRAY_WRITE", "printf 's' > stray.txt"},
+                 {"FAKE_STRAY_WRITE",
+                  "mkdir -p #{@approved}/evidence && printf 's' > #{@approved}/evidence/probe.txt"},
                  {"FAKE_STRAY_REWORK", "capacity"}
                ])
 
-      assert String.starts_with?(reason, @stray_prefix <> "stray.txt;")
+      assert String.starts_with?(reason, "Approved Intent changed during Build")
       assert owner_status(control) == "stopped: integrity"
       assert sessions(control) == ["launch dev-session-1", "rework dev-session-1"]
       [attempt] = Candidate.record(control)["attempts"]
       refute Map.has_key?(attempt, "provider_retries")
-      assert [%{"paths" => ["stray.txt"]}] = attempt["guard_violations"]
+      assert [%{"paths" => ["#{@approved}/evidence"]}] = attempt["guard_violations"]
     end
 
     test "(h) a Claude scheduled_tasks.lock is reworked like any stray path", %{control: control} do
       write = "mkdir -p .claude && printf 'lock' > .claude/scheduled_tasks.lock"
       assert :ok = stray_build(control, [{"FAKE_STRAY_WRITE", write}])
       [attempt] = Candidate.record(control)["attempts"]
-      assert [%{"paths" => [".claude"]}] = attempt["guard_violations"]
+
+      # Keep the historical test ID; this ordinary lock file now has a
+      # separate Reviewer disclosure and does not consume guard rework.
+      refute Map.has_key?(attempt, "guard_violations")
+
+      assert [%{"path" => ".claude/scheduled_tasks.lock"}] =
+               attempt["repair_disclosures"]["items"]
     end
 
     test "(i) a nested .pytest_cache/.gitignore is an ordinary stray path", %{control: control} do
@@ -302,8 +340,10 @@ defmodule Kogen.GuardViolationReworkTest do
         "mkdir -p .pytest_cache/v/cache && printf '*\\n' > .pytest_cache/.gitignore && " <>
           "printf '{}' > .pytest_cache/v/cache/lastfailed"
 
-      assert :ok = stray_build(control, [{"FAKE_STRAY_WRITE", write}])
-      assert listed(state!(control, "stray-rework-prompt-1")) == [{:delete, ".pytest_cache"}]
+      assert {:error, reason} = stray_build(control, [{"FAKE_STRAY_WRITE", write}])
+      assert reason =~ "Candidate ignore files newly hid Candidate paths during Developer turn"
+      assert reason =~ ".pytest_cache/v/cache/lastfailed"
+      assert owner_status(control) == "stopped: git-policy"
     end
   end
 
@@ -330,7 +370,8 @@ defmodule Kogen.GuardViolationReworkTest do
       assert :ok = Task.await(task, 180_000)
 
       [attempt] = Candidate.record(control)["attempts"]
-      assert [%{"paths" => ["stray.txt"]}] = attempt["guard_violations"]
+      refute Map.has_key?(attempt, "guard_violations")
+      assert [%{"path" => "stray.txt"}] = attempt["repair_disclosures"]["items"]
       events = attempt["environment_events"]
       assert Enum.map(events, & &1["file"]) == [".git/config", ".git/info/exclude"]
 
@@ -448,14 +489,14 @@ defmodule Kogen.GuardViolationReworkTest do
       record = Candidate.record(control)
       [attempt] = record["attempts"]
       packet = packet!(control, attempt)
-      paths = ["#{@approved}/evidence", "mix_lock_user501", "stray.txt"]
+      paths = ["#{@approved}/evidence"]
       encoded = ReviewPacket.encode(paths)
 
       assert [object] = packet["guard_violations"]
 
       assert object == %{
                "cycle" => 0,
-               "path_count" => 3,
+               "path_count" => 1,
                "paths" => paths,
                "sha256" => sha256(encoded),
                "byte_count" => byte_size(encoded),
@@ -466,6 +507,13 @@ defmodule Kogen.GuardViolationReworkTest do
                packet["omitted"],
                &String.starts_with?(&1["field"] || "", "/guard_violations")
              )
+
+      assert packet["repair_disclosures"]["item_count"] == 2
+
+      assert Enum.map(packet["repair_disclosures"]["items"], & &1["path"]) == [
+               "mix_lock_user501/lock_0",
+               "stray.txt"
+             ]
 
       clean = Fixture.create!()
       on_exit(fn -> File.rm_rf(clean) end)
@@ -482,7 +530,8 @@ defmodule Kogen.GuardViolationReworkTest do
 
       assert :ok =
                stray_build(control, [
-                 {"FAKE_STRAY_WRITE", "printf 's' > stray.txt"},
+                 {"FAKE_STRAY_WRITE",
+                  "mkdir -p #{@approved}/evidence && printf 's' > #{@approved}/evidence/probe.txt"},
                  {"FAKE_JEV_LOG_DIR", jev_log}
                ])
 
@@ -502,7 +551,8 @@ defmodule Kogen.GuardViolationReworkTest do
          %{control: control} do
       assert {:error, reason} =
                stray_build(control, [
-                 {"FAKE_STRAY_WRITE", "printf 's' > stray.txt"},
+                 {"FAKE_STRAY_WRITE",
+                  "mkdir -p #{@approved}/evidence && printf 's' > #{@approved}/evidence/probe.txt"},
                  {"FAKE_JEV_ANSWERS",
                   ~s({"objection:scenario:fixture-scenario": ["objection", 0.99]})}
                ])
@@ -574,8 +624,10 @@ defmodule Kogen.GuardViolationReworkTest do
       printf '%s' "$input" | python3 -B #{inspect(Fixture.support("launch_receipt.py"))} "$@"
       out=; prev=
       for a in "$@"; do [ "$prev" = --output-last-message ] && out="$a"; prev="$a"; done
-      n=$(( $(cat "$KOGEN_HARNESS_HOME/citing-reviews" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$KOGEN_HARNESS_HOME/citing-reviews"
-      verdict=accept; [ "$n" = 1 ] && verdict=rework
+      n=$(cat "$KOGEN_HARNESS_HOME/citing-reviews" 2>/dev/null || echo 0)
+      # An evidence addendum resumes the accepting session: not a new Review.
+      case "$input" in KOGEN_EVIDENCE_ADDENDUM*) addendum=1 ;; *) addendum=0; n=$((n + 1)); echo "$n" > "$KOGEN_HARNESS_HOME/citing-reviews" ;; esac
+      verdict=accept; [ "$n" = 1 ] && [ "$addendum" = 0 ] && verdict=rework
       tracking="$(printf '%s' "$input" | python3 -B -c 'import json,sys; lines=sys.stdin.read().splitlines(); i=max(i for i,v in enumerate(lines) if v=="KOGEN_TASK_CONTEXT"); print(json.loads(lines[i+1])["tracking_path"])')"
       printf '%s' "$input" | python3 -B "$helper" reviewer "$verdict" |
         python3 -B -c 'import json,sys; v=json.load(sys.stdin); t=sys.argv[1]; ev=[{"path":t[t.index(".kogen/runtime/"):],"locator":"the Build own tracking record","receipt":None}]; v["scenarios"][0]["evidence"]=ev; [f.__setitem__("evidence", ev) for f in v.get("findings", [])]; print(json.dumps(v))' "$tracking" >"$out"

@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "description": "Bundled .system skills that the pinned managed Codex runtime materializes into CODEX_HOME/skills/.system. The names are allowed only when the running runtime matches version, platform and executable sha256 below AND the observed .system tree digest and marker equal the recorded ones.",
+  "runtimes": [
+    {
+      "version": "0.158.0",
+      "platform": "darwin-arm64",
+      "executable_sha256": "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8",
+      "provenance": {
+        "artifact": "@openai/codex 0.158.0-darwin-arm64 (installer-verified npm tarball; see priv/kogen/codex/install.py PINNED_ARTIFACTS)",
+        "executable_source": ".kogen-runtime.json files[vendor/aarch64-apple-darwin/bin/codex].sha256 of the managed runtime",
+        "names_source": "skills/.system materialized by this executable into a fresh CODEX_HOME; two independent materializations produced the same tree digest",
+        "tree_digest_algorithm": "sha256 over sorted lines '<relative path>\\t<file sha256>\\n' of every regular file under .system except .codex-system-skills.marker"
+      },
+      "system_skills": {
+        "marker": "8bcfb84cfbe4722a",
+        "tree_digest": "9154c64a93823338efe718635ae6d711c011410790d2b61142929503db67faf2",
+        "file_count": 59,
+        "names": [
+          "imagegen",
+          "openai-docs",
+          "plugin-creator",
+          "review-agent",
+          "skill-creator",
+          "skill-installer"
+        ],
+        "cataloged_names": [
+          "imagegen",
+          "openai-docs",
+          "plugin-creator",
+          "skill-creator",
+          "skill-installer"
+        ]
+      }
+    },
+    {
+      "version": "0.159.0",
+      "platform": "darwin-arm64",
+      "executable_sha256": "e89718aa1969bfc4a471277bdc4679a3a3529293de0a309909822dfd67ddb77a",
+      "provenance": {
+        "artifact": "@openai/codex 0.159.0-darwin-arm64 (installer-verified npm tarball; see priv/kogen/codex/install.py PINNED_ARTIFACTS)",
+        "executable_source": ".kogen-runtime.json files[vendor/aarch64-apple-darwin/bin/codex].sha256 of the managed runtime",
+        "names_source": "skills/.system materialized by this executable into a fresh CODEX_HOME; two independent materializations produced the same tree digest",
+        "tree_digest_algorithm": "sha256 over sorted lines '<relative path>\\t<file sha256>\\n' of every regular file under .system except .codex-system-skills.marker"
+      },
+      "system_skills": {
+        "marker": "4af37f669ff79b4f",
+        "tree_digest": "3529b03e169ae37de78bf5cf6d8fcbcbfbd9c575301558b3b9a9a1507b28a482",
+        "file_count": 48,
+        "names": [
+          "imagegen",
+          "openai-docs",
+          "review-agent",
+          "skill-creator",
+          "skill-installer"
+        ],
+        "cataloged_names": [
+          "imagegen",
+          "openai-docs",
+          "skill-creator",
+          "skill-installer"
+        ]
+      }
+    },
+    {
+      "version": "0.159.2",
+      "platform": "darwin-arm64",
+      "executable_sha256": "16593cc2f422d5f398a8e40f550ebbaf1245392528957be342c295920a300704",
+      "provenance": {
+        "artifact": "@openai/codex 0.159.2-darwin-arm64 (installer-verified npm tarball; see priv/kogen/codex/install.py PINNED_ARTIFACTS)",
+        "executable_source": ".kogen-runtime.json files[vendor/aarch64-apple-darwin/bin/codex].sha256 of the managed runtime",
+        "names_source": "skills/.system materialized by this executable into a fresh CODEX_HOME; two independent materializations produced the same tree digest",
+        "tree_digest_algorithm": "sha256 over sorted lines '<relative path>\\t<file sha256>\\n' of every regular file under .system except .codex-system-skills.marker"
+      },
+      "system_skills": {
+        "marker": "4af37f669ff79b4f",
+        "tree_digest": "3529b03e169ae37de78bf5cf6d8fcbcbfbd9c575301558b3b9a9a1507b28a482",
+        "file_count": 48,
+        "names": [
+          "imagegen",
+          "openai-docs",
+          "review-agent",
+          "skill-creator",
+          "skill-installer"
+        ],
+        "cataloged_names": [
+          "imagegen",
+          "openai-docs",
+          "skill-creator",
+          "skill-installer"
+        ]
+      }
+    }
+  ]
+}

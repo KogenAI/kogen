@@ -21,6 +21,9 @@ targets:
     dependencies: [check]
     provider_backed: true
     owner: test/kogen/live_test.exs
+    covers: [test/kogen/live_test.exs]
+    requires_login: route
+    launched_roles: [reviewer]
     rehearsal:
       id: rehearse-live-general
       command: mix test --exclude live test/kogen/scenario_semantic_test.exs
@@ -39,6 +42,9 @@ targets:
     dependencies: [check]
     provider_backed: true
     owner: test/kogen/live_shaping_evaluation_test.exs
+    covers: [test/kogen/live_shaping_evaluation_test.exs]
+    requires_login: route
+    launched_roles: [shaping]
     # Rehearsed in check (scenario prepare-rehearsed-in-check): the driver's
     # own standalone setup, up to but not including the first provider
     # dispatch (evidence/probe-prepare/REPORT.md P6a).
@@ -68,6 +74,9 @@ targets:
     dependencies: [check]
     provider_backed: true
     owner: test/kogen/live_shaping_smoke_test.exs
+    covers: [test/kogen/live_shaping_smoke_test.exs]
+    requires_login: route
+    launched_roles: [shaping]
     # Same driver, `smoke` case (mechanics only, no grading; scenario
     # shaping-smoke-target).
     prepare: [python3, -B, test/support/shaping_evaluation/driver.py, --prepare, smoke]
@@ -94,10 +103,22 @@ targets:
     rank: 300
     dependencies: [check]
     provider_backed: true
+    same_tree_retry: 1
     owner:
       - test/kogen/codex_native_live_test.exs
       - test/kogen/codex_compatibility_test.exs
       - test/kogen/native_helper_live_test.exs
+    covers:
+      - test/kogen/codex_native_live_test.exs
+      - test/kogen/native_helper_live_test.exs
+      - test/support/native_helper_fixture.ex
+      - priv/kogen/codex/install.py
+      - priv/kogen/codex/native_settings.py
+      - priv/kogen/codex/compatibility/pty_driver.py
+      - lib/kogen/managed_runtime_ready.ex
+    requires_login: route
+    launched_roles: [developer]
+    prepare: [mix, run, -e, 'Kogen.ManagedRuntimeReady.prepare_for_target!()']
     rehearsal:
       id: rehearse-live-native
       command: mix test --exclude live test/kogen/codex_compatibility_preparation_test.exs test/kogen/live_native_receipt_audit_test.exs
@@ -109,13 +130,23 @@ targets:
       trace_assertions:
         - Kogen.Codex.Compatibility.prepare_fixture
         - Kogen.LiveNativeReceiptAudit.audit!
+      prepare_trace_assertions:
+        - Kogen.ManagedRuntimeReady.prepare!
 
   - name: live-reviewer-rework
     cost_class: provider-lifecycle
     rank: 400
     dependencies: [check]
     provider_backed: true
+    same_tree_retry: 1
     owner: test/kogen/live_reviewer_rework_test.exs
+    covers:
+      - test/kogen/live_reviewer_rework_test.exs
+      - test/support/live_reviewer_rework_fixture.ex
+      - priv/kogen/claude_code/install.py
+      - lib/kogen/claude_code.ex
+    requires_login: route
+    launched_roles: [developer, reviewer]
     # Rehearsed in check: the fixture's own setup, login-scope and
     # hook-toolchain resolution, up to but not including the first provider
     # dispatch (`mix kogen.build`).
@@ -128,7 +159,7 @@ targets:
       - -r
       - test/support/live_reviewer_rework_fixture.ex
       - -e
-      - Kogen.LiveReviewerReworkFixture.prepare_main()
+      - Kogen.ManagedRuntimeReady.prepare!(); Kogen.LiveReviewerReworkFixture.prepare_main()
     rehearsal:
       id: rehearse-live-reviewer-rework
       command: mix test --exclude live test/kogen/two_outer_resumptions_test.exs
@@ -141,6 +172,7 @@ targets:
         - Kogen.Build.Report.build
         - Kogen.Build.Contract.verdict
       prepare_trace_assertions:
+        - Kogen.ManagedRuntimeReady.prepare!
         - Kogen.LiveReviewerReworkFixture.setup_fixture
         - Kogen.LiveReviewerReworkFixture.precompile!
         - Kogen.ReviewPacketAudit.claude_scope_ready?
@@ -152,7 +184,15 @@ targets:
     rank: 500
     dependencies: [check]
     provider_backed: true
+    same_tree_retry: 1
     owner: test/kogen/live_shape_to_build_test.exs
+    covers:
+      - test/kogen/live_shape_to_build_test.exs
+      - lib/kogen/build.ex
+      - .kogen/config.yaml
+    requires_login: route
+    launched_roles: [shaping, developer, reviewer]
+    prepare: [mix, run, -e, 'Kogen.ManagedRuntimeReady.prepare_for_target!()']
     rehearsal:
       id: rehearse-live-shape-to-build
       command: mix test --exclude live test/kogen/verification_ownership_lifecycle_test.exs
@@ -166,3 +206,5 @@ targets:
         - Kogen.Build.Contract.load
         - Kogen.Build.Verification.initialize
         - Kogen.Build.Verification.settle
+      prepare_trace_assertions:
+        - Kogen.ManagedRuntimeReady.prepare!

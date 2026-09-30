@@ -21,6 +21,117 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     "cold-offline" => %{"test/kogen/cold_offline_test.exs" => 1}
   }
 
+  test "stale test names and changed live owners are advisory disclosures" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    scenario = %{
+      "id" => "coverage-disclosure",
+      "tests" => ["test a nonexistent exact readiness name"]
+    }
+
+    disclosures =
+      VerificationPlan.review_disclosures(
+        [scenario],
+        %{targets: ["check"]},
+        catalog,
+        ["test/kogen/native_helper_live_test.exs"],
+        @root
+      )
+
+    assert disclosures["test_name_mappings"]["enumeration_error"] == nil
+
+    assert disclosures["test_name_mappings"]["scenarios"] == [
+             %{
+               "scenario_id" => "coverage-disclosure",
+               "declared_names" => ["test a nonexistent exact readiness name"],
+               "absent_names" => ["test a nonexistent exact readiness name"]
+             }
+           ]
+
+    assert disclosures["changed_provider_coverage_gaps"] == [
+             %{
+               "target" => "live-native",
+               "paths" => ["test/kogen/native_helper_live_test.exs"]
+             }
+           ]
+
+    assert disclosures["disposition"] =~ "advisory only"
+  end
+
+  test "unavailable changed-path evidence is disclosed without blocking plan review" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    disclosures =
+      VerificationPlan.review_disclosures(
+        [],
+        %{targets: ["check"]},
+        catalog,
+        {:error, "git status unavailable"},
+        @root
+      )
+
+    assert disclosures["changed_paths_error"] == "git status unavailable"
+    assert disclosures["changed_provider_coverage_gaps"] == []
+  end
+
+  test "multiple paid targets and duplicate or unsorted mappings canonicalize to the plan" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    scenario = %{
+      "id" => "multiple-provider-targets",
+      "verified_by" => ["live-native", "check", "live-general", "check"],
+      "proof" => %{
+        "offline" => ["test/kogen/selective_verification_targets_test.exs"],
+        "paid_target" => "live-native",
+        "paid_reason" =>
+          "provider-required: live-native; observation: local checks cannot establish provider compatibility; offline-limit: the affected integration must run against the provider",
+        "affected_paths" => ["test/kogen/selective_verification_targets_test.exs"]
+      }
+    }
+
+    assert [] = VerificationPlan.verified_by_errors(scenario, catalog.targets)
+
+    assert {:ok, plan} =
+             VerificationPlan.build(
+               [scenario],
+               ["test/kogen/**"],
+               catalog,
+               @root
+             )
+
+    assert plan.targets == ["check", "live-general", "live-native"]
+
+    scenario = put_in(scenario, ["proof", "offline"], ["test/kogen/missing_required_test.exs"])
+
+    assert Enum.any?(
+             VerificationPlan.proof_errors([scenario], ["test/kogen/**"], catalog, @root),
+             fn
+               {"proof-selector-missing", "test/kogen/missing_required_test.exs"} -> true
+               _ -> false
+             end
+           )
+  end
+
+  test "changed paths report any provider owners missing from the selected targets" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+    changed = ["test/kogen/native_helper_live_test.exs", "test/support/unpredicted_fixture.ex"]
+
+    assert VerificationPlan.missing_changed_coverage(%{targets: ["check"]}, catalog, changed) ==
+             ["live-native"]
+
+    assert VerificationPlan.missing_changed_coverage(
+             %{targets: ["check", "live-native"]},
+             catalog,
+             changed
+           ) == []
+
+    assert VerificationPlan.missing_changed_coverage(
+             %{targets: ["check"]},
+             catalog,
+             ["test/support/unpredicted_fixture.ex"]
+           ) == []
+  end
+
   test "focused targets are declared and select every former live owner exactly once" do
     makefile_path = Path.join(@root, "Makefile")
     makefile = File.read!(makefile_path)
@@ -108,6 +219,132 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
         assert rehearsal["trace_assertions"] != []
       end
     end
+  end
+
+  test "selected Build provider targets bind coverage and route-derived login roles" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    assert {:ok, route} =
+             Intent.read_config(
+               Path.join(@root, ".kogen/config.yaml"),
+               "codex-dominant-adversarial-claude"
+             )
+
+    selected =
+      catalog.entries
+      |> Enum.filter(& &1["provider_backed"])
+      |> Enum.map(& &1["name"])
+
+    for target <- selected do
+      entry = catalog.targets[target]
+      assert entry["requires_login"] == "route"
+      assert entry["covers"] != []
+      assert entry["launched_roles"] != []
+    end
+
+    plan = %{login_roles: [:shaping, :developer, :reviewer]}
+    assert VerificationPlan.required_logins(plan, route) == ["codex", "claude"]
+
+    native = catalog.targets["live-native"]
+    assert native["covers"] |> Enum.member?("test/kogen/codex_native_live_test.exs")
+    refute native["covers"] |> Enum.member?("test/kogen/live_shaping_evaluation_test.exs")
+  end
+
+  test "a strict-coverage plan rejects a selected provider target whose coverage misses changed paths" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    {slug, approved_root, package} = coverage_fixture!()
+    assert {:ok, intent} = Intent.read(slug, approved_root)
+
+    assert {:ok, contract} = Contract.load(package, @root)
+
+    assert {:ok, plan} =
+             VerificationPlan.build(
+               contract.scenarios,
+               intent.may_change_guarded_paths,
+               catalog,
+               @root,
+               strict_coverage: true
+             )
+
+    assert plan.targets == ["check", "live-native"]
+
+    entries =
+      Enum.map(catalog.entries, fn entry ->
+        if entry["name"] == "live-native",
+          do: Map.put(entry, "covers", ["test/kogen/unrelated_test.exs"]),
+          else: entry
+      end)
+
+    altered = %{catalog | entries: entries, targets: Map.new(entries, &{&1["name"], &1})}
+
+    assert {:error, "selected provider target live-native covers no affected path"} =
+             VerificationPlan.build(
+               contract.scenarios,
+               intent.may_change_guarded_paths,
+               altered,
+               @root,
+               strict_coverage: true
+             )
+
+    # Legacy packages stay readable: without the explicit request the
+    # declared-path check is not applied.
+    assert {:ok, _plan} =
+             VerificationPlan.build(
+               contract.scenarios,
+               intent.may_change_guarded_paths,
+               altered,
+               @root
+             )
+  end
+
+  defp coverage_fixture! do
+    slug = "selective-coverage-fixture"
+
+    root =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-selective-coverage-#{System.unique_integer([:positive])}"
+      )
+
+    approved_root = Path.join(root, "approved")
+    package = Path.join(approved_root, slug)
+    File.mkdir_p!(package)
+    on_exit(fn -> File.rm_rf(root) end)
+
+    File.write!(
+      Path.join(package, "intent.yaml"),
+      Jason.encode!(%{
+        "id" => "01960000-0000-7000-8000-000000000102",
+        "slug" => slug,
+        "title" => "Selective coverage fixture",
+        "may_change_guarded_paths" => ["test/kogen/**"]
+      })
+    )
+
+    File.write!(
+      Path.join(package, "scenarios.yaml"),
+      Jason.encode!([
+        %{
+          "id" => "native-coverage",
+          "given" => "a change touches the native live test boundary",
+          "when" => "the verification plan is built",
+          "then" => "the selected live-native target covers that path",
+          "wrong_result" => "a selected provider target covers no affected path",
+          "verified_by" => ["check", "live-native"],
+          "evidence" => "the focused catalog coverage check",
+          "proof" => %{
+            "offline" => ["test/kogen/selective_verification_targets_test.exs"],
+            "paid_target" => "live-native",
+            "paid_reason" =>
+              "provider-required: live-native; observation: the native live test boundary is selected; offline-limit: offline planning cannot establish managed native runtime behavior",
+            "affected_paths" => ["test/kogen/codex_native_live_test.exs"]
+          }
+        }
+      ])
+    )
+
+    {slug, approved_root, package}
   end
 
   test "a helper Make target with no catalog metadata is allowed to load" do
@@ -395,11 +632,14 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
                VerificationPlan.build([scenario], ["selector.txt"], catalog, root)
     end
 
-    test "a verified_by out of catalog rank order is rejected", %{root: root, catalog: catalog} do
+    test "a verified_by out of catalog rank order is canonicalized", %{
+      root: root,
+      catalog: catalog
+    } do
       scenario = no_check_scenario(["helper", "test"], "none")
 
-      assert {:error, "scenario proof map is missing, unsafe, or inconsistent"} =
-               VerificationPlan.build([scenario], ["selector.txt"], catalog, root)
+      assert {:ok, plan} = VerificationPlan.build([scenario], ["selector.txt"], catalog, root)
+      assert plan.targets == ["test", "helper"]
     end
 
     test "a single offline target is accepted with no implicit check added", %{
@@ -503,7 +743,7 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     guards = intent_data["may_change_guarded_paths"] || []
     {:ok, %{add: added}} = Intent.catalog_changes(intent_data)
 
-    case Contract.load(path) do
+    case Contract.load(path, @root) do
       {:ok, contract} -> plan_build_status(contract, guards, catalog, added)
       {:error, reason} -> {:contract_error, reason}
     end

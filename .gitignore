@@ -17,5 +17,3 @@ __pycache__/
 .kogen/intents/drafts/
 .kogen/intents/approved/
 .kogen/intents/**/evidence/*-raw/
-
-/native/kogen-ctx/target/

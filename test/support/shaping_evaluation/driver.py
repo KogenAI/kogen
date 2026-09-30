@@ -422,9 +422,52 @@ def append_rehearsal_trace(name):
             handle.write(name + "\n")
 
 
-def setup_fixture(label, extra_files):
+FIXTURE_VALIDATION = HERE.parent / "fixture_validation.ex"
+
+
+def validate_generated_fixture(fixture, label, extra_files, draft=None):
+    """Validate the generated fixture, as the target will consume it, through
+    Kogen's real parsers (`Kogen.FixtureValidation`, run under `mix run`), and
+    return the record (including the input digest). Runs with providers denied
+    when the caller is a `--prepare`; fails closed on any invalid input, so a
+    malformed fixture is an offline failure before provider dispatch."""
+    spec = {"root": str(fixture), "kind": "shaping-evaluation", "label": label,
+            "require_denied": os.environ.get("KOGEN_PROVIDERS_DENIED") in ("1", "true"),
+            "required": ["README.md", "Makefile", "evidence/prerequisite_control.py",
+                         "evidence/current-prerequisite-receipt.json",
+                         "evidence/complete-input-receipt.json", *extra_files],
+            "json": ["evidence/current-prerequisite-receipt.json", "evidence/complete-input-receipt.json",
+                     *[name for name in extra_files if name.endswith(".json")]],
+            "yaml": [name for name in extra_files if name.endswith((".yaml", ".yml"))],
+            "makefile_targets": ["check", "live"], "readme_links": "README.md",
+            "input_receipt": "evidence/complete-input-receipt.json"}
+    if draft:
+        spec["draft"] = draft
+    spec_path = RUNTIME / f"{label}-fixture-validation-spec.json"
+    spec_path.write_text(json.dumps(spec))
+    try:
+        result = subprocess.run(
+            ["mix", "run", "--no-start", "-r", str(FIXTURE_VALIDATION), "-e",
+             "Kogen.FixtureValidation.main()", "--", str(spec_path)],
+            cwd=PROJECT, env={**os.environ, "MIX_ENV": "test"}, capture_output=True, text=True, timeout=180)
+    finally:
+        spec_path.unlink(missing_ok=True)
+    if result.returncode:
+        raise RuntimeError(f"{label}: generated fixture failed validation: "
+                           f"{bounded_output(result.stderr or result.stdout)}")
+    frames = [line for line in result.stdout.splitlines() if line.startswith("KOGEN_FIXTURE_VALIDATION\t")]
+    if len(frames) != 1:
+        raise RuntimeError(f"{label}: fixture validation reported {len(frames)} records")
+    return json.loads(frames[0].split("\t", 1)[1])
+
+
+def setup_fixture(label, extra_files, *, name=None, bootstrap=True):
+    """Generate the fixture for `label` and validate it. With `bootstrap=False`
+    only the input files are materialized (no git baseline, no compile) under
+    `name`, so `--prepare` can validate every case's inputs cheaply while the
+    prepared case still gets its complete setup."""
     append_rehearsal_trace("driver.setup_fixture")
-    fixture = RUNTIME / label
+    fixture = RUNTIME / (name or label)
     if fixture.exists(): raise RuntimeError(f"fixture exists: {fixture}")
     fixture.mkdir(parents=True)
     copy_fixture_source_tree(PROJECT, fixture, label)
@@ -442,6 +485,9 @@ def setup_fixture(label, extra_files):
     write_fixture_readme(fixture, label)
     verify_fixture_readme_links(fixture)
     write_complete_input_receipt(fixture, label)
+    if not bootstrap:
+        validate_generated_fixture(fixture, label, extra_files)
+        return fixture
     env={**os.environ,"GIT_AUTHOR_NAME":"Kogen Evaluation","GIT_AUTHOR_EMAIL":"eval@example.invalid","GIT_COMMITTER_NAME":"Kogen Evaluation","GIT_COMMITTER_EMAIL":"eval@example.invalid"}
     subprocess.run(["git","init","-q","-b","main"],cwd=fixture,check=True,env=env)
     subprocess.run(["git","add","-A"],cwd=fixture,check=True,env=env)
@@ -452,6 +498,8 @@ def setup_fixture(label, extra_files):
     (RUNTIME / f"{label}-precompile.log").write_text(compiled.stdout + compiled.stderr)
     if compiled.returncode:
         raise RuntimeError(f"fixture precompile failed: {compiled.returncode}")
+    record = validate_generated_fixture(fixture, label, extra_files)
+    (RUNTIME / f"{label}-fixture-inputs.json").write_text(json.dumps(record) + "\n")
     return fixture
 
 
@@ -730,13 +778,35 @@ def parser_code_paths(case, source):
 # parser is a pure function of both, so re-reading unchanged Draft bytes
 # (every turn check and the final projection) never re-spawns a BEAM.
 # Failures are never cached; each one re-runs and keeps its own evidence.
-PARSED_YAML = {}
+#
+# The memo is process-wide, not per loaded copy of this file: the integrity
+# and audit consumers each load their own driver module, and a per-module
+# memo made each of them re-boot a BEAM for bytes already parsed.
+import types as _types
+_MEMO = sys.modules.setdefault("kogen_shaping_yaml_memo", _types.ModuleType("kogen_shaping_yaml_memo"))
+if not hasattr(_MEMO, "parsed"):
+    _MEMO.parsed, _MEMO.locks, _MEMO.guard = {}, {}, threading.Lock()
+PARSED_YAML = _MEMO.parsed
+
+
+# Cases run concurrently, so identical bytes are parsed single-flight: the
+# first caller spawns the BEAM and the others wait for its cached result
+# instead of each booting their own.
+PARSE_LOCKS = _MEMO.locks
+PARSE_LOCKS_GUARD = _MEMO.guard
 
 
 def parse_yaml_document(contents, *, case, source):
     """Parse original Draft bytes through the current compiled YAML dependency."""
     paths = parser_code_paths(case, source)
     key = (tuple(paths), bytes(contents))
+    with PARSE_LOCKS_GUARD:
+        lock = PARSE_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        return _parse_yaml_document(contents, paths, key, case=case, source=source)
+
+
+def _parse_yaml_document(contents, paths, key, *, case, source):
     if key in PARSED_YAML:
         return json.loads(PARSED_YAML[key])
     code=("try do case YamlElixir.read_from_string(IO.binread(:stdio, :eof)) do "
@@ -1366,6 +1436,8 @@ def setup_continuation_seed():
     expanded = {str(path.relative_to(seed)): sha256(path) for path in sorted(seed.rglob("*")) if path.is_file()}
     (seed / "frozen-hashes.json").write_text(json.dumps(expanded, indent=2, sort_keys=True) + "\n")
     (RUNTIME / "continuation-seed-metadata.json").write_text(json.dumps({"kind":"test-authored frozen unfinished Draft seed; not a native visit", "baseline_head":head, "profiles":profiles, "fixture":"csv-continuation", "slug":slug}, indent=2) + "\n")
+    validate_generated_fixture(fixture, "csv-continuation-draft", csv_files(continuation=True),
+                               draft={"slug": slug, "frozen": str(seed)})
     return seed
 
 def run_suite():
@@ -1543,6 +1615,13 @@ def run_prepare(mode):
     fixture = None
     try:
         if mode == "suite":
+            # Every other suite case's generated inputs, exactly as its run
+            # will generate them (`setup_fixture` without git/compile).
+            for case, files in (("csv-flawed", csv_files()), ("csv-complete", csv_files(True)),
+                                ("booking-flawed", booking_files()), ("booking-complete", booking_files(True)),
+                                ("stateful-flawed", stateful_files(False)), ("stateful-complete", stateful_files(True))):
+                inputs = setup_fixture(case, files, name=f"validate-{case}", bootstrap=False)
+                shutil.rmtree(inputs, ignore_errors=True)
             setup_continuation_seed()
             fixture = RUNTIME / "csv-continuation"
         elif mode == "smoke":

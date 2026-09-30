@@ -5,7 +5,6 @@ defmodule Kogen.IsolationTest do
 
   test "independent children overlap and isolate cwd, environment, and temporary roots" do
     root = tmp_dir!()
-    original_cwd = File.cwd!()
     original_env = System.get_env("PROBE_LOCAL")
 
     tasks =
@@ -19,8 +18,13 @@ defmodule Kogen.IsolationTest do
       end
 
     for task <- tasks, do: assert({:ok, _} = Task.await(task, 10_000))
-    assert File.cwd!() == original_cwd
     assert System.get_env("PROBE_LOCAL") == original_env
+
+    # Each child starts at the explicit checkout root, whatever the shared
+    # parent VM's own (mutable) working directory is, and moves only itself.
+    test_root = System.fetch_env!("KOGEN_TEST_ROOT")
+    assert File.read!(Path.join(root, "a.start_cwd")) == test_root
+    assert File.read!(Path.join(root, "b.start_cwd")) == test_root
     assert File.read!(Path.join(root, "a.count")) == "once\n"
     assert File.read!(Path.join(root, "b.count")) == "once\n"
     a_tmp = File.read!(Path.join(root, "a.tmp"))
@@ -173,6 +177,103 @@ defmodule Kogen.IsolationTest do
       assert Regex.match?(~r/use (?:ExUnit.Case|Kogen.IsolatedCase),\s*async: true/, text),
              "#{source} must explicitly use async: true"
     end
+  end
+
+  # `setup` and `setup_all` of an isolated-case module also run in the shared
+  # parent VM, where a process-global mutation races every other module. Each
+  # mutation must sit inside an `if ...isolated_child?()` branch.
+  @global_mutations [
+    {[:System], :put_env},
+    {[:System], :delete_env},
+    {[:File], :cd},
+    {[:File], :cd!},
+    {[:Application], :put_env},
+    {[:Application], :put_all_env},
+    {[:Application], :delete_env}
+  ]
+
+  test "isolated-case setup mutates process-global state only behind isolated_child?()" do
+    violations =
+      for source <- Path.wildcard(Path.expand("*_test.exs", __DIR__)),
+          ast = source |> File.read!() |> Code.string_to_quoted!(),
+          uses_isolated_case?(ast),
+          {name, line} <- unguarded_setup_mutations(ast) do
+        "#{Path.relative_to(source, __DIR__)}:#{line} #{name}"
+      end
+
+    assert violations == [],
+           "setup in an isolated-case module mutates shared-VM state outside " <>
+             "`if isolated_child?()`:\n" <> Enum.join(violations, "\n")
+  end
+
+  defp uses_isolated_case?(ast) do
+    {_, found} =
+      Macro.prewalk(ast, false, fn
+        {:use, _, [{:__aliases__, _, [:Kogen, :IsolatedCase]} | _]} = node, _ -> {node, true}
+        node, acc -> {node, acc}
+      end)
+
+    found
+  end
+
+  defp unguarded_setup_mutations(ast) do
+    {_, {bodies, named, defs}} =
+      Macro.prewalk(ast, {[], [], %{}}, fn
+        {setup, _, args} = node, {bodies, named, defs} when setup in [:setup, :setup_all] ->
+          case List.wrap(args) do
+            [name] when is_atom(name) -> {node, {bodies, [name | named], defs}}
+            args -> {node, {[args | bodies], named, defs}}
+          end
+
+        {kind, _, [{name, _, _}, [do: body]]} = node, {bodies, named, defs}
+        when kind in [:def, :defp] and is_atom(name) ->
+          {node, {bodies, named, Map.update(defs, name, [body], &[body | &1])}}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    named_bodies = Enum.flat_map(named, &Map.get(defs, &1, []))
+
+    Enum.flat_map(bodies ++ named_bodies, &mutations(&1, false))
+  end
+
+  # Walks `node` and returns `{"Module.function", line}` for each mutation not
+  # inside a branch of an `if` whose condition calls `isolated_child?`.
+  defp mutations({:if, _, [condition | branches]}, guarded?) do
+    guarded? = guarded? or mentions_guard?(condition)
+    mutations(condition, guarded?) ++ Enum.flat_map(branches, &mutations(&1, guarded?))
+  end
+
+  defp mutations({{:., _, [{:__aliases__, _, aliases}, function]}, meta, args} = node, guarded?) do
+    own =
+      if not guarded? and {aliases, function} in @global_mutations,
+        do: [{"#{Enum.join(aliases, ".")}.#{function}", meta[:line]}],
+        else: []
+
+    _ = node
+    own ++ Enum.flat_map(args, &mutations(&1, guarded?))
+  end
+
+  defp mutations({left, _, right}, guarded?),
+    do: mutations(left, guarded?) ++ mutations(right, guarded?)
+
+  defp mutations({left, right}, guarded?),
+    do: mutations(left, guarded?) ++ mutations(right, guarded?)
+
+  defp mutations(list, guarded?) when is_list(list),
+    do: Enum.flat_map(list, &mutations(&1, guarded?))
+
+  defp mutations(_other, _guarded?), do: []
+
+  defp mentions_guard?(condition) do
+    {_, found} =
+      Macro.prewalk(condition, false, fn
+        {{:., _, [_, :isolated_child?]}, _, _} = node, _ -> {node, true}
+        node, acc -> {node, acc}
+      end)
+
+    found
   end
 
   test "the offline provider denial shim fails closed and leaves a receipt" do

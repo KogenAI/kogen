@@ -11,6 +11,8 @@ defmodule Kogen.LiveShapingSmokeTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  @project_root Path.expand("../..", __DIR__)
+
   @moduletag :live
   @tag isolated_required_output_prefix: "KOGEN_TARGET_EVIDENCE_MANIFEST"
   @tag isolated_required_output_manifest: true
@@ -19,7 +21,7 @@ defmodule Kogen.LiveShapingSmokeTest do
   @moduletag timeout: 600_000
 
   test "one real public smoke session starts, ends its turns on task_complete, delivers the scripted answer, and emits one manifest locator" do
-    root = File.cwd!()
+    root = @project_root
     support = Path.join(root, "test/support/shaping_evaluation")
 
     runtime =

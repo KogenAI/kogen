@@ -31,6 +31,7 @@ defmodule Kogen.WorkspaceFixture do
   outer_resumptions: 2
   verification_retries: 2
   offline_retries: 4
+  max_developer_resumptions: 40
   """
 
   @claude_config """
@@ -48,6 +49,7 @@ defmodule Kogen.WorkspaceFixture do
   outer_resumptions: 2
   verification_retries: 2
   offline_retries: 4
+  max_developer_resumptions: 40
   """
 
   @hybrid_config """
@@ -56,8 +58,8 @@ defmodule Kogen.WorkspaceFixture do
     hybrid:
       shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
       developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
-      expert:    {harness: codex, model: gpt-6-sol, effort: high}
+      reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+      expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
       helpers:
         claude:
           scout:  {model: claude-sonnet-5, effort: low}
@@ -68,6 +70,7 @@ defmodule Kogen.WorkspaceFixture do
   outer_resumptions: 2
   verification_retries: 2
   offline_retries: 4
+  max_developer_resumptions: 40
   """
 
   @makefile """

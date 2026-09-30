@@ -48,7 +48,7 @@ sys.exit(0)
 
 platform = installer.platform_name()
 installer._owned_directory(root / "runtimes")
-for version in ["0.154.0", "0.156.1", "0.200.0"]:
+for version in ["0.154.0", installer.INITIAL_VERSION, "0.200.0"]:
     target = installer._runtime(root, version, platform)
     executable, resources = installer._required_paths(platform)
     for relative in [executable, *resources]:
