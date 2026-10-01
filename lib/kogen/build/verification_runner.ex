@@ -31,8 +31,9 @@ defmodule Kogen.Build.VerificationRunner do
   def scrubbed_names, do: @scrubbed
 
   @doc """
-  Runs `make <target>` in `root` (the Candidate), writing combined output to
-  `log_path`. Returns the run facts and the log's bytes and digest.
+  Runs `make <target>` in `root` (the Candidate), unless `opts[:argv]` supplies
+  a frozen project command. Writes combined output to `log_path` and returns
+  run facts with the log's bytes and digest.
 
   Option `:control_root` names the control checkout: unless the caller set
   one, the child's `KOGEN_LIVE_LOG_DIR` is control's
@@ -49,14 +50,21 @@ defmodule Kogen.Build.VerificationRunner do
   def run_target(root, target, log_path, opts \\ []) do
     with :ok <- valid_target(target),
          :ok <- live_route(opts),
-         {:ok, facts} <-
-           run(
-             ["make", "-C", Path.expand(root), target],
-             root,
-             log_path,
-             route_env(live_log_dir(opts))
-           ) do
+         {:ok, argv} <- target_argv(root, target, opts),
+         {:ok, facts} <- run(argv, root, log_path, route_env(live_log_dir(opts))) do
       {:ok, put_route(facts, opts)}
+    end
+  end
+
+  defp target_argv(root, target, opts) do
+    argv = Keyword.get(opts, :argv, ["make", "-C", Path.expand(root), target])
+
+    if is_list(argv) and argv != [] and
+         Enum.all?(argv, &(is_binary(&1) and not String.contains?(&1, <<0>>))) and
+         String.trim(hd(argv)) != "" do
+      {:ok, argv}
+    else
+      {:error, "verification argv must be a nonempty list of strings without NUL bytes"}
     end
   end
 

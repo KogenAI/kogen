@@ -14,8 +14,8 @@ defmodule Kogen.Build.Contract do
   @ownership_fields ~w(paths when_exists owner_after_creation owner_during_operation permitted_mutation validation git_state upgrade_behavior)
 
   @spec load(String.t()) :: {:ok, map()} | {:error, String.t()}
-  # `root` is the checkout whose Makefile declares the targets (the control
-  # root in a Build).
+  # `root` is the control checkout. Its project.yaml checks declare targets
+  # when present; legacy engine fixtures still use their Makefile inventory.
   def load(slug_or_path, root \\ ".")
 
   def load(slug_or_path, root) when is_binary(slug_or_path) do

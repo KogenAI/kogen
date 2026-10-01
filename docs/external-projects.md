@@ -37,6 +37,30 @@ missing. It never runs setup or fetches dependencies automatically. Project
 checks are resolved into JSON-safe argv records; the raw configuration and
 resolved command set each receive a SHA-256 for an admitted run to freeze.
 
+### Project-owned checks
+
+When `.kogen/project.yaml` exists, its ordered `checks` list supplies the
+project's verification targets. Each name must be a safe lowercase target
+name and each check is a nonpaid project command with no inferred
+dependencies. The frozen verification catalog records the exact project.yaml
+bytes, their digest, and the digest of resolved commands; project catalogs do
+not claim engine test-surface integrity. A project with a missing declared
+setup prerequisite or unavailable check executable is refused before a check
+can be dispatched.
+
+The verification plan resolves each frozen command for the Candidate. If its
+executable came from inside the control checkout, the same relative path must
+exist as an executable in the Candidate; a symlink that escapes the Candidate
+is refused. Executables resolved outside the project, such as a tool found on
+PATH, remain external tools. Runner callers pass the resolved argv directly,
+and the child still runs under process custody with the usual scrubbed
+environment, timeout, log, and exit-status receipt.
+
+The project configuration remains the source of command names and arguments.
+No command is dispatched until a controller invokes the runner with the
+frozen argv. Legacy engine fixtures without `.kogen/project.yaml` continue to
+use the verification-target catalog and Makefile inventory.
+
 Every command runs against the explicitly selected Git root. Build admission
 requires a committed HEAD on any attached branch in a clean primary worktree.
 Linked worktrees are refused. Shape may inspect dirty, detached or linked

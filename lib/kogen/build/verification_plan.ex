@@ -1,26 +1,36 @@
 defmodule Kogen.Build.VerificationPlan do
   @moduledoc """
-  Loads and freezes the repository verification-target catalog and turns the
-  scenario proof declarations into one deterministic execution/readiness plan.
+  Loads and freezes either the target project's declared checks or the
+  repository verification catalog, then plans scenario proof and readiness.
   """
 
   @catalog_path "priv/kogen/verification_targets.yaml"
   @aggregate_names ~w(live live-all)
   # Controller volatile state a base workspace must never inherit.
   @volatile_paths ~w(.kogen/runtime .kogen/build.lock .kogen/codex .codex/sessions)
+  import Bitwise, only: [band: 2]
   alias Kogen.Check.MakeInventory
 
   @doc "Repository-relative path of the verification-target catalog."
   def catalog_path, do: @catalog_path
 
   @doc """
-  Loads and validates the catalog in `root`. Besides the targets, a catalog
+  Loads the project-owned checks in `root` when `.kogen/project.yaml` exists;
+  otherwise it loads and validates the engine catalog. The engine catalog
   may declare the integrity fields `verification_surface` (`tests` and
   `runner` globs), `focused_runner` (an argv template with one `{paths}`
   element) and `base_cache` (paths copied into the base workspace). They are
   present together or not at all; without them `integrity` is `nil`.
   """
   def load(root \\ File.cwd!()) do
+    if project_config_present?(root) do
+      load_project_catalog(root)
+    else
+      load_engine_catalog(root)
+    end
+  end
+
+  defp load_engine_catalog(root) do
     path = Path.join(root, @catalog_path)
 
     with {:ok, bytes} <- File.read(path),
@@ -54,6 +64,160 @@ defmodule Kogen.Build.VerificationPlan do
         {:error, "verification target catalog is malformed"}
     end
   end
+
+  defp load_project_catalog(root) do
+    with {:ok, project} <- Kogen.Check.open_project(root),
+         {:ok, bytes} <- File.read(project.config_path),
+         true <- sha256(bytes) == project.config_sha256,
+         {:ok, entries} <- project_entries(project.checks),
+         :ok <- validate_catalog(entries),
+         {:ok, ordered} <- order(entries) do
+      targets = Map.new(entries, &{&1["name"], &1})
+
+      {:ok,
+       %{
+         path: project.config_path,
+         bytes: bytes,
+         sha256: project.config_sha256,
+         commands_sha256: project.commands_sha256,
+         entries: entries,
+         targets: targets,
+         ordered_targets: Enum.map(ordered, & &1["name"]),
+         integrity: nil,
+         project_root: project.root,
+         engine_root: project.engine_root
+       }}
+    else
+      false ->
+        {:error, "project.yaml changed while its check commands were being resolved"}
+
+      {:error, reason} when is_binary(reason) ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error, "could not load project check configuration: #{inspect(reason)}"}
+
+      _ ->
+        {:error, "project check configuration is malformed"}
+    end
+  end
+
+  defp project_config_present?(root) do
+    path = Path.join([Path.expand(root), ".kogen", "project.yaml"])
+
+    case File.lstat(path) do
+      {:ok, _info} -> true
+      {:error, _reason} -> false
+    end
+  end
+
+  defp project_entries(checks) do
+    checks
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {check, rank}, {:ok, entries} ->
+      name = check["name"]
+
+      if Kogen.Check.valid_target_name?(name) do
+        entry = %{
+          "name" => name,
+          "argv" => check["argv"],
+          "cost_class" => "project",
+          "rank" => rank,
+          "depends_on" => [],
+          "provider_backed" => false,
+          "owner" => "project",
+          "rehearsal" => nil
+        }
+
+        {:cont, {:ok, [entry | entries]}}
+      else
+        {:halt,
+         {:error, "project check name is not a safe verification target: #{inspect(name)}"}}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
+      error -> error
+    end
+  end
+
+  @doc "Resolves a frozen project check executable into the Candidate checkout."
+  def command(%{project_root: project_root, targets: targets}, target, candidate_root) do
+    case Map.get(targets, target) do
+      %{"argv" => [executable | args]} ->
+        with true <- Kogen.Check.valid_target_name?(target),
+             {:ok, argv} <- rebind_project_argv([executable | args], project_root, candidate_root) do
+          {:ok, argv}
+        else
+          false -> {:error, "refused unsafe project check name: #{inspect(target)}"}
+          {:error, reason} -> {:error, reason}
+        end
+
+      _ ->
+        {:error, "project check is missing from the frozen catalog: #{inspect(target)}"}
+    end
+  end
+
+  def command(_catalog, target, _candidate_root),
+    do: {:error, "target is not a frozen project check: #{inspect(target)}"}
+
+  defp candidate_executable(executable, project_root, candidate_root) do
+    executable = Path.expand(executable)
+
+    if within?(executable, project_root) do
+      relative = Path.relative_to(executable, project_root)
+      candidate = relative |> Path.expand(candidate_root) |> Kogen.ProjectScope.canonical()
+
+      if within?(candidate, candidate_root) do
+        validate_executable(candidate, "Candidate project executable is unavailable")
+      else
+        {:error, "Candidate project executable escapes its checkout: #{relative}"}
+      end
+    else
+      validate_executable(executable, "frozen project executable is unavailable")
+    end
+  end
+
+  defp canonical_directory(path) do
+    canonical = Kogen.ProjectScope.canonical(path)
+
+    case File.stat(canonical) do
+      {:ok, %{type: :directory}} -> {:ok, canonical}
+      _ -> {:error, "Candidate project root is not an available directory: #{path}"}
+    end
+  end
+
+  defp validate_executable(path, message) do
+    case File.stat(path) do
+      {:ok, %{type: :regular, mode: mode}} when band(mode, 0o111) != 0 ->
+        {:ok, path}
+
+      _ ->
+        {:error, "#{message}: #{path}"}
+    end
+  end
+
+  defp within?(path, root) do
+    path_parts = Path.split(Path.expand(path))
+    root_parts = Path.split(Path.expand(root))
+    Enum.take(path_parts, length(root_parts)) == root_parts
+  end
+
+  defp rebind_project_argv([executable | args], project_root, candidate_root) do
+    with {:ok, candidate_root} <- canonical_directory(candidate_root),
+         {:ok, executable} <- candidate_executable(executable, project_root, candidate_root) do
+      {:ok, [executable | args]}
+    end
+  end
+
+  defp rebind_project_argv(_argv, _project_root, _candidate_root),
+    do: {:error, "frozen project check argv is malformed"}
+
+  defp project_commands(targets, %{project_root: _root} = catalog) do
+    Map.new(targets, &{&1, catalog.targets[&1]["argv"]})
+  end
+
+  defp project_commands(_targets, _catalog), do: %{}
 
   @doc """
   Builds the plan. `verified_by` is the complete, explicit list of targets a
@@ -97,6 +261,9 @@ defmodule Kogen.Build.VerificationPlan do
          affected_paths: affected,
          rehearsals: rehearsals,
          catalog_sha256: catalog.sha256,
+         commands_sha256: Map.get(catalog, :commands_sha256),
+         project_root: Map.get(catalog, :project_root),
+         project_commands: project_commands(ordered, catalog),
          login_roles: login_roles(ordered, catalog),
          scenarios: Enum.map(scenarios, &scenario_proof(&1, catalog))
        }}
@@ -467,6 +634,14 @@ defmodule Kogen.Build.VerificationPlan do
 
   @doc "Focused development observations for the current changed paths; never gate receipts."
   def readiness_commands(plan, changed_paths, root \\ File.cwd!()) do
+    if is_binary(Map.get(plan, :project_root)) do
+      project_readiness_commands(plan, root)
+    else
+      engine_readiness_commands(plan, changed_paths, root)
+    end
+  end
+
+  defp engine_readiness_commands(plan, changed_paths, root) do
     relevant_scenarios =
       Enum.filter(plan.scenarios, fn scenario ->
         affected = Map.get(scenario, "affected_paths", [])
@@ -492,6 +667,17 @@ defmodule Kogen.Build.VerificationPlan do
 
     ["mix format", "python3 -B scripts/check/changed_credo.py"] ++
       Enum.uniq(changed_tests ++ tests)
+  end
+
+  defp project_readiness_commands(plan, candidate_root) do
+    Enum.map(plan.targets, fn target ->
+      argv = Map.get(plan.project_commands, target)
+
+      case rebind_project_argv(argv, plan.project_root, candidate_root) do
+        {:ok, resolved} -> Enum.map_join(resolved, " ", &shell_quote/1)
+        {:error, reason} -> "project check #{target} is unavailable: #{reason}"
+      end
+    end)
   end
 
   @doc "Exact optional `tests:` names absent from the Candidate's non-live dry run."
@@ -564,6 +750,18 @@ defmodule Kogen.Build.VerificationPlan do
     Enum.reject(plan.offline, fn selector ->
       MapSet.member?(rehearsal_ids, selector) or File.exists?(Path.join(root, selector))
     end)
+  end
+
+  def unchanged?(%{project_root: root, engine_root: engine} = catalog) do
+    with {:ok, bytes} <- File.read(catalog.path),
+         true <- bytes == catalog.bytes,
+         {:ok, project} <- Kogen.Check.open_project(root),
+         true <- project.engine_root == engine,
+         true <- project.commands_sha256 == catalog.commands_sha256 do
+      true
+    else
+      _ -> false
+    end
   end
 
   def unchanged?(catalog), do: File.read(catalog.path) == {:ok, catalog.bytes}

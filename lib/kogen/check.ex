@@ -6,7 +6,7 @@ defmodule Kogen.Check do
   on `Kogen.Harness`: whether a Verification Record is trustworthy must be
   decidable without knowing anything about how the Developer was launched.
   """
-  use Boundary, deps: [], exports: [MakeInventory]
+  use Boundary, deps: [Kogen.EngineResources, Kogen.Project], exports: [MakeInventory]
   alias __MODULE__.MakeInventory
 
   @record_path ".kogen/runtime/verification.json"
@@ -123,15 +123,58 @@ defmodule Kogen.Check do
   end
 
   @doc """
-  Validates every name in `names` is both a safe shell token and a target
-  actually declared in the Makefile. No target name is special. Must be called, and must succeed, before the Developer is
-  launched.
+  Validates every name in `names` is safe and declared in `.kogen/project.yaml`
+  when present, otherwise in the Makefile. Must succeed before the Developer
+  is launched.
   """
   @spec validate_targets([String.t()], Path.t()) :: :ok | {:error, String.t()}
   def validate_targets(names, makefile_path \\ "Makefile") do
-    with {:ok, %{targets: declared}} <- MakeInventory.load(makefile_path) do
-      validate_declared_names(names, declared)
+    if project_config_present?(makefile_path) do
+      validate_project_targets(names, makefile_path)
+    else
+      with {:ok, %{targets: declared}} <- MakeInventory.load(makefile_path) do
+        validate_declared_names(names, declared)
+      end
     end
+  end
+
+  defp validate_project_targets(names, makefile_path) do
+    project_root = Path.dirname(Path.expand(makefile_path))
+
+    with {:ok, project} <- open_project(project_root) do
+      declared = MapSet.new(project.checks, & &1["name"])
+      validate_project_names(names, declared)
+    end
+  end
+
+  @doc "Opens the project's declared commands without executing them."
+  def open_project(project_root),
+    do: Kogen.Project.open(project_root, Kogen.EngineResources.root())
+
+  defp project_config_present?(makefile_path) do
+    config = Path.join([Path.dirname(Path.expand(makefile_path)), ".kogen", "project.yaml"])
+
+    case File.lstat(config) do
+      {:ok, _info} -> true
+      {:error, _reason} -> false
+    end
+  end
+
+  defp validate_project_names(names, declared) do
+    names
+    |> Enum.uniq()
+    |> Enum.reduce_while(:ok, fn name, :ok ->
+      cond do
+        not valid_target_name?(name) ->
+          {:halt, {:error, "refused unsafe target name: #{inspect(name)}"}}
+
+        not MapSet.member?(declared, name) ->
+          {:halt, {:error, "undeclared project check: #{name}"}}
+
+        true ->
+          {:cont, :ok}
+      end
+    end)
   end
 
   defp validate_declared_names(names, declared) do
