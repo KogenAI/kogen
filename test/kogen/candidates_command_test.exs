@@ -375,6 +375,150 @@ defmodule Kogen.CandidatesCommandTest do
     refute File.exists?(candidate.path)
   end
 
+  test "mix kogen.candidates.remove accepts a registered generated ID beginning with a hyphen",
+       %{p: p} do
+    build_id = "-abcdefghijklmnopqrstuvw"
+    assert byte_size(build_id) == 24
+
+    candidate =
+      new_worktree(p.control, "mu12", build_id, p.commit)
+      |> write_owner!("stopped: integrity")
+
+    assert git!(p.control, ["worktree", "list", "--porcelain"]) =~ candidate.path
+
+    output =
+      capture_io(fn ->
+        File.cd!(p.control, fn -> CandidatesRemove.run([candidate.build_id]) end)
+      end)
+
+    assert output =~ "removed worktree #{candidate.path}"
+    assert output =~ "removed branch #{candidate.branch}"
+    assert output =~ "removed owner record #{candidate.owner_path}"
+    refute File.exists?(candidate.path)
+    refute branch_exists?(p.control, candidate.branch)
+    refute File.exists?(candidate.owner_path)
+  end
+
+  test "mix kogen.candidates.remove keeps the discard flag explicit for an unreachable double-hyphen generated ID",
+       %{p: p} do
+    build_id = "--abcdefghijklmnopqrstuv"
+    assert byte_size(build_id) == 24
+
+    candidate = new_worktree(p.control, "nu13", build_id, p.commit)
+    commit = commit_in_worktree(candidate, "nu change\n")
+    candidate = write_owner!(candidate, "accepted-unpublished: branch main moved", commit)
+
+    error =
+      assert_raise Mix.Error, fn ->
+        capture_io(fn ->
+          File.cd!(p.control, fn -> CandidatesRemove.run([build_id]) end)
+        end)
+      end
+
+    assert Exception.message(error) =~ "--discard-accepted"
+    assert File.exists?(candidate.path)
+    assert File.exists?(candidate.owner_path)
+    assert branch_exists?(p.control, candidate.branch)
+
+    output =
+      capture_io(fn ->
+        File.cd!(p.control, fn ->
+          CandidatesRemove.run([build_id, "--discard-accepted", "--"])
+        end)
+      end)
+
+    assert output =~ "removed worktree #{candidate.path}"
+    refute File.exists?(candidate.path)
+    refute branch_exists?(p.control, candidate.branch)
+    refute File.exists?(candidate.owner_path)
+  end
+
+  test "mix kogen.candidates.remove protects a generated hyphen ID before a trailing option sentinel",
+       %{p: p} do
+    build_id = "-abcdefghijklmnopqrstuvw"
+    assert byte_size(build_id) == 24
+
+    candidate =
+      new_worktree(p.control, "pi16", build_id, p.commit)
+      |> write_owner!("stopped: integrity")
+
+    output =
+      capture_io(fn ->
+        File.cd!(p.control, fn -> CandidatesRemove.run([build_id, "--"]) end)
+      end)
+
+    assert output =~ "removed worktree #{candidate.path}"
+    refute File.exists?(candidate.path)
+    refute branch_exists?(p.control, candidate.branch)
+    refute File.exists?(candidate.owner_path)
+  end
+
+  test "mix kogen.candidates.remove accepts a generated ID after the discard flag and before a sentinel",
+       %{p: p} do
+    build_id = "--cdefghijklmnopqrstuvwx"
+    assert byte_size(build_id) == 24
+
+    candidate =
+      new_worktree(p.control, "rho17", build_id, p.commit)
+      |> write_owner!("stopped: integrity")
+
+    output =
+      capture_io(fn ->
+        File.cd!(p.control, fn ->
+          CandidatesRemove.run(["--discard-accepted", build_id, "--"])
+        end)
+      end)
+
+    assert output =~ "removed worktree #{candidate.path}"
+    refute File.exists?(candidate.path)
+    refute branch_exists?(p.control, candidate.branch)
+    refute File.exists?(candidate.owner_path)
+  end
+
+  test "mix kogen.candidates.remove accepts the explicit option sentinel before a hyphenated ID",
+       %{p: p} do
+    candidate =
+      new_worktree(p.control, "xi14", "-manual-id", p.commit)
+      |> write_owner!("stopped: integrity")
+
+    output =
+      capture_io(fn ->
+        File.cd!(p.control, fn -> CandidatesRemove.run(["--", candidate.build_id]) end)
+      end)
+
+    assert output =~ "removed worktree #{candidate.path}"
+    refute File.exists?(candidate.path)
+    refute File.exists?(candidate.owner_path)
+  end
+
+  test "mix kogen.candidates.remove still refuses unknown flags and extra positional arguments",
+       %{p: p} do
+    candidate =
+      new_worktree(p.control, "omicron15", "p15badargs", p.commit)
+      |> write_owner!("stopped: integrity")
+
+    unknown_flag =
+      assert_raise Mix.Error, fn ->
+        capture_io(fn ->
+          File.cd!(p.control, fn -> CandidatesRemove.run(["--bogus"]) end)
+        end)
+      end
+
+    assert Exception.message(unknown_flag) =~ "usage: mix kogen.candidates.remove"
+
+    extra_argument =
+      assert_raise Mix.Error, fn ->
+        capture_io(fn ->
+          File.cd!(p.control, fn -> CandidatesRemove.run([candidate.build_id, "extra"]) end)
+        end)
+      end
+
+    assert Exception.message(extra_argument) =~ "usage: mix kogen.candidates.remove"
+    assert File.exists?(candidate.path)
+    assert File.exists?(candidate.owner_path)
+    assert branch_exists?(p.control, candidate.branch)
+  end
+
   # -- Then: every survivor keeps its worktree, branch, harness home and owner record
 
   test "Q's Candidate is not listed by P and survives every removal made from P", %{p: p, q: q} do

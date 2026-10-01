@@ -26,16 +26,42 @@ defmodule Mix.Tasks.Kogen.Candidates.Remove do
   """
 
   @usage "usage: mix kogen.candidates.remove <build-id> [--discard-accepted]"
+  @generated_build_id ~r/\A[A-Za-z0-9_-]{24}\z/
 
   @impl Mix.Task
   def run(args) do
+    {args, protected_ids} = protect_generated_ids(args)
+
     case OptionParser.parse(args, strict: [discard_accepted: :boolean]) do
-      {options, [build_id], []} when build_id != "" ->
-        remove(build_id, Keyword.get(options, :discard_accepted, false))
+      {options, positional, []} ->
+        case positional ++ protected_ids do
+          [build_id] when build_id != "" ->
+            remove(build_id, Keyword.get(options, :discard_accepted, false))
+
+          _usage ->
+            Mix.raise(@usage)
+        end
 
       _usage ->
         Mix.raise(@usage)
     end
+  end
+
+  # Tracking IDs are 24-character base64url strings. A leading `-` makes
+  # OptionParser interpret one as an option and discard it as a positional
+  # argument. Protect only that generated shape before OptionParser's first
+  # explicit `--` boundary; the boundary and suffix keep their normal meaning.
+  # All other option validation stays strict, including the known discard flag.
+  defp protect_generated_ids(args) do
+    {before_sentinel, sentinel_and_after} = Enum.split_while(args, &(&1 != "--"))
+    {protected, ordinary} = Enum.split_with(before_sentinel, &generated_id_argument?/1)
+
+    {ordinary ++ sentinel_and_after, protected}
+  end
+
+  defp generated_id_argument?(arg) do
+    arg != "--discard-accepted" and String.starts_with?(arg, "-") and
+      Regex.match?(@generated_build_id, arg)
   end
 
   defp remove(build_id, discard?) do
