@@ -76,3 +76,32 @@ s. `git diff --check` passed. No full gate was run, so the global inventory
 and total-gate timing after this integration are not measured. The earlier
 ProgressBudget sensitivity controls remain documented above; this follow-on
 moves existing checks and introduces no product-code behavior.
+
+## Follow-on: Git publication test cross-product
+
+This unit starts from `24424530`. `test/kogen/git_test.exs` is byte-identical
+to the qualified `e1b43716` source, whose receipt records 42 `GitTest` cases
+and 120.526 s summed module duration. The module parameterizes seven Git
+scenarios across all six tests, but only `preserves Git behavior for each
+scenario` reads the `scenario` value. Five focused publication-validation
+tests therefore recreate a real temporary Git repository for every unrelated
+matrix entry. Two of those tests also allocate 6 MiB payloads.
+
+The five publication tests now run once in `Kogen.GitPublicationTest`. All
+seven parameterized scenarios still run unchanged, including the wrong-path
+rejection case. The publication checks still allow the previous implementation
+and file sizes, reject a non-ignored runtime path, and exclude a file deleted
+from the base. The group moves from 42 invocations to 12 (seven matrix cases
+plus five single tests), removing 30 repeated invocations. All six source-level
+test definitions and assertions remain; the file grows from 331 to 341 lines
+for the sibling module and shared test-fixture calls. No case was excluded
+or weakened.
+
+Focused ordinary validation ran `MIX_ENV=test mix test
+test/kogen/git_test.exs --warnings-as-errors --seed 1`: 12 passed, 3.3 s
+ExUnit / 4.69 s wall (including compilation). With `KOGEN_WARM_POOL=1`, the
+same focused suite passed 12 tests in 1.7 s ExUnit / 2.35 s wall. `mix format
+--check-formatted test/kogen/git_test.exs` passed in 0.23 s, and `mix credo
+--strict test/kogen/git_test.exs` passed 69 checks on one file in 0.39 s.
+`git diff --check` passed. No full or live gate was run; this measures only
+the retained Git test group and does not establish a whole-suite time change.

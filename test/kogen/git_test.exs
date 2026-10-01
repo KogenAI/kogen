@@ -8,6 +8,8 @@ defmodule Kogen.GitTest do
   directory, so every test uses `File.cd!/2` into its own disposable temp
   repo and each case runs in an isolated OS process.
   """
+  # Only the scenario test varies across these cases. Publication-size and
+  # path checks live in a single-run module below.
   use Kogen.IsolatedCase,
     async: true,
     parameterize: [
@@ -31,102 +33,6 @@ defmodule Kogen.GitTest do
 
   test "preserves Git behavior for each scenario", %{scenario: scenario} do
     run_scenario(scenario)
-  end
-
-  test "validate_prospective_publication accepts a small implementation and small package" do
-    dir = tmp_repo!()
-    base = git_in!(dir, ["rev-parse", "HEAD"])
-
-    File.write!(Path.join(dir, "small.txt"), "small change\n")
-
-    package = [
-      {"", :directory, 0o755},
-      {"note.txt", :regular, 0o644, "small approved note\n"}
-    ]
-
-    assert Git.validate_prospective_publication(
-             dir,
-             base,
-             package,
-             ".kogen/intents/complete/sample"
-           ) == :ok
-  end
-
-  test "validate_prospective_publication accepts implementation and package over previous size caps" do
-    dir = tmp_repo!()
-    base = git_in!(dir, ["rev-parse", "HEAD"])
-
-    six_mib = :binary.copy(<<0>>, 6 * 1024 * 1024)
-    File.write!(Path.join(dir, "implementation.bin"), six_mib)
-
-    package = [
-      {"", :directory, 0o755},
-      {"blob.bin", :regular, 0o644, six_mib}
-    ]
-
-    assert :ok =
-             Git.validate_prospective_publication(
-               dir,
-               base,
-               package,
-               ".kogen/intents/complete/sample"
-             )
-  end
-
-  test "validate_prospective_publication accepts a single untracked blob over the previous file cap" do
-    dir = tmp_repo!()
-    base = git_in!(dir, ["rev-parse", "HEAD"])
-
-    oversized = :binary.copy(<<0>>, 6 * 1024 * 1024)
-    File.write!(Path.join(dir, "huge_untracked.bin"), oversized)
-
-    package = [{"", :directory, 0o755}]
-
-    assert :ok =
-             Git.validate_prospective_publication(
-               dir,
-               base,
-               package,
-               ".kogen/intents/complete/sample"
-             )
-  end
-
-  test "validate_prospective_publication rejects a non-ignored .kogen/runtime/ path" do
-    dir = tmp_repo!()
-    base = git_in!(dir, ["rev-parse", "HEAD"])
-
-    File.mkdir_p!(Path.join(dir, ".kogen/runtime"))
-    File.write!(Path.join(dir, ".kogen/runtime/x"), "runtime artifact\n")
-
-    package = [{"", :directory, 0o755}]
-
-    assert {:error, message} =
-             Git.validate_prospective_publication(
-               dir,
-               base,
-               package,
-               ".kogen/intents/complete/sample"
-             )
-
-    assert message =~ ".kogen/runtime/x"
-  end
-
-  test "validate_prospective_publication does not count a file deleted relative to base" do
-    dir = tmp_repo!()
-    File.write!(Path.join(dir, "gone.txt"), "will be deleted\n")
-    commit_all_in!(dir, "add file that will be deleted")
-    base = git_in!(dir, ["rev-parse", "HEAD"])
-
-    File.rm!(Path.join(dir, "gone.txt"))
-
-    package = [{"", :directory, 0o755}]
-
-    assert Git.validate_prospective_publication(
-             dir,
-             base,
-             package,
-             ".kogen/intents/complete/sample"
-           ) == :ok
   end
 
   defp run_scenario(:untracked_candidate) do
@@ -275,7 +181,7 @@ defmodule Kogen.GitTest do
 
   # -- helpers -------------------------------------------------------------
 
-  defp tmp_repo! do
+  def tmp_repo! do
     dir = Path.join(System.tmp_dir!(), "kogen-git-test-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
@@ -296,12 +202,12 @@ defmodule Kogen.GitTest do
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", message], env: @git_env)
   end
 
-  defp commit_all_in!(dir, message) do
+  def commit_all_in!(dir, message) do
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", message], cd: dir, env: @git_env)
   end
 
-  defp git_in!(dir, args) do
+  def git_in!(dir, args) do
     {out, 0} = System.cmd("git", args, cd: dir)
     String.trim(out)
   end
@@ -327,5 +233,109 @@ defmodule Kogen.GitTest do
     after
       File.rm(path)
     end
+  end
+end
+
+defmodule Kogen.GitPublicationTest do
+  @moduledoc false
+  use Kogen.IsolatedCase, async: true
+
+  alias Kogen.Git
+  alias Kogen.GitTest, as: Fixture
+
+  test "validate_prospective_publication accepts a small implementation and small package" do
+    dir = Fixture.tmp_repo!()
+    base = Fixture.git_in!(dir, ["rev-parse", "HEAD"])
+
+    File.write!(Path.join(dir, "small.txt"), "small change\n")
+
+    package = [
+      {"", :directory, 0o755},
+      {"note.txt", :regular, 0o644, "small approved note\n"}
+    ]
+
+    assert Git.validate_prospective_publication(
+             dir,
+             base,
+             package,
+             ".kogen/intents/complete/sample"
+           ) == :ok
+  end
+
+  test "validate_prospective_publication accepts implementation and package over previous size caps" do
+    dir = Fixture.tmp_repo!()
+    base = Fixture.git_in!(dir, ["rev-parse", "HEAD"])
+
+    six_mib = :binary.copy(<<0>>, 6 * 1024 * 1024)
+    File.write!(Path.join(dir, "implementation.bin"), six_mib)
+
+    package = [
+      {"", :directory, 0o755},
+      {"blob.bin", :regular, 0o644, six_mib}
+    ]
+
+    assert :ok =
+             Git.validate_prospective_publication(
+               dir,
+               base,
+               package,
+               ".kogen/intents/complete/sample"
+             )
+  end
+
+  test "validate_prospective_publication accepts a single untracked blob over the previous file cap" do
+    dir = Fixture.tmp_repo!()
+    base = Fixture.git_in!(dir, ["rev-parse", "HEAD"])
+
+    oversized = :binary.copy(<<0>>, 6 * 1024 * 1024)
+    File.write!(Path.join(dir, "huge_untracked.bin"), oversized)
+
+    package = [{"", :directory, 0o755}]
+
+    assert :ok =
+             Git.validate_prospective_publication(
+               dir,
+               base,
+               package,
+               ".kogen/intents/complete/sample"
+             )
+  end
+
+  test "validate_prospective_publication rejects a non-ignored .kogen/runtime/ path" do
+    dir = Fixture.tmp_repo!()
+    base = Fixture.git_in!(dir, ["rev-parse", "HEAD"])
+
+    File.mkdir_p!(Path.join(dir, ".kogen/runtime"))
+    File.write!(Path.join(dir, ".kogen/runtime/x"), "runtime artifact\n")
+
+    package = [{"", :directory, 0o755}]
+
+    assert {:error, message} =
+             Git.validate_prospective_publication(
+               dir,
+               base,
+               package,
+               ".kogen/intents/complete/sample"
+             )
+
+    assert message =~ ".kogen/runtime/x"
+  end
+
+  test "validate_prospective_publication does not count a file deleted relative to base" do
+    dir = Fixture.tmp_repo!()
+    File.write!(Path.join(dir, "gone.txt"), "will be deleted\n")
+    Fixture.commit_all_in!(dir, "add file that will be deleted")
+    base = Fixture.git_in!(dir, ["rev-parse", "HEAD"])
+
+    File.rm!(Path.join(dir, "gone.txt"))
+
+    package = [{"", :directory, 0o755}]
+
+    assert Git.validate_prospective_publication(
+             dir,
+             base,
+             package,
+             ".kogen/intents/complete/sample"
+           ) == :ok
   end
 end
