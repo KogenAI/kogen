@@ -1,0 +1,349 @@
+{
+  "purpose": "Exact production-only source and adaptation provenance for runtime/kh.",
+  "source_bundle": {
+    "path": "/Users/almirsarajcic/Areas/Kogen/transfers/kh-source-c288d11/kh-source.bundle",
+    "sha256": "36c12b86099395f844f65402e0509049261be545bab8ab2f84491eebc34c4992"
+  },
+  "production_snapshot": {
+    "path": "/Users/almirsarajcic/Areas/Kogen/recovery-review-2026-10-01/native-source/c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+    "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e"
+  },
+  "selection": {
+    "primary_base_commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+    "continuation_commit": "f41e08d8aa2d786072fc45e8e6d2e8d45c0a6b28",
+    "admission_guard_commit": "830fd5877b1d520e51ccc431567d4f4a0d64581d",
+    "custody": "B011 parent-death Bash behavior retained from exact c288d11 procs/bash sources; process registration is narrowed to explicit runtime session ids.",
+    "effort_patch": {
+      "packet": "B004-v10",
+      "path": "/Users/almirsarajcic/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/overnight-benchmark-packets/B004-v10/max-effort-prerequisite.patch",
+      "sha256": "39ed6d62626b09a742495dbb6cdaa096bead0486b9098cec17a472745c373208",
+      "applied_scope": "Only Kh.Models ChatGPT max mapping for gpt-6-luna, gpt-6-astra and gpt-6.1-sol; max is sent as max."
+    },
+    "reconciliation": "B002/V13 files are reconciled on c288d11. B005 elapsed validation is adapted to the programmatic checkpoint binding. B011 process custody is kept from c288d11. V14 commit 6501c1730c3fad7048d209c6132c7b68f3a4b68a was reviewed but its pre-turn_start checkpoint edit is excluded.",
+    "excluded": "Upstream CLI, benchmark grader/evaluator material, Claude backend and exclusive tests, unused OpenCode provider platform, auth secrets, build scripts and benchmark harness."
+  },
+  "reviewed_packets": [
+    {
+      "id": "B024-v1",
+      "path": "/Users/almirsarajcic/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/overnight-benchmark-packets/B024-v1/packet.md",
+      "sha256": "82a38c3617e4ab268cfdf54913af634c3eab2d423f59d8328f624e7d4710c9a6"
+    },
+    {
+      "id": "B011-v2",
+      "path": "/Users/almirsarajcic/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/overnight-benchmark-packets/B011-v2/packet.md",
+      "sha256": "6ba29406b68e22fa5f3ea2e73f490751f130710e95e852f151b23bfb3ad31657"
+    },
+    {
+      "id": "B002-v1",
+      "path": "/Users/almirsarajcic/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/overnight-benchmark-packets/B002-v1/packet.md",
+      "sha256": "340cfc6a3ae9a3fb407c562ea57a0babf426658dcecd4b36af7f0f04392ad4ef"
+    },
+    {
+      "id": "B005-v2",
+      "path": "/Users/almirsarajcic/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/overnight-benchmark-packets/B005-v2/packet.md",
+      "sha256": "434c0e4756c389917e039203fd75c67457f95314d35894eb08917b8a2ce03e02"
+    },
+    {
+      "id": "B004-v10",
+      "path": "/Users/almirsarajcic/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/overnight-benchmark-packets/B004-v10/packet.md",
+      "sha256": "ba06dedb302a4fdd0da964c9e013daf8505eb8bdcf8159ab8c0d3026b838e472"
+    }
+  ],
+  "files": [
+    {
+      "target_path": "runtime/README.md",
+      "target_sha256": "028a17f89d87ce3d4f9ed4ffb9a3986a66fe11183666e1c5b8362d96ed984b08",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/.gitignore",
+      "target_sha256": "d77870892f11096f520b28e644f44f42131f66d2986a5535a97e432c5d4b7f23",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/README.md",
+      "target_sha256": "2bdfc7019c423f8cfc5592088804c3bf5071f5bf2036d54c829ee483e9ff0648",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/agent.ex",
+      "target_sha256": "8f7a7bf63c15c4db350f5de8ac16e2a216cadb0fbfd18a8eebbf272b4f4dadb3",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/agent.ex",
+          "git_blob": "0fbe865df5857768d918e11018d64965a62a754a",
+          "sha256": "a1cfeccf7b836cf0f019b1ae5560568cba086feaa0cb31aca68c5a5222e71e80"
+        },
+        {
+          "series": "B002 qualified V13",
+          "commit": "f41e08d8aa2d786072fc45e8e6d2e8d45c0a6b28",
+          "path": "lib/kh/agent.ex",
+          "git_blob": "bcb0f92af99afa0d11a6fa6393e63e1c65c8ce84",
+          "sha256": "a26aa1926a72a6b3d77632886aa94aa0ebfa4ab21d360e2e5cff972b7c67da73"
+        },
+        {
+          "series": "B005 elapsed admission source",
+          "commit": "830fd5877b1d520e51ccc431567d4f4a0d64581d",
+          "path": "lib/kh/agent.ex",
+          "git_blob": "dcd4009a529b13c2cb117eae0febdb56bfed142a",
+          "sha256": "3129a41f68b54d3c2fad7831926d64d6b60b584d34bfcb143698e1c458cca5ae"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/checkpoint.ex",
+      "target_sha256": "5fccd68ab382ba56ad27728a535d7e8d6b607f5f275349e391b2feb24cf6ab25",
+      "origins": [
+        {
+          "series": "B002 qualified V13",
+          "commit": "f41e08d8aa2d786072fc45e8e6d2e8d45c0a6b28",
+          "path": "lib/kh/checkpoint.ex",
+          "git_blob": "357536319279dd53adb3b63517d21b9aa5944586",
+          "sha256": "53c40de789c730467736d267289164fc3519f24b381e60c1e41c3e92990976ba"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/http.ex",
+      "target_sha256": "4ee3fbd63e48d7d95f0170fda96155ca6e1e88249ced0a25f0376cd07086fc2a",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/http.ex",
+          "git_blob": "1fd6edda34e414dfc40c99bf842af99a840893f1",
+          "sha256": "4ee3fbd63e48d7d95f0170fda96155ca6e1e88249ced0a25f0376cd07086fc2a"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/models.ex",
+      "target_sha256": "4d07ec0d6bfe62e953bf0db8039b1f2c2f0960956efb4b827ceb489b9d503ca6",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/models.ex",
+          "git_blob": "21320a31951154423b0bf2a185fd430c1fbf4839",
+          "sha256": "c203db42618bd5200a7d663436f821943aca7e6e061c403b2f27ff8f65c169ff"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/procs.ex",
+      "target_sha256": "072e349ff9222e725bd7085425d935f0aa9974c18455087d92fa322bcf8396b7",
+      "origins": [
+        {
+          "series": "B011 parent-death custody at c288d11",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/procs.ex",
+          "git_blob": "93c805a5058112bcf18c6721dec0b3a6325dad9c",
+          "sha256": "0bd33b2ce1cef96149e5fbb5cfd0ecc1c0d5a49c7777ebf18f2696d2cf3ec79d"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/provider.ex",
+      "target_sha256": "cc40beb18db0fade43720880a16057fc44ca37f1d200d7515d268f538d1e07c2",
+      "origins": [
+        {
+          "series": "B002 qualified V13",
+          "commit": "f41e08d8aa2d786072fc45e8e6d2e8d45c0a6b28",
+          "path": "lib/kh/provider.ex",
+          "git_blob": "3447c31698f69eb381fc7629d5e07afe29447fac",
+          "sha256": "bcbed39b3d0bcc5ce535592d49c97c5212558fcf307d7f5347b17c383c29b98c"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/provider/responses.ex",
+      "target_sha256": "3ded7768ca3d18209f47ec34e72a4ad000c60448fecc72417f820542cc0c2f56",
+      "origins": [
+        {
+          "series": "B002 qualified V13",
+          "commit": "f41e08d8aa2d786072fc45e8e6d2e8d45c0a6b28",
+          "path": "lib/kh/provider/responses.ex",
+          "git_blob": "1c52ca475b9f42f226afa403d7cff6623dadd65f",
+          "sha256": "96ecde5d090e7a6a4dc981e42e93204b6ec567470a7caaee578d28c218e8bdeb"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/provider/scripted.ex",
+      "target_sha256": "1130174d11e2f787af4b3f48466ddf63149b2b5034e04d9f2b3423eea65fc4d8",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/resume_binding.ex",
+      "target_sha256": "0bca5867f83003eb78569b77f55dec42589105c879768752fe40272bbe2226d8",
+      "origins": [
+        {
+          "series": "B002 qualified V13",
+          "commit": "f41e08d8aa2d786072fc45e8e6d2e8d45c0a6b28",
+          "path": "lib/kh/resume_binding.ex",
+          "git_blob": "97762194824b1c809ec17e4dc78c2c95c6c00afb",
+          "sha256": "0bca5867f83003eb78569b77f55dec42589105c879768752fe40272bbe2226d8"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/session.ex",
+      "target_sha256": "dced91aa59a3c444f8e744d4a6d39bc3f307212aafc9f7c68d161568da9eb807",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/sse.ex",
+      "target_sha256": "9d40550f658c3e9a46c416c633915cfe953af43b9dd538b1f20e4d34f3f4eace",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/sse.ex",
+          "git_blob": "777bcc492431b13edce152377b9674a0725695bc",
+          "sha256": "9d40550f658c3e9a46c416c633915cfe953af43b9dd538b1f20e4d34f3f4eace"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/tools.ex",
+      "target_sha256": "c97a369f5897d269de21710c53bf11266f6c22d9096d4e1b3106ca1aeb049d26",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/tools.ex",
+          "git_blob": "0caa758061f90c55138baf5264e465f4a7178ded",
+          "sha256": "5051d82735793df4ceb2afe6d3b4a3613db683b24668fdd8970bc294eba82eea"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/tools/bash.ex",
+      "target_sha256": "8793d824a025e9b96653248b59c103ab3b9e27c26e8f71db2941388d3ec3bd22",
+      "origins": [
+        {
+          "series": "B011 parent-death custody at c288d11",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/tools/bash.ex",
+          "git_blob": "d1c36a3e161869e45e9e5a21b79d253dc3fff7e6",
+          "sha256": "d9d952bf15e374656c1edba5c9f6328aec252314e71d8b881202daa9c5e26c0e"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/tools/edit.ex",
+      "target_sha256": "cc1f45c1a818f6d1cb836ed3318c99fdce5328dae87e6f8d199861aee33091e5",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/tools/edit.ex",
+          "git_blob": "78826e3c9badc5c95913766e67817895809f791d",
+          "sha256": "cc1f45c1a818f6d1cb836ed3318c99fdce5328dae87e6f8d199861aee33091e5"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/tools/read.ex",
+      "target_sha256": "b082dd0577530277223deaa2d33adc8a04a1c07616dd17c6b56ade4ff16529a5",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/tools/read.ex",
+          "git_blob": "2c4f60ae4cf5448ba9fafe0b662bb8d9b1237fd0",
+          "sha256": "b082dd0577530277223deaa2d33adc8a04a1c07616dd17c6b56ade4ff16529a5"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/tools/write.ex",
+      "target_sha256": "cb11531ec936bcab26c85b066554eec00c5e3275cb989f7b0513a5dac99914ed",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/tools/write.ex",
+          "git_blob": "50e4e28f66ebd43920aacfea22f0ae3c78e43714",
+          "sha256": "cb11531ec936bcab26c85b066554eec00c5e3275cb989f7b0513a5dac99914ed"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/trunc.ex",
+      "target_sha256": "7d84beb44c329fe35d1b5be1853b29676d694757b868d9bcece38434af1e78d3",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/trunc.ex",
+          "git_blob": "f8a8b4aa39f8807e0b192db09dd8ee76365367b4",
+          "sha256": "7d84beb44c329fe35d1b5be1853b29676d694757b868d9bcece38434af1e78d3"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/util.ex",
+      "target_sha256": "10ae4ca63e0328c8016497f89322410baac635fcd5c57cfec84c5295cc35069d",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/util.ex",
+          "git_blob": "40b826f2085a163389e9afad35935bd1336f95bf",
+          "sha256": "10ae4ca63e0328c8016497f89322410baac635fcd5c57cfec84c5295cc35069d"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/lib/kh/version.ex",
+      "target_sha256": "ca5bdcc0a0d5a9c7aef58e5f68578d636b50771f9d058fb9eec24123c30deab2",
+      "origins": [
+        {
+          "series": "c288d11 production base",
+          "commit": "c288d11b94ddcf1552d40df5db15bf5068b0db8e",
+          "path": "lib/kh/version.ex",
+          "git_blob": "cfb3e17c762b5e04086c90f58a83f79836e26e07",
+          "sha256": "ca5bdcc0a0d5a9c7aef58e5f68578d636b50771f9d058fb9eec24123c30deab2"
+        }
+      ]
+    },
+    {
+      "target_path": "runtime/kh/mix.exs",
+      "target_sha256": "09ba7042e4356f40aa03dc8a474e197b8d19b6638f942fc69b782cc2e0bfd694",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/test/models_test.exs",
+      "target_sha256": "e2ac89179d0ee9d7844199107dedb45945da04331dfca60adc9a7f3253cf6ec1",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/test/session_test.exs",
+      "target_sha256": "bacb835f48410a2ff2398e2b6b6dc88751fe11083e9050e885e6505f575213f4",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/test/stream_test.exs",
+      "target_sha256": "3acd5fd401f34298fa471d9045c7c5eab4569591b2865bde23c2d1d83ab4ed4e",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    },
+    {
+      "target_path": "runtime/kh/test/test_helper.exs",
+      "target_sha256": "b086ec47f0c6c7aaeb4cffca5ae5243dd05e0dc96ab761ced93325d5315f4b12",
+      "origins": [],
+      "authored_for": "bounded production runtime import"
+    }
+  ]
+}
