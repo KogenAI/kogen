@@ -21,22 +21,103 @@ Usage:
 Global options:
   --project PATH  Git checkout to work on (default: current directory)
   --engine PATH   Kogen engine checkout (or KOGEN_ENGINE_ROOT)
-  -h, --help      Show this help
+  -h, --help      Show this help; 'help' is also accepted
 
 Commands:
-  shape --brief FILE [--configuration NAME] [--request-id RID]
+  shape start --brief FILE [--configuration NAME] [--request-id RID]
+  shape input SESSION --file FILE
+  shape present SESSION
+  shape approve SESSION --presentation ID [--request-id RID]
+  shape status SESSION
+  shape cancel SESSION [--request-id RID]
+  shape resume SESSION --file FILE
+  build SLUG [--configuration NAME]
+  result SESSION
+
+Use 'kogen shape --help' or a command's '--help' for its syntax. Arguments
+are handled by the engine. Relative input paths are resolved there from the
+directory where kogen was invoked. The default engine path is the Kogen
+checkout used to build this binary.
+";
+
+const SHAPE_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape <command> [args...]
+
+Shaping commands:
+  start --brief FILE [--configuration NAME] [--request-id RID]
   input SESSION --file FILE
   present SESSION
   approve SESSION --presentation ID [--request-id RID]
-  build SLUG [--configuration NAME]
   status SESSION
   cancel SESSION [--request-id RID]
   resume SESSION --file FILE
-  result SESSION
 
-The command and its remaining arguments are handled by the engine. Relative
-input paths are resolved there from the directory where kogen was invoked.
-The default engine path is the Kogen checkout used to build this binary.
+Use 'kogen shape <command> --help' for command details. Global options are
+listed by 'kogen --help'.
+";
+
+const SHAPE_START_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape start --brief FILE [--configuration NAME] [--request-id RID]
+
+Start a Shaping session from a brief file.
+";
+
+const SHAPE_INPUT_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape input SESSION --file FILE
+
+Record the requested input for an existing Shaping session.
+";
+
+const SHAPE_PRESENT_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape present SESSION
+
+Show the current presentation for an existing Shaping session.
+";
+
+const SHAPE_APPROVE_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape approve SESSION --presentation ID [--request-id RID]
+
+Approve the specified presentation for an existing Shaping session.
+";
+
+const SHAPE_STATUS_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape status SESSION
+
+Show the current status of a Shaping session.
+";
+
+const SHAPE_CANCEL_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape cancel SESSION [--request-id RID]
+
+Cancel an existing Shaping session.
+";
+
+const SHAPE_RESUME_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] shape resume SESSION --file FILE
+
+Resume an existing Shaping session with a brief file.
+";
+
+const BUILD_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] build SLUG [--configuration NAME]
+
+Build the approved Intent with the specified slug.
+";
+
+const RESULT_HELP: &str = "\
+Usage:
+  kogen [--project PATH] [--engine PATH] result SESSION
+
+Read the result or current status for a session.
 ";
 
 const ENGINE_EXPRESSION: &str = "Kogen.Command.main(System.argv())";
@@ -70,7 +151,7 @@ impl fmt::Display for CliError {
 }
 
 enum Invocation {
-    Help,
+    Help(&'static str),
     Command {
         project: Option<PathBuf>,
         engine: Option<PathBuf>,
@@ -100,15 +181,17 @@ fn run(args: Vec<OsString>) -> Result<u8, CliError> {
         })?;
 
     let invocation = parse_args(args)?;
-    let Invocation::Command {
-        project,
-        engine,
-        command,
-        args,
-    } = invocation
-    else {
-        print!("{HELP}");
-        return Ok(0);
+    let (project, engine, command, args) = match invocation {
+        Invocation::Help(help) => {
+            print!("{help}");
+            return Ok(0);
+        }
+        Invocation::Command {
+            project,
+            engine,
+            command,
+            args,
+        } => (project, engine, command, args),
     };
 
     let git_local_env = git_local_env_vars()?;
@@ -140,7 +223,7 @@ fn parse_args(args: Vec<OsString>) -> Result<Invocation, CliError> {
         let token = &args[position];
         if token == OsStr::new("--help") || token == OsStr::new("-h") || token == OsStr::new("help")
         {
-            return Ok(Invocation::Help);
+            return Ok(Invocation::Help(HELP));
         }
 
         if token == OsStr::new("--project") {
@@ -168,13 +251,21 @@ fn parse_args(args: Vec<OsString>) -> Result<Invocation, CliError> {
         }
 
         if let Some(name) = token.to_str().filter(|name| COMMANDS.contains(name)) {
-            let command = OsString::from(name);
-            let rest = args[position + 1..].to_vec();
+            let rest = &args[position + 1..];
+            if name == "shape" {
+                return parse_shape(project, engine, rest);
+            }
+
+            let help = command_help(name);
+            if requests_help(rest) {
+                return Ok(Invocation::Help(help));
+            }
+
             return Ok(Invocation::Command {
                 project,
                 engine,
-                command,
-                args: rest,
+                command: OsString::from(name),
+                args: rest.to_vec(),
             });
         }
 
@@ -191,7 +282,78 @@ fn parse_args(args: Vec<OsString>) -> Result<Invocation, CliError> {
         )));
     }
 
-    Err(CliError::usage("a command is required"))
+    if args.is_empty() {
+        Ok(Invocation::Help(HELP))
+    } else {
+        Err(CliError::usage("a command is required"))
+    }
+}
+
+fn parse_shape(
+    project: Option<PathBuf>,
+    engine: Option<PathBuf>,
+    args: &[OsString],
+) -> Result<Invocation, CliError> {
+    let Some(first) = args.first() else {
+        return Ok(Invocation::Help(SHAPE_HELP));
+    };
+
+    if first == OsStr::new("help") || first == OsStr::new("-h") || first == OsStr::new("--help") {
+        return Ok(Invocation::Help(SHAPE_HELP));
+    }
+
+    let Some(first_text) = first.to_str() else {
+        return Err(CliError::usage("invalid shape command"));
+    };
+
+    let (command, rest, help) = match first_text {
+        "start" => ("shape", &args[1..], SHAPE_START_HELP),
+        "input" => ("input", &args[1..], SHAPE_INPUT_HELP),
+        "present" => ("present", &args[1..], SHAPE_PRESENT_HELP),
+        "approve" => ("approve", &args[1..], SHAPE_APPROVE_HELP),
+        "status" => ("status", &args[1..], SHAPE_STATUS_HELP),
+        "cancel" => ("cancel", &args[1..], SHAPE_CANCEL_HELP),
+        "resume" => ("resume", &args[1..], SHAPE_RESUME_HELP),
+        _ if first_text.starts_with('-') => ("shape", args, SHAPE_START_HELP),
+        _ => {
+            return Err(CliError::usage(format!(
+                "unknown shape command: {first_text}"
+            )));
+        }
+    };
+
+    if requests_help(rest) {
+        return Ok(Invocation::Help(help));
+    }
+
+    Ok(Invocation::Command {
+        project,
+        engine,
+        command: OsString::from(command),
+        args: rest.to_vec(),
+    })
+}
+
+fn requests_help(args: &[OsString]) -> bool {
+    args.iter()
+        .any(|argument| argument == OsStr::new("--help") || argument == OsStr::new("-h"))
+        || args
+            .first()
+            .is_some_and(|first| first == OsStr::new("help"))
+}
+
+fn command_help(command: &str) -> &'static str {
+    match command {
+        "build" => BUILD_HELP,
+        "result" => RESULT_HELP,
+        "input" => SHAPE_INPUT_HELP,
+        "present" => SHAPE_PRESENT_HELP,
+        "approve" => SHAPE_APPROVE_HELP,
+        "status" => SHAPE_STATUS_HELP,
+        "cancel" => SHAPE_CANCEL_HELP,
+        "resume" => SHAPE_RESUME_HELP,
+        _ => HELP,
+    }
 }
 
 fn take_global_value<'a>(

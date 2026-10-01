@@ -262,6 +262,153 @@ fn default_project_must_be_a_git_checkout() {
 }
 
 #[test]
+fn grouped_shape_operations_normalize_to_engine_argv() {
+    let area = TestArea::new("grouped shape operations");
+    let project = area.dir("selected project");
+    let engine = area.dir("selected engine");
+    let caller = area.dir("caller directory");
+    init_git_checkout(&project);
+    create_engine(&engine);
+    let fake_mix = FakeMix::install(&area);
+    let project = project.canonicalize().unwrap();
+    let project_text = project.to_str().unwrap();
+    let engine = engine.canonicalize().unwrap();
+    let engine_text = engine.to_str().unwrap();
+    let invocation_root = caller.canonicalize().unwrap();
+    let cases: &[(&str, &[&str], &str, &[&str])] = &[
+        (
+            "start",
+            &[
+                "--brief",
+                "./drafts/feature brief.md",
+                "--configuration",
+                "nightly route",
+                "--request-id",
+                "rid 42",
+            ],
+            "shape",
+            &[
+                "--brief",
+                "./drafts/feature brief.md",
+                "--configuration",
+                "nightly route",
+                "--request-id",
+                "rid 42",
+            ],
+        ),
+        (
+            "input",
+            &["session id", "--file", "./answers/input file.md"],
+            "input",
+            &["session id", "--file", "./answers/input file.md"],
+        ),
+        ("present", &["session id"], "present", &["session id"]),
+        (
+            "approve",
+            &[
+                "session id",
+                "--presentation",
+                "presentation 7",
+                "--request-id",
+                "rid 42",
+            ],
+            "approve",
+            &[
+                "session id",
+                "--presentation",
+                "presentation 7",
+                "--request-id",
+                "rid 42",
+            ],
+        ),
+        ("status", &["session id"], "status", &["session id"]),
+        (
+            "cancel",
+            &["session id", "--request-id", "rid 42"],
+            "cancel",
+            &["session id", "--request-id", "rid 42"],
+        ),
+        (
+            "resume",
+            &["session id", "--file", "./answers/resume file.md"],
+            "resume",
+            &["session id", "--file", "./answers/resume file.md"],
+        ),
+    ];
+
+    for (subcommand, supplied, engine_command, expected_rest) in cases {
+        let mut args = vec![
+            "--project",
+            project_text,
+            "--engine",
+            engine_text,
+            "shape",
+            subcommand,
+        ];
+        args.extend_from_slice(supplied);
+        let output = run_cli(&caller, &args, &fake_mix, 0);
+
+        assert_eq!(output.status.code(), Some(0), "{subcommand}");
+        let mut expected = vec![
+            "run",
+            "--no-compile",
+            "-e",
+            "Kogen.Command.main(System.argv())",
+            "--",
+            "--project",
+            project_text,
+            "--invocation-root",
+            invocation_root.to_str().unwrap(),
+            engine_command,
+        ];
+        expected.extend_from_slice(expected_rest);
+        fake_mix.assert_capture(&expected, &engine);
+    }
+}
+
+#[test]
+fn build_and_result_remain_top_level_engine_operations() {
+    let area = TestArea::new("top-level build and result");
+    let project = area.dir("selected project");
+    let engine = area.dir("selected engine");
+    let caller = area.dir("caller directory");
+    init_git_checkout(&project);
+    create_engine(&engine);
+    let fake_mix = FakeMix::install(&area);
+    let project = project.canonicalize().unwrap();
+    let engine = engine.canonicalize().unwrap();
+    let invocation_root = caller.canonicalize().unwrap();
+    let project_text = project.to_str().unwrap();
+    let engine_text = engine.to_str().unwrap();
+    let cases: &[(&str, &[&str])] = &[
+        ("build", &["greet", "--configuration", "nightly route"]),
+        ("result", &["session id"]),
+    ];
+
+    for (command, rest) in cases {
+        let mut args = vec!["--project", project_text, "--engine", engine_text, command];
+        args.extend_from_slice(rest);
+        let output = run_cli(&caller, &args, &fake_mix, 0);
+
+        assert_eq!(output.status.code(), Some(0), "{command}");
+        let mut expected = vec![
+            "run",
+            "--no-compile",
+            "-e",
+            "Kogen.Command.main(System.argv())",
+            "--",
+            "--project",
+            project_text,
+            "--invocation-root",
+            invocation_root.to_str().unwrap(),
+            command,
+        ];
+        expected.extend_from_slice(rest);
+        fake_mix.assert_capture(&expected, &engine);
+    }
+}
+
+#[test]
 fn engine_environment_selects_engine_from_outside_source_checkout() {
     let area = TestArea::new("engine environment");
     let project = area.dir("external project");
@@ -455,7 +602,14 @@ fn malformed_globals_are_refused_before_git_or_engine_dispatch() {
     create_engine(&engine);
     let fake_mix = FakeMix::install(&area);
     let cases = [
-        vec!["--engine", engine.to_str().unwrap(), "shape"],
+        vec![
+            "--engine",
+            engine.to_str().unwrap(),
+            "--engine",
+            engine.to_str().unwrap(),
+            "shape",
+            "start",
+        ],
         vec![
             "--project",
             project.to_str().unwrap(),
@@ -537,35 +691,55 @@ fn engine_and_project_must_resolve_to_distinct_directories() {
 }
 
 #[test]
-fn help_documents_retained_headless_operation_flags() {
-    let output = Command::new(binary())
-        .arg("--help")
-        .output()
-        .expect("run kogen help");
-    let alias = Command::new(binary())
-        .arg("help")
-        .output()
-        .expect("run kogen help alias");
-    let help = String::from_utf8(output.stdout).expect("UTF-8 help");
+fn static_help_is_friendly_and_never_admits_a_project_or_starts_the_engine() {
+    let area = TestArea::new("static command help");
+    let plain_project = area.dir("non Git project");
+    let missing_engine = area.path().join("missing engine");
+    let fake_mix = FakeMix::install(&area);
+    let project_text = plain_project.to_str().unwrap();
+    let engine_text = missing_engine.to_str().unwrap();
+    let mut cases: Vec<(Vec<&str>, &str)> = vec![
+        (vec!["--help"], "Commands:"),
+        (vec!["-h"], "Commands:"),
+        (vec!["help"], "Commands:"),
+        (vec!["shape"], "Shaping commands:"),
+    ];
 
-    assert_eq!(output.status.code(), Some(0));
-    assert!(output.stderr.is_empty());
-    assert_eq!(alias.status.code(), Some(0));
-    assert_eq!(alias.stdout.as_slice(), help.as_bytes());
-    assert!(help.contains("kogen [--project PATH] [--engine PATH] <command> [args...]"));
-    assert!(help.contains("--project PATH  Git checkout to work on (default: current directory)"));
-    for fragment in [
-        "shape --brief FILE [--configuration NAME] [--request-id RID]",
-        "input SESSION --file FILE",
-        "present SESSION",
-        "approve SESSION --presentation ID [--request-id RID]",
-        "build SLUG [--configuration NAME]",
-        "status SESSION",
-        "cancel SESSION [--request-id RID]",
-        "resume SESSION --file FILE",
-        "result SESSION",
-    ] {
-        assert!(help.contains(fragment), "help lacks {fragment:?}");
+    for form in ["--help", "-h", "help"] {
+        cases.push((vec!["shape", form], "Shaping commands:"));
+        cases.push((vec!["build", form], "build SLUG"));
+        cases.push((vec!["result", form], "result SESSION"));
+        for (subcommand, syntax) in [
+            ("start", "shape start --brief FILE"),
+            ("input", "shape input SESSION --file FILE"),
+            ("present", "shape present SESSION"),
+            ("approve", "shape approve SESSION --presentation ID"),
+            ("status", "shape status SESSION"),
+            ("cancel", "shape cancel SESSION"),
+            ("resume", "shape resume SESSION --file FILE"),
+        ] {
+            cases.push((vec!["shape", subcommand, form], syntax));
+        }
     }
-    assert!(!help.contains("--interface"));
+    cases.push((
+        vec!["shape", "start", "--brief", "./draft.md", "--help"],
+        "shape start --brief FILE",
+    ));
+
+    for (command_args, expected) in cases {
+        let mut args = vec!["--project", project_text, "--engine", engine_text];
+        args.extend(command_args);
+        let output = run_cli(&plain_project, &args, &fake_mix, 0);
+        let help = String::from_utf8(output.stdout).expect("UTF-8 help");
+
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+        assert!(output.stderr.is_empty(), "{args:?}");
+        assert!(help.contains(expected), "{args:?} lacks {expected:?}");
+    }
+
+    let output = run_cli(&plain_project, &[], &fake_mix, 0);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Commands:"));
+    assert!(output.stderr.is_empty());
+    assert!(!fake_mix.was_started());
 }
