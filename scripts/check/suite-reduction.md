@@ -137,3 +137,61 @@ invocations.
 0.22 s wall. `mix credo --strict test/kogen/check_settlement_test.exs` passed
 69 checks on one file with no issues in 0.35 s wall, and `git diff --check`
 passed. No full or live gate was run.
+
+## Follow-on: Auditor pure and pre-I/O cases
+
+This unit adopts only SR005 from the 13-file B026-v2 packet. Its manifest
+checks pass, including recommendation patch SHA-256
+`1c5bdbdf0ce8f287be1502470568eee058fcbcb27c35332918c612637f42230a`. The
+patch was authored against `e1b43716` (tree
+`3be258e8af74f77c83000f91078f379e6f55664e`); this work starts at current
+`develop` `e31a1fa2` (tree `3de412f89d927bf8e5f9570702e336fc7211ce81`). The
+exact patch applies cleanly there despite later Auditor and test-file edits.
+It changes only the two Auditor test files and this report; no Auditor product
+source changes remain.
+
+The three `parse_message` cases, `build_findings` bounds case, two prompt
+rendering cases, and `:asking` state-gating case move to an async
+`ExUnit.Case`. Their test names, bodies and assertions are unchanged. The
+original file retains its `Kogen.IsolatedCase` boundary for the remaining I/O,
+filesystem and fake-harness tests. Across both files, the seven moved tests
+remain seven; source-level test definitions stay at 34 total (34 isolated
+before, then 27 isolated plus 7 ordinary). Thus the selected group removes
+seven isolated child starts without reducing suite case identity count. The
+file path portion of those seven test identities changes. The original file
+shrinks from 1,063 to 891 lines and the new file is 189 lines (17 net lines
+added for the sibling module and its local helper); the reduction is in
+isolated process startup, not source size.
+
+Current-candidate controls used
+`KOGEN_WARM_POOL=1 MIX_ENV=test mix test
+test/kogen/shaping_audit_auditor_pure_test.exs --warnings-as-errors --seed 0`.
+The selected positive and lawful enumerated-last variants each passed 7/7
+(0.03 s ExUnit; 0.95 s and 0.96 s wall respectively). The bad first-fence
+variant failed the last-fenced-object assertion (6/7 passed, 0.03 s / 0.97 s
+wall). The wrong fenced-only variant failed the bare-JSON assertion (6/7,
+0.03 s / 0.93 s). Each temporary Auditor source mutation was restored before
+the next control; no product diff remains.
+
+Both affected files pass together on the restored current source. The ordinary
+command `MIX_ENV=test mix test test/kogen/shaping_audit_auditor_test.exs
+test/kogen/shaping_audit_auditor_pure_test.exs --warnings-as-errors --seed 0`
+passed 34 tests in 33.4 s ExUnit / 34.36 s wall. With
+`KOGEN_WARM_POOL=1`, it passed 34 in 10.8 s / 11.62 s. These runs include all
+retained isolated tests and all seven moved tests. They validate the current
+selected group, not whole-suite performance. B026-v2's separate
+matched sample on the pinned e1 source reports seven supervisor jobs to zero
+for these cases, and targeted mean wall 4.876 s to 0.920 s; those are packet
+observations, not a current-develop performance remeasurement.
+
+`mix format --check-formatted test/kogen/shaping_audit_auditor_test.exs
+test/kogen/shaping_audit_auditor_pure_test.exs` passed in 0.21 s wall.
+`mix credo --strict test/kogen/shaping_audit_auditor_test.exs
+test/kogen/shaping_audit_auditor_pure_test.exs` passed 69 checks on two files
+in 0.38 s wall, with no issues; `git diff --check` passed.
+
+The current in-repository advisory `priv/kogen/test-reliability.yaml` has no
+declaration or maintained-source row for either Auditor test file. The move
+therefore changes no row in that file. B026-v2 flags an external frozen test-ID
+allowlist/catalogue reconciliation; its contents are not present in this
+worktree and remain an integration dependency. No full or live gate was run.
