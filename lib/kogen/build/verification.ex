@@ -1502,13 +1502,20 @@ defmodule Kogen.Build.Verification do
     Process.delete(@dispatch_key)
 
     result =
-      VerificationRunner.run_target(
-        env.root,
-        target,
-        log,
-        [control_root: env.control_root, route: env[:route], provider_backed: class == "paid"] ++
-          job_options(job, execution, base, target, attempt, env)
-      )
+      with {:ok, argv} <- target_argv(catalog, target, env.root) do
+        VerificationRunner.run_target(
+          env.root,
+          target,
+          log,
+          [
+            argv: argv,
+            control_root: env.control_root,
+            route: env[:route],
+            provider_backed: class == "paid"
+          ] ++
+            job_options(job, execution, base, target, attempt, env)
+        )
+      end
 
     mark(env[:timing_file], "runner_done:" <> name)
 
@@ -1535,6 +1542,11 @@ defmodule Kogen.Build.Verification do
       {receipt, failure} -> {receipt, Map.put(failure, "class", class), dispatches}
     end
   end
+
+  defp target_argv(%{project_root: _root} = catalog, target, root),
+    do: VerificationPlan.command(catalog, target, root)
+
+  defp target_argv(_catalog, target, root), do: {:ok, ["make", "-C", Path.expand(root), target]}
 
   defp target_log(execution, base, _target, name, nil),
     do: Path.join(execution.log_root, "cycle-#{base["sequence"]}-#{name}.log")

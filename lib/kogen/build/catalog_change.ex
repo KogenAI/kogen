@@ -9,7 +9,8 @@ defmodule Kogen.Build.CatalogChange do
   the trust anchor: a target that existed at admission keeps its admission
   entry (rank, dependencies, provider backing), and only targets the Intent
   declared in `catalog_changes.add` take their entry from the Candidate.
-  Removing, renaming or editing unselected targets needs no declaration; the
+  Project-owned command contracts are byte-frozen after admission. Removing,
+  renaming or editing unselected engine targets needs no declaration; the
   verification-surface ledger shows it. Any violation is a verification
   failure that returns to the same Developer, never a Build stop.
   """
@@ -28,15 +29,17 @@ defmodule Kogen.Build.CatalogChange do
          entries = effective_entries(plan.targets, admission, candidate, added),
          :ok <- scenario_rules(scenarios, entries),
          :ok <- added_rehearsals(scenarios, entries, added),
+         {:ok, project_contract} <- frozen_project_contract(admission, candidate, entries),
          {:ok, order} <- VerificationPlan.order_names(plan.targets, entries) do
-      {:ok,
-       %{
-         sha256: candidate.sha256,
-         order: order,
-         provider_backed:
-           Map.new(entries, fn {name, entry} -> {name, entry["provider_backed"]} end),
-         entries: entries
-       }}
+      catalog = %{
+        sha256: candidate.sha256,
+        order: order,
+        provider_backed:
+          Map.new(entries, fn {name, entry} -> {name, entry["provider_backed"]} end),
+        entries: entries
+      }
+
+      {:ok, Map.merge(catalog, project_contract)}
     end
   end
 
@@ -69,6 +72,35 @@ defmodule Kogen.Build.CatalogChange do
       {name, entry}
     end)
   end
+
+  # Verification dispatch needs the admission identity and frozen argv after
+  # the Candidate catalog has been checked. Dropping these fields sends a
+  # project target through the native Make fallback.
+  defp frozen_project_contract(
+         %{project_root: root, bytes: bytes},
+         %{project_root: _candidate_root, bytes: candidate_bytes},
+         entries
+       )
+       when is_binary(root) do
+    if bytes == candidate_bytes do
+      {:ok, %{project_root: root, targets: entries}}
+    else
+      {:error, "Candidate project check contract changed after admission"}
+    end
+  end
+
+  defp frozen_project_contract(%{project_root: root}, %{project_root: _candidate_root}, _entries)
+       when is_binary(root),
+       do: {:error, "Candidate project check contract changed after admission"}
+
+  defp frozen_project_contract(%{project_root: root}, _candidate, _entries)
+       when is_binary(root),
+       do: {:error, "Candidate project check contract is unavailable"}
+
+  defp frozen_project_contract(_admission, %{project_root: _root}, _entries),
+    do: {:error, "Candidate introduced a project check contract after admission"}
+
+  defp frozen_project_contract(_admission, _candidate, _entries), do: {:ok, %{}}
 
   defp scenario_rules(scenarios, entries) do
     scenarios

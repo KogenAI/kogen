@@ -45,11 +45,12 @@ defmodule Kogen.CatalogChangeTest do
       plan = %{targets: ["check", "x"], added: ["x"]}
       scenarios = [scenario("sc-x", ["check", "x"], "x")]
 
-      assert {:ok, %{order: order, entries: entries, provider_backed: provider_backed}} =
-               CatalogChange.check(root, admission, plan, scenarios)
+      assert {:ok, checked} = CatalogChange.check(root, admission, plan, scenarios)
 
-      assert order == ["check", "x"]
-      assert provider_backed == %{"check" => false, "x" => true}
+      assert checked.order == ["check", "x"]
+      assert checked.provider_backed == %{"check" => false, "x" => true}
+      refute Map.has_key?(checked, :project_root)
+      entries = checked.entries
       assert entries["check"] == admission.targets["check"]
       assert entries["check"]["cost_class"] == "offline"
       assert entries["x"] == Map.put(x, "depends_on", x["dependencies"])

@@ -1,7 +1,7 @@
 defmodule Kogen.ProjectChecksTest do
   use ExUnit.Case, async: true
 
-  alias Kogen.Build.{VerificationPlan, VerificationRunner}
+  alias Kogen.Build.{CatalogChange, Verification, VerificationPlan, VerificationRunner}
   alias Kogen.Check
 
   test "separate projects own ordered checks and local readiness commands" do
@@ -110,6 +110,84 @@ defmodule Kogen.ProjectChecksTest do
     assert reason =~ "escapes its checkout"
   end
 
+  test "a Candidate cannot change its admitted project check contract" do
+    control = project_root!()
+    candidate = project_root!()
+    create_project!(control, "unit")
+    create_project!(candidate, "unit")
+    write_executable!(candidate, "printf 'changed command\\n'\n", "other.sh")
+    write_project_config!(candidate, "checks:\n  - name: unit\n    argv: [./scripts/other.sh]\n")
+    assert {:ok, admission} = VerificationPlan.load(control)
+
+    assert {:error, reason} =
+             CatalogChange.check(candidate, admission, %{targets: ["unit"], added: []}, [])
+
+    assert reason == "Candidate project check contract changed after admission"
+  end
+
+  test "run_cycle dispatches the frozen Cargo-like command from the Candidate root" do
+    control = project_root!()
+    candidate = project_root!()
+    script = "printf '%s|%s\\n' \"$PWD\" \"$*\" > check-result.txt\n"
+    write_executable!(control, "printf 'control copy\\n'\n", "cargo")
+    write_executable!(candidate, script, "cargo")
+
+    config =
+      "checks:\n" <>
+        "  - name: unit\n" <>
+        "    argv: [./scripts/cargo, test, --offline]\n"
+
+    write_project_config!(control, config)
+    write_project_config!(candidate, config)
+    assert {:ok, admission} = VerificationPlan.load(control)
+
+    plan = %{
+      targets: ["unit"],
+      added: [],
+      catalog_sha256: admission.sha256,
+      offline: [],
+      affected_paths: [],
+      rehearsals: []
+    }
+
+    assert {_, 0} = System.cmd("git", ["add", "-A"], cd: control)
+    assert {_, 0} = System.cmd("git", ["add", "-A"], cd: candidate)
+    assert {:ok, candidate_id} = Kogen.Git.candidate_id(candidate)
+
+    tracking_path =
+      Path.join([control, ".kogen/runtime/scenario-tracking/project-check-build/tracking.json"])
+
+    assert {:ok, execution} =
+             Verification.initialize(
+               tracking_path,
+               "project-check-attempt",
+               0,
+               plan.targets,
+               1,
+               plan,
+               %{control_root: control, candidate_root: candidate}
+             )
+
+    env = %{
+      root: candidate,
+      control_root: control,
+      catalog: admission,
+      plan: plan,
+      scenarios: [],
+      base_commit: nil,
+      route: "fixture",
+      candidate_id: fn -> {:ok, candidate_id} end
+    }
+
+    assert {:ok, _execution, state} =
+             Verification.run_cycle(execution, "developer-session", candidate_id, env)
+
+    assert hd(state["cycles"])["status"] == "passed"
+
+    assert File.read!(Path.join(candidate, "check-result.txt")) ==
+             "#{Kogen.ProjectScope.canonical(candidate)}|test --offline\n"
+  end
+
   test "a failed project command keeps its failed runner receipt" do
     control = project_root!()
     candidate = project_root!()
@@ -159,8 +237,8 @@ defmodule Kogen.ProjectChecksTest do
     File.write!(path, contents)
   end
 
-  defp write_executable!(root, body) do
-    path = Path.join([root, "scripts", "check.sh"])
+  defp write_executable!(root, body, name \\ "check.sh") do
+    path = Path.join([root, "scripts", name])
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, "#!/bin/sh\n" <> body)
     File.chmod!(path, 0o755)
