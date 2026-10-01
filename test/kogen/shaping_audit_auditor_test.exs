@@ -59,10 +59,10 @@ defmodule Kogen.ShapingAuditAuditorTest do
     dir
   end
 
-  defp write_config(root, text) do
+  defp write_config(root, text, route \\ "codex") do
     path = Path.join(root, "auditor-config.yaml")
     File.write!(path, text)
-    {:ok, config} = Kogen.Intent.read_config(path, "codex")
+    {:ok, config} = Kogen.Intent.read_config(path, route)
     config
   end
 
@@ -149,7 +149,7 @@ defmodule Kogen.ShapingAuditAuditorTest do
     dir = Path.join([root, ".kogen/runtime/shaping-audits", slug, "auditor"])
 
     case File.ls(dir) do
-      {:ok, names} -> names
+      {:ok, names} -> Enum.filter(names, &String.ends_with?(&1, ".json"))
       {:error, _} -> []
     end
   end
@@ -405,6 +405,13 @@ defmodule Kogen.ShapingAuditAuditorTest do
         |> File.read!()
         |> Jason.decode!()
 
+      assert record["phase"] == "reserved"
+      assert record["status"] == "unavailable"
+      [completed] = Auditor.load_records(ctx)
+      assert completed["attempt_id"] == record["attempt_id"]
+      assert completed["phase"] == "completed"
+      record = completed
+
       assert record["harness"] == "codex"
       assert record["model"] == "audit-model"
       assert record["effort"] == "high"
@@ -476,6 +483,47 @@ defmodule Kogen.ShapingAuditAuditorTest do
   end
 
   describe "run/3 the run rule and time budget" do
+    test "a prior result on another HEAD or route is diagnostic only and does not spend that binding's budget" do
+      root = Fixture.repo!()
+      on_exit(fn -> File.rm_rf(root) end)
+      package_rel = Fixture.add_draft!(root, "complete")
+      config = write_config(root, @config_with_auditor)
+
+      log_dir = isolated_dir("binding-log")
+      env = fake_env(log_dir, [{"FAKE_AUDITOR_MESSAGE", "three-findings"}])
+      put_env(env)
+      on_exit(fn -> clear_env(env) end)
+
+      {first, first_ctx} = run_audit(root, package_rel, config, [], launch?: true)
+      assert first["status"] == "ok"
+
+      File.write!(Path.join(root, "lib/b.ex"), "defmodule B do\n  def value, do: 2\nend\n")
+      {_, 0} = System.cmd("git", ["add", "lib/b.ex"], cd: root)
+      {_, 0} = System.cmd("git", ["commit", "-q", "-m", "move HEAD"], cd: root)
+
+      {new_head, head_ctx} = run_audit(root, package_rel, config, [], launch?: true)
+      assert new_head["status"] == "ok"
+      assert new_head["budget_state"]["normal_count"] == 1
+      assert new_head["audited_binding"]["head"] == head_ctx.head
+      assert head_ctx.head != first_ctx.head
+      assert new_head["previous_audit"]["head"] == first_ctx.head
+      assert length(new_head["previous_audit"]["findings"]) == 3
+
+      alternate_config_text =
+        @config_with_auditor
+        |> String.replace("default_route: codex", "default_route: alternate")
+        |> String.replace("codex:", "alternate:")
+
+      alternate_config = write_config(root, alternate_config_text, "alternate")
+      {new_route, route_ctx} = run_audit(root, package_rel, alternate_config, [], launch?: true)
+      assert new_route["status"] == "ok"
+      assert new_route["budget_state"]["normal_count"] == 1
+      assert new_route["audited_binding"]["route"] == "alternate"
+      assert route_ctx.route == "alternate"
+      assert new_route["previous_audit"]["route"] == "codex"
+      assert length(record_files(root, "complete")) == 3
+    end
+
     test "a first run with findings, one confirming run, then a third --auditor on the same HEAD launches nothing" do
       root = Fixture.repo!()
       on_exit(fn -> File.rm_rf(root) end)
@@ -487,7 +535,7 @@ defmodule Kogen.ShapingAuditAuditorTest do
       put_env(env)
       on_exit(fn -> clear_env(env) end)
 
-      {first, _} = run_audit(root, package_rel, config, [], launch?: true)
+      {first, first_ctx} = run_audit(root, package_rel, config, [], launch?: true)
       assert first["status"] == "ok"
       assert length(first["findings"]) == 3
       refute first["bound_reached"]
@@ -502,10 +550,20 @@ defmodule Kogen.ShapingAuditAuditorTest do
       # Edit the Draft at the same HEAD: a confirming run is due.
       File.write!(Path.join([root, package_rel, "risks.yaml"]), "risks: []\n")
 
-      {confirming, _} = run_audit(root, package_rel, config, [], launch?: true)
+      {confirming, confirming_ctx} = run_audit(root, package_rel, config, [], launch?: true)
       assert confirming["status"] == "ok"
       assert confirming["bound_reached"]
       assert File.exists?(Path.join(log_dir, "argv"))
+
+      assert confirming["audited_binding"] == %{
+               "revision" => confirming_ctx.revision,
+               "config_fingerprint" => Kogen.Intent.config_fingerprint(config),
+               "head" => confirming_ctx.head,
+               "route" => confirming_ctx.route
+             }
+
+      assert confirming["previous_audit"]["revision"] == first_ctx.revision
+      assert length(confirming["previous_audit"]["findings"]) == 3
 
       # A third --auditor request on the same HEAD launches nothing further.
       File.rm_rf!(log_dir)
@@ -513,9 +571,27 @@ defmodule Kogen.ShapingAuditAuditorTest do
       {third, _} = run_audit(root, package_rel, config, [], launch?: true)
       assert third["bound_reached"]
       refute File.exists?(Path.join(log_dir, "argv"))
+
+      File.write!(Path.join([root, package_rel, "risks.yaml"]), "risks: [changed again]\n")
+      {changed, changed_ctx} = run_audit(root, package_rel, config, [], launch?: true)
+      assert changed["status"] == "missing-confirmation"
+      assert changed["findings"] == []
+
+      assert changed["requested_binding"] == %{
+               "revision" => changed_ctx.revision,
+               "config_fingerprint" => Kogen.Intent.config_fingerprint(config),
+               "head" => changed_ctx.head,
+               "route" => changed_ctx.route
+             }
+
+      assert changed["previous_audit"]["revision"] == confirming_ctx.revision
+      assert length(changed["previous_audit"]["findings"]) == 3
+      assert changed["budget_state"]["normal_count"] == 2
+      assert changed["budget_state"]["confirmation_grant"] == "available"
+      refute File.exists?(Path.join(log_dir, "argv"))
     end
 
-    test "a first run with no findings: a changed revision reuses it (ok, reused: true), no second launch" do
+    test "a clean first run gets a fresh second run on a changed revision and cannot confirm a third" do
       root = Fixture.repo!()
       on_exit(fn -> File.rm_rf(root) end)
       package_rel = Fixture.add_draft!(root, "complete")
@@ -530,18 +606,35 @@ defmodule Kogen.ShapingAuditAuditorTest do
       assert first["status"] == "ok"
       assert first["findings"] == []
 
+      File.rm_rf!(log_dir)
+      File.mkdir_p!(log_dir)
+      {same, _} = run_audit(root, package_rel, config, [], launch?: true)
+      assert same["status"] == "ok"
+      assert same["reused"] == true
+      refute File.exists?(Path.join(log_dir, "argv"))
+
       File.write!(Path.join([root, package_rel, "risks.yaml"]), "risks: []\n")
       File.rm_rf!(log_dir)
       File.mkdir_p!(log_dir)
 
-      {reused, _} = run_audit(root, package_rel, config, [], launch?: true)
-      assert reused["status"] == "ok"
-      assert reused["reused"] == true
-      assert reused["reason"] =~ "with no findings; not re-run"
+      {second, second_ctx} = run_audit(root, package_rel, config, [], launch?: true)
+      assert second["status"] == "ok"
+      assert second["reused"] == false
+      assert second["launched"] == true
+      assert second["audited_binding"]["revision"] == second_ctx.revision
+      assert second["budget_state"]["normal_count"] == 2
+      assert File.exists?(Path.join(log_dir, "argv"))
+
+      File.write!(Path.join([root, package_rel, "risks.yaml"]), "risks: [changed again]\n")
+      File.rm_rf!(log_dir)
+      File.mkdir_p!(log_dir)
+      {third, _} = run_audit(root, package_rel, config, [], launch?: true)
+      assert third["status"] == "missing-confirmation"
+      assert third["previous_audit"]["revision"] == second_ctx.revision
       refute File.exists?(Path.join(log_dir, "argv"))
     end
 
-    test "an unparseable first run: no second run, unavailable, bound_reached: true" do
+    test "an unparseable first run closes the normal budget for changed revisions" do
       root = Fixture.repo!()
       on_exit(fn -> File.rm_rf(root) end)
       package_rel = Fixture.add_draft!(root, "complete")
@@ -560,12 +653,14 @@ defmodule Kogen.ShapingAuditAuditorTest do
       File.mkdir_p!(log_dir)
 
       {second, _} = run_audit(root, package_rel, config, [], launch?: true)
-      assert second["status"] == "unavailable"
+      assert second["status"] == "missing-confirmation"
       assert second["bound_reached"] == true
+      assert second["previous_audit"]["status"] == "unavailable"
+      assert second["budget_state"]["normal_count"] == 1
       refute File.exists?(Path.join(log_dir, "argv"))
     end
 
-    test "a launch failure does not count toward the bound and is followed by a counted run" do
+    test "a launch failure consumes allowance and an exact retry never dispatches again" do
       root = Fixture.repo!()
       on_exit(fn -> File.rm_rf(root) end)
       package_rel = Fixture.add_draft!(root, "complete")
@@ -587,9 +682,81 @@ defmodule Kogen.ShapingAuditAuditorTest do
       on_exit(fn -> clear_env(env) end)
 
       {counted, _} = run_audit(root, package_rel, config, [], launch?: true)
-      assert counted["status"] == "ok"
-      refute counted["bound_reached"]
+      assert counted["status"] == "unavailable"
+      assert counted["bound_reached"]
+      assert counted["reused"]
+      assert counted["budget_state"]["normal_count"] == 1
+      refute File.exists?(Path.join(log_dir, "argv"))
+
+      {confirmed, _} = run_audit(root, package_rel, config, [], launch?: true, confirm?: true)
+      assert confirmed["status"] == "ok"
+      assert confirmed["budget_state"]["confirmation_grant"] == "used"
       assert File.exists?(Path.join(log_dir, "argv"))
+    end
+
+    test "an unused confirmation precedes exact failed normal reuse, and failed confirmation only replays" do
+      root = Fixture.repo!()
+      on_exit(fn -> File.rm_rf(root) end)
+      package_rel = Fixture.add_draft!(root, "complete")
+      config = write_config(root, @config_with_auditor)
+      log_dir = isolated_dir("failed-confirmation-log")
+      env = fake_env(log_dir, [{"FAKE_AUDITOR_MESSAGE", "no-json"}])
+      put_env(env)
+      on_exit(fn -> clear_env(env) end)
+      {failed_normal, ctx} = run_audit(root, package_rel, config, [], launch?: true)
+      assert failed_normal["status"] == "unavailable"
+      assert failed_normal["budget_state"]["normal_count"] == 1
+      {failed_grant, _} = run_audit(root, package_rel, config, [], launch?: true, confirm?: true)
+      assert failed_grant["status"] == "unavailable"
+      assert failed_grant["attempt_id"] != failed_normal["attempt_id"]
+      assert failed_grant["budget_state"]["normal_count"] == 1
+      assert failed_grant["budget_state"]["confirmation_grant"] == "used"
+      assert length(Auditor.load_records(ctx)) == 2
+      File.rm_rf!(log_dir)
+      System.put_env("FAKE_AUDITOR_MESSAGE", "empty")
+      {replayed, _} = run_audit(root, package_rel, config, [], launch?: true, confirm?: true)
+      assert replayed["status"] == "unavailable"
+      assert replayed["reused"]
+      assert replayed["attempt_id"] == failed_grant["attempt_id"]
+      refute File.exists?(Path.join(log_dir, "argv"))
+    end
+
+    test "completion refuses a collision and never overwrites the existing attempt evidence" do
+      root = Fixture.repo!()
+      on_exit(fn -> File.rm_rf(root) end)
+      package_rel = Fixture.add_draft!(root, "complete")
+      config = write_config(root, @config_with_auditor)
+      ledger = Path.join(root, ".kogen/runtime/shaping-audits/complete/auditor")
+      wrapper = Path.join(root, "collision-auditor")
+
+      File.write!(wrapper, """
+      #!/usr/bin/env python3
+      import glob, os, sys
+      reservation = glob.glob(#{inspect(ledger)} + "/*.json")[0]
+      with open(reservation + ".completion", "x") as f:
+          f.write("existing evidence must survive")
+      os.execv(#{inspect(@fake_auditor)}, [#{inspect(@fake_auditor)}] + sys.argv[1:])
+      """)
+
+      File.chmod!(wrapper, 0o755)
+      log_dir = isolated_dir("completion-collision")
+      env = fake_env(log_dir, [{"KOGEN_HARNESS", wrapper}, {"FAKE_AUDITOR_MESSAGE", "empty"}])
+      put_env(env)
+      on_exit(fn -> clear_env(env) end)
+      {result, _ctx} = run_audit(root, package_rel, config, [], launch?: true)
+      assert result["status"] == "unavailable"
+      assert result["reason"] =~ "exclusively persist"
+      [reservation] = Path.wildcard(Path.join(ledger, "*.json"))
+      assert File.read!(reservation <> ".completion") == "existing evidence must survive"
+      record = File.read!(reservation) |> Jason.decode!()
+      assert record["phase"] == "reserved"
+      assert record["counted"]
+      assert record["status"] == "unavailable"
+      File.rm_rf!(log_dir)
+      {retry, _} = run_audit(root, package_rel, config, [], launch?: true, confirm?: true)
+      assert retry["reason"] =~ "ledger integrity"
+      refute File.exists?(Path.join(log_dir, "argv"))
+      assert File.read!(reservation <> ".completion") == "existing evidence must survive"
     end
 
     test "opts[:launch?] false reuses existing records only and launches nothing" do

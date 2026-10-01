@@ -1,0 +1,22 @@
+{
+  "name": "csv-continuation",
+  "end": "settled",
+  "steps": [
+    {
+      "step": "start",
+      "brief": "brief.md"
+    },
+    {
+      "step": "message",
+      "file": "message-1.md",
+      "when": "turn_ended",
+      "trigger": "csv-invalid-rows"
+    },
+    {
+      "step": "message",
+      "file": "message-2.md",
+      "when": "turn_ended",
+      "trigger": "csv-output-replacement"
+    }
+  ]
+}

@@ -43,6 +43,38 @@ defmodule Kogen.ShapingAudit.Package do
     end
   end
 
+  @doc """
+  Finds the Draft or Approved package whose `intent.yaml` has `id: <intent_id>`,
+  drafts first.
+  """
+  @spec find_by_id(Path.t(), String.t() | nil) ::
+          {:ok, %{slug: String.t(), package_rel: String.t(), location: :drafts | :approved}}
+          | {:error, :not_found}
+  def find_by_id(_root, nil), do: {:error, :not_found}
+
+  def find_by_id(root, intent_id) do
+    found =
+      Enum.find_value([drafts: @drafts_dir, approved: @approved_dir], fn {location, dir} ->
+        [root, dir, "*", "intent.yaml"]
+        |> Path.join()
+        |> Path.wildcard()
+        |> Enum.sort()
+        |> Enum.find_value(&match_id(&1, intent_id, location, dir))
+      end)
+
+    if found, do: {:ok, found}, else: {:error, :not_found}
+  end
+
+  defp match_id(path, intent_id, location, dir) do
+    with {:ok, contents} <- File.read(path),
+         true <- Regex.match?(~r/^id:\s*#{Regex.escape(intent_id)}\s*$/m, contents) do
+      slug = path |> Path.dirname() |> Path.basename()
+      %{slug: slug, package_rel: Path.join(dir, slug), location: location}
+    else
+      _other -> nil
+    end
+  end
+
   defp package_entry(root, relative) do
     case File.lstat(Path.join(root, relative)) do
       {:ok, %File.Stat{type: :directory}} -> :directory

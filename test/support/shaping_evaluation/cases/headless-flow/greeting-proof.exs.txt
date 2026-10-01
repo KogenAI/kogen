@@ -1,0 +1,14 @@
+Code.require_file("../app/greeting_writer.ex", __DIR__)
+
+defmodule Kogen.FixtureGreetingContractTest do
+  use ExUnit.Case, async: true
+  @moduletag :fixture_greeting_contract
+
+  test "the producer writes the Shaper-selected greeting bytes" do
+    greeting_path = Path.join(File.cwd!(), "greeting.txt")
+    on_exit(fn -> File.rm(greeting_path) end)
+
+    assert :ok = Kogen.GreetingWriter.write!(greeting_path, ".")
+    assert File.read!(greeting_path) == "Hello.\n"
+  end
+end

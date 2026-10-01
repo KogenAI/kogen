@@ -19,23 +19,17 @@ defmodule Kogen.ShapingDraftAudit do
 
     continued = intents["csv-continuation"]
 
-    for key <- ~w(id slug shaping shaped_against) do
-      assert first[key] == continued[key], "continuation changed original #{key}"
-      assert first[key] == partial[key], "partial continuation changed original #{key}"
+    # The continuation is one engine session answered by `--brief` messages:
+    # the driver rebinds the frozen seed to that session's Intent ID, and the
+    # partial and final Drafts belong to the same session. There is no
+    # continuation visit to record.
+    assert first["id"] == continued["id"], "continuation lost the session identity"
+    assert first["id"] == partial["id"], "partial continuation lost the session identity"
+
+    for key <- ~w(slug shaping shaped_against) do
+      assert partial[key] == continued[key],
+             "same-session clarification changed the Draft's #{key}"
     end
-
-    prior = Map.get(first, "shaping_continuations", [])
-    visits = Map.get(continued, "shaping_continuations", [])
-
-    assert partial["shaping_continuations"] == visits,
-           "same-session clarification changed the continuation visit"
-
-    assert length(visits) == length(prior) + 1
-    assert Enum.take(visits, length(prior)) == prior
-    visit = List.last(visits)
-    assert visit["started"] != first["shaping"]["started"]
-    assert visit["checkout"] == first["shaped_against"]
-    assert visit["harness"] == first["shaping"]["harness"]
 
     for case_name <- @cases do
       assert_state!(root, case_name, intents[case_name])

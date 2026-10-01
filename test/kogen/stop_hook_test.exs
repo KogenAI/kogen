@@ -92,7 +92,7 @@ defmodule Kogen.StopHookTest do
       hook = Path.join(dir, ".codex/hooks/check.sh")
       ctx = write_v1_context!(dir)
 
-      for role <- ["shaper", "reviewer"] do
+      for role <- ["shaping", "reviewer"] do
         assert {"{\"continue\":true}\n", 0} = run_hook(hook, dir, ctx, nil, role)
         refute File.exists?(Path.join(dir, ".kogen/runtime/verification.json"))
         refute File.exists?(Path.join(dir, ".kogen/runtime/stop-check.log"))

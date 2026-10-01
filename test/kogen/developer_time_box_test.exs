@@ -66,8 +66,8 @@ defmodule Kogen.DeveloperTimeBoxTest do
   # cannot deliver TERM before the handler exists.
   @term_trap ~s|trap 'echo term > "$d/term-marker"; exit 143' TERM|
   @traps_term "sleep 30 \& wait"
-  @ignore_trap ~s|trap '' TERM|
-  @ignores_term "while :; do sleep 1; done"
+  @ignore_trap ~s|trap 'echo term > "$d/term-marker"' TERM|
+  @ignores_term "while :; do sleep 0.05; done"
 
   # The time box starts at launch, so TERM must not fire before the fake CLI's
   # shell has started and installed its trap. Process start-up cost varies by
@@ -131,7 +131,10 @@ defmodule Kogen.DeveloperTimeBoxTest do
     context =
       dir
       |> fake_claude(@ignores_term, @ignore_trap)
-      |> with_time_box(500, 1_000)
+      # A fixed box keeps this 15-second assertion independent of unrelated
+      # startup probes under the normal concurrent suite. The marker below
+      # proves the fake installed its non-exiting handler and received TERM.
+      |> Map.merge(%{turn_timeout_ms: 5_000, turn_grace_ms: 1_000})
 
     started = System.monotonic_time(:millisecond)
 
@@ -140,11 +143,13 @@ defmodule Kogen.DeveloperTimeBoxTest do
 
     elapsed = System.monotonic_time(:millisecond) - started
     assert is_binary(session)
+    assert File.read!(Path.join(dir, "term-marker")) == "term\n"
 
     assert elapsed >= context.turn_timeout_ms + 900,
            "KILL must wait for the grace (#{elapsed} ms)"
 
-    assert elapsed < 15_000
+    assert elapsed < 15_000,
+           "timeout and cleanup exceeded 15 seconds (#{elapsed} ms; box #{context.turn_timeout_ms} ms)"
   end
 
   test "no time box is applied without :turn_timeout_ms or outside the Developer role", %{

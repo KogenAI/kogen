@@ -314,10 +314,10 @@ defmodule Kogen.Codex.EnvironmentTest do
     on_exit(fn -> File.rm_rf(root) end)
     %{project: project, operation: operation, scope: scope} = paths!(root)
     assert {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
-    shaper_config = Map.put(config, :current_role, "shaper")
+    shaping_config = Map.put(config, :current_role, "shaping")
 
     result =
-      Environment.prepare(%{"executable" => "codex"}, scope, shaper_config, project, operation)
+      Environment.prepare(%{"executable" => "codex"}, scope, shaping_config, project, operation)
 
     assert "agents.worker.description=#{Jason.encode!("Probe in disposable directories outside the repository (including launching Codex, Claude Code or Jev directly), and edit only the Draft files your packet assigns. Never run make targets or Kogen verification gates on the checkout. A probe that launches a provider in a disposable directory is not a verification gate.")}" in result.args
 
@@ -517,6 +517,26 @@ defmodule Kogen.Codex.EnvironmentTest do
              Jason.decode!(output)
   end
 
+  # The test-owned consumer of a retained launch context: the outer role
+  # authority wins over the role stamped into the context.
+  @managed_resume_consumer """
+  import json, os, sys
+  context = json.loads(open(sys.argv[1], encoding="utf-8").read())
+  assert set(context) == {"executable", "args", "env"}
+  environment = os.environ.copy()
+  outer_role = environment.get("KOGEN_ROLE")
+  for name, value in context["env"]:
+      if value is None:
+          environment.pop(name, None)
+      else:
+          environment[name] = value
+  if outer_role is None:
+      environment.pop("KOGEN_ROLE", None)
+  else:
+      environment["KOGEN_ROLE"] = outer_role
+  os.execve(context["executable"], [context["executable"], *context["args"], *sys.argv[2:]], environment)
+  """
+
   test "retained launch context is JSON-safe and the managed resume consumer preserves argv and environment" do
     root = temporary_root!()
     on_exit(fn -> File.rm_rf(root) end)
@@ -555,18 +575,19 @@ defmodule Kogen.Codex.EnvironmentTest do
     assert context.env
            |> Enum.any?(&(&1 == {"XDG_CONFIG_HOME", value!(context.env, "XDG_CONFIG_HOME")}))
 
-    consumer = Path.expand("../support/shaping_evaluation/managed_resume.py", __DIR__)
+    consumer = Path.join(root, "managed_resume.py")
+    File.write!(consumer, @managed_resume_consumer)
 
     assert {_output, 0} =
              System.cmd("python3", [consumer, context_path, "resume-token"],
-               env: [{"KOGEN_ROLE", "shaper"}]
+               env: [{"KOGEN_ROLE", "shaping"}]
              )
 
     dispatch = File.read!(receipt)
     assert dispatch =~ "resume-token\n"
     assert dispatch =~ "config=<#{value!(context.env, "XDG_CONFIG_HOME")}>\n"
     assert dispatch =~ "openai=<unset>\n"
-    assert dispatch =~ "role=<shaper>\n"
+    assert dispatch =~ "role=<shaping>\n"
     assert decoded["env"] |> Enum.any?(&(&1 == ["KOGEN_ROLE", "developer"]))
   end
 
@@ -685,7 +706,7 @@ defmodule Kogen.Codex.EnvironmentTest do
     # Native helpers are spawned by the root Codex process and inherit its -c
     # overrides, so each root launch carries the one limit for its helpers.
     launches = %{
-      "shaping" => CodexHarness.shaper_args("astra", "low", write_prompt!(root)),
+      "shaping" => CodexHarness.shaping_args("astra", "low"),
       "developer" => CodexHarness.developer_args("astra", "low"),
       "developer resume" => CodexHarness.developer_args("astra", "low", "session-1"),
       "reviewer" => CodexHarness.reviewer_args("astra", "low"),
@@ -707,12 +728,6 @@ defmodule Kogen.Codex.EnvironmentTest do
     argv
     |> Enum.chunk_every(2, 1, :discard)
     |> Enum.count(&(&1 == ["-c", "tool_output_token_limit=4000"]))
-  end
-
-  defp write_prompt!(root) do
-    path = Path.join(root, "shaping-prompt.md")
-    File.write!(path, "shape\n")
-    path
   end
 
   # Codex 0.159.0 exits its interactive UI after a hard 30 second wait for the

@@ -195,8 +195,9 @@ readiness remain distinct failures. Callers without readiness keep the establish
 launch-relative collection behavior. In every phase the supervisor settles owned
 descendants before successful removal or retains the root with cleanup diagnostics.
 
-The terminal probe applies the same two-phase timing to the actual
-`Harness.exec_shaper` fake route in both pipe and PTY modes. Its writer side stays
+The terminal probe applies the same two-phase timing to the scripted
+`test/support/fake_shaping_controller` that the headless Shaping engine
+(`mix kogen.shape` and its hidden runner `mix kogen.shape.runner`) launches. Its writer side stays
 open while observing completion, so a fake that waits for EOF fails after readiness.
 Focused Python controls are reached through `terminal_probe_test.exs`; they also
 assert cleanup of real background descendants on successful and exceptional exits.
@@ -269,7 +270,7 @@ provider-backed lifecycle owners, `live-shaping-quality`, `live-native`, and
 
 The lifecycle and first two specialized targets are provider-backed. `check` and
 `cold-offline` are provider-denied. The lifecycle targets run on the configured harness
-and need network, its installed runtime and Kogen login, `expect`, and `rsync`; `live-shaping-quality` needs the
+and need network, its installed runtime and Kogen login, and `rsync`; `live-shaping-quality` needs the
 provider route and maintained evaluation sources; `live-native` needs the pinned
 runtime and configured authentication; and `cold-offline` needs installed dependency
 sources, `rsync`, and the offline toolchain. The controller runs exactly the

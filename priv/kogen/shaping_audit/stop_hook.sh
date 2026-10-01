@@ -1,5 +1,5 @@
 #!/bin/sh
-# Shaper Stop hook. Skips a repeat audit on an unchanged package byte-for-byte
+# Shaping Stop hook. Skips a repeat audit on an unchanged package byte-for-byte
 # at the same HEAD via a cheap shell-computed skip key; every other case
 # defers to `mix kogen.audit --stop-hook` (Kogen.ShapingAudit.StopHook).
 set -u
@@ -10,7 +10,7 @@ if [ "${KOGEN_ENV_RESTORE_PENDING:-}" = "1" ]; then
   exec python3 "$(dirname "$0")/../../../.codex/hooks/environment.py" sh "$0"
 fi
 
-if [ "${KOGEN_ROLE:-}" != "shaper" ]; then
+if [ "${KOGEN_ROLE:-}" != "shaping" ]; then
   printf '{"continue":true}\n'
   exit 0
 fi
@@ -32,6 +32,8 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   exit 0
 }
 root="$(cd "$root" && pwd -P)"
+KOGEN_SHAPING_ROOT="$root"
+export KOGEN_SHAPING_ROOT
 
 intent_id="${KOGEN_SHAPING_INTENT_ID:-}"
 state_dir=""
@@ -57,9 +59,10 @@ run_mix() {
   (cd "$root" && KOGEN_SHAPING_HOOK_OUTPUT="$out" KOGEN_SHAPING_SKIP_KEY="${1:-}" \
     mix kogen.audit --stop-hook >/dev/null 2>&1)
   if [ -s "$out" ]; then
-    cat "$out"
+    cat "$out" | "$PYTHON_BIN" "$(dirname "$0")/../shaping/feedback_output.py" stop-output
   else
-    printf '{"continue":true,"systemMessage":"the Stop hook produced no decision"}\n'
+    printf '{"continue":true,"systemMessage":"the Stop hook produced no decision"}\n' |
+      "$PYTHON_BIN" "$(dirname "$0")/../shaping/feedback_output.py" stop-output
   fi
   rm -f "$out"
 }
@@ -115,7 +118,7 @@ else:
 ' "$hook_state_file" "$skip_key" 2>/dev/null)"
 
   if [ -n "$cached" ]; then
-    printf '%s\n' "$cached"
+    printf '%s\n' "$cached" | "$PYTHON_BIN" "$(dirname "$0")/../shaping/feedback_output.py" stop-output
     exit 0
   fi
 fi

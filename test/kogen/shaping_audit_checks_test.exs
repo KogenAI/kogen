@@ -10,6 +10,7 @@ defmodule Kogen.ShapingAuditChecksTest do
     Deterministic,
     Finding,
     Fixture,
+    HeadlessInput,
     Materialization,
     Package,
     Questions,
@@ -607,5 +608,107 @@ defmodule Kogen.ShapingAuditChecksTest do
     assert ids(report) == ["package-invalid"]
     assert hd(report["findings"])["disputable"] == false
     assert report["readiness"] == "not_ready"
+  end
+
+  # -- recorded inputs (input-not-recorded, input-recorded-twice) ---------------
+
+  @input_id "in-0002-e4f69869"
+
+  defp with_answer(ctx, answer) do
+    text = "## Shaper answers\n\n1. #{answer}\n\n## Settled\n\nNo open questions.\n"
+    %{ctx | files: Map.put(ctx.files, "questions.md", text), questions: Questions.parse(text)}
+  end
+
+  defp input_ids(slug) do
+    root = repo!()
+    ctx = ctx!(root, slug)
+
+    ctx =
+      if slug == "inputs-recorded" do
+        bytes = Map.fetch!(ctx.files, "evidence/inputs/0002.md")
+        with_answer(ctx, HeadlessInput.frame(@input_id, bytes))
+      else
+        ctx
+      end
+
+    findings = Deterministic.run(ctx)["findings"]
+    {Enum.filter(findings, &String.starts_with?(&1["rule"], "input-")), findings}
+  end
+
+  test "the fixture input's id is derived from its exact bytes" do
+    bytes =
+      File.read!(
+        Path.join(
+          @root,
+          "test/support/shaping_audit/drafts/inputs-recorded/evidence/inputs/0002.md"
+        )
+      )
+
+    digest = :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
+    assert "in-0002-" <> String.slice(digest, 0, 8) == @input_id
+  end
+
+  test "input-not-recorded passes only with the exact reversible payload under Shaper answers" do
+    {[], _findings} = input_ids("inputs-recorded")
+
+    assert {[finding], _findings} = input_ids("inputs-missing")
+    assert finding["id"] == "input-not-recorded #{@input_id}"
+    assert finding["severity"] == "blocking"
+    assert finding["message"] =~ "[input #{@input_id}]"
+    assert Finding.open_blocking?(finding)
+  end
+
+  test "token-only and paraphrased recording frames produce blocking deterministic findings" do
+    root = repo!()
+    ctx = ctx!(root, "inputs-recorded")
+    bytes = Map.fetch!(ctx.files, "evidence/inputs/0002.md")
+
+    token_only = with_answer(ctx, "[input #{@input_id}] Make the button green.")
+
+    paraphrase =
+      with_answer(ctx, HeadlessInput.frame(@input_id, "Choose a similar green shade.\n"))
+
+    for negative <- [token_only, paraphrase] do
+      findings = Deterministic.run(negative)["findings"]
+      finding = Enum.find(findings, &(&1["id"] == "input-not-recorded #{@input_id}"))
+      assert Finding.open_blocking?(finding)
+    end
+
+    exact = with_answer(ctx, HeadlessInput.frame(@input_id, bytes))
+
+    refute Enum.any?(
+             Deterministic.run(exact)["findings"],
+             &String.starts_with?(&1["rule"], "input-")
+           )
+  end
+
+  test "input-recorded-twice blocks a second entry carrying the same token" do
+    {input_findings, _findings} = input_ids("inputs-twice")
+    duplicate = Enum.find(input_findings, &(&1["id"] == "input-recorded-twice #{@input_id}"))
+    unrecorded = Enum.find(input_findings, &(&1["id"] == "input-not-recorded #{@input_id}"))
+    assert Finding.open_blocking?(duplicate)
+    assert Finding.open_blocking?(unrecorded)
+  end
+
+  test "a token outside Shaper answers does not record an input" do
+    root = repo!()
+    ctx = ctx!(root, "inputs-recorded")
+
+    questions =
+      "## Settled\n\n1. [input #{@input_id}] not an answer\n\n## Shaper answers\n\n1. \"green\"\n"
+
+    ctx = %{
+      ctx
+      | files: Map.put(ctx.files, "questions.md", questions),
+        questions: Questions.parse(questions)
+    }
+
+    ids = ctx |> Deterministic.run() |> Map.fetch!("findings") |> Enum.map(& &1["id"])
+    assert "input-not-recorded #{@input_id}" in ids
+  end
+
+  test "the brief at evidence/brief.md needs no token and packages without inputs are unchanged" do
+    assert {[], _findings} = input_ids("inputs-brief-only")
+    assert {[], _findings} = input_ids("complete")
   end
 end

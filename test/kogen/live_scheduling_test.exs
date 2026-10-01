@@ -33,9 +33,8 @@ defmodule Kogen.LiveSchedulingTest do
   # read the parsed syntax tree, so reflowing, renaming a local or moving a
   # comment cannot fail them; only a real change to a call, a comparison or a
   # module definition can.
-  test "live Shape lifecycle carries the selected route and awaits completed Stop auditing" do
+  test "live Shape lifecycle carries the selected route and approves only an audited presentation" do
     source = parse!(@connected_source)
-    driver = File.read!(Path.expand("../support/shape_to_build_probe.exp", __DIR__))
 
     assert has_code?(source, ~s{System.get_env("KOGEN_ROUTE")})
     assert has_call?(source, [:Intent], :read_config, [".kogen/config.yaml", :_])
@@ -46,13 +45,24 @@ defmodule Kogen.LiveSchedulingTest do
     assert has_call?(source, [:System], :cmd, ["mix", ["kogen.build", :_], :_])
     refute mentions?(source, "kogen.phase")
 
-    assert driver =~ "proc wait_for_shape_stop"
-    assert driver =~ "\"decision\"\\s*:\\s*\"allow\""
-    assert driver =~ "set shape_stop_complete 1"
-    assert driver =~ "global spawn_id shape_stop_complete"
-    assert driver =~ "refusing to close a Shape session before a completed Stop/auditor receipt"
-    assert driver =~ "spawn mix kogen.shape --route $route"
-    assert driver =~ "spawn mix kogen.shape --route $route $slug"
+    # Shaping runs through the headless engine commands only: the start
+    # carries the selected route, and approval names the presentation the
+    # engine made only from a current audited-ready report.
+    assert mentions?(source, "kogen.shape")
+
+    assert mentions?(source, "--route")
+
+    assert has_code?(
+             source,
+             "shape_through_engine!(fixture, log_dir, brief_path, answers_path, request, config.route)"
+           )
+
+    assert mentions?(source, "--approve")
+    assert has_code?(source, "(status[\"presented\"] || %{})[\"id\"]")
+    assert has_code?(source, ~s{approval["source"] == "mix kogen.shape --approve"})
+    refute mentions?(source, "shape_to_build_probe")
+    refute mentions?(source, ".exp")
+    refute mentions?(source, "spawn mix")
   end
 
   test "live selection keeps connected and rework owners in distinct async modules" do

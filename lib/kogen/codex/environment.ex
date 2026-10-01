@@ -483,11 +483,11 @@ defmodule Kogen.Codex.Environment do
     ["--disable", "apps", "--disable", "plugins", "--disable", "shell_snapshot" | config_args]
   end
 
-  defp helper_description(:worker, "shaper"),
+  defp helper_description(:worker, "shaping"),
     do:
       "Probe in disposable directories outside the repository (including launching Codex, Claude Code or Jev directly), and edit only the Draft files your packet assigns. Never run make targets or Kogen verification gates on the checkout. A probe that launches a provider in a disposable directory is not a verification gate."
 
-  defp helper_description(:scout, "shaper"),
+  defp helper_description(:scout, "shaping"),
     do:
       "Read-only focused discovery, including web research. Use the configured scout profile; never run verification gates."
 

@@ -24,6 +24,10 @@ defmodule Kogen.Harness.Claude do
   @editing_tools ~w(Edit Write NotebookEdit)
   @read_tools ~w(Read Grep Glob)
   @synthetic_model "<synthetic>"
+  @shaping_settings_path Path.expand(
+                           "../../../priv/kogen/claude_code/shaping-settings.json",
+                           __DIR__
+                         )
   @settings_path Path.expand("../../../priv/kogen/claude_code/settings.json", __DIR__)
   # Provider stop, exit and failure evidence keeps the last
   # `@output_tail_bytes` bytes of the stream, not its head, so a classifying
@@ -188,14 +192,99 @@ defmodule Kogen.Harness.Claude do
     )
   end
 
-  @doc "Launches the interactive Claude Code Shaper on the caller's terminal."
-  def exec_shaper(model, effort, prompt_file, context) do
+  @doc """
+  Runs one headless Shaping Controller turn (`-p` stream-json) with the prompt
+  on stdin. `kind` is `{:fresh, uuid}` (`--session-id`, the id minted and
+  saved by the caller before launch) or `{:resume, uuid}` (`--resume`). The
+  raw provider stream is written live to the context's `:log_path`. See
+  `Kogen.Harness.shaping_turn/5` for the return shapes.
+  """
+  def shaping_turn(kind, prompt, model, effort, context) do
     with_context(context, fn resolved ->
-      terminal(
-        %{resolved | env: merge_environment(resolved.env, [{"KOGEN_ROLE", "shaper"}])},
-        shaper_args(model, effort, resolved, prompt_file)
-      )
+      {mode, expected} = shaping_kind!(kind)
+      args = shaping_args(model, effort, resolved, {mode, expected}, Map.get(resolved, :channel))
+      {output, exit_code, timed_out} = run_shaping(resolved, args, prompt)
+
+      shaping_result(mode, expected, model, output, exit_code, timed_out)
     end)
+  end
+
+  defp shaping_kind!({:fresh, id}) when is_binary(id) and id != "", do: {:fresh, id}
+  defp shaping_kind!({:resume, id}) when is_binary(id) and id != "", do: {:resume, id}
+
+  defp shaping_kind!(kind) do
+    raise ArgumentError,
+          "a Claude Code shaping turn needs {:fresh, uuid} or {:resume, uuid}, got: #{inspect(kind)}"
+  end
+
+  defp shaping_result(mode, expected, model, output, exit_code, timed_out) do
+    observed = observed_session(output)
+
+    cond do
+      timed_out ->
+        {:error, {:timeout, %{provider_session_id: observed}}}
+
+      mode == :resume and String.contains?(output, "No conversation found") ->
+        {:error, {:provider_session_unavailable, output_tail(output)}}
+
+      true ->
+        case parse_stream(output, exit_code, expected, model) do
+          {:ok, turn} ->
+            {:ok,
+             %{
+               provider_session_id: turn.session_id,
+               exit_code: exit_code,
+               usage: turn.result["usage"],
+               timed_out: false
+             }}
+
+          {:error, {:session_id_mismatch, %{expected: _, actual: _} = mismatch}} ->
+            {:error, {:provider_session_mismatch, mismatch}}
+
+          {:error, reason} ->
+            {:error, {:provider_failure, reason, %{provider_session_id: observed}}}
+        end
+    end
+  end
+
+  defp run_shaping(context, args, prompt) do
+    dir = temporary_directory("stdin")
+    tmp = Path.join(dir, "prompt")
+    File.write!(tmp, prompt)
+
+    argv = Map.get(context, :prefix, []) ++ [context.executable | context.args ++ args]
+    role_environment = [{"KOGEN_ROLE", "shaping"}]
+
+    custody_opts =
+      [
+        stdin_path: tmp,
+        tmp_dir: dir,
+        env: merge_environment(context.env, role_environment),
+        log_path: Map.fetch!(context, :log_path)
+      ] ++
+        custody_registration(context, role_environment) ++
+        hard_timeout(context) ++
+        on_start_option(context)
+
+    case Kogen.ProcessCustody.run(argv, context[:cwd] || File.cwd!(), custody_opts) do
+      {:ok, facts} ->
+        output = facts["log_bytes"] || facts["output"] || ""
+        {output, facts["exit_code"], facts["timed_out"] == true}
+
+      {:error, reason} ->
+        {to_string(reason), 1, false}
+    end
+  end
+
+  defp hard_timeout(%{timeout_ms: ms}) when is_integer(ms) and ms > 0, do: [timeout_ms: ms]
+  defp hard_timeout(_context), do: []
+
+  @doc false
+  def shaping_args(model, effort, context, kind, channel \\ nil) do
+    ["-p", "--output-format", "stream-json", "--verbose"] ++
+      common_args(model, effort, context, "shaping") ++
+      session_args(kind) ++
+      if(is_binary(channel) and channel != "", do: ["--append-system-prompt", channel], else: [])
   end
 
   @doc false
@@ -231,11 +320,6 @@ defmodule Kogen.Harness.Claude do
       common_args(model, effort, context, role) ++ session_args({:fresh, session_id})
   end
 
-  @doc false
-  def shaper_args(model, effort, context, prompt_file) do
-    common_args(model, effort, context, "shaper") ++ ["--", File.read!(prompt_file)]
-  end
-
   defp session_args({:fresh, session_id}), do: ["--session-id", session_id]
   defp session_args({:resume, session_id}), do: ["--resume", session_id]
 
@@ -252,7 +336,7 @@ defmodule Kogen.Harness.Claude do
         "project",
         "--strict-mcp-config",
         "--settings",
-        launch_settings(),
+        launch_settings(role),
         "--agents",
         Jason.encode!(agents(role, context.config.helpers))
       ]
@@ -262,6 +346,9 @@ defmodule Kogen.Harness.Claude do
   def disallowed_tools(role) when role in ["reviewer", "expert", "auditor"],
     do: builtin_agent_rules() ++ @editing_tools
 
+  def disallowed_tools("shaping"),
+    do: builtin_agent_rules() ++ ~w(AskUserQuestion ExitPlanMode EnterPlanMode)
+
   def disallowed_tools(_role), do: builtin_agent_rules()
 
   defp builtin_agent_rules, do: Enum.map(@builtin_agents, &"Agent(#{&1})")
@@ -269,13 +356,23 @@ defmodule Kogen.Harness.Claude do
   @doc "Kogen's hook settings: the unchanged tracked Stop and Bash PreToolUse hooks."
   def settings_path, do: @settings_path
 
+  @doc "The Shaping Controller's hook settings: Stop audit hook and PostToolUse steer hook."
+  def shaping_settings_path, do: @shaping_settings_path
+
+  defp settings_file("shaping"), do: @shaping_settings_path
+  defp settings_file(_role), do: @settings_path
+
   @doc """
   The per-launch `--settings` value: Kogen's hook settings with every hook
   command bound to the absolute interpreter resolved in the controller's own
   environment (see `Kogen.Harness.HookInterpreter`), passed as inline JSON.
   """
-  def launch_settings do
-    @settings_path
+  def launch_settings, do: launch_settings("developer")
+
+  @doc "The `--settings` value for `role`: the Shaping Controller's own hook file, else `settings_path/0`."
+  def launch_settings(role) do
+    role
+    |> settings_file()
     |> File.read!()
     |> Jason.decode!()
     |> HookInterpreter.settings!()
@@ -303,6 +400,19 @@ defmodule Kogen.Harness.Claude do
          "effort" => profile.effort
        }}
     end)
+  end
+
+  defp helper("shaping", :scout) do
+    {"Read-only focused discovery, including web research.",
+     "You are a Kogen scout. Perform read-only discovery only.",
+     @read_tools ++ ["WebFetch", "WebSearch"]}
+  end
+
+  defp helper("shaping", :worker) do
+    {"Probe in disposable directories outside the repository (including launching Codex, Claude Code or Jev directly), and edit only the Draft files your packet assigns. Never run make targets or Kogen verification gates on the checkout.",
+     "You are a Kogen worker for the shaping controller. Probe only in disposable " <>
+       "directories outside the repository, and edit only the Draft files your packet assigns.",
+     @read_tools ++ ["Bash", "Edit", "Write"]}
   end
 
   defp helper(_role, :scout) do
@@ -632,7 +742,7 @@ defmodule Kogen.Harness.Claude do
   end
 
   # The Developer turn time-box: the Build sets `:turn_timeout_ms` on the
-  # Developer launch context only, so Reviewer, Expert and Shaper launches
+  # Developer launch context only, so Reviewer, Expert and Shaping Controller launches
   # (and verification targets) never carry a soft timeout.
   defp turn_time_box(%{turn_timeout_ms: ms} = context, role_environment)
        when is_integer(ms) and ms > 0 do
@@ -677,24 +787,6 @@ defmodule Kogen.Harness.Claude do
           "raw-stream-#{System.pid()}-#{System.unique_integer([:positive, :monotonic])}.jsonl"
 
         File.write!(Path.join(dir, name), output)
-    end
-  end
-
-  defp terminal(context, args) do
-    port =
-      Port.open({:spawn_executable, context.executable}, [
-        :nouse_stdio,
-        :exit_status,
-        args: context.args ++ args,
-        env:
-          Enum.map(context.env, fn {key, value} ->
-            {String.to_charlist(key),
-             if(is_nil(value), do: false, else: String.to_charlist(value))}
-          end)
-      ])
-
-    receive do
-      {^port, {:exit_status, status}} -> status
     end
   end
 

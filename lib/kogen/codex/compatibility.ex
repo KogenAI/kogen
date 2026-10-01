@@ -440,7 +440,7 @@ defmodule Kogen.Codex.Compatibility do
         cd: fixture,
         env:
           merge_env(context.env, [
-            {"KOGEN_ROLE", "shaper"},
+            {"KOGEN_ROLE", "shaping"},
             {"KOGEN_COMPATIBILITY_TRUST_FIXTURE", fixture}
           ])
       )

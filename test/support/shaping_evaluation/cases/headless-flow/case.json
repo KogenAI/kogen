@@ -1,0 +1,21 @@
+{
+  "name": "headless-flow",
+  "end": "ready",
+  "steps": [
+    {
+      "step": "start",
+      "brief": "brief.md"
+    },
+    {
+      "step": "message",
+      "file": "message-1.md",
+      "when": "mid_turn"
+    },
+    {
+      "step": "message",
+      "file": "message-2.md",
+      "when": "turn_ended"
+    }
+  ],
+  "note": "Two explicit messages: the first is sent while the first turn runs, the second after it ends. Offline rehearsal also covers additional explicit question and answer turns without guessing a Shaper decision."
+}

@@ -4,16 +4,16 @@ defmodule Kogen.ShapingAudit.StopHook do
   to `KOGEN_SHAPING_HOOK_OUTPUT`, per `shaping-stop-hook`.
 
   A Codex helper thread's Stop event (its rollout's first line names a
-  `subagent` source) and a non-shaper role or a present `.kogen/build.lock`
+  `subagent` source) and a non-shaping role or a present `.kogen/build.lock`
   are always allowed with no audit. Otherwise the package named by
-  `KOGEN_SHAPING_INTENT_ID` is audited (`auditor: true`), and the decision
+  `KOGEN_SHAPING_INTENT_ID` is audited (`auditor: true, reuse: true`: a current full report is reused), and the decision
   follows its readiness, with three anti-trap escapes: the same revision
   stopped again (`stalled`), the ninth successive block on a chain
   (`block-limit`), and the auditor bound being reached (`auditor-bound`).
   No decision uses elapsed time except to record it.
   """
 
-  alias Kogen.ShapingAudit.{Finding, Report}
+  alias Kogen.ShapingAudit.{Finding, HeadlessInput, Package, Report}
 
   @lock_path ".kogen/build.lock"
   @reason_limit 16 * 1024
@@ -59,7 +59,7 @@ defmodule Kogen.ShapingAudit.StopHook do
       helper_thread?(root, stdin) ->
         allow(%{"continue" => true}, "helper-thread")
 
-      Map.get(env, "KOGEN_ROLE") != "shaper" ->
+      Map.get(env, "KOGEN_ROLE") != "shaping" ->
         allow(%{"continue" => true}, "role")
 
       File.exists?(Path.join(root, @lock_path)) ->
@@ -106,30 +106,39 @@ defmodule Kogen.ShapingAudit.StopHook do
   # --- The audited path ----------------------------------------------------
 
   defp decide_for_package(root, env, opts) do
-    case find_slug(root, Map.get(env, "KOGEN_SHAPING_INTENT_ID")) do
-      nil ->
+    case Package.find_by_id(root, Map.get(env, "KOGEN_SHAPING_INTENT_ID")) do
+      {:error, :not_found} ->
         allow(%{"continue" => true}, "no-package")
 
-      slug ->
-        run_hook_audit(root, slug, env, opts)
+      {:ok, package} ->
+        admit_or_audit(root, package, env, opts)
     end
   end
 
-  defp find_slug(_root, nil), do: nil
-
-  defp find_slug(root, intent_id) do
-    Enum.find_value(["drafts", "approved"], fn kind ->
-      pattern = Path.join([root, ".kogen/intents", kind, "*", "intent.yaml"])
-      pattern |> Path.wildcard() |> Enum.find_value(&slug_if_matches(&1, intent_id))
-    end)
+  defp admit_or_audit(root, %{slug: slug} = package, env, opts) do
+    case Map.get(env, "KOGEN_SHAPING_SESSION_DIR") do
+      nil -> run_hook_audit(root, slug, env, opts)
+      "" -> run_hook_audit(root, slug, env, opts)
+      session_dir -> admit_active_session(root, package, session_dir, env, opts)
+    end
   end
 
-  defp slug_if_matches(path, intent_id) do
-    with {:ok, contents} <- File.read(path),
-         true <- Regex.match?(~r/^id:\s*#{Regex.escape(intent_id)}\s*$/m, contents) do
-      path |> Path.dirname() |> Path.basename()
-    else
-      _other -> nil
+  defp admit_active_session(root, package, session_dir, env, opts) do
+    case HeadlessInput.admit_brief(
+           root,
+           Map.get(env, "KOGEN_SHAPING_INTENT_ID"),
+           package,
+           session_dir
+         ) do
+      {:ok, _binding} ->
+        run_hook_audit(root, package.slug, env, opts)
+
+      {:error, reason} ->
+        %{
+          json: %{"decision" => "block", "reason" => "brief admission: #{reason}"},
+          kind: "brief-admission",
+          log?: false
+        }
     end
   end
 
@@ -176,6 +185,7 @@ defmodule Kogen.ShapingAudit.StopHook do
       slug: slug,
       route: Map.get(env, "KOGEN_SHAPING_ROUTE"),
       auditor: true,
+      reuse: true,
       env: env,
       opts: opts
     })

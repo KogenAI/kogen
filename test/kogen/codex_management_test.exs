@@ -38,7 +38,7 @@ defmodule Kogen.Codex.ManagementTest do
   end
 
   test "managed roles, including the Expert, cannot run setup", ctx do
-    for role <- ~w(developer reviewer shaper expert) do
+    for role <- ~w(developer reviewer shaping expert) do
       System.put_env("KOGEN_ROLE", role)
 
       assert_raise RuntimeError, ~r/explicit user operation/, fn -> Codex.install() end

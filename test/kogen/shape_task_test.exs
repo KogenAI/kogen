@@ -1,216 +1,1253 @@
-Code.require_file("../support/compiled_fixture.exs", __DIR__)
+Code.require_file("../support/shaping_engine_fixture.ex", __DIR__)
 Code.require_file("../support/document_references.ex", __DIR__)
 
 defmodule Kogen.ShapeTaskTest do
+  @moduledoc """
+  The public headless `mix kogen.shape` surface: one JSON line on stdout,
+  exit codes 0 and 2, usage and input refusals that store nothing, durable
+  request idempotency, the retired TUI-era Drafts, and the help surface.
+
+  Fast refusals call `Kogen.Shaping.main/2` in process; every test that
+  asserts the wire contract (stdout is exactly one JSON line) or needs a
+  started session runs the real `mix kogen.shape` as an external driver.
+  """
   use ExUnit.Case, async: true
 
-  @project_root Path.expand("../..", __DIR__)
-
+  alias Kogen.Shaping
+  alias Kogen.Shaping.Store
+  alias Kogen.ShapingEngineFixture, as: F
   alias Kogen.Test.DocumentReferences, as: DR
 
-  @root Path.expand("../..", __DIR__)
+  @project_root Path.expand("../..", __DIR__)
+  @root @project_root
+  @uuid ~r/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
   @moduletag :lifecycle
+  @moduletag timeout: 600_000
 
-  test "public Shape mints an identity and persists a Draft for explicit fixture approval" do
-    source = @project_root
-    fixture = Kogen.CompiledFixture.create!(source, "shape")
-    on_exit(fn -> File.rm_rf(fixture) end)
-    init_fixture_git!(fixture)
-    bulk_sentinel = "SHAPING_FILE_BODY_SENTINEL"
-    File.write!(Path.join(fixture, "README.md"), String.duplicate(bulk_sentinel, 50_000))
-    env = [{"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")}]
+  # --- helpers ---------------------------------------------------------------
 
-    {output, 0} = Kogen.CompiledFixture.mix_task!(fixture, "kogen.shape", env)
+  defp session_ids(root) do
+    case File.ls(Path.join(root, ".kogen/runtime/shaping")) do
+      {:ok, names} -> names |> Enum.filter(&(&1 =~ @uuid)) |> Enum.sort()
+      _ -> []
+    end
+  end
 
-    draft = Path.join(fixture, ".kogen/intents/drafts/fake-shaped-intent")
-    assert File.dir?(draft)
+  defp stored?(root) do
+    session_ids(root) != [] or
+      Path.wildcard(Path.join(root, ".kogen/runtime/shaping/**/*.json")) != []
+  end
 
-    [id] =
-      Regex.run(~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/, output)
+  # Runs one invocation in process and returns {json, exit}.
+  defp main(root, args, env \\ %{}), do: Kogen.Shaping.main(args, root: root, env: env)
 
-    draft_text = File.read!(Path.join(draft, "intent.yaml"))
-    assert draft_text =~ id
-    shaped = YamlElixir.read_from_string!(draft_text)
-    {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: fixture)
-    assert shaped["shaped_against"] == %{"branch" => "main", "head" => String.trim(head)}
-    {:ok, config} = Kogen.Intent.read_config(Path.join(fixture, ".kogen/config.yaml"))
-    assert shaped["shaping"]["route"] == config.route
-    assert shaped["shaping"]["harness"] == "codex"
-    assert shaped["shaping"]["model"] == config.shaping.model
-    assert shaped["shaping"]["effort"] == config.shaping.effort
-    args = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
-    prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    refute prompt =~ bulk_sentinel
-    compact_prompt = Regex.replace(~r/\s+/, prompt, " ")
+  defp refused!(root, args, code, env \\ %{}) do
+    assert {%{"error" => %{"code" => ^code}} = json, 2} = main(root, args, env)
+    json
+  end
 
-    assert compact_prompt =~
-             "declared-target retries follow the controller's failure-class retry policy separately from that allowance and resume the same Developer session when the applicable class permits a retry"
+  # The wire contract of a real invocation: one JSON object line, nothing else.
+  defp assert_one_line!(result) do
+    assert [line] = result.lines,
+           "stdout was: #{inspect(result.stdout)}\nstderr: #{result.stderr}"
 
-    assert compact_prompt =~
-             "Offline target, catalog and Candidate-caused `prepare` failures use `offline_retries` when present"
+    assert result.stdout == line <> "\n"
+    assert is_map(Jason.decode!(line))
+    result
+  end
 
-    assert compact_prompt =~
-             "legacy attempt contexts without that field fall back to `verification_retries`"
+  defp start!(root, brief \\ "Add a demo flag.\n", args \\ []) do
+    result = F.shape(root, ["--brief", F.input!(root, "brief.md", brief) | args])
+    assert result.exit == 0, result.stdout <> result.stderr
+    assert_one_line!(result)
+    result
+  end
 
-    assert compact_prompt =~ "Paid provider-backed target failures use `verification_retries`"
+  defp settle!(root, id), do: F.await_idle(root, id)
 
-    assert compact_prompt =~
-             "Terminal environment or provider failures spend neither retry budget"
+  defp hash_tree(dir) do
+    for path <- Path.wildcard(Path.join(dir, "**/*"), match_dot: true),
+        File.regular?(path),
+        into: %{},
+        do: {Path.relative_to(path, dir), :crypto.hash(:sha256, File.read!(path))}
+  end
 
-    refute compact_prompt =~ "`verification_retries` budget separately governs"
+  defp request_path(root, id, rid),
+    do: Store.request_path(root, F.session_dir(root, id), rid)
 
-    assert compact_prompt =~
-             "For a Build, its controller alone runs exactly the approved `verified_by` targets and writes their receipts"
+  defp read_json!(path) do
+    {:ok, data} = Store.read_json(path)
+    data
+  end
 
-    assert compact_prompt =~
-             "The Stop hook audits the Draft at every stop it sees, so ending the turn is how re-auditing happens"
+  # --- usage refusals --------------------------------------------------------
 
-    assert compact_prompt =~
-             "If the hook blocks the stop, fix findings that are within accepted scope"
+  describe "usage refusals exit 2 with error.code usage" do
+    setup do
+      root = F.repo!()
+      brief = F.input!(root, "brief.md", "A brief.\n")
+      id = "01965000-0000-7000-8000-00000000abcd"
+      {:ok, root: root, brief: brief, id: id}
+    end
+
+    test "every malformed invocation is refused in process and stores nothing", %{
+      root: root,
+      brief: brief,
+      id: id
+    } do
+      cases = [
+        ["--bogus"],
+        ["--brief", brief, "--bogus"],
+        ["--headless", "--brief", brief],
+        ["--expected-revision", "1", id],
+        [id, "other-positional"],
+        [id, "second", "--brief", brief],
+        [id, "--brief", brief, "--approve", "p-1-0123456789ab"],
+        ["--brief", brief, "--approve", "p-1-0123456789ab"],
+        [id, "--route", "codex", "--brief", brief],
+        [id, "--route", "codex"],
+        [id, "--route", "codex", "--cancel"],
+        ["--brief", brief, "--request-id", "bad id!"],
+        ["--brief", brief, "--request-id", ""],
+        ["--brief", brief, "--request-id", "-leading-dash"],
+        ["--brief", brief, "--interface", "no spaces"],
+        [id, "--approve", "p-1"],
+        [id, "--approve", "1-0123456789ab"],
+        [id, "--approve", "p-1-0123456789AB"],
+        [id, "--approve", "p-1-0123456789abc"],
+        [id, "--interface", "web"],
+        [id, "--request-id", "r1"],
+        [id, "--cancel", "--interface", "web"],
+        ["--route", "codex"],
+        ["--cancel"],
+        ["--approve", "p-1-0123456789ab"],
+        ["--brief"],
+        []
+      ]
+
+      for args <- cases do
+        json = refused!(root, args, "usage")
+        assert json["error"]["message"] =~ "usage: mix kogen.shape", inspect(args)
+        refute stored?(root), inspect(args)
+      end
+    end
+
+    test "status with any flag is a usage error and never touches the session", %{
+      root: root,
+      id: id
+    } do
+      for flag <- [["--interface", "web"], ["--request-id", "r1"], ["--route", "codex"]] do
+        refused!(root, [id | flag], "usage")
+      end
+
+      refute stored?(root)
+    end
+
+    test "through the real task: one JSON line on stdout and exit 2", %{
+      root: root,
+      brief: brief,
+      id: id
+    } do
+      for args <- [
+            ["--bogus"],
+            [id, "one-more"],
+            ["--brief", brief, "--approve", "p-1-0123456789ab"],
+            [id, "--route", "codex", "--brief", brief],
+            ["--brief", brief, "--request-id", "bad id!"],
+            [id, "--approve", "not-a-presentation"],
+            [id, "--interface", "web"]
+          ] do
+        result = root |> F.shape(args) |> assert_one_line!()
+        assert result.exit == 2, inspect(args)
+        assert result.json["error"]["code"] == "usage", inspect(result.json)
+        assert result.json["session"] == nil or result.json["session"] == id
+        refute stored?(root)
+      end
+    end
+  end
+
+  # --- invalid input ---------------------------------------------------------
+
+  describe "invalid input stores nothing" do
+    test "empty, oversized, invalid UTF-8 and missing files are refused invalid_input" do
+      root = F.repo!()
+      empty = F.input!(root, "empty.md", "")
+      big = F.input!(root, "big.md", String.duplicate("a", 1_048_577))
+      bad = F.input!(root, "bad.md", <<0x66, 0x6F, 0xFF, 0xFE, 0x6F>>)
+      missing = Path.join(root, ".kogen/inputs-under-test/none.md")
+
+      for path <- [empty, big, bad, missing] do
+        json = refused!(root, ["--brief", path], "invalid_input")
+        assert json["session"] == nil
+        refute stored?(root), path
+      end
+
+      # Exactly 1 MiB is still accepted by the size check (the boundary control).
+      edge = F.input!(root, "edge.md", String.duplicate("a", 1_048_576))
+
+      refute match?(
+               {%{"error" => %{"code" => "invalid_input"}}, 2},
+               main(root, ["--brief", edge, "--route", "nope"])
+             )
+    end
+
+    test "through the real task: one JSON line, exit 2, no session directory" do
+      root = F.repo!()
+      empty = F.input!(root, "empty.md", "")
+      bad = F.input!(root, "bad.md", <<0xC3, 0x28>>)
+
+      for path <- [empty, bad, Path.join(root, "absent.md")] do
+        result = root |> F.shape(["--brief", path]) |> assert_one_line!()
+        assert result.exit == 2
+        assert result.json["error"]["code"] == "invalid_input"
+      end
+
+      refute stored?(root)
+      refute File.exists?(Path.join(root, ".kogen/runtime/shaping")) and session_ids(root) != []
+    end
+
+    test "an invalid continue message stores no new input and keeps the session" do
+      root = F.repo!(turns: [[]])
+      id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+      settle!(root, id)
+      dir = F.session_dir(root, id)
+      before = hash_tree(Path.join(dir, "inputs"))
+
+      for path <- [
+            F.input!(root, "e.md", ""),
+            F.input!(root, "b.md", <<0xFF>>),
+            Path.join(root, "gone.md")
+          ] do
+        result = root |> F.shape([id, "--brief", path]) |> assert_one_line!()
+        assert result.exit == 2
+        assert result.json["error"]["code"] == "invalid_input"
+      end
+
+      assert hash_tree(Path.join(dir, "inputs")) == before
+      assert session_ids(root) == [id]
+    end
+  end
+
+  # --- exact bytes -----------------------------------------------------------
+
+  test "multibyte brief bytes are stored exactly as inputs/0001.md" do
+    root = F.repo!(turns: [[]])
+    brief = "Zovi ga --demo — «ø» 名前 😀 č ć ž š đ\r\nline two without final newline"
+    result = start!(root, brief)
+    id = result.json["session"]
+    assert id =~ @uuid
+    assert File.read!(Path.join([F.session_dir(root, id), "inputs", "0001.md"])) == brief
+    settle!(root, id)
+    assert File.read!(Path.join([F.session_dir(root, id), "inputs", "0001.md"])) == brief
+
+    [launch] = F.launches(root)
+    compact_prompt = Regex.replace(~r/\s+/, launch["stdin"], " ")
+
+    for instruction <- [
+          "declared-target retries follow the controller's failure-class retry policy separately from that allowance and resume the same Developer session when the applicable class permits a retry",
+          "Offline target, catalog and Candidate-caused `prepare` failures use `offline_retries` when present",
+          "legacy attempt contexts without that field fall back to `verification_retries`",
+          "Paid provider-backed target failures use `verification_retries`",
+          "Terminal environment or provider failures spend neither retry budget",
+          "For a Build, its controller alone runs exactly the approved `verified_by` targets and writes their receipts",
+          "hook audits the Draft at every stop it sees",
+          "If the hook blocks the stop, fix findings that are"
+        ] do
+      assert compact_prompt =~ instruction, instruction
+    end
 
     refute compact_prompt =~ "Stop-owned verification retries"
-    assert args =~ "--model\n#{config.shaping.model}\n"
-    assert args =~ ~s(model_reasoning_effort="#{config.shaping.effort}")
-    assert_shared_execution_policy!(prompt, :shaping, config)
-    approved = Path.join(fixture, ".kogen/intents/approved/fake-shaped-intent")
-    File.mkdir_p!(Path.dirname(approved))
-    File.rename!(draft, approved)
-    refute File.dir?(draft)
-    assert File.exists?(Path.join(approved, "scenarios.yaml"))
+    refute compact_prompt =~ "`verification_retries` budget separately governs"
   end
 
-  test "P4 mix kogen.shape passes the Intent id, route, launch id and toolchain path" do
-    fixture = shape_fixture()
-    wrapper = Path.join(fixture, "capture-shaper")
-    fake = Path.join(fixture, "test/support/fake_codex_shaper")
+  # --- idempotency -----------------------------------------------------------
 
-    File.write!(
-      wrapper,
-      "#!/bin/sh\nset -eu\nmkdir -p .kogen/runtime\nenv | grep '^KOGEN_' > .kogen/runtime/shaping-env\nexec \"$KOGEN_FAKE\" \"$@\"\n"
-    )
+  describe "request IDs" do
+    test "the same request ID and arguments replay the recorded outcome and exit without a second input" do
+      root = F.repo!(turns: [[]])
+      brief = F.input!(root, "brief.md", "Add a demo flag.\n")
 
-    File.chmod!(wrapper, 0o755)
+      first =
+        root
+        |> F.shape(["--brief", brief, "--request-id", "r-start", "--interface", "web"])
+        |> assert_one_line!()
 
-    {output, 0} =
-      Kogen.CompiledFixture.mix_task!(fixture, "kogen.shape", [
-        {"KOGEN_HARNESS", wrapper},
-        {"KOGEN_FAKE", fake},
-        {"KOGEN_ROLE", nil},
-        {"KOGEN_HARNESS_HOME", nil}
-      ])
+      assert first.exit == 0, first.stdout <> first.stderr
+      id = first.json["session"]
 
-    [intent_id | _] =
-      Regex.run(~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/, output)
+      again =
+        root
+        |> F.shape(["--brief", brief, "--request-id", "r-start", "--interface", "web"])
+        |> assert_one_line!()
 
-    env =
-      fixture
-      |> Path.join(".kogen/runtime/shaping-env")
-      |> File.read!()
-      |> String.split("\n", trim: true)
-      |> Map.new(fn line -> String.split(line, "=", parts: 2) |> List.to_tuple() end)
+      assert again.exit == 0
+      assert again.json == first.json
+      assert session_ids(root) == [id]
 
-    assert env["KOGEN_ROLE"] == "shaper"
-    assert env["KOGEN_SHAPING_INTENT_ID"] == intent_id
-    assert env["KOGEN_SHAPING_ROUTE"] == "codex"
+      settle!(root, id)
 
-    assert env["KOGEN_SHAPING_LAUNCH_ID"] =~
-             ~r/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      # A continue message is replayed too, with a byte-identical outcome and one input.
+      msg = F.input!(root, "m.md", "Steer: keep it small.\n")
+      sent = root |> F.shape([id, "--brief", msg, "--request-id", "r-msg"]) |> assert_one_line!()
+      assert sent.exit == 0
 
-    refute env["KOGEN_SHAPING_LAUNCH_ID"] == intent_id
+      replay =
+        root |> F.shape([id, "--brief", msg, "--request-id", "r-msg"]) |> assert_one_line!()
 
-    toolchain = String.split(env["KOGEN_SHAPING_TOOLCHAIN_PATH"], ":", trim: true)
-    assert toolchain != []
+      assert replay.exit == 0
+      assert replay.json == sent.json
 
-    for executable <- ~w(python3 elixir mix) do
-      assert Enum.any?(toolchain, fn directory ->
-               case System.cmd("test", ["-x", Path.join(directory, executable)]) do
-                 {_, 0} -> true
-                 _ -> false
-               end
-             end),
-             executable
+      settle!(root, id)
+      inputs = Path.wildcard(Path.join([F.session_dir(root, id), "inputs", "*.md"]))
+      assert Enum.map(inputs, &Path.basename/1) == ["0001.md", "0002.md"]
+
+      assert File.read!(Path.join([F.session_dir(root, id), "inputs", "0002.md"])) ==
+               "Steer: keep it small.\n"
+    end
+
+    test "concurrent retries of one request ID store exactly one input and one outcome" do
+      root = F.repo!(turns: [[]])
+      id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+      settle!(root, id)
+      msg = F.input!(root, "m.md", "Steer: keep it small.\n")
+
+      results =
+        1..4
+        |> Task.async_stream(
+          fn _ -> root |> F.shape([id, "--brief", msg, "--request-id", "r-race"]) end,
+          max_concurrency: 4,
+          timeout: 300_000
+        )
+        |> Enum.map(fn {:ok, result} -> assert_one_line!(result) end)
+
+      # Every caller gets the one recorded outcome, or a transient busy
+      # refusal while the first attempt still holds the request.
+      {accepted, busy} = Enum.split_with(results, &(&1.exit == 0))
+      assert accepted != []
+      assert accepted |> Enum.map(& &1.json["session"]) |> Enum.uniq() == [id]
+      assert Enum.all?(busy, &(&1.exit == 2 and &1.json["error"]["code"] == "busy"))
+
+      settle!(root, id)
+      inputs = Path.join(F.session_dir(root, id), "inputs")
+
+      assert inputs |> Path.join("*.md") |> Path.wildcard() |> Enum.map(&Path.basename/1) ==
+               ["0001.md", "0002.md"]
+
+      assert File.read!(Path.join(inputs, "0002.md")) == "Steer: keep it small.\n"
+
+      replay =
+        root |> F.shape([id, "--brief", msg, "--request-id", "r-race"]) |> assert_one_line!()
+
+      assert replay.exit == 0
+      assert replay.json == read_json!(request_path(root, id, "r-race"))["outcome"]
+    end
+
+    test "a request interrupted after claiming its input number completes that same input on retry" do
+      root = F.repo!(turns: [[]])
+      id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+      settle!(root, id)
+      bytes = "Steer: keep it small.\n"
+      msg = F.input!(root, "m.md", bytes)
+      dir = F.session_dir(root, id)
+
+      # A crash after the number was claimed for r-crash and its bytes were
+      # half written, before the request recorded the number or an outcome.
+      args = %{"brief" => Store.sha256(bytes), "interface" => "cli"}
+
+      File.write!(
+        Path.join([dir, "inputs", "0002.claim"]),
+        Jason.encode!(%{"request_id" => "r-crash"})
+      )
+
+      File.write!(Path.join([dir, "inputs", "0002.md"]), "Steer: ke")
+
+      Store.write_request!(request_path(root, id, "r-crash"), %{
+        "request_id" => "r-crash",
+        "command" => "message",
+        "digest" => Shaping.digest("message", id, args),
+        "received_at" => Store.now(),
+        "interface" => "cli",
+        "input_sha256" => args["brief"],
+        "outcome" => nil,
+        "exit" => nil
+      })
+
+      retried =
+        root |> F.shape([id, "--brief", msg, "--request-id", "r-crash"]) |> assert_one_line!()
+
+      assert retried.exit == 0, retried.stdout <> retried.stderr
+      settle!(root, id)
+
+      inputs = Path.join(dir, "inputs")
+
+      assert inputs |> Path.join("*.md") |> Path.wildcard() |> Enum.map(&Path.basename/1) ==
+               ["0001.md", "0002.md"]
+
+      assert File.read!(Path.join(inputs, "0002.md")) == bytes
+      assert read_json!(Path.join(inputs, "0002.json"))["request_id"] == "r-crash"
+      assert read_json!(request_path(root, id, "r-crash"))["input"] == 2
+    end
+
+    test "a refusal is recorded and replayed with exit 2" do
+      root = F.repo!(turns: [[]])
+      id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+      settle!(root, id)
+      args = [id, "--approve", "p-9-0123456789ab", "--request-id", "r-appr"]
+
+      first = root |> F.shape(args) |> assert_one_line!()
+      assert first.exit == 2
+      again = root |> F.shape(args) |> assert_one_line!()
+      assert again.exit == 2
+      assert again.json == first.json
+      assert first.json["error"]["code"] != "usage"
+
+      changed =
+        root
+        |> F.shape([id, "--approve", "p-8-0123456789ab", "--request-id", "r-appr"])
+        |> assert_one_line!()
+
+      assert changed.exit == 2
+      assert changed.json["error"]["code"] == "request_conflict"
+    end
+
+    test "reusing a start request ID with other bytes, another interface or another route is request_conflict" do
+      root = F.repo!(turns: [[]])
+      brief = F.input!(root, "brief.md", "Add a demo flag.\n")
+      other = F.input!(root, "other.md", "Add a different flag.\n")
+
+      first =
+        root
+        |> F.shape(["--brief", brief, "--request-id", "r1", "--interface", "cli"])
+        |> assert_one_line!()
+
+      assert first.exit == 0
+      id = first.json["session"]
+      settle!(root, id)
+      record_path = Path.join([root, ".kogen/runtime/shaping/start-requests/r1.json"])
+      recorded = File.read!(record_path)
+      assert %{"outcome" => %{"session" => ^id}, "exit" => 0} = Jason.decode!(recorded)
+
+      for args <- [
+            ["--brief", other, "--request-id", "r1", "--interface", "cli"],
+            ["--brief", brief, "--request-id", "r1", "--interface", "web"],
+            ["--brief", brief, "--request-id", "r1", "--interface", "cli", "--route", "other"]
+          ] do
+        result = root |> F.shape(args) |> assert_one_line!()
+        assert result.exit == 2, inspect(args)
+        assert result.json["error"]["code"] == "request_conflict", inspect(result.json)
+      end
+
+      # The first record was not overwritten and no second session or input appeared.
+      assert File.read!(record_path) == recorded
+      assert session_ids(root) == [id]
+
+      assert File.read!(Path.join([F.session_dir(root, id), "inputs", "0001.md"])) ==
+               "Add a demo flag.\n"
+    end
+
+    test "reusing a continue request ID with other bytes or another interface is request_conflict" do
+      root = F.repo!(turns: [[]])
+      id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+      settle!(root, id)
+      one = F.input!(root, "one.md", "First answer.\n")
+      two = F.input!(root, "two.md", "Second answer.\n")
+
+      first =
+        root
+        |> F.shape([id, "--brief", one, "--request-id", "r2", "--interface", "cli"])
+        |> assert_one_line!()
+
+      assert first.exit == 0
+      settle!(root, id)
+      record_path = Path.join([F.session_dir(root, id), "requests", "r2.json"])
+      recorded = File.read!(record_path)
+
+      for args <- [
+            [id, "--brief", two, "--request-id", "r2", "--interface", "cli"],
+            [id, "--brief", one, "--request-id", "r2", "--interface", "web"]
+          ] do
+        result = root |> F.shape(args) |> assert_one_line!()
+        assert result.exit == 2
+        assert result.json["error"]["code"] == "request_conflict"
+      end
+
+      assert File.read!(record_path) == recorded
+      inputs = Path.wildcard(Path.join([F.session_dir(root, id), "inputs", "*.md"]))
+      assert Enum.map(inputs, &Path.basename/1) == ["0001.md", "0002.md"]
+
+      assert File.read!(Path.join([F.session_dir(root, id), "inputs", "0002.md"])) ==
+               "First answer.\n"
     end
   end
 
-  @draft """
-  id: 01960000-0000-7000-8000-000000000abc
-  slug: unfinished
-  shaped_against:
-    branch: old-main
-    head: old-head
-  shaping:
-    harness: codex
-    model: old-model
-    effort: low
-    started: '2026-01-01T00:00:00Z'
-  """
+  # --- legacy and unknown sessions ----------------------------------------------
 
-  test "continuation uses current profiles and role without mutating unfinished draft" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    File.write!(Path.join(draft, "intent.yaml"), @draft)
+  describe "session addressing" do
+    test "a TUI-era Draft named by slug is legacy_draft_unsupported and its bytes are untouched" do
+      root = F.repo!()
+      draft = F.draft(root, "old-tui-draft")
+      File.mkdir_p!(Path.join(draft, "evidence"))
+
+      File.write!(
+        Path.join(draft, "intent.yaml"),
+        "id: 01965000-0000-7000-8000-000000000042\nslug: old-tui-draft\n"
+      )
+
+      File.write!(Path.join(draft, "INTENT.md"), "# Old\nmultibyte «ø» 名前\n")
+      File.write!(Path.join(draft, "evidence/note.md"), "kept\n")
+      before = hash_tree(Path.join(root, ".kogen/intents"))
+      brief = F.input!(root, "m.md", "continue please\n")
+
+      for args <- [
+            ["old-tui-draft"],
+            ["old-tui-draft", "--brief", brief],
+            ["old-tui-draft", "--approve", "p-1-0123456789ab"],
+            ["old-tui-draft", "--cancel"]
+          ] do
+        json = refused!(root, args, "legacy_draft_unsupported")
+        assert json["error"]["message"] =~ "old-tui-draft"
+      end
+
+      result = root |> F.shape(["old-tui-draft"]) |> assert_one_line!()
+      assert result.exit == 2
+      assert result.json["error"]["code"] == "legacy_draft_unsupported"
+
+      assert hash_tree(Path.join(root, ".kogen/intents")) == before
+      refute stored?(root)
+    end
+
+    test "a TUI-era Draft named by its UUID is legacy_draft_unsupported too" do
+      root = F.repo!()
+      id = "01965000-0000-7000-8000-000000000043"
+      draft = F.draft(root, "uuid-draft")
+      File.mkdir_p!(draft)
+      File.write!(Path.join(draft, "intent.yaml"), "id: #{id}\nslug: uuid-draft\n")
+      before = hash_tree(Path.join(root, ".kogen/intents"))
+
+      refused!(root, [id], "legacy_draft_unsupported")
+      assert hash_tree(Path.join(root, ".kogen/intents")) == before
+    end
+
+    test "a non-UUID argument that names nothing, and an unknown UUID, are session_not_found" do
+      root = F.repo!()
+
+      for arg <- ["no-such-draft", "01965000-0000-7000-8000-0000000000ff", "../etc", "Not A Slug"] do
+        json = refused!(root, [arg], "session_not_found")
+        assert json["state"] == nil
+      end
+
+      brief = F.input!(root, "m.md", "hello\n")
+      refused!(root, ["no-such-draft", "--brief", brief], "session_not_found")
+      refused!(root, ["01965000-0000-7000-8000-0000000000ff", "--cancel"], "session_not_found")
+
+      for arg <- ["no-such-draft", "01965000-0000-7000-8000-0000000000ff"] do
+        result = root |> F.shape([arg]) |> assert_one_line!()
+        assert result.exit == 2
+        assert result.json["error"]["code"] == "session_not_found"
+      end
+
+      refute stored?(root)
+    end
+  end
+
+  # --- caller and environment gates -----------------------------------------------
+
+  describe "gates that refuse before anything is stored" do
+    test "build_running while .kogen/build.lock exists, for start and for continue" do
+      root = F.repo!(turns: [[]])
+      id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+      settle!(root, id)
+      lock = Path.join(root, ".kogen/build.lock")
+      File.write!(lock, ~s({"pid": 1}))
+      brief = F.input!(root, "m.md", "later\n")
+      inputs = Path.join(F.session_dir(root, id), "inputs")
+      before = hash_tree(inputs)
+
+      start = root |> F.shape(["--brief", brief]) |> assert_one_line!()
+      assert start.exit == 2
+      assert start.json["error"]["code"] == "build_running"
+
+      cont = root |> F.shape([id, "--brief", brief]) |> assert_one_line!()
+      assert cont.exit == 2
+      assert cont.json["error"]["code"] == "build_running"
+
+      assert session_ids(root) == [id]
+      assert hash_tree(inputs) == before
+
+      # Control: status is read-only and still answers while a Build runs.
+      status = root |> F.shape([id]) |> assert_one_line!()
+      assert status.exit == 0
+      assert status.json["session"] == id
+
+      File.rm!(lock)
+    end
+
+    test "KOGEN_ROLE set refuses managed_role and stores nothing" do
+      root = F.repo!()
+      brief = F.input!(root, "brief.md", "A brief.\n")
+
+      for role <- ["shaping", "developer", "reviewer"] do
+        json = refused!(root, ["--brief", brief], "managed_role", %{"KOGEN_ROLE" => role})
+        assert json["error"]["message"] =~ role
+      end
+
+      refused!(root, ["01965000-0000-7000-8000-000000000001"], "managed_role", %{
+        "KOGEN_ROLE" => "shaping"
+      })
+
+      # An empty role is not a role (control).
+      refute match?(
+               {%{"error" => %{"code" => "managed_role"}}, _},
+               main(root, ["--bogus"], %{"KOGEN_ROLE" => ""})
+             )
+
+      raw =
+        root
+        |> F.shape(["--brief", brief], raw_env: true, env: [{"KOGEN_ROLE", "shaping"}])
+        |> assert_one_line!()
+
+      assert raw.exit == 2
+      assert raw.json["error"]["code"] == "managed_role"
+      refute stored?(root)
+
+      # Control: the external-driver environment strips the role and starts.
+      driver =
+        root |> F.shape(["--brief", brief], env: [{"KOGEN_ROLE", nil}]) |> assert_one_line!()
+
+      assert driver.exit == 0
+      assert driver.json["session"] =~ @uuid
+    end
+
+    test "a completed request replays its recorded outcome after login loss or a Build lock; a new one is refused" do
+      root = F.repo!(turns: [[]])
+      brief = F.input!(root, "brief.md", "Add a demo flag.\n")
+      started = root |> F.shape(["--brief", brief, "--request-id", "r-s"]) |> assert_one_line!()
+      assert started.exit == 0
+      id = started.json["session"]
+      settle!(root, id)
+      msg = F.input!(root, "m.md", "Steer: keep it small.\n")
+      sent = root |> F.shape([id, "--brief", msg, "--request-id", "r-m"]) |> assert_one_line!()
+      assert sent.exit == 0
+      settle!(root, id)
+      inputs = Path.join(F.session_dir(root, id), "inputs")
+      before = hash_tree(inputs)
+
+      # Login lost: identical retries replay; a new request is refused.
+      for {args, first} <- [
+            {["--brief", brief, "--request-id", "r-s"], started},
+            {[id, "--brief", msg, "--request-id", "r-m"], sent}
+          ] do
+        replay = root |> F.shape(args, env: not_ready_env(root)) |> assert_one_line!()
+        assert {replay.exit, replay.json} == {0, first.json}
+      end
+
+      fresh =
+        root
+        |> F.shape([id, "--brief", msg, "--request-id", "r-new"], env: not_ready_env(root))
+        |> assert_one_line!()
+
+      assert {fresh.exit, fresh.json["error"]["code"]} == {2, "harness_not_ready"}
+
+      fresh_start =
+        root
+        |> F.shape(["--brief", brief, "--request-id", "r-start-new"], env: not_ready_env(root))
+        |> assert_one_line!()
+
+      assert {fresh_start.exit, fresh_start.json["error"]["code"]} == {2, "harness_not_ready"}
+
+      # A Build lock: the same.
+      lock = Path.join(root, ".kogen/build.lock")
+      File.write!(lock, ~s({"pid": 1}))
+
+      start_replay =
+        root |> F.shape(["--brief", brief, "--request-id", "r-s"]) |> assert_one_line!()
+
+      assert {start_replay.exit, start_replay.json} == {0, started.json}
+      replay = root |> F.shape([id, "--brief", msg, "--request-id", "r-m"]) |> assert_one_line!()
+      assert {replay.exit, replay.json} == {0, sent.json}
+
+      fresh =
+        root |> F.shape([id, "--brief", msg, "--request-id", "r-new2"]) |> assert_one_line!()
+
+      assert {fresh.exit, fresh.json["error"]["code"]} == {2, "build_running"}
+
+      fresh_start =
+        root |> F.shape(["--brief", brief, "--request-id", "r-start-new2"]) |> assert_one_line!()
+
+      assert {fresh_start.exit, fresh_start.json["error"]["code"]} == {2, "build_running"}
+
+      changed = F.input!(root, "changed.md", "Different bytes.\n")
+
+      for args <- [
+            ["--brief", changed, "--request-id", "r-s"],
+            [id, "--brief", changed, "--request-id", "r-m"]
+          ] do
+        conflict = root |> F.shape(args, env: not_ready_env(root)) |> assert_one_line!()
+        assert {conflict.exit, conflict.json["error"]["code"]} == {2, "request_conflict"}
+      end
+
+      File.rm!(lock)
+
+      assert hash_tree(inputs) == before
+      assert session_ids(root) == [id]
+    end
+
+    test "a route's harness that is not ready is harness_not_ready and nothing is stored" do
+      root = F.repo!()
+      brief = F.input!(root, "brief.md", "A brief.\n")
+
+      result =
+        root
+        |> F.shape(["--brief", brief], env: not_ready_env(root))
+        |> assert_one_line!()
+
+      assert result.exit == 2
+      assert result.json["error"]["code"] == "harness_not_ready", inspect(result.json)
+      assert result.json["error"]["message"] =~ "is not ready"
+      refute stored?(root)
+      assert F.launches(root) == []
+    end
+
+    test "a not-ready harness also refuses a continue message and stores no input" do
+      root = F.repo!(turns: [[]])
+      id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+      settle!(root, id)
+      inputs = Path.join(F.session_dir(root, id), "inputs")
+      before = hash_tree(inputs)
+      msg = F.input!(root, "m.md", "again\n")
+
+      result =
+        root
+        |> F.shape([id, "--brief", msg], env: not_ready_env(root))
+        |> assert_one_line!()
+
+      assert result.exit == 2
+      assert result.json["error"]["code"] == "harness_not_ready"
+      assert hash_tree(inputs) == before
+    end
+
+    test "a hybrid route's not-ready adversarial Expert harness is refused, naming the role and harness" do
+      root = F.repo!()
+      File.write!(Path.join(root, ".kogen/config.yaml"), hybrid_config())
+
+      claude_root = Path.join(root <> "-claude-root", "claude")
+      File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+      on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+
+      {_out, 0} =
+        System.cmd(
+          "python3",
+          [
+            Path.join(@project_root, "test/support/managed_claude_fixture.py"),
+            claude_root,
+            Path.join(@project_root, "priv/kogen/claude_code/install.py")
+          ],
+          env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}],
+          cd: @root
+        )
+
+      File.write!(Path.join(claude_root, "accounts/shared/.fake-login"), "claude.ai\n")
+      brief = F.input!(root, "brief.md", "A brief.\n")
+
+      # No `KOGEN_HARNESS`: both harnesses use real managed readiness, so only
+      # the adversarial Codex harness (a fresh, unmanaged root) is not ready.
+      result =
+        F.shape(root, ["--brief", brief],
+          env: [
+            {"KOGEN_HARNESS", nil},
+            {"KOGEN_CLAUDE_ROOT", claude_root},
+            {"KOGEN_TEST_NATIVE_TRACE", Path.join(root <> "-claude-root", "claude-trace.jsonl")},
+            {"KOGEN_CODEX_ROOT", Path.join(root <> "-claude-root", "codex-not-installed")}
+          ]
+        )
+
+      assert_one_line!(result)
+      assert result.exit == 2
+      assert result.json["error"]["code"] == "harness_not_ready"
+
+      assert result.json["error"]["message"] =~
+               "expert harness codex is not ready: Kogen Codex is not installed. Run mix kogen.codex.install"
+
+      refute result.json["error"]["message"] =~ "reviewer"
+      refute stored?(root)
+      assert F.launches(root) == []
+    end
+  end
+
+  # --- routes and configuration -----------------------------------------------------
+
+  describe "route selection" do
+    test "an unknown --route is refused before any provider launch" do
+      root = F.repo!()
+      brief = F.input!(root, "brief.md", "A brief.\n")
+
+      for route <- ["missing", "Codex"] do
+        json = refused!(root, ["--brief", brief, "--route", route], "usage")
+
+        assert json["error"]["message"] =~
+                 "unknown route: #{route}; available routes: codex, other"
+      end
+
+      result = root |> F.shape(["--brief", brief, "--route", "missing"]) |> assert_one_line!()
+      assert result.exit == 2
+      assert result.json["error"]["code"] == "usage"
+      assert result.json["error"]["message"] =~ "unknown route: missing"
+      refute stored?(root)
+      assert F.launches(root) == []
+    end
+
+    test "--route without a value, and --route on a session command, are usage errors" do
+      root = F.repo!()
+      brief = F.input!(root, "brief.md", "A brief.\n")
+      id = "01965000-0000-7000-8000-00000000abcd"
+
+      refused!(root, ["--brief", brief, "--route"], "usage")
+      refused!(root, ["--route", "--brief", brief], "usage")
+      refused!(root, [id, "--brief", brief, "--route", "codex"], "usage")
+      refute stored?(root)
+    end
+
+    test "the selected route is recorded on the session and the other route is untouched" do
+      root = F.repo!(turns: [[]])
+      result = start!(root, "Use the other route.\n", ["--route", "other"])
+      id = result.json["session"]
+      assert result.json["route"] == "other"
+      assert F.session(root, id)["route"] == "other"
+      settle!(root, id)
+
+      default = start!(root, "Use the default route.\n", ["--request-id", "second"])
+      assert default.json["route"] == "codex"
+      settle!(root, default.json["session"])
+    end
+
+    test "the flat configuration shape is refused before any launch, for start and continue" do
+      root = F.repo!()
+      brief = F.input!(root, "brief.md", "A brief.\n")
+
+      File.write!(Path.join(root, ".kogen/config.yaml"), """
+      harness: codex
+      shaping: {model: current-shaper, effort: shaping-effort}
+      developer: {model: current-developer, effort: developer-effort}
+      reviewer: {model: current-reviewer, effort: reviewer-effort}
+      helpers:
+        scout: {model: current-scout, effort: scout-effort}
+        worker: {model: current-worker, effort: worker-effort}
+        expert: {model: current-expert, effort: expert-effort}
+      outer_resumptions: 2
+      verification_retries: 2
+      offline_retries: 4
+      """)
+
+      for args <- [["--brief", brief], ["--brief", brief, "--route", "current"]] do
+        json = refused!(root, args, "usage")
+        assert json["error"]["message"] =~ "flat configuration shape"
+        assert json["error"]["message"] =~ "define default_route and routes"
+      end
+
+      result = root |> F.shape(["--brief", brief]) |> assert_one_line!()
+      assert result.exit == 2
+      assert result.json["error"]["code"] == "usage"
+      assert result.json["error"]["message"] =~ "flat configuration shape"
+      refute stored?(root)
+      assert F.launches(root) == []
+    end
+  end
+
+  test "only the selected route is checked for harness support, proven models and readiness" do
+    root = F.repo!(turns: [[]])
+    config_path = Path.join(root, ".kogen/config.yaml")
+    claude_root = Path.join(root <> "-claude-root", "claude")
+    File.mkdir_p!(claude_root)
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+
+    broken = """
+      pi:
+        harness: pi-chatgpt
+        shaping: {model: pi-model, effort: low}
+        developer: {model: pi-model, effort: low}
+        reviewer: {model: pi-model, effort: low}
+        helpers:
+          scout: {model: pi-model, effort: low}
+          worker: {model: pi-model, effort: low}
+          expert: {model: pi-model, effort: low}
+      unproven:
+        harness: claude
+        shaping: {model: claude-unproven-9, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer: {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout: {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
+      claude:
+        harness: claude
+        shaping: {model: claude-opus-5-5, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer: {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout: {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
+    """
+
+    config = File.read!(config_path)
 
     File.write!(
-      Path.join(draft, "questions.md"),
-      "Parked until process reassessment. Historical yes.\n" <>
-        String.duplicate("CONTINUED_SHAPING_BODY_SENTINEL", 40_000)
+      config_path,
+      String.replace(config, "outer_resumptions:", broken <> "outer_resumptions:", global: false)
     )
 
-    prompt_path = Path.join(fixture, "priv/kogen/prompts/shaping.md")
-    File.write!(prompt_path, File.read!(prompt_path) <> "\nCURRENT_SHARED_ROLE_MARKER\n")
-    config_path = Path.join(fixture, ".kogen/config.yaml")
+    brief = F.input!(root, "brief.md", "A brief.\n")
 
-    File.write!(config_path, distinct_config())
-    before = snapshot(draft)
+    # The selected Codex route proceeds although the other routes name an
+    # unsupported harness, an unproven model and an uninstalled Claude Code.
+    started =
+      root
+      |> F.shape(["--brief", brief], env: [{"KOGEN_CLAUDE_ROOT", claude_root}])
+      |> assert_one_line!()
 
-    {output, 0} = capture(fixture, ["unfinished"])
-    assert output =~ "01960000-0000-7000-8000-000000000abc"
-    assert snapshot(draft) == before
-    refute File.exists?(Path.join(fixture, ".kogen/intents/approved/unfinished"))
-    prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    refute prompt =~ "CONTINUED_SHAPING_BODY_SENTINEL"
-    args = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
-    assert args =~ "--model\ncurrent-shaper\n"
-    assert args =~ ~s(model_reasoning_effort="shaping-effort")
-    refute args =~ "\nresume\n"
+    assert started.exit == 0, started.stdout <> started.stderr
+    assert started.json["route"] == "codex"
+    settle!(root, started.json["session"])
 
-    for text <- [
-          "CURRENT_SHARED_ROLE_MARKER",
-          "current-scout",
-          "old-main",
-          "old-head",
-          "Current checkout branch: `main`",
-          "shaping_continuations",
-          "append exactly one",
-          "Keep original `shaping` metadata unchanged",
-          "Parked work",
-          "conflicts",
-          "relevant linked evidence",
-          "ask where",
-          "Historical approval",
-          "Missing or incomplete",
-          "Follow direction already supplied",
-          "partial answer"
+    for {route, expected} <- [
+          {"pi", "unsupported harness: pi-chatgpt; expected codex or claude"},
+          {"unproven", "unsupported Claude Code model for shaping: claude-unproven-9"},
+          {"claude",
+           "Kogen Claude Code #{Kogen.ManagedRuntimeReady.claude_code_version()} is not installed. Run mix kogen.claude.install"}
         ] do
-      assert prompt =~ text
+      result =
+        root
+        |> F.shape(["--brief", brief, "--route", route, "--request-id", "route-#{route}"],
+          env: [{"KOGEN_CLAUDE_ROOT", claude_root}, {"KOGEN_HARNESS", nil}]
+        )
+        |> assert_one_line!()
+
+      assert result.exit == 2, inspect(result.json)
+      assert result.json["error"]["message"] =~ expected, inspect(result.json)
     end
 
-    assert prompt =~
-             "route: current\nharness: codex\nmodel: current-shaper\neffort: shaping-effort\n"
-
-    {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: fixture)
-    assert prompt =~ String.trim(head)
-    refute prompt =~ "already minted"
-    refute prompt =~ "{{"
-    {:ok, config} = Kogen.Intent.read_config(config_path)
-    assert_shared_execution_policy!(prompt, :shaping, config)
+    assert session_ids(root) == [started.json["session"]]
   end
 
-  # Short anchors for the ideas the Shaping prompt must convey, not the exact
-  # sentences: real investigation before a plan, guarded write scope, that a
-  # passing mock is not credential proof, and that silence is not approval.
+  # The Expert task never reads the config: without a frozen assignment it
+  # fails naming the missing assignment, even when the config is unreadable.
+  test "mix kogen.expert without KOGEN_EXPERT names the missing assignment and never reads the config" do
+    root = F.repo!()
+    config = Path.join(root, ".kogen/config.yaml")
+    File.write!(config, "not: [valid")
+    File.chmod!(config, 0o000)
+    on_exit(fn -> File.chmod(config, 0o644) end)
+
+    for assignment <- [nil, ~s({"harness":"codex"})] do
+      env = F.driver_env(F.env(root, [{"KOGEN_EXPERT", assignment}]))
+      result = F.mix(root, ["kogen.expert", "Which lock order is safe?"], env)
+
+      assert result.exit != 0
+      output = result.stdout <> result.stderr
+      assert output =~ "KOGEN_EXPERT assignment"
+      refute output =~ "config.yaml"
+    end
+  end
+
+  # No fake provider: real managed readiness against a Codex root that is not
+  # installed, so the route's harness is not ready.
+  defp not_ready_env(root) do
+    [
+      {"KOGEN_HARNESS", nil},
+      {"KOGEN_CODEX_ROOT", Path.join(root <> "-none", "codex-not-installed")}
+    ]
+  end
+
+  # A hybrid (role-level) route: Shaping runs on Claude Code, Reviewer and
+  # Expert on Codex.
+  defp hybrid_config do
+    """
+    default_route: hybrid
+    routes:
+      hybrid:
+        shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+        developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+        reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
+        expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
+        helpers:
+          claude:
+            scout:  {model: claude-sonnet-5, effort: low}
+            worker: {model: claude-sonnet-5, effort: medium}
+          codex:
+            scout:  {model: gpt-6-luna, effort: low}
+            worker: {model: gpt-6-luna, effort: high}
+    outer_resumptions: 2
+    verification_retries: 2
+    offline_retries: 4
+    """
+  end
+
+  # --- stdout purity -----------------------------------------------------------------
+
+  test "status, cancel and continue after a killed runner keep stdout to one JSON line" do
+    root = F.repo!(turns: [[%{"sleep" => 30}]])
+    id = root |> start!() |> Map.fetch!(:json) |> Map.fetch!("session")
+
+    # Wait for the runner to hold the session, then kill it hard.
+    running = F.await(root, id, &(&1["runner"] == true and &1["turn_active"] == true))
+    assert running["runner"] == true
+    lock = Path.join(F.session_dir(root, id), ".kogen/build.lock")
+    assert %{"pid" => pid} = lock |> File.read!() |> Jason.decode!()
+    System.cmd("kill", ["-KILL", to_string(pid)], stderr_to_stdout: true)
+    refute wait_dead(pid) == :alive
+
+    status = root |> F.shape([id]) |> assert_one_line!()
+    assert status.exit == 0
+    assert status.json["runner"] == false
+    assert status.json["state"] == "interrupted"
+    assert status.json["stored_state"] == "running"
+    assert status.json["state_source"] == "runner_custody"
+    assert status.json["execution"]["status"] == "interrupted"
+    assert status.json["execution"]["cause"] =~ "PID start time changed"
+
+    cancel = root |> F.shape([id, "--cancel"]) |> assert_one_line!()
+    assert cancel.exit == 0
+    assert cancel.json["receipt"]["effect_status"] == "pending"
+    assert cancel.json["session"] == id
+
+    settled =
+      F.await(root, id, fn saved ->
+        saved["runner"] == false and get_in(saved, ["cancellation", "status"]) == "settled"
+      end)
+
+    assert settled["state"] == "cancelled"
+
+    # Provider diagnostics and custody notices go to stderr, never stdout.
+    refute cancel.stdout =~ "Reclaimed"
+  end
+
+  test "public cancel receipt is prompt and remains pending while an exact TERM-ignoring owner lives" do
+    ask = [
+      %{"create_draft" => %{"template" => F.ready_template()}},
+      %{"ask" => %{"number" => 1, "question" => "Which name should the flag have?"}}
+    ]
+
+    root = F.repo!(turns: [ask, []])
+    start = root |> start!() |> Map.fetch!(:json)
+    id = start["session"]
+
+    assert start["receipt"]["command"] == "start"
+    assert start["receipt"]["effect_status"] == "received"
+    assert start["received_input"]["number"] == 1
+    assert start["received_input"]["status"] == "received"
+
+    F.await(root, id, &(&1["runner"] == false))
+    answer = F.input!(root, "before-cancel.md", "Keep this accepted answer.\n")
+    received = F.shape(root, [id, "--brief", answer, "--request-id", "before-cancel"])
+    assert received.exit == 0
+    assert received.json["receipt"]["request_id"] == "before-cancel"
+    assert received.json["received_input"]["id"] =~ ~r/^in-0002-/
+    assert received.json["received_input"]["number"] == 2
+    assert received.json["received_input"]["status"] == "received"
+    F.await(root, id, &(&1["runner"] == false))
+
+    owner_path = Path.join(root, ".kogen/test-term-ignoring-owner.pid")
+    owner_signal_path = owner_path <> ".signals"
+    {owner_task, owner_pid, owner_started} = term_ignoring_owner!(owner_path, owner_signal_path)
+    session_dir = F.session_dir(root, id)
+    lock_path = Kogen.ProcessCustody.lock_path(session_dir)
+    File.mkdir_p!(Path.dirname(lock_path))
+
+    File.write!(
+      lock_path,
+      Jason.encode!(%{
+        "pid" => owner_pid,
+        "started_at" => owner_started,
+        "build_id" => "kogen-shaping-runner",
+        "groups" => []
+      })
+    )
+
+    args = [id, "--cancel", "--request-id", "public-cancel"]
+    cancel_started = System.monotonic_time(:millisecond)
+    cancel = root |> F.shape(args) |> assert_one_line!()
+    external_elapsed = System.monotonic_time(:millisecond) - cancel_started
+
+    assert cancel.exit == 0
+    assert external_elapsed < 10_000
+
+    assert cancel.json["receipt"] == %{
+             "command" => "cancel",
+             "effect_status" => "pending",
+             "received_at" => cancel.json["receipt"]["received_at"],
+             "request_id" => "public-cancel"
+           }
+
+    assert cancel.json["runner"] == true
+    assert cancel.json["cancellation"]["status"] == "pending"
+
+    assert cancel.json["cancellation"]["owner"] == %{
+             "pid" => owner_pid,
+             "started_at" => owner_started
+           }
+
+    coalesced = F.shape(root, [id, "--cancel", "--request-id", "public-cancel-second"])
+    assert coalesced.exit == 0
+    assert coalesced.json["receipt"]["effect_status"] == "pending"
+    assert coalesced.json["cancellation"]["status"] == "pending"
+    assert coalesced.json["cancellation"]["signal_status"] == "coalesced"
+
+    assert "TERM\n" == File.read!(owner_signal_path)
+
+    status = root |> F.shape([id]) |> assert_one_line!()
+    assert status.json["cancellation"]["status"] == "pending"
+    assert Enum.map(status.json["inputs"], & &1["number"]) == [1, 2]
+
+    last_progress = status.json["inputs"] |> List.last() |> Map.fetch!("progress")
+    assert last_progress in ["offered", "recorded", "received"]
+
+    busy = F.shape(root, [id, "--brief", answer, "--request-id", "after-cancel"])
+    assert busy.exit == 2
+    assert busy.json["error"]["code"] == "busy"
+    assert length(Store.messages(session_dir)) == 1
+
+    replay = root |> F.shape(args) |> assert_one_line!()
+    assert replay.json == cancel.json
+
+    conflict = F.shape(root, [id, "--brief", answer, "--request-id", "public-cancel"])
+    assert conflict.exit == 2
+    assert conflict.json["error"]["code"] == "request_conflict"
+
+    if Kogen.ProcessCustody.process_start(owner_pid) == owner_started do
+      System.cmd("kill", ["-KILL", to_string(owner_pid)], stderr_to_stdout: true)
+    end
+
+    _ = Task.await(owner_task, 30_000)
+
+    # A retry with another request ID finds the durable pending effect, does
+    # not target a replacement process, and starts the existing recovery seam.
+    recovery = F.shape(root, [id, "--cancel", "--request-id", "cancel-recovery"])
+    assert recovery.exit == 0
+
+    settled =
+      F.await(root, id, fn saved ->
+        saved["runner"] == false and get_in(saved, ["cancellation", "status"]) == "settled"
+      end)
+
+    assert settled["state"] == "cancelled"
+    assert Enum.map(Store.messages(session_dir), & &1["number"]) == [2]
+    assert length(Store.inputs(session_dir)) == 2
+  end
+
+  defp wait_dead(pid, tries \\ 100) do
+    cond do
+      not F.alive?(pid) -> :dead
+      tries == 0 -> :alive
+      true -> Process.sleep(50) && wait_dead(pid, tries - 1)
+    end
+  end
+
+  defp term_ignoring_owner!(pid_path, signal_path) do
+    script = """
+    import os, pathlib, signal, sys, time
+    def record_and_ignore(signum, frame):
+        with open(sys.argv[2], "a") as signals:
+            signals.write("TERM\\n")
+    signal.signal(signal.SIGTERM, record_and_ignore)
+    pathlib.Path(sys.argv[1]).write_text(str(os.getpid()))
+    time.sleep(240)
+    """
+
+    task =
+      Task.async(fn ->
+        System.cmd("python3", ["-B", "-c", script, pid_path, signal_path], stderr_to_stdout: true)
+      end)
+
+    pid = pid_path |> wait_file_contents!() |> String.to_integer()
+    started = Kogen.ProcessCustody.process_start(pid)
+    assert started != ""
+
+    ExUnit.Callbacks.on_exit(fn ->
+      if Kogen.ProcessCustody.process_start(pid) == started do
+        System.cmd("kill", ["-KILL", to_string(pid)], stderr_to_stdout: true)
+      end
+    end)
+
+    {task, pid, started}
+  end
+
+  defp wait_file_contents!(path, tries \\ 1_000) do
+    case File.read(path) do
+      {:ok, contents} ->
+        contents
+
+      _ when tries > 0 ->
+        Process.sleep(10)
+        wait_file_contents!(path, tries - 1)
+
+      _ ->
+        flunk("timed out waiting for #{path}")
+    end
+  end
+
+  # --- help surface -------------------------------------------------------------------
+
+  describe "help surface" do
+    test "the moduledoc names exactly the five invocations and no removed flag" do
+      {:docs_v1, _, _, _, %{"en" => doc}, _, _} = Code.fetch_docs(Mix.Tasks.Kogen.Shape)
+
+      invocations =
+        Regex.scan(~r/^\s+mix kogen\.shape\b.*$/m, doc)
+        |> List.flatten()
+        |> Enum.map(&String.trim/1)
+
+      assert invocations == [
+               "mix kogen.shape --brief FILE [--route ROUTE] [--interface NAME] [--request-id RID]",
+               "mix kogen.shape ID",
+               "mix kogen.shape ID --brief FILE [--interface NAME] [--request-id RID]",
+               "mix kogen.shape ID --approve PRESENTATION [--interface NAME] [--request-id RID]",
+               "mix kogen.shape ID --cancel [--request-id RID]"
+             ]
+
+      for removed <- [
+            "--headless",
+            "--expected-revision",
+            "draft-slug",
+            "--resume",
+            "--interactive"
+          ] do
+        refute doc =~ removed, removed
+      end
+    end
+
+    test "mix help kogen.shape prints that text, and the runner task is hidden" do
+      root = F.repo!()
+      help = F.mix(root, ["help", "kogen.shape"], F.driver_env(F.env(root)))
+      assert help.exit == 0
+      refute help.stdout =~ "--headless"
+      refute help.stdout =~ "--expected-revision"
+      assert help.stdout =~ "mix kogen.shape ID --approve PRESENTATION"
+      assert help.stdout =~ "mix kogen.shape ID --cancel [--request-id RID]"
+
+      listing = F.mix(root, ["help"], F.driver_env(F.env(root)))
+      assert listing.exit == 0
+      assert listing.stdout =~ ~r/^mix kogen\.shape\s/m
+      refute listing.stdout =~ "kogen.shape.runner"
+
+      {:docs_v1, _, _, _, moduledoc, _, _} = Code.fetch_docs(Mix.Tasks.Kogen.Shape.Runner)
+      assert moduledoc == :hidden
+    end
+
+    test "the retired interactive surface is gone" do
+      for module <- [Kogen.Intent, Kogen.Harness, Kogen.Shaping],
+          do: Code.ensure_loaded!(module)
+
+      refute function_exported?(Kogen.Intent, :read_draft, 1)
+      refute function_exported?(Kogen.Harness, :exec_shaper, 4)
+      refute File.exists?(Path.join(@project_root, "priv/kogen/prompts/shaping-continuation.md"))
+      assert function_exported?(Kogen.Shaping, :main, 2)
+    end
+  end
+
+  # --- prompts and README -------------------------------------------------------------
+
   test "fresh shaping guidance requires autonomous outcome-focused investigation" do
     prompt = File.read!(Path.join(@project_root, "priv/kogen/prompts/shaping.md"))
     compact = Regex.replace(~r/\s+/, prompt, " ")
@@ -230,9 +1267,9 @@ defmodule Kogen.ShapeTaskTest do
 
     required = [
       "Start useful native helpers early for independent codebase, supplied-source, web-documentation and probe work. Give helpers paths and constraints rather than copied file bodies. Continue reading and reviewing in the root session when useful; root ownership includes coverage, integration and challenging helper conclusions.",
-      "Ask the human about a consequential unanswered product, UX, policy, scope, compatibility, data-loss or authority choice when it becomes clear, using the native question tool where available or a maintained `## Ask the Shaper` entry.",
+      "Ask the human about a consequential unanswered product, UX, policy, scope, compatibility, data-loss or authority choice when it becomes clear, through a maintained `## Ask the Shaper` entry.",
       "Do not run `mix kogen.audit` during Shaping; end the turn instead.",
-      "Ask a consequential human question as soon as its choice is understood. Use the native question tool (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), or keep it in `## Ask the Shaper` in the maintained package. Include the outcome at stake, a recommendation and evidence. Record the answer and its provenance; keep unresolved choices pending. Silence, session duration and work-budget expiry never resolve a question.",
+      "Ask a consequential human question as soon as its choice is understood, by writing it under `## Ask the Shaper` in the maintained package. Include the outcome at stake, a recommendation and evidence. Record the answer and its provenance; keep unresolved choices pending. Silence, session duration and work-budget expiry never resolve a question.",
       "Keep working on independent tasks while a choice is pending. Do not commit to work that depends on the answer, silently assume the choice, or mark the Draft ready while a consequential choice remains unresolved. Partial answers settle only their explicit or necessarily entailed part.",
       "Use engineering judgment for routine implementation, process and verification details. Ask about material human choices, not permission to do work already authorized.",
       "Keep it simple: no config switches, no plumbing without a caller, no unrequested splits.",
@@ -258,10 +1295,10 @@ defmodule Kogen.ShapeTaskTest do
       "A remark about how Shaping itself works is also a requirement for all future Shaping sessions.",
       "Environment facts the Shaper supplies (a key, a path, \"try again\") are used at once, not re-derived.",
       "A file or handoff the Shaper points to is read in full and folded into the Draft in the same turn.",
-      "A slug rename changes the directory first and the slug second, in one step, and tells the Shaper the new `mix kogen.shape` command.",
+      "A slug rename changes the directory first and the slug second, in one step. The Shaper addresses the session by its Intent id, never by slug.",
       "Shaping workers may write only their disposable probe directories and the Draft files their packet assigns, on the relevant harnesses.",
       "A probe that launches a provider in a disposable directory is not a verification gate.",
-      "only an unambiguous current-conversation approval of a ready Draft ends Shaping",
+      "You never approve the Intent, never move a Draft out of `.kogen/intents/drafts/`, and never write `approval.md` or approval metadata.",
       "Reshape against the actual project baseline and current `HEAD`; do not assume the target branch is `main`. Re-verify anchors, update `shaped_against`, and record baseline moves with evidence.",
       "### Routine engineering findings: the seven default fixes",
       "An edited live owner that is not selected: remove the edit when the outcome does not need it; otherwise select the target.",
@@ -289,7 +1326,7 @@ defmodule Kogen.ShapeTaskTest do
       "paid or harness probes stay with the root"
     ]
 
-    for name <- ["shaping.md", "shaping-fresh.md", "shaping-continuation.md"],
+    for name <- ["shaping.md", "shaping-fresh.md"],
         text <- removed do
       other = File.read!(Path.join(@project_root, "priv/kogen/prompts/#{name}"))
       refute Regex.replace(~r/\s+/, other, " ") =~ text, "#{name}: #{text}"
@@ -334,726 +1371,5 @@ defmodule Kogen.ShapeTaskTest do
         ] do
       assert compact =~ text
     end
-  end
-
-  test "rendered shaping roles keep approval explicit and bookkeeping narrow" do
-    fresh = File.read!(Path.join(@project_root, "priv/kogen/prompts/shaping.md"))
-    continued = File.read!(Path.join(@project_root, "priv/kogen/prompts/shaping-continuation.md"))
-    reviewer = File.read!(Path.join(@project_root, "priv/kogen/prompts/reviewer.md"))
-
-    for prompt <- [fresh, continued] do
-      compact = Regex.replace(~r/\s+/, prompt, " ")
-      assert compact =~ "explicit"
-      assert compact =~ "current-conversation"
-      assert compact =~ "current approval statement"
-      assert compact =~ "current approval metadata"
-      assert compact =~ "current-tense"
-      assert compact =~ "agreed requirements"
-      assert compact =~ "original provenance"
-      assert compact =~ "historical evidence"
-      assert compact =~ "partial answer"
-      assert compact =~ "review request"
-      assert compact =~ "no source, test"
-    end
-
-    assert reviewer =~ "selected `approved/` directory is the lifecycle state owner"
-    assert reviewer =~ "legacy `status: draft`"
-    assert reviewer =~ "genuine current contradictions"
-    assert reviewer =~ "current claim that approval is still pending"
-  end
-
-  test "invalid selections fail before harness launch" do
-    fixture = shape_fixture()
-    dir = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(dir)
-
-    missing_fields =
-      for key <- ["id", "slug", "shaped_against", "shaping"],
-          do:
-            {Regex.replace(Regex.compile!("(?m)^#{key}:[^\\n]*\\n(?:  [^\\n]*\\n)*"), @draft, ""),
-             key}
-
-    nested_fields =
-      for {key, value} <- [
-            {"branch", "old-main"},
-            {"head", "old-head"},
-            {"harness", "codex"},
-            {"model", "old-model"},
-            {"effort", "low"},
-            {"started", "'2026-01-01T00:00:00Z'"}
-          ],
-          do: {String.replace(@draft, "  #{key}: #{value}\n", ""), key}
-
-    for {yaml, diagnostic} <-
-          [
-            {"[broken", "YAML"},
-            {String.replace(@draft, "slug: unfinished", "slug: other"), "slug"}
-          ] ++ missing_fields ++ nested_fields do
-      File.write!(Path.join(dir, "intent.yaml"), yaml)
-      {output, status} = capture(fixture, ["unfinished"])
-      assert status != 0
-      assert output =~ diagnostic
-      assert File.read!(Path.join(dir, "intent.yaml")) == yaml
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    end
-
-    for args <- [
-          ["../unfinished"],
-          ["/tmp/unfinished"],
-          ["Bad_slug"],
-          ["missing"],
-          ["one", "two"]
-        ] do
-      {_, status} = capture(fixture, args)
-      assert status != 0
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    end
-
-    File.rm!(Path.join(dir, "intent.yaml"))
-
-    for state <- ["approved", "complete"] do
-      destination = Path.join(fixture, ".kogen/intents/#{state}/unfinished")
-      File.mkdir_p!(destination)
-      File.write!(Path.join(destination, "intent.yaml"), @draft)
-      {output, status} = capture(fixture, ["unfinished"])
-      assert status != 0
-      assert output =~ "missing or unreadable"
-    end
-
-    File.ln_s!(
-      Path.join(fixture, ".kogen/intents/approved/unfinished/intent.yaml"),
-      Path.join(dir, "intent.yaml")
-    )
-
-    {output, status} = capture(fixture, ["unfinished"])
-    assert status != 0
-    assert output =~ "symbolic links"
-    refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-  end
-
-  test "fresh and continued Shape reject invalid required profiles before harness dispatch" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    File.write!(Path.join(draft, "intent.yaml"), @draft)
-    config_path = Path.join(fixture, ".kogen/config.yaml")
-
-    invalid_configs = [
-      {"missing helper",
-       String.replace(
-         distinct_config(),
-         "      expert: {model: current-expert, effort: expert-effort}\n",
-         ""
-       ), "routes.current.helpers.expert"},
-      {"blank root model",
-       String.replace(distinct_config(), "model: current-developer", "model: \"\""),
-       "routes.current.developer.model"},
-      {"wrong-typed helper effort",
-       String.replace(distinct_config(), "effort: scout-effort", "effort: 42"),
-       "routes.current.helpers.scout.effort"}
-    ]
-
-    for {args, route} <- [{[], "fresh"}, {["unfinished"], "continuation"}],
-        {_case, config, diagnostic} <- invalid_configs do
-      File.write!(config_path, config)
-      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
-
-      {output, status} = capture(fixture, args)
-
-      assert status != 0, "#{route} Shape launched with invalid #{diagnostic}"
-      assert output =~ "config.yaml missing required key: #{diagnostic}"
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-args"))
-    end
-  end
-
-  @claude_config """
-  default_route: claude
-  routes:
-    claude:
-      harness: claude
-      shaping:   {model: claude-opus-5-5, effort: medium}
-      developer: {model: claude-opus-5-5, effort: medium}
-      reviewer:  {model: claude-opus-5-5, effort: medium}
-      helpers:
-        scout:  {model: claude-sonnet-5, effort: low}
-        worker: {model: claude-sonnet-5, effort: medium}
-        expert: {model: claude-opus-5-5, effort: high}
-  outer_resumptions: 2
-  verification_retries: 2
-  offline_retries: 4
-  """
-
-  test "Claude Code Shape launches the interactive managed claude with the prompt as first message" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    File.write!(Path.join(draft, "intent.yaml"), @draft)
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), @claude_config)
-    claude_root = Path.join(fixture <> "-claude-root", "claude")
-    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
-    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
-
-    for {args, mode} <- [{[], "fresh"}, {["unfinished"], "continuation"}] do
-      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
-
-      {output, 0} =
-        Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape" | args], [
-          {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_claude_shaper")},
-          {"KOGEN_CLAUDE_ROOT", claude_root},
-          {"ANTHROPIC_API_KEY", "INHERITED-API-KEY"},
-          {"CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT", "0"}
-        ])
-
-      argv =
-        fixture |> Path.join(".kogen/runtime/shaping-args") |> File.read!() |> String.split("\n")
-
-      prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-      env = File.read!(Path.join(fixture, ".kogen/runtime/shaping-env"))
-
-      assert output =~ ~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}/
-      refute "-p" in argv
-
-      args_bytes = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
-      assert prompt != ""
-
-      assert String.ends_with?(args_bytes, "\n--\n" <> prompt <> "\n"),
-             "the rendered prompt must be the first message after --"
-
-      assert prompt =~ if(mode == "fresh", do: "Fresh", else: "continuation")
-      assert_flag!(argv, "--model", "claude-opus-5-5")
-      assert_flag!(argv, "--effort", "medium")
-      assert_flag!(argv, "--setting-sources", "project")
-      assert "--dangerously-skip-permissions" in argv
-      assert "--strict-mcp-config" in argv
-      assert "Agent(general-purpose)" in argv
-      refute Enum.any?(argv, &String.contains?(&1, "model_reasoning_effort"))
-      refute "--enable" in argv
-
-      agents = argv |> flag("--agents") |> Jason.decode!()
-
-      for {_name, agent} <- agents,
-          do: assert(Enum.all?(agent["tools"], &(&1 not in ~w(Edit Write NotebookEdit))))
-
-      assert env =~ "KOGEN_ROLE=shaper"
-      assert env =~ "CLAUDE_CONFIG_DIR=#{Path.join(claude_root, "accounts/shared")}"
-      assert env =~ "DISABLE_AUTOUPDATER=1"
-      assert env =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1\n"
-      assert env =~ "ANTHROPIC_API_KEY=unset"
-
-      assert prompt =~ "harness `claude`" or prompt =~ "harness: claude"
-      assert prompt =~ "route `claude`" or prompt =~ "route: claude"
-      assert prompt =~ "Claude Code agent `kogen-scout`"
-      refute prompt =~ "native kind `explorer`"
-      refute prompt =~ "{{"
-    end
-  end
-
-  test "Claude Code Shape stops before launch when the runtime, login or model is not ready" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    File.write!(Path.join(draft, "intent.yaml"), @draft)
-    config_path = Path.join(fixture, ".kogen/config.yaml")
-    claude_root = Path.join(fixture <> "-claude-root", "claude")
-    trace = Path.join(Path.dirname(claude_root), "trace.jsonl")
-    File.mkdir_p!(claude_root)
-    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
-
-    env = [
-      {"KOGEN_CLAUDE_ROOT", claude_root},
-      {"KOGEN_TEST_NATIVE_TRACE", trace},
-      {"KOGEN_HARNESS", nil},
-      {"KOGEN_ROLE", nil},
-      {"KOGEN_HARNESS_HOME", nil}
-    ]
-
-    route = fn args ->
-      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
-      {output, status} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape" | args], env)
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-      {output, status}
-    end
-
-    File.write!(config_path, @claude_config)
-
-    for args <- [[], ["unfinished"]] do
-      {output, status} = route.(args)
-      assert status != 0
-
-      assert output =~
-               "Kogen Claude Code #{Kogen.ManagedRuntimeReady.claude_code_version()} is not installed. Run mix kogen.claude.install"
-    end
-
-    source = @project_root
-
-    {_out, 0} =
-      System.cmd(
-        "python3",
-        [
-          Path.join(source, "test/support/managed_claude_fixture.py"),
-          claude_root,
-          Path.join(source, "priv/kogen/claude_code/install.py")
-        ],
-        env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}],
-        cd: @root
-      )
-
-    for args <- [[], ["unfinished"]] do
-      {output, status} = route.(args)
-      assert status != 0
-
-      assert output =~
-               "Selected shared Kogen Claude Code login is not configured. Run mix kogen.claude.login"
-    end
-
-    File.write!(
-      config_path,
-      String.replace(
-        @claude_config,
-        "shaping:   {model: claude-opus-5-5",
-        "shaping:   {model: gpt-5.6-sol"
-      )
-    )
-
-    for args <- [[], ["unfinished"]] do
-      {output, status} = route.(args)
-      assert status != 0
-      assert output =~ "unsupported Claude Code model for shaping: gpt-5.6-sol"
-    end
-
-    refute File.exists?(trace) and File.read!(trace) =~ ~s("-p")
-    refute File.exists?(trace) and File.read!(trace) =~ ~s("--dangerously-skip-permissions")
-  end
-
-  test "Shape runs on the default route or the --route route in every argument position" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    File.write!(Path.join(draft, "intent.yaml"), @draft)
-    config_path = Path.join(fixture, ".kogen/config.yaml")
-    File.write!(config_path, two_route_config())
-    before = snapshot(draft)
-
-    for {args, route, mode} <- [
-          {[], "current", :fresh},
-          {["--route", "other"], "other", :fresh},
-          {["--route=other"], "other", :fresh},
-          {["unfinished"], "current", :continuation},
-          {["--route", "other", "unfinished"], "other", :continuation},
-          {["unfinished", "--route", "other"], "other", :continuation}
-        ] do
-      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
-      {_output, 0} = capture(fixture, args)
-
-      {:ok, config} = Kogen.Intent.read_config(config_path, route)
-      args_text = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
-      prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-
-      assert args_text =~ "--model\n#{route}-shaper\n", inspect(args)
-      assert args_text =~ ~s(model_reasoning_effort="#{config.shaping.effort}")
-      assert_shared_execution_policy!(prompt, :shaping, config)
-
-      case mode do
-        :fresh ->
-          assert prompt =~ "route `#{route}`, harness `codex`, model `#{route}-shaper`"
-
-        :continuation ->
-          assert prompt =~
-                   "route: #{route}\nharness: codex\nmodel: #{route}-shaper\neffort: #{config.shaping.effort}\n"
-      end
-
-      other = if route == "current", do: "other", else: "current"
-      refute prompt =~ "#{other}-shaper"
-      refute prompt =~ "#{other}-scout"
-    end
-
-    assert snapshot(draft) == before
-  end
-
-  test "continuing a Draft first shaped on another route records this session's route only" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    routed = String.replace(@draft, "  harness: codex\n", "  route: other\n  harness: codex\n")
-    File.write!(Path.join(draft, "intent.yaml"), routed)
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), two_route_config())
-    before = snapshot(draft)
-
-    {_output, 0} = capture(fixture, ["unfinished"])
-
-    prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    assert prompt =~ "route: current\nharness: codex\nmodel: current-shaper\n"
-    refute prompt =~ "route: other"
-    assert prompt =~ "Keep original `shaping` metadata unchanged"
-    assert Regex.replace(~r/\s+/, prompt, " ") =~ "including its `route` or its absence"
-    assert snapshot(draft) == before
-  end
-
-  test "unknown routes, missing route values and unknown options fail before harness launch" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    File.write!(Path.join(draft, "intent.yaml"), @draft)
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), two_route_config())
-    before = snapshot(Path.join(fixture, ".kogen/intents"))
-    usage = "usage: mix kogen.shape [--route <name>] [draft-slug]"
-
-    for {args, expected} <- [
-          {["--route", "missing"], "unknown route: missing; available routes: current, other"},
-          {["--route", "missing", "unfinished"],
-           "unknown route: missing; available routes: current, other"},
-          {["--route"], usage},
-          {["unfinished", "--route"], usage},
-          {["--route="], usage},
-          {["--bogus"], usage},
-          {["--route", "other", "one", "two"], usage}
-        ] do
-      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
-      {output, status} = capture(fixture, args)
-
-      assert status != 0, inspect(args)
-      assert output =~ expected, inspect(args)
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-args"))
-      assert snapshot(Path.join(fixture, ".kogen/intents")) == before
-    end
-  end
-
-  test "the flat configuration shape is refused before harness launch" do
-    fixture = shape_fixture()
-    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
-    File.mkdir_p!(draft)
-    File.write!(Path.join(draft, "intent.yaml"), @draft)
-
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), """
-    harness: codex
-    shaping: {model: current-shaper, effort: shaping-effort}
-    developer: {model: current-developer, effort: developer-effort}
-    reviewer: {model: current-reviewer, effort: reviewer-effort}
-    helpers:
-      scout: {model: current-scout, effort: scout-effort}
-      worker: {model: current-worker, effort: worker-effort}
-      expert: {model: current-expert, effort: expert-effort}
-    outer_resumptions: 2
-    verification_retries: 2
-    offline_retries: 4
-    """)
-
-    before = snapshot(Path.join(fixture, ".kogen/intents"))
-
-    for args <- [[], ["unfinished"], ["--route", "current"]] do
-      {output, status} = capture(fixture, args)
-      assert status != 0
-      assert output =~ "flat configuration shape"
-      assert output =~ "define default_route and routes"
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-      assert snapshot(Path.join(fixture, ".kogen/intents")) == before
-    end
-  end
-
-  test "only the selected route is checked for harness support, proven models and readiness" do
-    fixture = shape_fixture()
-    config_path = Path.join(fixture, ".kogen/config.yaml")
-    claude_root = Path.join(fixture <> "-claude-root", "claude")
-    File.mkdir_p!(claude_root)
-    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
-
-    File.write!(
-      config_path,
-      distinct_config("""
-        pi:
-          harness: pi-chatgpt
-          shaping: {model: pi-model, effort: low}
-          developer: {model: pi-model, effort: low}
-          reviewer: {model: pi-model, effort: low}
-          helpers:
-            scout: {model: pi-model, effort: low}
-            worker: {model: pi-model, effort: low}
-            expert: {model: pi-model, effort: low}
-        unproven:
-          harness: claude
-          shaping: {model: claude-unproven-9, effort: medium}
-          developer: {model: claude-opus-5-5, effort: medium}
-          reviewer: {model: claude-opus-5-5, effort: medium}
-          helpers:
-            scout: {model: claude-sonnet-5, effort: low}
-            worker: {model: claude-sonnet-5, effort: medium}
-            expert: {model: claude-opus-5-5, effort: high}
-        claude:
-          harness: claude
-          shaping: {model: claude-opus-5-5, effort: medium}
-          developer: {model: claude-opus-5-5, effort: medium}
-          reviewer: {model: claude-opus-5-5, effort: medium}
-          helpers:
-            scout: {model: claude-sonnet-5, effort: low}
-            worker: {model: claude-sonnet-5, effort: medium}
-            expert: {model: claude-opus-5-5, effort: high}
-      """)
-    )
-
-    # The selected Codex route proceeds although the other routes name an
-    # unsupported harness, an unproven model and an uninstalled Claude Code.
-    {_output, 0} =
-      Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape"], [
-        {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")},
-        {"KOGEN_SHAPE_CAPTURE_ONLY", "1"},
-        {"KOGEN_CLAUDE_ROOT", claude_root}
-      ])
-
-    assert File.read!(Path.join(fixture, ".kogen/runtime/shaping-args")) =~ "current-shaper"
-
-    for {route, expected} <- [
-          {"pi", "unsupported harness: pi-chatgpt; expected codex or claude"},
-          {"unproven", "unsupported Claude Code model for shaping: claude-unproven-9"},
-          {"claude",
-           "Kogen Claude Code #{Kogen.ManagedRuntimeReady.claude_code_version()} is not installed. Run mix kogen.claude.install"}
-        ] do
-      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
-
-      {output, status} =
-        Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape", "--route", route], [
-          {"KOGEN_CLAUDE_ROOT", claude_root},
-          {"KOGEN_HARNESS", nil},
-          {"KOGEN_ROLE", nil},
-          {"KOGEN_HARNESS_HOME", nil}
-        ])
-
-      assert status != 0
-      assert output =~ expected
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    end
-  end
-
-  # A hybrid (role-level) route: Shaping (and Developer) run on Claude Code,
-  # the dominant harness; Reviewer and Expert run on Codex, the adversarial
-  # harness. Used to prove Shape opens every role's harness, launches the
-  # Shaper through the Shaping role's harness, and carries the cross-harness
-  # Expert assignment into the launch environment.
-  defp hybrid_config do
-    """
-    default_route: hybrid
-    routes:
-      hybrid:
-        shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
-        developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-        reviewer:  {harness: codex, model: gpt-6.1-sol, effort: high}
-        expert:    {harness: codex, model: gpt-6.1-sol, effort: high}
-        helpers:
-          claude:
-            scout:  {model: claude-sonnet-5, effort: low}
-            worker: {model: claude-sonnet-5, effort: medium}
-          codex:
-            scout:  {model: gpt-6-luna, effort: low}
-            worker: {model: gpt-6-luna, effort: high}
-    outer_resumptions: 2
-    verification_retries: 2
-    offline_retries: 4
-    """
-  end
-
-  test "a hybrid route's not-ready adversarial Expert harness fails before any Shaper launch, naming the role and harness" do
-    fixture = shape_fixture()
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), hybrid_config())
-
-    claude_root = Path.join(fixture <> "-claude-root", "claude")
-    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
-    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
-    source = @project_root
-
-    {_out, 0} =
-      System.cmd(
-        "python3",
-        [
-          Path.join(source, "test/support/managed_claude_fixture.py"),
-          claude_root,
-          Path.join(source, "priv/kogen/claude_code/install.py")
-        ],
-        env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}],
-        cd: @root
-      )
-
-    File.write!(Path.join(claude_root, "accounts/shared/.fake-login"), "claude.ai\n")
-
-    # No `KOGEN_HARNESS`: both harnesses use real managed readiness, so only
-    # the adversarial Codex harness (a fresh, unmanaged root) is not ready.
-    env = [
-      {"KOGEN_CLAUDE_ROOT", claude_root},
-      {"KOGEN_TEST_NATIVE_TRACE", Path.join(fixture <> "-claude-root", "claude-trace.jsonl")},
-      {"KOGEN_CODEX_ROOT", Path.join(fixture <> "-claude-root", "codex-not-installed")}
-    ]
-
-    {output, status} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape"], env)
-
-    assert status != 0
-
-    assert output =~
-             "expert harness codex is not ready: Kogen Codex is not installed. Run mix kogen.codex.install"
-
-    refute output =~ "reviewer"
-    refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-args"))
-  end
-
-  # The Expert task never reads the config: without a frozen assignment it
-  # fails naming the missing assignment, even when the config is unreadable.
-  test "mix kogen.expert without KOGEN_EXPERT names the missing assignment and never reads the config" do
-    fixture = shape_fixture()
-    config = Path.join(fixture, ".kogen/config.yaml")
-    File.write!(config, "not: [valid")
-    File.chmod!(config, 0o000)
-    on_exit(fn -> File.chmod(config, 0o644) end)
-
-    for assignment <- [nil, ~s({"harness":"codex"})] do
-      {output, status} =
-        Kogen.CompiledFixture.mix_task!(fixture, ["kogen.expert", "Which lock order is safe?"], [
-          {"KOGEN_EXPERT", assignment},
-          {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")}
-        ])
-
-      assert status != 0
-      assert output =~ "KOGEN_EXPERT assignment"
-      refute output =~ "config.yaml"
-    end
-  end
-
-  test "Shape launches the Shaper on the Shaping role's harness in a hybrid route, carrying the cross-harness Expert assignment" do
-    fixture = shape_fixture()
-    File.write!(Path.join(fixture, ".kogen/config.yaml"), hybrid_config())
-    claude_root = Path.join(fixture <> "-claude-root", "claude")
-    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
-    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
-
-    env = [
-      {"KOGEN_HARNESS", Path.join(@project_root, "test/support/hybrid_claude_shaper.py")},
-      {"KOGEN_CLAUDE_ROOT", claude_root},
-      {"ANTHROPIC_API_KEY", "INHERITED-API-KEY"}
-    ]
-
-    {output, 0} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape"], env)
-    assert output =~ ~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}/
-
-    argv =
-      fixture |> Path.join(".kogen/runtime/shaping-args") |> File.read!() |> String.split("\n")
-
-    prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
-    env_out = File.read!(Path.join(fixture, ".kogen/runtime/shaping-env"))
-
-    # The Shaper launches through the Claude adapter (the Shaping role's
-    # harness), never through Codex (the Reviewer/Expert's harness).
-    assert_flag!(argv, "--model", "claude-opus-5-5")
-    assert_flag!(argv, "--effort", "medium")
-    assert "--dangerously-skip-permissions" in argv
-    refute Enum.any?(argv, &String.contains?(&1, "model_reasoning_effort"))
-
-    # The rendered prompt (what the Shaper is instructed to record as this
-    # Draft's `shaping` metadata) names the Shaping role's own harness,
-    # `claude`, never the adversarial Codex harness.
-    assert prompt =~ "route `hybrid`, harness `claude`, model `claude-opus-5-5`"
-
-    # The cross-harness Expert assignment (Codex) is carried into the
-    # Shaper's environment, never a substituted native Claude Code helper.
-    assert env_out =~ ~s("harness":"codex")
-    assert env_out =~ ~s("caller":"shaping")
-    assert env_out =~ ~s("model":"gpt-6.1-sol")
-    assert env_out =~ ~s("effort":"high")
-
-    assert prompt =~ "mix kogen.expert"
-    refute prompt =~ "kogen-expert"
-  end
-
-  defp flag(argv, name), do: argv |> Enum.drop_while(&(&1 != name)) |> Enum.at(1)
-  defp assert_flag!(argv, name, value), do: assert(flag(argv, name) == value)
-
-  defp shape_fixture do
-    fixture = Kogen.CompiledFixture.create!(@project_root, "continue-shape")
-    on_exit(fn -> File.rm_rf(fixture) end)
-    init_fixture_git!(fixture)
-    fixture
-  end
-
-  defp capture(fixture, args) do
-    Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape" | args], [
-      {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")},
-      {"KOGEN_SHAPE_CAPTURE_ONLY", "1"},
-      {"KOGEN_ROLE", nil},
-      {"KOGEN_HARNESS_HOME", nil}
-    ])
-  end
-
-  defp snapshot(dir) do
-    for path <- Path.wildcard(Path.join(dir, "**/*")),
-        File.regular?(path),
-        into: %{},
-        do: {path, File.read!(path)}
-  end
-
-  defp distinct_config(extra_routes \\ "") do
-    """
-    default_route: current
-    routes:
-      current:
-        harness: codex
-        shaping: {model: current-shaper, effort: shaping-effort}
-        developer: {model: current-developer, effort: developer-effort}
-        reviewer: {model: current-reviewer, effort: reviewer-effort}
-        helpers:
-          scout: {model: current-scout, effort: scout-effort}
-          worker: {model: current-worker, effort: worker-effort}
-          expert: {model: current-expert, effort: expert-effort}
-    #{extra_routes}outer_resumptions: 2
-    verification_retries: 2
-    offline_retries: 4
-    """
-  end
-
-  # A second Codex route with distinguishable profiles.
-  defp two_route_config(extra_routes \\ "") do
-    distinct_config("""
-      other:
-        harness: codex
-        shaping: {model: other-shaper, effort: other-shaping-effort}
-        developer: {model: other-developer, effort: other-developer-effort}
-        reviewer: {model: other-reviewer, effort: other-reviewer-effort}
-        helpers:
-          scout: {model: other-scout, effort: other-scout-effort}
-          worker: {model: other-worker, effort: other-worker-effort}
-          expert: {model: other-expert, effort: other-expert-effort}
-    #{extra_routes}
-    """)
-  end
-
-  defp assert_shared_execution_policy!(prompt, role, config) do
-    assert length(String.split(prompt, "## Shared execution and delegation policy")) == 2
-
-    root = Map.fetch!(config, role)
-
-    assert prompt =~ "Configured root (#{role}): `#{root.model}` at `#{root.effort}`."
-
-    assert prompt =~
-             "- **scout:** `#{config.helpers.scout.model}` at `#{config.helpers.scout.effort}`; native kind `explorer`."
-
-    assert prompt =~
-             "- **worker:** `#{config.helpers.worker.model}` at `#{config.helpers.worker.effort}`; native kind `worker`."
-
-    assert prompt =~
-             "- **expert:** `#{config.helpers.expert.model}` at `#{config.helpers.expert.effort}`; native kind `default`."
-
-    refute prompt =~ "{{execution_policy}}"
-  end
-
-  defp init_fixture_git!(fixture) do
-    env = [
-      {"GIT_AUTHOR_NAME", "Kogen Shape Fixture"},
-      {"GIT_AUTHOR_EMAIL", "kogen-shape-fixture@example.invalid"},
-      {"GIT_COMMITTER_NAME", "Kogen Shape Fixture"},
-      {"GIT_COMMITTER_EMAIL", "kogen-shape-fixture@example.invalid"}
-    ]
-
-    {_, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: fixture)
-    {_, 0} = System.cmd("git", ["add", "-A"], cd: fixture)
-
-    {_, 0} =
-      System.cmd("git", ["commit", "-q", "-m", "shape fixture baseline"], cd: fixture, env: env)
   end
 end

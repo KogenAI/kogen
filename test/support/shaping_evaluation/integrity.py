@@ -7,7 +7,8 @@ CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "cs
          "stateful-flawed", "stateful-complete")
 MAX_SECONDS = 600
 MAX_SCRIPTED_REPLIES = 6
-SMOKE_MAX_SECONDS = 300
+SMOKE_MAX_SECONDS = 20 * 60
+SMOKE_MIN_MESSAGES = 2
 
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 def reject(condition, message):
@@ -215,52 +216,284 @@ def validate_booking_setup(old_receipt, inventory, observation):
            ('absent' in inventory_text or 'no .tmp directory' in inventory_text),
            'stale booking setup gap not retained')
 
+SMOKE_CHECKS = ("start-returns-running", "running-then-settled", "first-question-seen", "all-explicit-messages-sent",
+                "two-messages-sent", "follow-up-message-sent-after-turn",
+                "first-answer-sent-mid-turn", "second-message-sent-after-turn", "final-state-ready",
+                "answers-recorded-verbatim-with-input-tokens", "resumed-provider-ids-match", "status-presented-id",
+                "earlier-revision-report-has-findings", "later-full-report-ready-for-final-revision",
+                "no-answer-not-applied", "route-bound", "run-completed",
+                "first-answer-original-turn-identified", "first-answer-steered-into-original-turn",
+                "first-answer-recorded-in-original-turn", "audit-feedback-delivered-before-repair")
+PRESENTATION_ID = re.compile(r'^p-[0-9]+-[0-9a-f]{12}$')
+
 def validate_smoke_receipt(receipt):
-    """Smoke is deliberately not a CASES member: transport mechanics only,
-    graded nothing, bounded at SMOKE_MAX_SECONDS rather than MAX_SECONDS."""
+    """Smoke is deliberately not a CASES member: one headless-flow engine session,
+    graded nothing, bounded at SMOKE_MAX_SECONDS (the route's ready bound)."""
     reject(receipt.get('case') == 'smoke', 'unknown smoke case')
-    reject(0 <= receipt.get('elapsed_seconds', -1) <= SMOKE_MAX_SECONDS, 'smoke session time bound')
-    reject(receipt.get('scripted_replies') == 1, 'smoke scripted reply bound')
-    reject(receipt.get('outcome') == 'completed', 'smoke session did not complete')
+    reject(0 <= receipt.get('elapsed_seconds', -1) <= SMOKE_MAX_SECONDS, 'smoke route did not reach ready within its bound')
+    replies = receipt.get('scripted_replies')
+    reject(isinstance(replies, int) and SMOKE_MIN_MESSAGES <= replies <= MAX_SCRIPTED_REPLIES,
+           'smoke scripted message bound')
+    reject(receipt.get('outcome') == 'completed' and receipt.get('failure') is None, 'smoke session did not complete')
+    reject(receipt.get('cleanup', {}).get('all_reaped') is True, 'smoke processes were not reaped')
     reject(receipt.get('git_status', {}).get('baseline_unchanged') is True, 'smoke fixture baseline changed')
     reject(receipt.get('git_status', {}).get('draft_exists') is True, 'smoke saved draft missing')
-    identity = receipt.get('source_identity', {})
-    reject(identity.get('unchanged') is True and identity.get('baseline') and identity.get('baseline') == identity.get('after'), 'smoke fixture source identity changed')
+    reject(receipt.get('source_identity', {}).get('unchanged') is True, 'smoke fixture source identity changed')
+
+def smoke_events(run):
+    events = []
+    for line in (run / 'engine-runtime' / 'events.jsonl').read_text().splitlines():
+        try: event = json.loads(line)
+        except json.JSONDecodeError: continue
+        if isinstance(event, dict): events.append(event)
+    return events
+
+def _seconds(value):
+    import datetime
+    try: return datetime.datetime.fromisoformat(str(value).replace('Z', '+00:00')).timestamp()
+    except ValueError: return None
+
+def _norm(text): return re.sub(r'\s+', ' ', re.sub(r'(?m)^\s*>\s?', '', text)).strip()
+
+def validate_first_answer_delivery(run, first, events, final_text):
+    """Re-derives, from the engine's own events and input journal, that the first
+    (mid-turn) answer was steered by the root hook into the launch that was running
+    when it was sent, and was recorded by that turn: nothing needed a later launch
+    to offer it (the runner re-sends every unrecorded input at turn end)."""
+    original = (first or {}).get('running_turn') or {}
+    launch = original.get('launch_id')
+    started = next((e for e in events if e.get('event') == 'turn_started' and launch and e.get('launch_id') == launch), None)
+    ended = next((e for e in events if e.get('event') == 'turn_ended' and started and e.get('turn') == started.get('turn')), None)
+    requested, ended_at, started_at = (first or {}).get('requested_at'), _seconds((ended or {}).get('at')), _seconds((started or {}).get('at'))
+    reject(started and ended and isinstance(requested, (int, float)) and ended_at is not None and started_at is not None and
+           ended_at >= requested, 'smoke first answer was not sent while an identified turn ran')
+    text = _norm((first or {}).get('text') or '')
+    inputs = run / 'engine-runtime' / 'inputs'
+    match = None
+    for meta_path in sorted(inputs.glob('[0-9][0-9][0-9][0-9].json')):
+        meta = json.loads(meta_path.read_text())
+        body = meta_path.with_suffix('.md')
+        if meta.get('kind') == 'message' and body.is_file() and text and _norm(body.read_text()) == text:
+            match = (meta.get('id'), meta_path.stem); break
+    reject(match is not None, 'smoke first answer input is not in the retained input journal')
+    input_id, number = match
+    offers = []
+    offer_path = inputs / f'{number}.offers.jsonl'
+    if offer_path.is_file():
+        for line in offer_path.read_text().splitlines():
+            try: offers.append(json.loads(line))
+            except json.JSONDecodeError: continue
+    steer = [o for o in offers if o.get('via') == 'steer' and o.get('launch_id') == launch and o.get('id') == input_id and
+             _seconds(o.get('at')) is not None and started_at <= _seconds(o.get('at')) <= ended_at]
+    reject(steer, 'smoke first answer was never steered into the turn that was running when it was sent')
+    reject(all(o.get('launch_id') == launch and o.get('via') == 'steer' for o in offers),
+           'smoke first answer needed a later launch to offer it')
+    reject(f'[input {input_id}]' in final_text, 'smoke first answer was not recorded in the Draft')
+
+def _jsonl_records(path):
+    records = []
+    if Path(path).is_file():
+        for line in Path(path).read_text(errors='replace').splitlines():
+            try: item = json.loads(line)
+            except json.JSONDecodeError: continue
+            if isinstance(item, dict): records.append(item)
+    return records
+
+def _open_blocking(finding):
+    disputed = finding.get('disputable') is True and isinstance(finding.get('disposition'), dict) and \
+        finding['disposition'].get('kind') == 'not-a-defect'
+    return finding.get('severity') == 'blocking' and (finding.get('still_open') is True or not disputed)
+
+def _launch_windows(events):
+    """{launch_id: (start, end)} for every root launch: turn_started .. its turn_ended."""
+    windows = {}
+    for event in events:
+        if event.get('event') != 'turn_started' or not event.get('launch_id'): continue
+        ended = next((e for e in events if e.get('event') == 'turn_ended' and e.get('turn') == event.get('turn')), None)
+        start, end = _seconds(event.get('at')), _seconds((ended or {}).get('at'))
+        if start is not None and end is not None: windows[event['launch_id']] = (start, end)
+    return windows
+
+def audit_feedback_delivery(run, revision, events):
+    """(ok, detail): actual host-facing feedback bytes reached a root launch.
+
+    Offer and Stop journals describe producer-side attempts. Only receipts made
+    by feedback_output.py after its stdout write and flush count as delivery.
+    Provider identity comes from the captured harness metadata; the configured
+    route is a separate name and must match the receipt independently.
+    """
+    run = Path(run)
+    windows = _launch_windows(events)
+    targets = {}
+    for path in sorted((run / 'shaping-audits').glob('*/report.json')) + sorted((run / 'shaping-audits').glob('*/checkpoint.json')):
+        try: report = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError): continue
+        if isinstance(report, dict) and report.get('revision') and report.get('revision') != revision:
+            blocking = [f for f in report.get('findings') or [] if isinstance(f, dict) and _open_blocking(f)]
+            if blocking: targets[report['revision']] = [f.get('id') for f in blocking]
+    if not revision or not targets:
+        return False, f'no earlier revision had an open blocking finding to deliver (final {revision!r})'
+    hooks = _jsonl_records(run / 'shaping-audits' / 'hook.jsonl')
+    repaired = [_seconds(r.get('at')) for r in hooks if r.get('revision') == revision]
+    repaired += [_seconds(e.get('at')) for e in events if e.get('event') == 'audit_started' and e.get('revision') == revision]
+    repaired = [t for t in repaired if t is not None]
+    if not repaired:
+        return False, f'no retained evidence times the repaired revision {revision!r}'
+    first_repaired = min(repaired)
+    config_path = run / 'config-record.json'
+    try:
+        config = json.loads(config_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        config = {}
+    root = config.get('shaping_root')
+    intent_id = config.get('shaping_intent_id')
+    route = config.get('route')
+    harness = config.get('harness')
+    if not isinstance(root, str) or not isinstance(intent_id, str) or \
+            not isinstance(route, str) or not route.strip() or harness not in ('codex', 'claude'):
+        return False, 'missing expected root, intent id, configured route or captured harness in config-record.json'
+    expected_root = os.path.realpath(root)
+    expected_session = os.path.realpath(os.path.join(expected_root, '.kogen', 'runtime', 'shaping', intent_id))
+    receipts = _jsonl_records(run / 'feedback-delivery' / 'receipts.jsonl')
+    found, seen = [], []
+    import base64
+    import hashlib
+
+    for target, ids in targets.items():
+        notice_name = f'au-{target[:12]}'
+        notice = run / 'engine-runtime' / 'notices' / f'{notice_name}.json'
+        try:
+            notice_meta = json.loads(notice.read_text())
+        except (OSError, json.JSONDecodeError):
+            notice_meta = None
+        offers = _jsonl_records(run / 'engine-runtime' / 'notices' / f'{notice_name}.offers.jsonl')
+        stop_blocks = [item for item in hooks if item.get('revision') == target and
+                       item.get('decision') == 'block' and item.get('blocking')]
+        for receipt in receipts:
+            launch = receipt.get('launch_id')
+            moment = _seconds(receipt.get('at'))
+            boundary = receipt.get('boundary')
+            seen.append((boundary, receipt.get('revision', '')[:12], launch, receipt.get('at')))
+            if receipt.get('schema') != 'kogen.feedback-delivery/v1' or \
+                    receipt.get('root') != expected_root or receipt.get('session_dir') != expected_session or \
+                    receipt.get('intent_id') != intent_id or receipt.get('provider') != harness or \
+                    receipt.get('route') != route or \
+                    receipt.get('revision') != target or launch not in windows or moment is None or \
+                    not (windows[launch][0] <= moment <= windows[launch][1]) or moment >= first_repaired:
+                continue
+            try:
+                payload_bytes = base64.b64decode(receipt.get('payload_base64', ''), validate=True)
+                byte_count_ok = len(payload_bytes) == receipt.get('byte_count')
+                digest_ok = hashlib.sha256(payload_bytes).hexdigest() == receipt.get('payload_sha256')
+                payload = json.loads(payload_bytes.decode('utf-8'))
+            except (ValueError, TypeError, UnicodeError):
+                continue
+            if not byte_count_ok or not digest_ok:
+                continue
+            delivered = False
+            if boundary == 'posttooluse-output':
+                if harness == 'claude' or not isinstance(notice_meta, dict) or notice_meta.get('revision') != target:
+                    continue
+                try:
+                    context = payload['hookSpecificOutput']['additionalContext']
+                except (KeyError, TypeError):
+                    continue
+                marker = re.search(r'KOGEN AUDIT\s+\S+\s+' + re.escape(target[:12]) + r'(?:\s|$)', context)
+                offered_here = any(o.get('id') == notice_name and o.get('launch_id') == launch
+                                  for o in offers)
+                delivered = bool(marker and offered_here)
+            elif boundary == 'stop-output':
+                if not isinstance(payload, dict) or payload.get('decision') != 'block':
+                    continue
+                reason = payload.get('reason')
+                delivered = isinstance(reason, str) and (f'/{target}/report.json' in reason) and \
+                    any(item.get('revision') == target for item in stop_blocks)
+            if delivered:
+                found.append((boundary, target[:12], launch, receipt.get('at'), receipt.get('payload_sha256')))
+    return bool(found), (f'blocking findings {targets}; repaired revision first seen '
+                         f'{first_repaired}; actual output receipts accepted {found}; receipt candidates {seen}; '
+                         f'root launches {sorted(windows)}')
+
+def validate_audit_feedback_delivery(run, revision, events):
+    ok, detail = audit_feedback_delivery(run, revision, events)
+    reject(ok, f'smoke audit feedback output was not delivered to a root launch before the repair: {detail}')
 
 def validate_smoke_case(evaluation_root):
-    """Smoke mode: the same generic native/receipt/Draft-provenance controls
-    validate_case() uses, without CASES membership or any per-case (csv/
-    booking/stateful) evidence, since the smoke turn grades nothing."""
+    """Smoke mode: re-derives the headless-flow outcome from the engine's own
+    evidence (status, events, audit reports, config record) instead of trusting
+    the driver's smoke-result.json alone."""
     run = case_root(evaluation_root, 'smoke')
-    receipt_path, messages_path = run / 'receipt.json', run / 'messages.json'
-    delivery_path = run / 'input-delivery.json'
-    reject(receipt_path.is_file() and messages_path.is_file() and delivery_path.is_file(), 'missing smoke receipt')
-    receipt, messages = json.loads(receipt_path.read_text()), json.loads(messages_path.read_text())
-    delivery = json.loads(delivery_path.read_text())
+    load = lambda name: json.loads((run / name).read_text())
+    receipt, messages, delivery = load('review-receipt.json'), load('messages.json'), load('input-delivery.json')
+    authored = load('authored-case.json')
     validate_smoke_receipt(receipt)
-    reject(receipt['case'] == 'smoke', 'smoke receipt mismatch')
-    reject(isinstance(messages, list) and len(messages) == receipt['scripted_replies'] == 1, 'smoke scripted message count mismatch')
+    authored_messages = authored.get('messages') if isinstance(authored, dict) else None
+    reject(isinstance(authored, dict) and set(authored) ==
+           {'schema_version', 'name', 'end', 'brief', 'brief_sha256', 'messages'} and
+           authored.get('schema_version') == 1 and authored.get('name') == 'headless-flow' and
+           authored.get('end') == 'ready' and authored.get('brief') == 'brief.md' and
+           isinstance(authored.get('brief_sha256'), str) and
+           re.fullmatch(r'[0-9a-f]{64}', authored['brief_sha256']) is not None,
+           'smoke authored case snapshot is invalid')
+    reject(isinstance(authored_messages, list) and SMOKE_MIN_MESSAGES <= len(authored_messages) <= MAX_SCRIPTED_REPLIES,
+           'smoke authored message count is outside its bound')
+    reject(isinstance(messages, list) and len(messages) == len(authored_messages) == receipt['scripted_replies'],
+           'smoke scripted message count mismatch')
+    for index, (message, authored_message) in enumerate(zip(messages, authored_messages), start=1):
+        reject(isinstance(authored_message, dict) and set(authored_message) == {'file', 'when', 'sha256'} and
+               authored_message.get('file') == f'message-{index}.md' and
+               authored_message.get('when') in {'awaiting_answers', 'mid_turn', 'turn_ended'} and
+               isinstance(authored_message.get('sha256'), str) and
+               re.fullmatch(r'[0-9a-f]{64}', authored_message['sha256']) is not None,
+               f'smoke authored message {index} is invalid')
+        reject(isinstance(message, dict) and message.get('file') == authored_message['file'] and
+               message.get('when') == authored_message['when'] and isinstance(message.get('text'), str) and
+               hashlib.sha256(message['text'].encode('utf-8')).hexdigest() == authored_message['sha256'] and
+               message.get('request_id') == f'smoke-m{index}',
+               f'smoke sent message {index} differs from its authored case')
+    reject(authored.get('messages') and authored['messages'][0].get('when') == 'mid_turn' and
+           authored['messages'][1].get('when') == 'turn_ended',
+           'smoke authored case lost the mid-turn answer or settled follow-up')
     readme = run / 'fixture-source' / 'README.md'
     reject(delivery.get('case') == 'smoke' and delivery.get('available_before_dispatch') is True and
            delivery.get('request_path') == 'README.md' and readme.is_file() and
            delivery.get('readme_sha256') == digest(readme) and
            delivery.get('request') in readme.read_text(), 'smoke initial request was not frozen before dispatch')
-    validate_native(run, receipt, messages)
-    bindings = receipt.get('terminal_turn_bindings')
-    reject(isinstance(bindings, list) and len(bindings) == 1 and all(isinstance(value, str) and value.strip() for value in bindings), 'smoke terminal turn binding missing')
-    draft = run / 'draft'
-    identity = draft_identity(draft)
-    reject(all((draft / name).is_file() for name in ('scenarios.yaml', 'questions.md')), 'saved smoke Draft contract files missing')
-    reject(not (draft / 'approval.md').exists(), 'smoke Draft was approved')
-    state = json.loads((run / 'draft-state.json').read_text())
-    baseline_state = state.get('baseline')
-    reject(state.get('intent_id') == identity and isinstance(baseline_state, dict) and baseline_state.get('branch') and baseline_state.get('head') and state.get('visit_id') and state.get('unapproved') is True, 'smoke draft provenance state missing')
-    baseline = json.loads((run / 'source-baseline.json').read_text())
-    after = json.loads((run / 'source-after.json').read_text())
-    reject(isinstance(baseline, dict) and baseline and baseline == after == receipt['source_identity']['baseline'], 'frozen smoke source baseline differs')
-    fixture = evaluation_root / 'smoke'
-    evidence = run / 'evidence' if (run / 'evidence').is_dir() else fixture / 'evidence'
-    reject(evidence.is_dir() and (evidence / 'greeting.md').is_file(), 'smoke fixture source facts missing')
+    result = load('smoke-result.json')
+    checks = result.get('checks') or {}
+    reject(result.get('failures') == [] and all(checks.get(name, {}).get('ok') is True for name in SMOKE_CHECKS),
+           'smoke checks did not all pass')
+    status = load('status-final.json')
+    presented = status.get('presented') or {}
+    reject(status.get('state') == 'ready' and isinstance(presented.get('id'), str) and
+           PRESENTATION_ID.match(presented['id']) is not None, 'smoke session did not end ready with a presentation')
+    events = smoke_events(run)
+    ids = list(dict.fromkeys(e['provider_session_id'] for e in events if e.get('provider_session_id')))
+    turns = [e for e in events if e.get('event') == 'turn_started']
+    record = load('config-record.json')
+    reject(len(ids) == 1 and (status.get('provider') or {}).get('session_id') == ids[0] and
+           record.get('provider_session_ids') == ids, 'smoke provider session ids differ')
+    reject(len(turns) >= 2 and any(turn.get('kind') == 'resume' for turn in turns), 'smoke never resumed its provider session')
+    reject(record.get('harness') and record.get('route') and record.get('route') == presented.get('route') and
+           result.get('route') == record.get('route') and result.get('presentation') == presented.get('id'),
+           'smoke route or presentation differs')
+    expected_request_ids = ['smoke', *[f'smoke-m{index}' for index in range(1, len(authored_messages) + 1)]]
+    reject(record.get('request_ids') == expected_request_ids,
+           'smoke request ids differ')
+    reports = [json.loads(path.read_text()) for path in sorted((run / 'shaping-audits').glob('*/report.json'))]
+    revision = presented.get('revision')
+    reject(any(r.get('revision') != revision and r.get('findings') for r in reports),
+           'no earlier revision had an audit finding')
+    final = load('presented-report.json')
+    reject(revision and final.get('revision') == revision and final.get('scope') == 'full' and final.get('readiness') == 'ready' and
+           any(r.get('revision') == revision and r.get('scope') == 'full' and r.get('readiness') == 'ready' for r in reports),
+           'the presented report is not a ready full report of the final revision')
+    identity = draft_identity(run / 'draft')
+    reject(all((run / 'draft' / name).is_file() for name in ('scenarios.yaml', 'questions.md')), 'saved smoke Draft contract files missing')
+    answers = re.search(r'(?m)^## Shaper answers[ \t]*\n(.*?)(?=^## |\Z)', (run / 'draft' / 'questions.md').read_text(), re.S)
+    validate_first_answer_delivery(run, messages[0], events, answers.group(1) if answers else '')
+    validate_audit_feedback_delivery(run, revision, events)
+    reject(not (run / 'draft' / 'approval.md').exists(), 'smoke Draft was approved')
     return identity
 
 def validate_smoke_manifest(root, manifest_path):
@@ -286,26 +519,18 @@ def validate_smoke_manifest(root, manifest_path):
                not Path(entry['path']).name.startswith('resume-') and not Path(entry['path']).name.endswith('-pty.log'),
                'manifest includes private runtime log or detailed receipt')
     evaluation_root = manifest_path.parent
-    relative_root = evaluation_root.relative_to(root).as_posix()
-    required = [
-        f'{relative_root}/runs/smoke/review-receipt.json',
-        f'{relative_root}/runs/smoke/messages.json',
-        f'{relative_root}/runs/smoke/public-transcript.json',
-        f'{relative_root}/runs/smoke/owned-session-metadata.json',
-        f'{relative_root}/runs/smoke/draft/intent.yaml',
-        f'{relative_root}/runs/smoke/draft/scenarios.yaml',
-        f'{relative_root}/runs/smoke/draft/questions.md',
-        f'{relative_root}/runs/smoke/draft-state.json',
-    ]
     run = case_root(evaluation_root, 'smoke')
-    required.extend(str(path.relative_to(root)) for path in (run / 'draft').rglob('*') if path.is_file())
-    required.extend(str(path.relative_to(root)) for path in (run / 'fixture-source').rglob('*') if path.is_file())
-    evidence_names = ('greeting.md', 'facts.json', 'fixture-contract.md',
-                      'complete-input-receipt.json', 'current-prerequisite-receipt.json', 'prerequisite_control.py')
-    required.extend(str((run / 'evidence' / name).relative_to(root)) for name in evidence_names
-                    if (run / 'evidence' / name).is_file())
-    reject(all(path in seen for path in required), 'manifest omits required smoke evidence')
-    validate_public_receipt(run, json.loads((run / 'receipt.json').read_text()))
+    names = ('config-record.json', 'engine-run.json', 'status-final.json', 'messages.json', 'authored-case.json', 'smoke-result.json',
+             'review-receipt.json', 'input-delivery.json', 'presented-report.json', 'engine-runtime/events.jsonl',
+             'feedback-delivery/receipts.jsonl',
+             'draft/intent.yaml', 'draft/scenarios.yaml', 'draft/questions.md')
+    required = [run / name for name in names]
+    required.extend(sorted((run / 'shaping-audits').glob('*/report.json')))
+    required.extend(sorted((run / 'shaping-audits').glob('hook.jsonl')))
+    required.extend(sorted(path for path in (run / 'engine-runtime' / 'notices').glob('*') if path.is_file()))
+    required.extend(path for path in (run / 'draft').rglob('*') if path.is_file())
+    reject(all(path.is_file() and str(path.resolve().relative_to(root.resolve())) in seen for path in required),
+           'manifest omits required smoke evidence')
     validate_smoke_case(evaluation_root)
     return payload
 

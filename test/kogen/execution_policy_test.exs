@@ -121,8 +121,17 @@ defmodule Kogen.ExecutionPolicyTest do
     assert File.read!(Path.join(@root, "priv/kogen/prompts/reviewer.md")) =~
              "schema-valid final verdict yourself"
 
-    assert File.read!(Path.join(@root, "priv/kogen/prompts/shaping.md")) =~
-             "in this same conversation"
+    # Shaping is headless: approval is the Shaper's `--approve` command, never
+    # the Shaping Controller's and never a conversational yes.
+    shaping =
+      @root
+      |> Path.join("priv/kogen/prompts/shaping.md")
+      |> File.read!()
+      |> then(&Regex.replace(~r/\s+/, &1, " "))
+
+    assert shaping =~ "You never approve the Intent"
+    assert shaping =~ "`mix kogen.shape <ID> --approve <presentation>`"
+    refute shaping =~ "in this same conversation"
   end
 
   test "Claude Code roles name the configured Claude Code agents instead of Codex native kinds" do

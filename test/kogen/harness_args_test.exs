@@ -31,16 +31,11 @@ defmodule Kogen.HarnessArgsTest do
     assert Enum.take(resumed, -2) == ["abc-123", "-"]
     assert Enum.slice(reviewer, 1, 4) == sol_high
 
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "kogen-shaper-route-#{System.pid()}-#{System.unique_integer([:positive])}.md"
-      )
-
-    on_exit(fn -> File.rm(path) end)
-    File.write!(path, "Shape one Intent.")
-
-    assert Enum.take(Harness.shaper_args(config.shaping.model, config.shaping.effort, path), 4) ==
+    assert Enum.slice(
+             Harness.Codex.shaping_args(config.shaping.model, config.shaping.effort),
+             1,
+             4
+           ) ==
              sol_medium
 
     for args <- [developer, resumed, reviewer] do
@@ -93,17 +88,13 @@ defmodule Kogen.HarnessArgsTest do
              ~s(model_reasoning_effort="high")
            ]
 
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "kogen-optimum-shaper-#{System.pid()}-#{System.unique_integer([:positive])}.md"
-      )
-
-    on_exit(fn -> File.rm(path) end)
-    File.write!(path, "Shape one Intent.")
     assert Kogen.Intent.role_harness(config, :shaping) == "codex"
 
-    assert Enum.take(Harness.shaper_args(config.shaping.model, config.shaping.effort, path), 4) ==
+    assert Enum.slice(
+             Harness.Codex.shaping_args(config.shaping.model, config.shaping.effort),
+             1,
+             4
+           ) ==
              ["--model", "gpt-6-astra", "-c", ~s(model_reasoning_effort="low")]
 
     # The Codex roles' native worker is Luna Max on optimum only.
@@ -202,20 +193,135 @@ defmodule Kogen.HarnessArgsTest do
     refute "--output-schema" in args
   end
 
-  test "Shaping Controller passes the rendered prompt as Codex's interactive initial prompt" do
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "kogen-shaper-#{System.pid()}-#{System.unique_integer([:positive])}.md"
-      )
-
-    on_exit(fn -> File.rm(path) end)
-    File.write!(path, "Shape one Intent.")
-    args = Harness.shaper_args("gpt-5.6", "medium", path)
+  test "Codex Shaping Controller runs headless exec with the prompt on stdin and live web search" do
+    args = Harness.Codex.shaping_args("gpt-5.6", "medium")
+    assert Enum.take(args, 1) == ["exec"]
+    assert List.last(args) == "-"
+    assert "--json" in args
     assert "hooks" in args
-    assert Enum.take(args, -2) == ["--", "Shape one Intent."]
-    refute "exec" in args
-    refute "--json" in args
+    assert ~s(web_search="live") in args
+    refute "--search" in args
+    refute "resume" in args
+    assert Enum.any?(args, &String.starts_with?(&1, "hooks.Stop="))
+    assert Enum.any?(args, &String.starts_with?(&1, "hooks.PostToolUse="))
+  end
+
+  test "Codex Shaping Controller resumes the exact thread as exec resume <id>" do
+    args = Harness.Codex.shaping_args("gpt-5.6", "medium", "thread-1")
+    assert Enum.take(args, 3) == ["exec", "resume", "thread-1"]
+    assert ["--model", "gpt-5.6"] == Enum.slice(args, 3, 2)
+    assert List.last(args) == "-"
+  end
+
+  describe "Claude Shaping Controller tool authority and settings" do
+    setup do
+      helpers = %{
+        scout: %{model: "claude-sonnet-5-5", effort: "low"},
+        worker: %{model: "claude-sonnet-5-5", effort: "medium"}
+      }
+
+      %{context: %{config: %{helpers: helpers}}}
+    end
+
+    defp flag_value(args, flag), do: Enum.at(args, Enum.find_index(args, &(&1 == flag)) + 1)
+
+    defp settings_of(args), do: args |> flag_value("--settings") |> Jason.decode!()
+
+    defp commands(settings, event) do
+      for entry <- settings["hooks"][event], hook <- entry["hooks"], do: hook["command"]
+    end
+
+    test "role shaping selects shaping-settings.json with the audit Stop and steer hooks", %{
+      context: context
+    } do
+      args = Harness.Claude.shaping_args("claude-opus-5-5", "medium", context, {:fresh, "u-1"})
+      settings = settings_of(args)
+
+      assert [stop] = commands(settings, "Stop")
+      assert stop =~ "shaping_audit/stop_hook.sh"
+      refute stop =~ "check.sh"
+      assert [%{"hooks" => [%{"timeout" => 1800}]}] = settings["hooks"]["Stop"]
+
+      assert [steer] = commands(settings, "PostToolUse")
+      assert steer =~ "priv/kogen/shaping/feedback_output.py"
+      assert steer =~ "priv/kogen/shaping/steer_hook.py"
+      assert [%{"hooks" => [%{"timeout" => 60}]} = entry] = settings["hooks"]["PostToolUse"]
+      refute Map.has_key?(entry, "matcher")
+
+      assert [%{"matcher" => "Bash"}] = settings["hooks"]["PreToolUse"]
+      assert Harness.Claude.shaping_settings_path() =~ "shaping-settings.json"
+    end
+
+    test "role shaping denies every question and plan tool alongside built-in agents", %{
+      context: context
+    } do
+      denied = Harness.Claude.disallowed_tools("shaping")
+      for tool <- ~w(AskUserQuestion ExitPlanMode EnterPlanMode), do: assert(tool in denied)
+      for agent <- ~w(general-purpose Explore Plan), do: assert("Agent(#{agent})" in denied)
+      refute "Edit" in denied
+
+      args = Harness.Claude.shaping_args("claude-opus-5-5", "medium", context, {:fresh, "u-1"})
+      assert "AskUserQuestion" in args
+      assert "--dangerously-skip-permissions" in args
+      assert ["--setting-sources", "project"] in Enum.chunk_every(args, 2, 1, :discard)
+      assert "--strict-mcp-config" in args
+    end
+
+    test "shaping helpers: the worker edits Drafts and the scout researches the web", %{
+      context: context
+    } do
+      agents = Harness.Claude.agents("shaping", context.config.helpers)
+      assert agents["kogen-worker"]["tools"] == ~w(Read Grep Glob Bash Edit Write)
+
+      assert agents["kogen-worker"]["description"] =~
+               "edit only the Draft files your packet assigns"
+
+      assert agents["kogen-scout"]["tools"] == ~w(Read Grep Glob WebFetch WebSearch)
+    end
+
+    test "fresh uses --session-id, resume uses --resume, and the channel is appended", %{
+      context: context
+    } do
+      fresh = Harness.Claude.shaping_args("claude-opus-5-5", "medium", context, {:fresh, "u-1"})
+      assert Enum.take(fresh, 4) == ["-p", "--output-format", "stream-json", "--verbose"]
+      assert Enum.take(fresh, -2) == ["--session-id", "u-1"]
+
+      resumed =
+        Harness.Claude.shaping_args("claude-opus-5-5", "medium", context, {:resume, "u-1"})
+
+      assert Enum.take(resumed, -2) == ["--resume", "u-1"]
+
+      channel =
+        Harness.Claude.shaping_args("claude-opus-5-5", "medium", context, {:fresh, "u-1"}, "CHAN")
+
+      assert Enum.take(channel, -2) == ["--append-system-prompt", "CHAN"]
+    end
+
+    test "Developer and Reviewer keep settings.json, their denies and their helpers", %{
+      context: context
+    } do
+      for {role, args} <- [
+            {"developer",
+             Harness.Claude.developer_args("claude-opus-5-5", "medium", context, {:fresh, "u"})},
+            {"reviewer", Harness.Claude.reviewer_args("claude-opus-5-5", "medium", context, "u")}
+          ] do
+        settings = settings_of(args)
+        assert [check] = commands(settings, "Stop"), role
+        assert check =~ "check.sh"
+        assert settings["hooks"]["PostToolUse"] == nil
+        refute "AskUserQuestion" in args
+        refute "--append-system-prompt" in args
+      end
+
+      refute "AskUserQuestion" in Harness.Claude.disallowed_tools("developer")
+      refute "ExitPlanMode" in Harness.Claude.disallowed_tools("reviewer")
+
+      developer = Harness.Claude.agents("developer", context.config.helpers)
+      assert developer["kogen-worker"]["tools"] == ~w(Read Grep Glob Bash Edit Write)
+      assert developer["kogen-scout"]["tools"] == ~w(Read Grep Glob)
+      reviewer = Harness.Claude.agents("reviewer", context.config.helpers)
+      assert reviewer["kogen-worker"]["tools"] == ~w(Read Grep Glob Bash)
+    end
   end
 end
 

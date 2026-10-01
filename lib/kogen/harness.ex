@@ -6,7 +6,7 @@ defmodule Kogen.Harness do
   harness. `codex` selects managed native Codex (`Kogen.Harness.Codex`);
   `claude` selects the Kogen-managed Claude Code (`Kogen.Harness.Claude`). The
   adapter supplies runtime and login readiness, launch contexts, fresh and
-  exactly resumed Developer turns, Reviewer verdicts and the interactive Shaper.
+  exactly resumed Developer turns, Reviewer verdicts and the headless Shaping Controller.
 
   Every selection and launch context carries its harness explicitly, and
   dispatch accepts only `claude` and `codex`: a missing or unknown harness
@@ -223,7 +223,7 @@ defmodule Kogen.Harness do
 
   defp tag_current_role(selection, _role), do: selection
 
-  defp role_label(:shaping), do: "shaper"
+  defp role_label(:shaping), do: "shaping"
   defp role_label(role), do: Atom.to_string(role)
 
   @doc """
@@ -408,9 +408,30 @@ defmodule Kogen.Harness do
     }
   end
 
-  @doc "Launches the interactive Shaper with the caller's real terminal."
-  def exec_shaper(model, effort, prompt_file, context),
-    do: adapter!(context).exec_shaper(model, effort, prompt_file, context)
+  @doc false
+  def shaping_steer_hook do
+    %{
+      command:
+        "python3 \"$(git rev-parse --show-toplevel)/priv/kogen/shaping/feedback_output.py\" " <>
+          "posttooluse-output --producer \"$(git rev-parse --show-toplevel)/priv/kogen/shaping/steer_hook.py\"",
+      timeout: 60
+    }
+  end
+
+  @doc """
+  Runs one headless Shaping Controller turn with the prompt on stdin.
+
+  `kind` is `{:fresh, provider_id | nil}` or `{:resume, provider_id}`. `context`
+  is `role_context(runtime, :shaping)` plus `:log_path` (the live raw provider
+  stream), `:control`, `:timeout_ms`, and optionally `:channel` and `:on_start`.
+  Returns `{:ok, %{provider_session_id, exit_code, usage, timed_out: false}}` or
+  `{:error, {:provider_session_unavailable, tail}}`,
+  `{:error, {:provider_session_mismatch, %{expected:, actual:}}}`,
+  `{:error, {:timeout, %{provider_session_id:}}}` or
+  `{:error, {:provider_failure, reason, %{provider_session_id:}}}`.
+  """
+  def shaping_turn(kind, prompt, model, effort, context),
+    do: adapter!(context).shaping_turn(kind, prompt, model, effort, context)
 
   @doc false
   def developer_args(model, effort, resume_session_id \\ nil),
@@ -418,9 +439,6 @@ defmodule Kogen.Harness do
 
   @doc false
   def reviewer_args(model, effort), do: Codex.reviewer_args(model, effort)
-
-  @doc false
-  def shaper_args(model, effort, prompt_file), do: Codex.shaper_args(model, effort, prompt_file)
 
   defp harness(%{harness: harness}) when harness in ["claude", "codex"], do: {:ok, harness}
 

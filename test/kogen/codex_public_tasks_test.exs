@@ -5,29 +5,38 @@ defmodule Kogen.CodexPublicTasksTest do
 
   @source Path.expand("../..", __DIR__)
 
-  test "fresh and continued public Shape stop for a missing managed runtime before native launch" do
+  test "headless Shape start stops for a missing managed runtime before native launch, and a legacy Draft is refused" do
     fixture = fixture!("codex-public-shape")
     on_exit(fn -> File.rm_rf(fixture) end)
     init_git!(fixture)
     write_draft!(fixture)
-    write_draft!(fixture)
     trace = Path.join(fixture, "native.jsonl")
+    brief = write_brief!(fixture)
     env = [{"KOGEN_CODEX_ROOT", Path.join(fixture, "absent-managed")}, {"KOGEN_ROLE", ""}]
 
-    for args <- [["kogen.shape"], ["kogen.shape", "unfinished"]] do
-      {output, 1} = Kogen.CompiledFixture.mix_task!(fixture, args, env)
-      assert output =~ "mix kogen.codex.install"
-    end
+    {output, 2} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape", "--brief", brief], env)
+    json = json_line!(output)
+    assert json["error"]["code"] == "harness_not_ready"
+    assert json["error"]["message"] =~ "mix kogen.codex.install"
+    refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping"))
+
+    # A slug names a Draft shaped before headless Shaping: refused, untouched.
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished/intent.yaml")
+    before = File.read!(draft)
+    {output, 2} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape", "unfinished"], env)
+    assert json_line!(output)["error"]["code"] == "legacy_draft_unsupported"
+    assert File.read!(draft) == before
 
     refute File.exists?(trace)
   end
 
-  test "public Shape reports the selected project login without falling back to shared" do
+  test "headless Shape start reports the selected project login without falling back to shared" do
     fixture = fixture!("codex-public-project")
     on_exit(fn -> File.rm_rf(fixture) end)
     init_git!(fixture)
     write_draft!(fixture)
     trace = Path.join(fixture, "native.jsonl")
+    brief = write_brief!(fixture)
     env = managed_env(fixture, trace)
 
     {_output, 130} =
@@ -39,11 +48,11 @@ defmodule Kogen.CodexPublicTasksTest do
 
     project_scope = native_calls(trace) |> List.last() |> Map.fetch!("scope")
 
-    for args <- [["kogen.shape"], ["kogen.shape", "unfinished"]] do
-      {output, 1} = Kogen.CompiledFixture.mix_task!(fixture, args, env)
-      assert output =~ "Selected project Kogen login is not configured"
-      assert output =~ "mix kogen.codex.login --project"
-    end
+    {output, 2} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape", "--brief", brief], env)
+    json = json_line!(output)
+    assert json["error"]["code"] == "harness_not_ready"
+    assert json["error"]["message"] =~ "Selected project Kogen login is not configured"
+    assert json["error"]["message"] =~ "mix kogen.codex.login --project"
 
     assert native_calls(trace) |> Enum.any?(&(&1["scope"] == project_scope))
     refute native_calls(trace) |> Enum.any?(&String.ends_with?(&1["scope"], "/shared"))
@@ -210,6 +219,25 @@ defmodule Kogen.CodexPublicTasksTest do
         ],
         cd: fixture
       )
+  end
+
+  defp write_brief!(fixture) do
+    path = Path.join(fixture, "brief.md")
+    File.write!(path, "Add a demo flag.\n")
+    path
+  end
+
+  # Every headless Shape invocation prints exactly one JSON line on stdout;
+  # the merged output may also carry stderr diagnostics, so pick that line.
+  defp json_line!(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.find_value(fn line ->
+      case Jason.decode(line) do
+        {:ok, %{"error" => _} = json} -> json
+        _ -> nil
+      end
+    end) || flunk("no JSON line in: " <> output)
   end
 
   defp write_draft!(fixture) do

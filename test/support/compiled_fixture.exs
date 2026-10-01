@@ -14,18 +14,20 @@ defmodule Kogen.CompiledFixture do
     "priv/kogen/prompts/reviewer.md",
     "priv/kogen/prompts/shaping.md",
     "priv/kogen/prompts/shaping-fresh.md",
-    "priv/kogen/prompts/shaping-continuation.md",
+    "priv/kogen/shaping/detach.py",
+    "priv/kogen/shaping/steer_hook.py",
+    "priv/kogen/shaping/feedback_output.py",
+    "priv/kogen/shaping_audit/stop_hook.sh",
     "test/support/codex",
     "test/support/fake_codex",
     "test/support/scenario_response.py",
     "test/support/launch_receipt.py",
     "test/support/candidate_fixture.ex",
     "test/support/workspace_fixture.ex",
-    "test/support/fake_codex_shaper",
+    "test/support/fake_shaping_controller",
     "test/support/claude",
     "test/support/fake_claude",
-    "test/support/claude_stream.py",
-    "test/support/fake_claude_shaper"
+    "test/support/claude_stream.py"
   ]
 
   # Offline Codex fixtures default to a Codex route even though the tracked
@@ -72,9 +74,9 @@ defmodule Kogen.CompiledFixture do
     File.write!(Path.join(root, ".kogen/config.yaml"), @codex_config)
     File.chmod!(Path.join(root, ".codex/hooks/check.sh"), 0o755)
     File.chmod!(Path.join(root, "test/support/fake_codex"), 0o755)
-    File.chmod!(Path.join(root, "test/support/fake_codex_shaper"), 0o755)
+    File.chmod!(Path.join(root, "test/support/fake_shaping_controller"), 0o755)
 
-    for executable <- ~w(claude fake_claude claude_stream.py fake_claude_shaper),
+    for executable <- ~w(claude fake_claude claude_stream.py),
         do: File.chmod!(Path.join(root, "test/support/#{executable}"), 0o755)
 
     File.write!(

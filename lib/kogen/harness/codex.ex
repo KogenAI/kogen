@@ -1,6 +1,6 @@
 defmodule Kogen.Harness.Codex do
   @moduledoc """
-  The Codex adapter behind `Kogen.Harness`: interactive shaping, Developer
+  The Codex adapter behind `Kogen.Harness`: headless Shaping Controller turns, Developer
   turns, and independent reviews on managed native Codex.
   `KOGEN_HARNESS` can select an alternate executable for offline testing.
   Codex thread IDs are exposed as `session_id` to the build state machine.
@@ -259,27 +259,134 @@ defmodule Kogen.Harness.Codex do
   @doc false
   def expert_args(model, effort), do: ["exec"] ++ exec_flags(model, effort) ++ ["-"]
 
-  @doc "Launches the interactive Codex Shaping Controller with the caller's real terminal."
-  def exec_shaper(model, effort, prompt_file, context) do
+  @doc """
+  Runs one headless Shaping Controller turn (`codex exec [resume ID] ... --json -`)
+  with the prompt on stdin. `kind` is `{:fresh, _}` or `{:resume, thread_id}`;
+  the raw provider stream is written live to the context's `:log_path`. See
+  `Kogen.Harness.shaping_turn/5` for the return shapes.
+  """
+  def shaping_turn(kind, prompt, model, effort, context) do
     with_context(context, fn selected ->
-      selected = %{selected | env: merge_environment(selected.env, [{"KOGEN_ROLE", "shaper"}])}
-      Kogen.Codex.terminal(selected, shaper_args(model, effort, prompt_file))
+      resume_id =
+        case kind do
+          {:resume, id} when is_binary(id) and id != "" -> id
+          {:fresh, _id} -> nil
+          other -> raise ArgumentError, "unsupported shaping turn kind: #{inspect(other)}"
+        end
+
+      args = shaping_args(model, effort, resume_id)
+
+      stdin =
+        case Map.get(selected, :channel) do
+          channel when is_binary(channel) and channel != "" -> channel <> "\n\n" <> prompt
+          _ -> prompt
+        end
+
+      {output, exit_code, timed_out} = run_shaping(selected, args, stdin)
+      shaping_result(resume_id, output, exit_code, timed_out)
     end)
   end
 
-  @doc false
-  def shaper_args(model, effort, prompt_file) do
-    %{command: command, timeout: timeout} = Kogen.Harness.shaping_stop_hook()
+  defp shaping_result(resume_id, output, exit_code, timed_out) do
+    events = decode_events(output)
+    observed = observed_thread(output)
 
-    model_flags(model, effort) ++
+    cond do
+      timed_out ->
+        {:error, {:timeout, %{provider_session_id: observed || resume_id}}}
+
+      resume_id != nil and String.contains?(output, "no rollout found") ->
+        {:error, {:provider_session_unavailable, output_tail(output)}}
+
+      resume_id != nil and observed != nil and observed != resume_id ->
+        {:error, {:provider_session_mismatch, %{expected: resume_id, actual: observed}}}
+
+      true ->
+        parsed_shaping_result(events, exit_code, output, observed)
+    end
+  end
+
+  defp parsed_shaping_result(events, exit_code, output, observed) do
+    case parse_turn(events, exit_code, output) do
+      {:ok, turn} ->
+        {:ok,
+         %{
+           provider_session_id: turn.session_id,
+           exit_code: exit_code,
+           usage: last_turn_usage(events),
+           timed_out: false
+         }}
+
+      {:error, reason} ->
+        {:error, {:provider_failure, reason, %{provider_session_id: observed}}}
+    end
+  end
+
+  defp last_turn_usage(events) do
+    events
+    |> Enum.filter(&(&1["type"] == "turn.completed"))
+    |> List.last()
+    |> case do
+      nil -> nil
+      event -> event["usage"]
+    end
+  end
+
+  defp run_shaping(context, args, stdin_text) do
+    dir = temporary_directory("stdin")
+    tmp = Path.join(dir, "prompt")
+    File.write!(tmp, stdin_text)
+
+    argv = Map.get(context, :prefix, []) ++ [context.executable | context.args ++ args]
+    extra_env = merge_environment(context.env, [{"KOGEN_ROLE", "shaping"}])
+
+    custody_opts =
+      [
+        stdin_path: tmp,
+        tmp_dir: dir,
+        env: extra_env,
+        log_path: Map.fetch!(context, :log_path)
+      ] ++
+        custody_registration(context, extra_env) ++
+        hard_timeout(context) ++
+        on_start_option(context)
+
+    case Kogen.ProcessCustody.run(argv, context[:cwd] || File.cwd!(), custody_opts) do
+      {:ok, facts} ->
+        output = facts["log_bytes"] || facts["output"] || ""
+        {output, facts["exit_code"], facts["timed_out"] == true}
+
+      {:error, reason} ->
+        {to_string(reason), 1, false}
+    end
+  end
+
+  defp hard_timeout(%{timeout_ms: ms}) when is_integer(ms) and ms > 0, do: [timeout_ms: ms]
+  defp hard_timeout(_context), do: []
+
+  @doc false
+  def shaping_args(model, effort, resume_id \\ nil) do
+    %{command: stop, timeout: stop_timeout} = Kogen.Harness.shaping_stop_hook()
+    %{command: steer, timeout: steer_timeout} = Kogen.Harness.shaping_steer_hook()
+
+    ["exec"] ++
+      if(resume_id, do: ["resume", resume_id], else: []) ++
+      model_flags(model, effort) ++
       @common_flags ++
       [
         "-c",
-        "hooks.Stop=[{hooks=[{type=\"command\",command=#{Jason.encode!(command)},timeout=#{timeout}}]}]",
-        "--search",
-        "--",
-        File.read!(prompt_file)
+        hook_setting("Stop", stop, stop_timeout),
+        "-c",
+        hook_setting("PostToolUse", steer, steer_timeout),
+        "-c",
+        ~s(web_search="live"),
+        "--json",
+        "-"
       ]
+  end
+
+  defp hook_setting(event, command, timeout) do
+    "hooks.#{event}=[{hooks=[{type=\"command\",command=#{Jason.encode!(command)},timeout=#{timeout}}]}]"
   end
 
   # Every launch receives the session's Codex launch context; there is no
@@ -538,7 +645,7 @@ defmodule Kogen.Harness.Codex do
   end
 
   # The Developer turn time-box: the Build sets `:turn_timeout_ms` on the
-  # Developer launch context only, so Reviewer, Expert and Shaper launches
+  # Developer launch context only, so Reviewer, Expert and Shaping Controller launches
   # (and verification targets) never carry a soft timeout.
   defp turn_time_box(%{turn_timeout_ms: ms} = context, extra_env)
        when is_integer(ms) and ms > 0 do

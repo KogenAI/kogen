@@ -1,0 +1,10 @@
+{
+  "name": "stateful-flawed",
+  "end": "settled",
+  "steps": [
+    {
+      "step": "start",
+      "brief": "brief.md"
+    }
+  ]
+}

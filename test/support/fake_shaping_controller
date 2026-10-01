@@ -1,0 +1,538 @@
+#!/usr/bin/env python3
+"""Scripted offline Shaping Controller for headless Shaping tests.
+
+Selected with KOGEN_HARNESS. It serves both provider forms Kogen launches:
+
+- Codex: `exec [resume ID] ... --json -` (stream: thread.started ...
+  turn.completed), hooks from `-c hooks.Stop=[...]`/`-c hooks.PostToolUse=[...]`;
+- Claude Code: `-p ... --session-id UUID | --resume UUID`
+  (stream: system/init ... result), hooks from `--settings <json>`;
+- `auth status` (Claude readiness).
+
+FAKE_SHAPING_SCRIPT names a JSON file `{"turns": [[step, ...], ...]}`; the Nth
+launch runs `turns[N-1]` (the last list repeats). Optional top-level keys:
+`resume_thread_id` (answer a resume with another id), `forget_sessions`
+(every resume fails as missing history). FAKE_SHAPING_LOG_DIR receives
+`invocation-N.json` per launch (argv, KOGEN_* env, stdin, pid).
+
+Steps: create_draft {template, slug?}, ask {number, question}, write/append
+{path, text}, hook "post_tool_use" (optional "helper": true), record_answers,
+resolve_questions, stop (optional on_block steps), sleep seconds,
+sleep_child seconds, touch path, wait_for {path (a glob), timeout}, request_user_input
+text, message text, exit code, edit {path, times, interval}.
+"""
+
+import glob
+import base64
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import uuid
+
+ROOT = os.getcwd()
+STATE_DIR = os.environ.get("FAKE_SHAPING_STATE_DIR") or os.path.join(
+    ROOT, ".kogen", "runtime", "fake-shaping-controller"
+)
+
+
+def out(event):
+    sys.stdout.write(json.dumps(event) + "\n")
+    sys.stdout.flush()
+
+
+def load(path, default):
+    try:
+        with open(path) as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return default
+
+
+def save(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp-%d" % os.getpid()
+    with open(tmp, "w") as handle:
+        json.dump(data, handle)
+    os.replace(tmp, path)
+
+
+def value_after(argv, flag):
+    for index, arg in enumerate(argv[:-1]):
+        if arg == flag:
+            return argv[index + 1]
+    return None
+
+
+def codex_hooks(argv):
+    hooks = {}
+    for index, arg in enumerate(argv[:-1]):
+        if arg == "-c":
+            setting = argv[index + 1]
+            match = re.match(r"^hooks\.(\w+)=", setting)
+            if match:
+                command = re.search(r'command=("(?:[^"\\]|\\.)*")', setting)
+                if command:
+                    hooks[match.group(1)] = json.loads(command.group(1))
+    return hooks
+
+
+def claude_hooks(argv):
+    settings = value_after(argv, "--settings")
+    hooks = {}
+    if not settings:
+        return hooks
+    try:
+        data = json.loads(settings)
+    except ValueError:
+        data = load(settings, {})
+    for event, entries in (data.get("hooks") or {}).items():
+        for entry in entries:
+            for hook in entry.get("hooks") or []:
+                if hook.get("type") == "command":
+                    hooks.setdefault(event, hook["command"])
+    return hooks
+
+
+class Turn:
+    def __init__(self, argv, stdin):
+        self.argv = argv
+        self.stdin = stdin
+        self.codex = argv[:1] == ["exec"]
+        self.resume = None
+        self.context = []
+        if self.codex:
+            if argv[1:2] == ["resume"]:
+                self.resume = argv[2]
+            self.hooks = codex_hooks(argv)
+            self.model = value_after(argv, "--model") or "fake"
+        else:
+            self.resume = value_after(argv, "--resume")
+            self.fresh_id = value_after(argv, "--session-id")
+            self.hooks = claude_hooks(argv)
+            self.model = value_after(argv, "--model") or "fake"
+        self.sessions_path = os.path.join(STATE_DIR, "sessions.json")
+        self.sessions = load(self.sessions_path, {})
+        self.transcript = None
+
+    def nonce_from(self, text):
+        match = re.search(r"nonce is ([0-9a-f]{32})", text or "")
+        return match.group(1) if match else None
+
+    def start(self, script):
+        if self.resume:
+            known = self.resume in self.sessions and not script.get("forget_sessions")
+            if not known:
+                if self.codex:
+                    out({"type": "error", "message": "thread/resume failed: no rollout found for thread id %s" % self.resume})
+                    sys.stderr.write("Error: no rollout found for thread id %s\n" % self.resume)
+                else:
+                    sys.stderr.write("No conversation found with session ID: %s\n" % self.resume)
+                sys.stderr.flush()
+                sys.exit(1)
+            self.id = script.get("resume_thread_id") or self.resume
+            self.nonce = self.sessions[self.resume].get("nonce")
+        else:
+            self.id = str(uuid.uuid4()) if self.codex else self.fresh_id
+            channel = self.stdin if self.codex else value_after(self.argv, "--append-system-prompt")
+            self.nonce = self.nonce_from(channel)
+            self.sessions[self.id] = {"nonce": self.nonce}
+            save(self.sessions_path, self.sessions)
+        self.context.append(self.stdin)
+        transcripts = os.path.join(STATE_DIR, "transcripts")
+        os.makedirs(transcripts, exist_ok=True)
+        self.transcript = os.path.join(transcripts, "%s.jsonl" % self.id)
+        if not os.path.exists(self.transcript):
+            with open(self.transcript, "w") as handle:
+                handle.write(json.dumps({"type": "session_meta", "payload": {"id": self.id, "source": "cli"}}) + "\n")
+        if self.codex:
+            out({"type": "thread.started", "thread_id": self.id})
+            out({"type": "turn.started"})
+        else:
+            out({"type": "system", "subtype": "init", "session_id": self.id, "model": self.model})
+
+    def message(self, text):
+        if self.codex:
+            out({"type": "item.completed", "item": {"type": "agent_message", "text": text}})
+        else:
+            out({
+                "type": "assistant",
+                "session_id": self.id,
+                "parent_tool_use_id": None,
+                "message": {"model": self.model, "content": [{"type": "text", "text": text}]},
+            })
+
+    def finish(self):
+        usage = {"input_tokens": 11, "output_tokens": 7}
+        if self.codex:
+            out({"type": "turn.completed", "usage": usage})
+        else:
+            out({
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "session_id": self.id,
+                "result": "done",
+                "usage": usage,
+            })
+
+    def run_hook(self, event, helper=False):
+        command = self.hooks.get(event)
+        if not command:
+            return None
+        payload = {"hook_event_name": event, "session_id": self.id, "cwd": ROOT}
+        if self.codex:
+            transcript = self.transcript
+            if helper:
+                transcript = os.path.join(STATE_DIR, "transcripts", "helper-%s.jsonl" % self.id)
+                with open(transcript, "w") as handle:
+                    handle.write(json.dumps({
+                        "type": "session_meta",
+                        "payload": {"id": "helper", "source": {"subagent": {"thread_spawn": {"parent_thread_id": self.id, "depth": 1}}}},
+                    }) + "\n")
+            payload["transcript_path"] = transcript
+        else:
+            payload["transcript_path"] = self.transcript
+            payload["tool_name"] = "Bash"
+            if helper:
+                payload["agent_id"] = "helper-agent"
+                payload["agent_type"] = "kogen-worker"
+        result = subprocess.run(
+            ["sh", "-c", command], input=json.dumps(payload), capture_output=True, text=True, cwd=ROOT
+        )
+        log = os.environ.get("FAKE_SHAPING_LOG_DIR")
+        if log:
+            os.makedirs(log, exist_ok=True)
+            with open(os.path.join(log, "hooks.jsonl"), "a") as handle:
+                handle.write(json.dumps({"event": event, "helper": helper, "stdout": result.stdout, "exit": result.returncode}) + "\n")
+        try:
+            return json.loads(result.stdout.strip().splitlines()[-1]) if result.stdout.strip() else {}
+        except (ValueError, IndexError):
+            return {}
+
+
+def intent_id():
+    return os.environ.get("KOGEN_SHAPING_INTENT_ID", "")
+
+
+def package_dir():
+    base = os.path.join(ROOT, ".kogen", "intents", "drafts")
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return None
+    for name in names:
+        try:
+            with open(os.path.join(base, name, "intent.yaml")) as handle:
+                if re.search(r"^id:\s*%s\s*$" % re.escape(intent_id()), handle.read(), re.M):
+                    return os.path.join(base, name)
+        except OSError:
+            continue
+    return None
+
+
+def questions_path():
+    package = package_dir()
+    return os.path.join(package, "questions.md") if package else None
+
+
+def read(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+    except OSError:
+        return ""
+
+
+def write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def section(text, name):
+    match = re.search(r"^## %s[ \t]*$" % re.escape(name), text, re.M)
+    if not match:
+        return None
+    rest = text[match.end():]
+    following = re.search(r"^## ", rest, re.M)
+    end = match.end() + (following.start() if following else len(rest))
+    return match.start(), end
+
+
+def set_section(text, name, body):
+    span = section(text, name)
+    block = "## %s\n\n%s\n\n" % (name, body.strip("\n")) if body.strip() else ""
+    if span:
+        return text[: span[0]] + block + text[span[1]:]
+    return text.rstrip("\n") + "\n\n" + block
+
+
+def section_body(text, name):
+    span = section(text, name)
+    if not span:
+        return ""
+    return re.sub(r"^## [^\n]*\n", "", text[span[0]: span[1]]).strip("\n")
+
+
+def create_draft(step):
+    template = step["template"]
+    package = package_dir()
+    slug = step.get("slug")
+    if package is None:
+        intent = read(os.path.join(template, "intent.yaml"))
+        slug = slug or re.search(r"^slug:\s*(\S+)", intent, re.M).group(1)
+        package = os.path.join(ROOT, ".kogen", "intents", "drafts", slug)
+        shutil.copytree(template, package)
+    path = os.path.join(package, "intent.yaml")
+    intent = re.sub(r"^id:.*$", "id: %s" % intent_id(), read(path), count=1, flags=re.M)
+    if slug:
+        intent = re.sub(r"^slug:.*$", "slug: %s" % slug, intent, count=1, flags=re.M)
+    write(path, intent)
+
+
+def ask(step):
+    path = questions_path()
+    text = read(path) or "# Questions\n"
+    body = section_body(text, "Ask the Shaper")
+    entry = "%d. %s Question: %s Recommendation: %s Evidence: %s" % (
+        step["number"],
+        step.get("title", "Choice"),
+        step["question"],
+        step.get("recommendation", "the first option"),
+        step.get("evidence", "unproven — the Shaper decides"),
+    )
+    write(path, set_section(text, "Ask the Shaper", (body + "\n" + entry).strip("\n")))
+
+
+BLOCK = re.compile(r"KOGEN SHAPER ANSWER (\S+) \[input (in-\d{4}-[0-9a-f]{8})\]\n")
+
+
+def answer_blocks(texts):
+    found = []
+    for text in texts:
+        for match in BLOCK.finditer(text or ""):
+            lines = text[match.end():].split("\n", 3)
+            if len(lines) < 4:
+                continue
+            open_line = lines[1]
+            rest = lines[3]
+            following = re.search(r"\n\nKOGEN (SHAPER ANSWER|AUDIT|NOTICE)", rest)
+            body = rest[: following.start()] if following else rest
+            numbers = re.findall(r"\d+", open_line.split(":", 1)[1]) if ":" in open_line else []
+            found.append((match.group(1), match.group(2), body, numbers))
+    return found
+
+
+def record_answers(turn):
+    path = questions_path()
+    if path is None:
+        return
+    text = read(path) or "# Questions\n"
+    answers = section_body(text, "Shaper answers")
+    asks = section_body(text, "Ask the Shaper")
+    for nonce, input_id, body, numbers in answer_blocks(turn.context):
+        if nonce != turn.nonce:
+            continue
+        data = accepted_message(input_id)
+        if data is None:
+            continue
+        if exact_recording_exists(os.path.dirname(path), answers, input_id, data):
+            continue
+        frame = json.dumps(
+            {
+                "schema": "kogen.recorded-input/v1",
+                "input_id": input_id,
+                "byte_length": len(data),
+                "sha256": __import__("hashlib").sha256(data).hexdigest(),
+                "verbatim_text": data.decode("utf-8"),
+                "bytes_base64": base64.b64encode(data).decode("ascii"),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        visible = data.decode("utf-8").rstrip("\n").replace("\n", "\n  ")
+        entry = "- [input %s] %s\n  ```kogen-recorded-input-v1\n  %s\n  ```" % (input_id, visible, frame)
+        answers = (answers + "\n" + entry).strip("\n")
+        for number in numbers:
+            asks = re.sub(r"(?ms)^%s\. .*?(?=^\d+\. |\Z)" % re.escape(number), "", asks).strip("\n")
+    text = set_section(text, "Shaper answers", answers)
+    text = set_section(text, "Ask the Shaper", asks)
+    write(path, text)
+
+
+def accepted_message(input_id):
+    session_dir = os.path.join(ROOT, ".kogen", "runtime", "shaping", os.environ.get("KOGEN_SHAPING_INTENT_ID", ""))
+    inputs = os.path.join(session_dir, "inputs")
+    for name in sorted(glob.glob(os.path.join(inputs, "????.json"))):
+        number = os.path.basename(name)[:4]
+        meta = load(name, {})
+        data = read(os.path.join(inputs, number + ".md"))
+        if not isinstance(meta, dict) or meta.get("kind") != "message" or data is None:
+            continue
+        digest = __import__("hashlib").sha256(data.encode("utf-8")).hexdigest()
+        if input_id == "in-%s-%s" % (number, digest[:8]):
+            return data.encode("utf-8")
+    return None
+
+
+def exact_recording_exists(package, answers, input_id, canonical):
+    frame_pattern = re.compile(r"```kogen-recorded-input-v1\s+(\{.*?\})\s+```", re.S)
+    entries = re.split(r"(?m)(?=^(?:\d+\.|[-*])\s+)", answers)
+    token_count = 0
+    exact_count = 0
+    for entry in entries:
+        visible = frame_pattern.sub("", entry)
+        ids = set(re.findall(r"\[input (in-\d{4}-[0-9a-f]{8})\]", visible))
+        if input_id not in ids:
+            continue
+        token_count += 1
+        frames = frame_pattern.findall(entry)
+        if len(frames) != 1:
+            continue
+        try:
+            frame = json.loads(frames[0])
+            exact_count += int(
+                frame.get("schema") == "kogen.recorded-input/v1"
+                and frame.get("input_id") == input_id
+                and frame.get("byte_length") == len(canonical)
+                and frame.get("sha256") == __import__("hashlib").sha256(canonical).hexdigest()
+                and frame.get("verbatim_text", "").encode("utf-8") == canonical
+                and base64.b64decode(frame.get("bytes_base64", ""), validate=True) == canonical
+            )
+        except (ValueError, TypeError, UnicodeError):
+            pass
+    return token_count == 1 and exact_count == 1
+
+
+def resolve_questions():
+    path = questions_path()
+    if path:
+        write(path, set_section(read(path), "Ask the Shaper", ""))
+
+
+def run_steps(turn, steps):
+    for step in steps:
+        if "create_draft" in step:
+            create_draft(step["create_draft"])
+        elif "ask" in step:
+            ask(step["ask"])
+        elif "write" in step:
+            write(os.path.join(ROOT, step["write"]["path"]), step["write"]["text"])
+        elif "append" in step:
+            path = os.path.join(ROOT, step["append"]["path"])
+            write(path, read(path) + step["append"]["text"])
+        elif "edit" in step:
+            spec = step["edit"]
+            for index in range(spec.get("times", 1)):
+                path = os.path.join(ROOT, spec["path"])
+                write(path, read(path) + "\n<!-- edit %d %f -->\n" % (index, time.time()))
+                time.sleep(spec.get("interval", 0.5))
+        elif "hook" in step:
+            result = turn.run_hook("PostToolUse", helper=step.get("helper", False))
+            context = ((result or {}).get("hookSpecificOutput") or {}).get("additionalContext")
+            if context and not step.get("helper"):
+                turn.context.append(context)
+        elif "record_answers" in step:
+            record_answers(turn)
+        elif "resolve_questions" in step:
+            resolve_questions()
+        elif "stop" in step:
+            for _attempt in range(4):
+                result = turn.run_hook("Stop") or {}
+                if result.get("decision") != "block":
+                    break
+                turn.context.append(result.get("reason", ""))
+                run_steps(turn, step.get("on_block", []))
+        elif "sleep" in step:
+            time.sleep(step["sleep"])
+        elif "sleep_child" in step:
+            subprocess.run(["sleep", str(step["sleep_child"])])
+        elif "touch" in step:
+            write(os.path.join(ROOT, step["touch"]), "%d\n" % os.getpid())
+        elif "wait_for" in step:
+            spec = step["wait_for"]
+            deadline = time.time() + spec.get("timeout", 60)
+            target = os.path.join(ROOT, spec["path"])
+            while not glob.glob(target) and time.time() < deadline:
+                time.sleep(0.05)
+            if not glob.glob(target):
+                raise RuntimeError("scripted wait timed out before its required evidence existed: %s" % target)
+        elif "request_user_input" in step:
+            out({
+                "type": "item.completed",
+                "item": {
+                    "type": "function_call",
+                    "name": "request_user_input_async",
+                    "arguments": json.dumps({"questions": [{"question": step["request_user_input"]}]}),
+                },
+            })
+        elif "message" in step:
+            turn.message(step["message"])
+        elif "exit" in step:
+            sys.stdout.flush()
+            sys.exit(step["exit"])
+
+
+def main():
+    argv = sys.argv[1:]
+    if argv[:2] == ["auth", "status"]:
+        print(json.dumps({"loggedIn": True, "authMethod": "claude.ai"}))
+        return 0
+    if argv[:1] in (["--version"], ["-V"]):
+        print("fake-shaping-controller 1.0")
+        return 0
+    if os.environ.get("KOGEN_ROLE") == "auditor":
+        # The blind Auditor shares KOGEN_HARNESS with the Shaping Controller:
+        # hand it to the audit fixture's fake auditor.
+        auditor = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shaping_audit", "fake_auditor")
+        # Opt-in: the first auditor launch edits a Draft file while its audit
+        # runs, so that audit's report is for a revision that is no longer
+        # current (a flag in FAKE_SHAPING_LOG_DIR makes it once).
+        edit = os.environ.get("FAKE_SHAPING_AUDITOR_EDIT")
+        edited = os.path.join(os.environ.get("FAKE_SHAPING_LOG_DIR", "."), "auditor-edit.done")
+        if edit and not os.path.exists(edited):
+            with open(edit, "a", encoding="utf-8") as handle:
+                handle.write("\nEdited while the audit ran.\n")
+            os.makedirs(os.path.dirname(edited), exist_ok=True)
+            with open(edited, "w", encoding="utf-8") as handle:
+                handle.write("done\n")
+        pinned = value_after(argv, "--session-id")
+        if pinned is None:
+            os.execv("/bin/sh", ["/bin/sh", auditor] + argv)
+        # A Claude launch pins its session id; answer under that id.
+        result = subprocess.run(["/bin/sh", auditor] + argv, stdin=sys.stdin, capture_output=True, text=True)
+        sys.stdout.write(result.stdout.replace("fake-auditor-session", pinned))
+        sys.stderr.write(result.stderr)
+        return result.returncode
+    stdin = sys.stdin.read()
+    os.makedirs(STATE_DIR, exist_ok=True)
+    counter = os.path.join(STATE_DIR, "launches")
+    launches = int(read(counter) or "0") + 1
+    write(counter, str(launches))
+    log = os.environ.get("FAKE_SHAPING_LOG_DIR")
+    if log:
+        os.makedirs(log, exist_ok=True)
+        save(os.path.join(log, "invocation-%d.json" % launches), {
+            "argv": argv,
+            "stdin": stdin,
+            "pid": os.getpid(),
+            "pgid": os.getpgid(0),
+            "env": {k: v for k, v in os.environ.items() if k.startswith("KOGEN_")},
+        })
+    script = load(os.environ.get("FAKE_SHAPING_SCRIPT", ""), {"turns": [[]]})
+    turns = script.get("turns") or [[]]
+    steps = turns[min(launches, len(turns)) - 1]
+    turn = Turn(argv, stdin)
+    turn.start(script)
+    turn.message("working")
+    run_steps(turn, steps)
+    turn.finish()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

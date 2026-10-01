@@ -1,965 +1,266 @@
 #!/usr/bin/env python3
-"""Offline orchestration rehearsal for the public shaping evaluation driver.
+"""Offline rehearsal of the shared engine drive() with a quality-shaped case.
 
-This keeps the driver intact: only its process, clock, session directory and
-fixture-preflight boundaries are faked.  The rollout files use the native JSONL
-event shapes consumed by ``exact_root_rollout`` and ``user_turn_terminal``.
+drive() runs against the real `mix kogen.shape` engine (started as a subprocess
+in a compiled fixture), the real Stop hook and the real deterministic audit.
+Only the provider (test/support/fake_shaping_controller), the Auditor and the
+Jev transport are fake. The cases here are engine-step scripts of the same
+shape as the quality cases: start, a scripted answer, approve.
+
+Needs the KOGEN_REHEARSAL_ENGINE handoff from mix test (see rehearsal_engine.py);
+shaping_evaluation_test.exs runs every method as its own test.
 """
-import contextlib
-import io
-import hashlib
-import importlib.util
 import json
 import os
-from pathlib import Path
-import shutil
+import subprocess
 import sys
-import tempfile
 import unittest
-from unittest.mock import patch
-
+from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DRIVER_PATH = HERE / "driver.py"
+sys.path.insert(0, str(HERE))
+from rehearsal_engine import EngineRehearsal, spawn_violations  # noqa: E402
+
+ANSWER = ("message-1.md", "End the greeting with a period. Record this answer verbatim under Shaper answers and apply it.")
 
 
-def fake_parser_stdout(contents):
-    """Only focused failure controls fake parser output; the composed run does not."""
-    try:
-        return json.dumps(json.loads(contents)).encode()
-    except (TypeError, json.JSONDecodeError):
-        return b'{"id":"parser-preflight"}'
+class DriverRehearsalTest(EngineRehearsal):
+    def ask_script(self):
+        """One turn that drafts and asks one question, then a resumed turn that records
+        the answer and stops (the deterministic audit passes the complete package)."""
+        return self.script([
+            [{"create_draft": {"template": self.template("complete")}},
+             {"ask": {"number": 1, "question": "Should the greeting end with a period or an exclamation mark?",
+                      "recommendation": "a period", "evidence": "unproven: the Shaper decides"}}],
+            [{"record_answers": True}, {"stop": True}]])
 
+    def drive(self, name, steps, *, end, messages=(), max_seconds=120):
+        fixture = self.fixture(name, self.brief(name))
+        spec = self.case_spec(name, steps, end=end, messages=messages)
+        receipt = self.driver.drive(name, fixture, spec, harness="codex", route="codex",
+                                    max_seconds=max_seconds, native_binding=False)
+        return fixture, receipt
 
-class Clock:
-    """Deterministic wall/monotonic clocks with independent wall jumps."""
-    def __init__(self): self.wall = 0; self.mono = 0
-    def time(self): self.wall += 1; return self.wall
-    def monotonic(self): self.mono += 1; return self.mono
-    def sleep(self, seconds): self.mono += max(1, seconds)
-    def adjust_wall(self, seconds): self.wall += seconds
+    def test_quality_shaped_case_runs_start_answer_approve_through_engine_commands(self):
+        """Correct control: start, one awaiting_answers message, ready, approve; only
+        `mix kogen.shape` commands are spawned and config-record.json is written."""
+        self.ask_script()
+        steps = [{"step": "start", "brief": "brief.md"},
+                 {"step": "message", "file": ANSWER[0], "when": "awaiting_answers"},
+                 {"step": "approve"}]
+        with self.record_spawns():
+            _fixture, receipt = self.drive("quality-rehearsal", steps, end="approved", messages=[ANSWER])
+        self.assertEqual("completed", receipt["outcome"], receipt["failure"])
+        self.assertEqual("approved", receipt["final_state"])
+        self.assertEqual([], spawn_violations(self.spawns))
+        shape = [argv[argv.index("kogen.shape") + 1:] for argv in self.spawns if "kogen.shape" in argv]
+        self.assertIn("--brief", shape[0])
+        self.assertTrue(any("--approve" in rest for rest in shape), "the approval used --approve")
+        self.assertTrue(any("--brief" in rest and rest[0][0] != "-" for rest in shape),
+                        "the answer was sent with --brief to the existing session")
+        run = self.driver.RUNTIME / "runs" / "quality-rehearsal"
+        record = json.loads((run / "config-record.json").read_text())
+        self.assertEqual(["quality-rehearsal", "quality-rehearsal-m1", "quality-rehearsal-approve"],
+                         [rid for rid in record["request_ids"] if not rid.endswith("-status")][:3])
+        self.assertEqual("codex", record["route"])
+        self.assertEqual("codex", record["harness"])
+        self.assertTrue(record["kogen_commit"])
+        self.assertEqual(1, len(record["provider_session_ids"]))
+        self.assertGreaterEqual(len(record["turns"]), 2)
+        engine_run = json.loads((run / "engine-run.json").read_text())
+        self.assertEqual("approved", engine_run["approval"]["state"])
 
+    def test_wrong_control_missing_scripted_answer_fails_fast(self):
+        """Wrong control: the question is never answered because the case has no message.
+        drive() fails fast at awaiting_answers instead of waiting out the bound."""
+        self.ask_script()
+        started = self.driver.monotonic_now()
+        _fixture, receipt = self.drive("quality-no-answer", [{"step": "start", "brief": "brief.md"}], end="ready")
+        self.assertEqual("TurnEndFailFast", (receipt["failure"] or {}).get("type"), receipt["failure"])
+        self.assertIn("awaiting_answers", receipt["failure"]["message"])
+        self.assertLess(self.driver.monotonic_now() - started, 100)
 
-class Child:
-    _next_pid = 41000
-    def __init__(self, on_start=None, pid=None):
-        self.returncode = None; self.on_start = on_start
-        self.pid = pid if pid is not None else Child._next_pid
-        Child._next_pid += 1
-    def poll(self):
-        if self.returncode is None and self.on_start is not None:
-            self.returncode = self.on_start()
-        return self.returncode
-    def wait(self, timeout=None): self.returncode = 0; return 0
-    def terminate(self): self.returncode = -15
-    def kill(self): self.returncode = -9
+    def extra_question_script(self):
+        self.script([
+            [{"create_draft": {"template": self.template("complete")}},
+             {"ask": {"number": 1, "question": "Which first option should the Shaper choose?",
+                      "recommendation": "the first option", "evidence": "the Shaper decides"}},
+             {"stop": True}],
+            [{"record_answers": True},
+             {"ask": {"number": 2, "question": "Which second option should the Shaper choose?",
+                      "recommendation": "the second option", "evidence": "the Shaper decides"}},
+             {"stop": True}],
+            [{"record_answers": True}, {"stop": True}],
+        ])
 
-
-class DriverRehearsalTest(unittest.TestCase):
-    def setUp(self):
-        self.output = io.StringIO()
-        redirect = contextlib.redirect_stdout(self.output)
-        redirect.__enter__()
-        self.addCleanup(redirect.__exit__, None, None, None)
-        self.temp = tempfile.TemporaryDirectory(prefix="kogen-driver-rehearsal-")
-        self.root = Path(self.temp.name)
-        self.runtime = self.root / "runtime"; self.runtime.mkdir()
-        self.sessions = self.root / "sessions"; self.sessions.mkdir()
-        old_runtime = os.environ.get("KOGEN_SHAPING_EVALUATION_RUNTIME")
-        os.environ["KOGEN_SHAPING_EVALUATION_RUNTIME"] = str(self.runtime)
-        spec = importlib.util.spec_from_file_location("rehearsal_driver", DRIVER_PATH)
-        self.driver = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.driver)
-        self.driver.SESSION_ROOT = self.sessions
-        # The real generated-fixture validation runs `mix run` (see
-        # test_generated_fixture_validation_*); these rehearsals fake every
-        # subprocess, so they record the validation call instead.
-        self.real_validate = self.driver.validate_generated_fixture
-        self.validated = []
-        def recorded_validation(fixture, label, extra_files, draft=None):
-            self.validated.append({"label": label, "draft": draft})
-            return {"label": label, "digest": "0" * 64, "providers_denied": False, "files": 1}
-        self.driver.validate_generated_fixture = recorded_validation
-        if old_runtime is None: self.addCleanup(os.environ.pop, "KOGEN_SHAPING_EVALUATION_RUNTIME")
-        else: self.addCleanup(os.environ.__setitem__, "KOGEN_SHAPING_EVALUATION_RUNTIME", old_runtime)
-
-    def tearDown(self): self.temp.cleanup()
-
-    def fixture(self, name, slug, intent_id="draft-identity"):
-        fixture = self.root / name; fixture.mkdir(parents=True, exist_ok=True)
-        (fixture / "README.md").write_text(
-            "# Fixture\n\n## Current user request\n\n" + self.driver.current_request(name) + "\n"
-        )
-        for relative in ("app/csv", "test/csv"):
-            path = fixture / relative; path.mkdir(parents=True); (path / "source.txt").write_text("source\n")
-        draft = fixture / ".kogen/intents/drafts" / slug
-        draft.mkdir(parents=True)
-        intent = {"id": intent_id, "slug": slug, "title": "Rehearsal Draft", "status": "draft",
-            "shaped_against": {"branch": "main", "head": "frozen-head"},
-            "shaping": {"harness": "codex", "model": "fake-model", "effort": "low", "started": "original-visit"},
-            "shaping_continuations": [], "may_change_guarded_paths": ["app/**", "test/**"]}
-        if "csv-flawed" in name:
-            intent["description"] = "Observed BOM discrepancy; invalid-row and replacement choices remain open"
-        elif "booking-flawed" in name:
-            intent["description"] = "Historical .tmp/calendar-run-17/connection.json is missing; audience choice remains open"
-        elif "csv-continuation" in name:
-            intent["description"] = "Invalid-row and output replacement questions remain open"
-        # JSON is valid YAML.  The composed suite replaces selected cases with
-        # block and flow-map forms, so the real parser reaches every supported
-        # Draft form before integrity and DraftAudit consume the final bundle.
-        (draft / "intent.yaml").write_text(json.dumps(intent, indent=2) + "\n")
-        (draft / "scenarios.yaml").write_text(json.dumps([{"id": "reviewable-outcome", "given": "a starting actor",
-            "when": "they use the feature", "then": "a usable result", "wrong_result": "an unusable result",
-            "evidence": "fixture evidence", "verified_by": ["check"]}], indent=2) + "\n")
-        (draft / "questions.md").write_text("# Questions\n")
-        files = self.driver.csv_files(continuation=True) if name.endswith("csv-continuation") else \
-            self.driver.csv_files() if name.endswith("csv-flawed") else \
-            self.driver.csv_files(True) if name.endswith("csv-complete") else \
-            self.driver.booking_files() if name.endswith("booking-flawed") else self.driver.booking_files(True)
-        for relative, content in files.items():
-            path = fixture / relative; path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content if isinstance(content, bytes) else content.encode())
-        return fixture
-
-    def rollout(self, fixture, root_id, *, malformed=False, bad_json=False):
-        path = self.sessions / f"rollout-{root_id}.jsonl"
-        events = [
-            {"type":"session_meta", "payload":{"id":root_id,"cwd":str(fixture),"source":{}}},
-            {"type":"turn_context", "payload":{"turn_id":"startup","model":"fake-model","effort":"low"}},
-            {"type":"response_item", "payload":{"type":"message","role":"assistant","content":[{"text":"Observed BOM discrepancy and missing .tmp/calendar-run-17/connection.json"}]}},
-            {"type":"event_msg", "payload":{"type":"task_complete","turn_id":"startup"}},
+    def test_quality_case_accepts_each_explicit_additional_question_round(self):
+        """A fixture may need another legitimate answer/turn. Every answer is an
+        explicit case file; the driver never manufactures the Shaper's choice."""
+        self.extra_question_script()
+        messages = [
+            ("message-1.md", "Choose the first option."),
+            ("message-2.md", "Choose the second option."),
         ]
-        if malformed:
-            events.append({"type":"response_item", "payload":{"type":"message","role":"user","content":[{"text":self.driver.transport_message("first")}]}})
-        path.write_text("".join(json.dumps(item) + "\n" for item in events))
-        if bad_json:
-            with path.open("a") as handle: handle.write("{not-json}\n")
-        return path
+        steps = [
+            {"step": "start", "brief": "brief.md"},
+            {"step": "message", "file": "message-1.md", "when": "awaiting_answers"},
+            {"step": "message", "file": "message-2.md", "when": "awaiting_answers"},
+        ]
 
-    def run_drive(self, case, slug, messages, triggers, *, continuation=False, missing_draft=False, malformed=False, bad_json=False, no_rollout=False, cleanup_fails=False, missing_evidence=False, incomplete_turn=False, startup_delay=0):
-        fixture = self.fixture(case + "-" + slug, slug)
-        if missing_draft:
-            shutil.rmtree(fixture / ".kogen/intents/drafts" / slug)
-        rollout = self.sessions / f"rollout-root-{case}-{slug}.jsonl"
-        clock = Clock(); launches = []
-        self.last_clock = clock
+        with self.record_spawns():
+            _fixture, receipt = self.drive("quality-multi-round", steps, end="ready", messages=messages)
 
-        def append_turn(text):
-            turn = f"turn-{len(launches)}"
-            with rollout.open("a") as handle:
-                handle.write(json.dumps({"type":"turn_context","payload":{"turn_id":turn,"model":"fake-model","effort":"low"}}) + "\n")
-                handle.write(json.dumps({"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":text}],"internal_chat_message_metadata_passthrough":{"turn_id":turn}}}) + "\n")
-                assistant_text = ("Observed missing .tmp/calendar-run-17/connection.json for the proposed organizer"
-                                  if case == "booking-flawed" else "Observed BOM discrepancy")
-                handle.write(json.dumps({"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"text":assistant_text}]}}) + "\n")
-                handle.write(json.dumps({"type":"event_msg","payload":{"type":"task_complete","turn_id":turn}}) + "\n")
-            if incomplete_turn:
-                rollout.write_text("".join(rollout.read_text().splitlines(keepends=True)[:-1]))
-            if missing_evidence:
-                (fixture / "README.md").unlink(missing_ok=True)
-            if missing_draft: return
-            draft = fixture / ".kogen/intents/drafts" / slug / "intent.yaml"
-            saved = json.loads(draft.read_text())
-            if case == "csv-continuation":
-                saved["description"] = ("invalid selected rows are all-or-nothing; output replacement remains unanswered") if len(launches) == 2 else "transaction recovery settled"
-            elif case == "booking-flawed":
-                saved["description"] = ("historical .tmp/calendar-run-17/connection.json is missing; reachability choice remains open"
-                                        if len(launches) == 2 else "saved complete Draft")
-            else:
-                saved["description"] = "BOM invalid" if len(launches) == 2 else "saved complete Draft"
-            draft.write_text(json.dumps(saved))
+        self.assertEqual("completed", receipt["outcome"], receipt["failure"])
+        self.assertEqual("ready", receipt["final_state"])
+        self.assertEqual(2, receipt["scripted_replies"])
+        self.assertEqual([], spawn_violations(self.spawns))
+        run = self.driver.RUNTIME / "runs" / "quality-multi-round"
+        engine_run = json.loads((run / "engine-run.json").read_text())
+        self.assertEqual(2, len(engine_run["messages"]))
+        self.assertEqual([f"{text}\n" for _name, text in messages],
+                         [entry["text"] for entry in engine_run["messages"]])
+        self.assertGreaterEqual(len(json.loads((run / "config-record.json").read_text())["turns"]), 3)
 
-        def popen(argv, **_kwargs):
-            launches.append(argv)
-            receipt_path = _kwargs.get("env", {}).get("KOGEN_CODEX_CONTEXT_RECEIPT")
-            if receipt_path:
-                Path(receipt_path).write_text(json.dumps({
-                    "executable": sys.executable,
-                    "args": ["-c", "raise SystemExit('rehearsal context is not executed')"],
-                    "env": {},
-                }))
-            # Only resumes submit a scripted reply.  The public startup is already
-            # represented by the native startup completion above.
-            if "resume_transport.exp" in argv[1] and not malformed:
-                append_turn(Path(argv[4]).read_text())
-            elif "shape_transport.exp" in argv[1] and not no_rollout:
-                self.rollout(fixture, f"root-{case}-{slug}", malformed=malformed, bad_json=bad_json)
-                if startup_delay:
-                    lines = rollout.read_text().splitlines(keepends=True)
-                    completion = lines.pop(3)
-                    rollout.write_text("".join(lines))
-                    def finish_startup():
-                        if clock.mono >= startup_delay:
-                            with rollout.open("a") as handle: handle.write(completion)
-                            child.on_start = None
-                        return None
-                    child = Child(on_start=finish_startup)
-                    return child
-            return Child()
+    def test_wrong_control_extra_question_without_explicit_answer_stays_open(self):
+        """An extra Shaper question with no authored answer remains awaiting input;
+        the fixture does not mark it resolved or supply a guessed choice."""
+        self.extra_question_script()
+        messages = [("message-1.md", "Choose the first option.")]
+        steps = [
+            {"step": "start", "brief": "brief.md"},
+            {"step": "message", "file": "message-1.md", "when": "awaiting_answers"},
+        ]
+        _fixture, receipt = self.drive("quality-missing-extra-answer", steps, end="ready", messages=messages)
 
-        class Result:
-            returncode = 0; stdout = ""; stderr = ""
-        def run(argv, **_kwargs):
-            result = Result()
-            if argv and argv[0] == "elixir":
-                result.stdout = fake_parser_stdout(_kwargs["input"])
-            return result
-        def reaper(_fixture, _frozen=None):
-            return {"roots":[],"before":[],"actions":[],"remaining_pids":[],"all_reaped":not cleanup_fails}
-        profiles = ({"root":("fake-model","low"),"scout":("fake-model","low"),"worker":("fake-model","low"),"expert":("fake-model","low")}, {"normalized":{}})
-        def stateful_control(_fixture, out, case):
-            complete = case.endswith("complete")
-            (out / "stateful-control-result.json").write_text(json.dumps({"mode": "complete" if complete else "flawed", "source_sha256": "a" * 64, "cycles": [{"dispatched": True}, {"dispatched": True}], "corrupt_state": {"dispatched": not complete}, "exhausted_replay": {"dispatched": not complete}, "repair": {"ok": True, "dispatched": True}, "receipt_consumer": {"accepted": complete}}))
-        with patch.object(self.driver.time, "time", clock.time), patch.object(self.driver.time, "monotonic", clock.monotonic), patch.object(self.driver.time, "sleep", clock.sleep), \
-             patch.object(self.driver.subprocess, "Popen", popen), patch.object(self.driver.subprocess, "run", run), \
-             patch.object(self.driver, "configured_profiles", lambda _fixture: profiles), \
-             patch.object(self.driver, "source_snapshot", lambda _fixture: {"README.md":"fixture"}), \
-             patch.object(self.driver, "write_csv_probe_result", lambda _fixture, out: (out / "csv-probe-result.json").write_text("{}\n")), \
-             patch.object(self.driver, "write_booking_setup_observation", lambda _fixture, out: (out / "booking-setup-observation.json").write_text("{}\n")), \
-             patch.object(self.driver, "owned_process_tree", lambda _fixture: []), \
-             patch.object(self.driver, "reap_owned_cli", reaper):
-            run_case = case if not (self.runtime / "runs" / case).exists() else case + "-" + slug
-            receipt = self.driver.drive(run_case, fixture, slug, messages, triggers, continuation)
-        return receipt, launches
+        self.assertEqual("TurnEndFailFast", (receipt["failure"] or {}).get("type"), receipt["failure"])
+        self.assertIn("awaiting_answers", receipt["failure"]["message"])
+        run = self.driver.RUNTIME / "runs" / "quality-missing-extra-answer"
+        questions = (run / "draft" / "questions.md").read_text()
+        self.assertIn("Which second option should the Shaper choose?", questions)
+        self.assertNotIn("Choose the second option.", questions)
 
-    def test_real_drive_rehearses_startup_product_turns_clarification_and_continuation(self):
-        self.assertEqual(600, self.driver.MAX_SECONDS)
-        self.assertGreater(self.driver.SUITE_SECONDS, self.driver.MAX_SECONDS)
-        self.assertLessEqual(self.driver.SUITE_SECONDS, self.driver.MAX_SECONDS + 120)
-        booking_reachability_trigger = self.driver.booking_reachability_trigger
-        self.assertFalse(booking_reachability_trigger("Observed BOM discrepancy", None))
-        self.assertFalse(booking_reachability_trigger("A connection is unavailable", None))
-        self.assertTrue(booking_reachability_trigger(
-            "Observed missing .tmp/calendar-run-17/connection.json for the proposed organizer", None))
-        self.assertTrue(booking_reachability_trigger(
-            "The historical receipt names a temporary run that is now absent", None))
-        cases = (
-            ("csv-flawed", "eval-csv-flawed", ["clarification"], [lambda text, root: "bom" in text.lower() and self.driver.rollout_contains(root, "BOM")]),
-            ("csv-complete", "eval-csv-complete", [], []),
-            ("booking-flawed", "eval-booking-flawed", ["clarification"],
-             [booking_reachability_trigger]),
-            ("booking-complete", "eval-booking-complete", [], []),
-            ("csv-continuation", "eval-csv-flawed", ["partial", "final"], [lambda _text, _root: True, lambda _text, _root: True]),
-        )
-        for case, slug, messages, triggers in cases:
-            receipt, launches = self.run_drive(case, slug, messages, triggers, continuation=case == "csv-continuation")
-            self.assertEqual("completed", receipt["outcome"], receipt)
-            self.assertEqual(len(messages), len(receipt["terminal_events"]))
-            sent=json.loads((self.runtime / "runs" / case / "messages.json").read_text())
-            self.assertEqual(messages, [entry["text"] for entry in sent])
-            self.assertEqual([self.driver.transport_message(message) for message in messages], [entry["submitted_text"] for entry in sent])
-            self.assertTrue(all("Reply channel:" in entry["submitted_text"] for entry in sent))
-            self.assertEqual(1 + len(messages), len(launches))
-            self.assertEqual("draft-identity", json.loads((self.runtime / "runs" / case / "draft-state.json").read_text())["intent_id"])
-        continuation = json.loads((self.runtime / "runs/csv-continuation/draft-state.json").read_text())
-        self.assertEqual("draft-identity", continuation["intent_id"])
-        continuation_receipt = json.loads((self.runtime / "runs/csv-continuation/receipt.json").read_text())
-        self.assertEqual(2, continuation_receipt["scripted_replies"])
-        self.assertEqual(2, len(continuation_receipt["terminal_turn_bindings"]))
-        self.assertEqual(2, len(set(continuation_receipt["terminal_turn_bindings"])))
-        self.assertTrue((self.runtime / "runs/csv-continuation/drafts-by-turn/0/questions.md").is_file())
+    def test_wrong_control_missing_approval_fails_a_case_that_ends_approved(self):
+        """Wrong control: a case that must end approved but has no approve step fails
+        instead of passing on a merely ready session."""
+        self.ask_script()
+        steps = [{"step": "start", "brief": "brief.md"},
+                 {"step": "message", "file": ANSWER[0], "when": "awaiting_answers"}]
+        _fixture, receipt = self.drive("quality-no-approve", steps, end="approved", messages=[ANSWER])
+        self.assertEqual("TurnEndFailFast", (receipt["failure"] or {}).get("type"), receipt["failure"])
+        self.assertIn("no approve step ran", receipt["failure"]["message"])
+        self.assertNotEqual("approved", receipt["final_state"])
 
-    def test_readiness_controls_preserve_unprompted_representation_and_consequential_choices(self):
-        """Regression inputs stay discriminating; only independent Review grades meaning."""
+    def test_wrong_control_a_non_engine_step_never_reaches_dispatch(self):
+        """Wrong control: a continuation-prompt step is rejected before any command runs."""
+        fixture = self.fixture("quality-continuation-step", self.brief("x"))
+        directory = self.root / "cases" / "bad"
+        directory.mkdir(parents=True)
+        (directory / "brief.md").write_text(self.brief("x"))
+        spec = {"name": "bad", "dir": str(directory), "end": "ready",
+                "steps": [{"step": "start", "brief": "brief.md"}, {"step": "continue", "file": "m.md"}]}
+        with self.record_spawns():
+            with self.assertRaisesRegex(ValueError, "not an engine step"):
+                self.driver.drive("bad", fixture, spec, harness="codex", route="codex", native_binding=False)
+        self.assertEqual([], [argv for argv in self.spawns if "kogen.shape" in argv])
+
+    def test_wrong_control_expect_spawn_fails_the_rehearsal(self):
+        """Wrong control for the spawn rule: an expect transport is a violation."""
+        engine = [["mix", "kogen.shape", "--brief", "b.md", "--request-id", "x"],
+                  ["mix", "kogen.shape", "0197-x", "--approve", "p-1-abcdef012345"]]
+        self.assertEqual([], spawn_violations(engine))
+        self.assertTrue(spawn_violations(engine + [["expect", "shape_transport.exp", "/fixture"]]))
+
+    def engine_shaped_suite(self):
+        """The suite runtime a live quality run leaves for its final consumers, in the
+        engine's shape: integrity.py's own synthetic positive control (native rollouts,
+        receipts, public transcripts, fixture facts) with Draft-grade YAML in which
+        csv-continuation is one engine session rebound into the frozen seed, as
+        driver.rebind_continuation_seed leaves it."""
+        integrity = self.driver.integrity_module()
+        integrity.make_positive(self.root)
+        runtime = self.root / ".kogen/runtime/shaping-evaluation"
+        self.driver.PROJECT = self.root
+        self.driver.RUNTIME = runtime
         self.driver.write_semantic_counterexamples()
-        saved = self.runtime / "semantic-counterexamples.json"
-        self.assertEqual(saved.read_bytes(), (HERE / saved.name).read_bytes())
-        controls = {item["id"]: item for item in json.loads(saved.read_text())}
-        for control_id in ("booking-routine-serialization-blocker",
-                           "serialization-consequential-compatibility"):
-            self.assertTrue(controls[control_id]["acceptable_contrast"])
-            self.assertTrue(controls[control_id]["review_check"])
-        self.assertIn("Counterfactual", controls["serialization-consequential-compatibility"]["scope"])
-        # Exercise actual fixture selection, not a copied brief.  Do not make
-        # the complete case pass by supplying a serialization answer or rubric.
-        complete = self.driver.booking_files(complete=True)
-        facts = json.loads(complete["evidence/facts.json"])
-        source = json.loads((HERE / "compact-fixtures-v2/facts.json").read_text())
-        self.assertEqual(set(facts), {"feature", "data", "failure", "setup", "actors", "source_ownership", "output_contract"})
-        for key in ("feature", "data", "failure", "setup"):
-            self.assertEqual(facts[key], source["calendar"][key])
-        model_input = "\n".join(value.decode() if isinstance(value, bytes) else value
-                                for value in complete.values()) + self.driver.BOOKING_COMPLETE
-        for item in controls.values():
-            self.assertNotIn(item["draft_excerpt"], model_input)
-        self.assertNotIn("requires TSV", model_input)
-        # The paired real continuation still withholds data-loss/recovery
-        # choices. Ordinary serialization discretion cannot auto-answer these.
-        partial = json.loads(self.driver.csv_files(continuation=True)["evidence/facts.json"])
-        self.assertNotIn("invalid_policy", partial)
-        self.assertNotIn("replacement_policy", partial)
-        self.assertEqual(self.driver.CSV_CONT_PARTIAL, source["csv"]["continuation_partial"])
-        self.assertEqual(self.driver.CSV_CONT_FINAL, source["csv"]["continuation_full"])
+        baseline = {"branch": "main", "head": "abc123"}
+        scenarios = ("- id: normalize\n  given: a valid CSV\n  when: normalize INPUT OUTPUT runs\n"
+                     "  then: rows are normalized in order\n  wrong_result: the input is mutated\n"
+                     "  evidence: a CLI test\n  verified_by: [check]\n")
 
-    def test_terminal_requires_nonblank_native_turn_binding(self):
-        path = self.sessions / "rollout-binding.jsonl"
-        base = self.rollout(self.root, "binding")
-        with base.open("a") as handle:
-            handle.write(json.dumps({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"text": "bound"}], "internal_chat_message_metadata_passthrough": {"turn_id": " "}}}) + "\n")
-            handle.write(json.dumps({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": " "}}) + "\n")
-        self.assertEqual((None, False), self.driver.user_turn_terminal(path, "bound"))
+        def intent(intent_id, slug, started):
+            return {"id": intent_id, "slug": slug, "title": slug, "status": "draft", "shaped_against": baseline,
+                    "shaping": {"harness": "codex", "model": "gpt-6-astra", "effort": "low", "started": started},
+                    "may_change_guarded_paths": ["app/**", "test/**"]}
 
-    def test_turn_end_decision_advances_completes_and_fails_fast(self):
-        # Scripted messages remain: always advance, regardless of Draft state.
-        self.assertEqual(("advance", None),
-                          self.driver.turn_end_decision("csv-flawed", 0, ["one"], set()))
-        self.assertEqual(("advance", None),
-                          self.driver.turn_end_decision("csv-flawed", 0, ["one"], self.driver.REQUIRED_DRAFT_FILES))
-        # No scripted messages remain and the Draft reached its expected end state.
-        outcome, reason = self.driver.turn_end_decision(
-            "csv-complete", 0, [], self.driver.REQUIRED_DRAFT_FILES | {"INTENT.md", "decisions.md"})
-        self.assertEqual("complete", outcome)
-        self.assertIsNone(reason)
-        # No scripted messages remain and no Draft was saved at all: fail fast.
-        outcome, reason = self.driver.turn_end_decision("csv-complete", 0, [], set())
-        self.assertEqual("fail", outcome)
-        self.assertIn("csv-complete", reason)
-        self.assertIn("no scripted answer remains", reason)
-        # No scripted messages remain and the saved Draft is missing a
-        # required file (matches required_case_capture's own contract):
-        # fail fast, naming the case and the missing evidence.
-        outcome, reason = self.driver.turn_end_decision(
-            "stateful-flawed", 0, [], {"intent.yaml", "questions.md"})
-        self.assertEqual("fail", outcome)
-        self.assertIn("stateful-flawed", reason)
-        self.assertIn("scenarios.yaml", reason)
+        for index, case in enumerate(self.driver.CASES):
+            run = runtime / "runs" / case
+            document = intent(f"01990000-0000-7000-8000-0000000000{index:02d}", f"eval-{case}",
+                              f"2026-09-30T00:00:0{index}Z")
+            drafts = [run / "draft"] + ([run / "drafts-by-turn" / "0"] if case == "csv-continuation" else [])
+            for draft in drafts:
+                (draft / "intent.yaml").write_text(json.dumps(document) + "\n")
+                (draft / "scenarios.yaml").write_text(scenarios)
+            (run / "draft-state.json").write_text(json.dumps({
+                "intent_id": document["id"], "baseline": baseline,
+                "visit_id": document["shaping"]["started"], "unapproved": True}))
+        seed = runtime / "continuation-seed"
+        (seed / "frozen-hashes.json").unlink()
+        (seed / "intent.yaml").write_text(json.dumps(intent("seed", "eval-csv-seed", "2026-09-01T00:00:00Z")) + "\n")
+        (seed / "scenarios.yaml").write_text(scenarios)
+        session = json.loads((runtime / "runs/csv-continuation/draft/intent.yaml").read_text())["id"]
+        self.driver.rebind_continuation_seed(session)
+        return runtime
 
-    def test_generated_fixture_validation_runs_the_real_parsers_and_fails_closed(self):
-        """The driver validates a generated fixture through Kogen.FixtureValidation
-        (`mix run`) and refuses the fixture on any nonzero exit or missing record."""
-        self.driver.RUNTIME = self.runtime
-        fixture = self.root / "fixture"; fixture.mkdir()
-        seen = []
-        record = {"label": "x", "digest": "a" * 64, "providers_denied": True, "files": 3}
-
-        class Completed:
-            def __init__(self, returncode, stdout="", stderr=""):
-                self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
-
-        def run_with(result):
-            def run(argv, **kwargs):
-                seen.append((argv, kwargs.get("cwd"), (kwargs.get("env") or {}).get("MIX_ENV")))
-                spec = json.loads(Path(argv[-1]).read_text())
-                seen.append(spec)
-                return result
-            return run
-
-        extra = {"evidence/facts.json": "{}", "evidence/config.yaml": "a: 1\n"}
-        frame = "KOGEN_FIXTURE_VALIDATION\t" + json.dumps(record) + "\n"
-        with patch.object(self.driver.subprocess, "run", run_with(Completed(0, frame))), \
-             patch.dict(os.environ, {"KOGEN_PROVIDERS_DENIED": "1"}):
-            self.assertEqual(self.real_validate(fixture, "x", extra, draft={"slug": "s"}), record)
-        argv, cwd, mix_env = seen[0]
-        spec = seen[1]
-        self.assertEqual(argv[:2], ["mix", "run"])
-        self.assertIn("Kogen.FixtureValidation.main()", argv)
-        self.assertEqual(mix_env, "test")
-        self.assertEqual(spec["root"], str(fixture))
-        self.assertTrue(spec["require_denied"])
-        self.assertEqual(spec["draft"], {"slug": "s"})
-        self.assertIn("evidence/facts.json", spec["json"])
-        self.assertIn("evidence/config.yaml", spec["yaml"])
-        self.assertEqual(spec["makefile_targets"], ["check", "live"])
-        self.assertFalse(list(self.runtime.glob("*-fixture-validation-spec.json")))
-
-        for bad in (Completed(1, stderr="fixture validation failed: README.md links to a missing file"),
-                    Completed(0, "no frame\n")):
-            with patch.object(self.driver.subprocess, "run", run_with(bad)):
-                with self.assertRaises(RuntimeError):
-                    self.real_validate(fixture, "x", extra)
-
-    def test_setup_fixture_excludes_every_guarded_paths_volatile_path(self):
-        """Regression (a): a planted .kogen/build.lock (and every other
-        GuardedPaths @volatile path) must never reach a fixture copy."""
-        project = self.root / "planted-project"
-        (project / "lib").mkdir(parents=True)
-        (project / "lib" / "app.ex").write_text("defmodule App do end\n")
-        (project / ".git").mkdir()
-        (project / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
-        for relative in self.driver.GUARDED_PATHS_VOLATILE:
-            path = project / relative
-            if relative in (".kogen/build.lock",):
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text('{"planted": true}\n')
-            else:
-                path.mkdir(parents=True, exist_ok=True)
-                (path / "sentinel.txt").write_text("planted volatile state\n")
-
-        fixture = self.root / "planted-fixture"
-        self.driver.copy_fixture_source_tree(project, fixture, "planted-fixture")
-
-        self.assertTrue((fixture / "lib" / "app.ex").is_file(), "genuine tracked sources must still be copied")
-        for relative in self.driver.GUARDED_PATHS_VOLATILE:
-            self.assertFalse((fixture / relative).exists(), f"volatile path leaked into fixture: {relative}")
-
-    def test_monotonic_deadline_survives_wall_clock_adjustment(self):
-        clock = Clock()
-        with patch.object(self.driver.time, "time", clock.time), patch.object(self.driver.time, "monotonic", clock.monotonic):
-            deadline = self.driver.monotonic_now() + 5
-            clock.adjust_wall(10_000)
-            self.assertLess(self.driver.monotonic_now(), deadline)
-            clock.adjust_wall(-20_000)
-            self.assertLess(self.driver.monotonic_now(), deadline)
-
-    def test_missing_or_late_initial_request_cannot_reach_public_dispatch(self):
-        fixture = self.fixture("csv-complete-missing-request", "eval-csv-complete")
-        (fixture / "README.md").write_text("# Neutral fixture\n")
-        launched = []
-        profiles = ({"root": ("fake-model", "low")}, {"normalized": {}})
-        result = type("Result", (), {"stdout": "", "returncode": 0})()
-        def unexpected_launch(*args, **kwargs):
-            launched.append(args)
-            raise AssertionError("public dispatch occurred without a frozen request")
-        with patch.object(self.driver, "configured_profiles", lambda _fixture: profiles), \
-             patch.object(self.driver, "source_snapshot", lambda _fixture: {"README.md": "neutral"}), \
-             patch.object(self.driver.subprocess, "run", lambda *args, **kwargs: result), \
-             patch.object(self.driver.subprocess, "Popen", unexpected_launch):
-            with self.assertRaisesRegex(RuntimeError, "current user request is missing before public dispatch"):
-                self.driver.drive("csv-complete", fixture, "eval-csv-complete", [], [])
-        self.assertEqual([], launched)
-
-        # Adding the request afterward cannot retroactively make a dispatch valid.
-        (fixture / "README.md").write_text(self.driver.current_request("csv-complete") + "\n")
-        self.assertFalse((self.runtime / "runs/csv-complete/input-delivery.json").exists())
-
-    def test_deliberate_transport_term_does_not_override_a_completed_clean_case(self):
-        receipt = {
-            "transport_exit": 143,
-            "scripted_replies": 1,
-            "git_status": {"baseline_unchanged": True, "draft_exists": True},
-            "source_identity": {"unchanged": True},
-            "outcome": "completed",
-            "correlation": {
-                "exactly_one_root": True,
-                "all_owned_terminal": True,
-                "all_profiles_match": True,
-            },
-            "cleanup": [{"all_reaped": True}],
-        }
-        self.assertTrue(self.driver.case_succeeded(receipt))
-        receipt["outcome"] = "infrastructure-error"
-        self.assertFalse(self.driver.case_succeeded(receipt))
-        receipt["outcome"] = "completed"
-        receipt["cleanup"][0]["all_reaped"] = False
-        self.assertFalse(self.driver.case_succeeded(receipt))
-
-    def test_startup_uses_remaining_case_budget_without_reset_or_retry(self):
-        receipt, launches = self.run_drive("csv-complete", "slow-start", ["first"], [], startup_delay=200)
-        self.assertIsNone(receipt["failure"])
-        self.assertEqual(2, len(launches))
-        receipt, launches = self.run_drive("csv-complete", "budget-used", ["first"], [],
-                                          startup_delay=500, missing_draft=True)
-        self.assertEqual("TimeoutError", receipt["failure"]["type"], receipt["failure"])
-        self.assertIn("initial request turn did not save Draft", receipt["failure"]["message"])
-        self.assertLess(self.last_clock.mono, self.driver.MAX_SECONDS + 30)
-        self.assertEqual(1, len(launches))
-        receipt, launches = self.run_drive("csv-complete", "startup-expired", ["first"], [],
-                                          startup_delay=700)
-        self.assertEqual("native startup turn", receipt["failure"]["message"])
-        self.assertEqual(1, len(launches))
-        self.assertFalse((self.runtime / "evidence-manifest.json").exists())
-
-    def test_failures_keep_specific_reason_and_do_not_make_a_manifest(self):
-        receipt, _ = self.run_drive("csv-complete", "missing-rollout", ["first"], [], no_rollout=True)
-        self.assertEqual("native startup turn", receipt["failure"]["message"])
-        receipt, _ = self.run_drive("csv-flawed", "eval", ["first"], [], missing_draft=True)
-        self.assertEqual("TimeoutError", receipt["failure"]["type"])
-        self.assertIn("did not save Draft", receipt["failure"]["message"])
-        missing_run=self.runtime / "runs/csv-flawed"
-        self.assertTrue((missing_run / "owned-session-metadata.json").is_file())
-        self.assertTrue((missing_run / "owned-rollouts").is_dir())
-        self.assertTrue((missing_run / "evidence").is_dir())
-        self.assertTrue((missing_run / "fixture-source/README.md").is_file())
-        self.assertTrue((missing_run / "source-after.json").is_file())
-        self.assertEqual("draft-state", receipt["correlation"]["capture_error"]["stage"])
-        self.assertEqual("infrastructure-error", receipt["outcome"])
-        receipt, _ = self.run_drive("booking-flawed", "eval", ["first"], [], malformed=True)
-        self.assertIn("malformed or uncorrelated", receipt["failure"]["message"])
-        receipt, _ = self.run_drive("booking-complete", "eval-json", ["first"], [], malformed=True, bad_json=True)
-        self.assertEqual("JSONDecodeError", receipt["failure"]["type"])
-        self.assertIn("capture_error", receipt["correlation"])
-        receipt, _ = self.run_drive("csv-complete", "eval", ["first", "second"], [lambda _text, _root: False])
-        self.assertEqual("TriggerMismatch", receipt["failure"]["type"])
-        receipt, _ = self.run_drive("booking-complete", "eval", ["first"], [], cleanup_fails=True)
-        self.assertIn("descendants were not reaped", receipt["failure"]["message"])
-        self.assertFalse((self.runtime / "evidence-manifest.json").exists())
-
-    def test_capture_loss_and_incomplete_product_turn_retain_specific_failures(self):
-        receipt, launches = self.run_drive("csv-missing-evidence", "eval", ["first"], [], missing_evidence=True)
-        self.assertIn("evidence capture failed", receipt["failure"]["message"])
-        self.assertIn("README.md", receipt["failure"]["message"])
-        self.assertEqual(2, len(launches))
-        self.assertTrue(receipt["cleanup"][-1]["all_reaped"])
-        receipt, launches = self.run_drive("csv-timeout", "eval", ["first"], [], incomplete_turn=True)
-        self.assertEqual("RuntimeError", receipt["failure"]["type"])
-        self.assertIn("malformed or uncorrelated", receipt["failure"]["message"])
-        self.assertEqual([], receipt["terminal_events"])
-        self.assertTrue(receipt["cleanup"][-1]["all_reaped"])
-
-    def test_suite_rejects_missing_capture_before_later_launches(self):
-        calls=[]
-        class Result:
-            returncode=0; stdout="child claimed success"; stderr=""
-        def run(argv, **kwargs):
-            if argv and argv[0] == "elixir":
-                result = Result(); result.stdout = fake_parser_stdout(kwargs["input"]); return result
-            if argv[:3] == ["python3", "-B", str(DRIVER_PATH.resolve())]: calls.append(argv[-1])
-            return Result()
-        with patch.object(self.driver.subprocess, "run", run):
-            self.assertEqual(1, self.driver.run_suite())
-        self.assertEqual([], calls)
-        failure=json.loads((self.runtime / "suite-failure.json").read_text())
-        self.assertTrue(failure["message"])
-        self.assertFalse((self.runtime / "evidence-manifest.json").exists())
-
-    def test_parser_preflight_stops_all_case_dispatch_when_compiled_paths_are_unavailable(self):
-        launches = []
-
-        def run(argv, **_kwargs):
-            launches.append(argv)
-            raise AssertionError("a provider-case child must not start before parser preflight")
-
-        with patch.object(self.driver.os, "environ", {}), patch.object(self.driver.subprocess, "run", run):
-            self.assertEqual(1, self.driver.run_suite())
-
-        failure = json.loads((self.runtime / "suite-failure.json").read_text())
-        self.assertEqual("suite preflight", failure["case"])
-        self.assertIn("parser dependency unavailable", failure["message"])
-        self.assertEqual([], launches)
-        self.assertFalse((self.runtime / "evidence-manifest.json").exists())
-
-    def test_run_suite_dispatches_all_cases_and_finishes_every_case_without_cancelling_on_first_failure(self):
-        """No-cancel contract: a failing case never cancels its still-running
-        siblings. Every dispatched case runs to completion within the same
-        deadline; cases still running at the deadline are cancelled and
-        recorded as cancelled; every case's status lands in suite-failure.json;
-        one stdout failure line is printed per failed case."""
-        clock = Clock()
-        launches, reaped, signals, manifest_calls = [], [], [], []
-        cases = self.driver.CASES
-        # csv-flawed and csv-complete finish cleanly (possibly after multiple
-        # polls, proving siblings keep running concurrently). booking-flawed
-        # exits nonzero. csv-continuation's own capture raises. The remaining
-        # three never settle and are only resolved by the deadline sweep.
-        never_settle = {"booking-complete", "stateful-flawed", "stateful-complete"}
-        poll_budget = {"csv-flawed": 1, "csv-complete": 3, "booking-flawed": 1, "csv-continuation": 1}
-
-        def parser(argv, **kwargs):
-            class Result:
-                returncode = 0
-                stdout = fake_parser_stdout(kwargs["input"])
-                stderr = ""
-            return Result()
-
-        def popen(argv, **kwargs):
-            case = argv[-1]
-            launches.append((case, kwargs))
-
-            class SuiteChild(Child):
-                def poll(self):
-                    if self.returncode is not None:
-                        return self.returncode
-                    if case in never_settle:
-                        return None
-                    remaining = poll_budget[case] = poll_budget[case] - 1
-                    if remaining > 0:
-                        return None
-                    if case == "booking-flawed":
-                        kwargs["stdout"].write("fixture child failed after native startup\n")
-                        kwargs["stdout"].flush()
-                        self.returncode = 7
-                    else:
-                        self.returncode = 0
-                    return self.returncode
-            return SuiteChild()
-
-        def capture(case):
-            if case == "csv-continuation":
-                raise RuntimeError(f"{case}: required evaluation evidence missing: draft/intent.yaml")
-
-        def reap(fixture, _before):
-            reaped.append(fixture.name)
-            return {"roots": [], "before": [], "actions": [], "remaining_pids": [], "all_reaped": True}
-
-        def manifest(failure=False):
-            manifest_calls.append(failure)
-            return {"manifest_path": "fake", "sha256": "fake"}
-
-        with patch.object(self.driver.time, "time", clock.time), \
-             patch.object(self.driver.time, "monotonic", clock.monotonic), \
-             patch.object(self.driver.time, "sleep", clock.sleep), \
-             patch.object(self.driver.subprocess, "run", parser), \
-             patch.object(self.driver.subprocess, "Popen", popen), \
-             patch.object(self.driver, "setup_continuation_seed", lambda: self.runtime / "continuation-seed"), \
-             patch.object(self.driver, "write_semantic_counterexamples", lambda: (self.runtime / "semantic-counterexamples.json").write_text("{}\n")), \
-             patch.object(self.driver, "required_case_capture", capture), \
-             patch.object(self.driver, "owned_process_tree", lambda _fixture: []), \
-             patch.object(self.driver, "reap_owned_cli", reap), \
-             patch.object(self.driver, "write_manifest", manifest), \
-             patch.object(self.driver.os, "killpg", lambda pid, sig: signals.append((pid, sig))):
-            self.assertEqual(1, self.driver.run_suite())
-
-        self.assertEqual(list(cases), [case for case, _kwargs in launches])
-        self.assertEqual(set(cases), {case for case, kwargs in launches if kwargs["start_new_session"] is True})
-        self.assertEqual(len(cases), len(launches), "collection began before all independent children were dispatched")
-        # Every never-settling case was cancelled and reaped at the deadline;
-        # cases that exited on their own were never reaped through cancellation.
-        self.assertEqual(never_settle, set(reaped))
-        self.assertTrue(signals, "pending child process groups were not cancelled at the deadline")
-        failure = json.loads((self.runtime / "suite-failure.json").read_text())
-        expected_failed = never_settle | {"booking-flawed", "csv-continuation"}
-        self.assertEqual(expected_failed, set(failure["failed_cases"]))
-        self.assertIn("child exited 7", failure["failed_cases"]["booking-flawed"])
-        self.assertIn("required evaluation evidence missing", failure["failed_cases"]["csv-continuation"])
-        for case in never_settle:
-            self.assertIn("deadline", failure["failed_cases"][case])
-        self.assertNotIn("csv-flawed", failure["failed_cases"])
-        self.assertNotIn("csv-complete", failure["failed_cases"])
-        child_log = (self.runtime / "booking-flawed-output.log").read_text()
-        self.assertIn("fixture child failed after native startup", child_log)
-        stdout = self.output.getvalue()
-        # Failure lines print in dispatch (case-table) order, one per failed case.
-        printed_order = [line.split(": ", 2)[1] for line in stdout.splitlines() if line.startswith("FAILED: ")]
-        self.assertEqual([case for case in cases if case in expected_failed], printed_order)
-        self.assertEqual([True], manifest_calls, "manifest frame must still be written exactly once on failure")
-
-    def test_run_suite_real_children_overlap_at_the_actual_barrier_before_collection(self):
-        """Cheap OS children exercise the production file barrier, offline."""
-        real_popen = self.driver.subprocess.Popen
-        events = self.runtime / "barrier-events"
-        child_script = r"""
-import importlib.util, json, os, sys, time
-from pathlib import Path
-spec = importlib.util.spec_from_file_location("barrier_driver", sys.argv[1])
-driver = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(driver)
-case = sys.argv[2]
-entered = time.monotonic()
-driver.suite_barrier(case)
-released = time.monotonic()
-events = Path(os.environ["KOGEN_REHEARSAL_BARRIER_EVENTS"])
-events.mkdir(exist_ok=True)
-(events / (case + ".json")).write_text(json.dumps({"case": case, "entered": entered, "released": released, "ready_count": len(list((driver.RUNTIME / "barrier").glob("*.ready")))}))
-"""
-        captures, launches = [], []
-
-        def popen(argv, **kwargs):
-            case = argv[-1]
-            launches.append((case, kwargs))
-            env = {**kwargs["env"], "KOGEN_REHEARSAL_BARRIER_EVENTS": str(events)}
-            return real_popen(
-                ["python3", "-B", "-c", child_script, str(DRIVER_PATH), case],
-                env=env,
-                stdout=kwargs["stdout"],
-                stderr=kwargs["stderr"],
-                text=True,
-                start_new_session=True,
-            )
-
-        def capture(case):
-            captures.append(case)
-            ready = list((self.runtime / "barrier").glob("*.ready"))
-            self.assertEqual(len(self.driver.CASES), len(ready), "a child was collected before every child reached the production barrier")
-
-        with patch.object(self.driver, "preflight_yaml_parser", lambda: None), \
-             patch.object(self.driver, "setup_continuation_seed", lambda: self.runtime / "continuation-seed"), \
-             patch.object(self.driver, "write_semantic_counterexamples", lambda: (self.runtime / "semantic-counterexamples.json").write_text("{}\n")), \
-             patch.object(self.driver, "required_case_capture", capture), \
-             patch.object(self.driver, "write_manifest", lambda: {"offline": True}), \
-             patch.object(self.driver.subprocess, "Popen", popen):
-            self.assertEqual(0, self.driver.run_suite())
-
-        expected = list(self.driver.CASES)
-        self.assertEqual(expected, [case for case, _kwargs in launches])
-        self.assertEqual(set(expected), set(captures))
-        records = [json.loads(path.read_text()) for path in events.glob("*.json")]
-        self.assertEqual(len(expected), len(records))
-        self.assertTrue(all(record["ready_count"] == len(expected) for record in records))
-        self.assertLessEqual(max(record["entered"] for record in records), min(record["released"] for record in records))
-        self.assertTrue(all(kwargs["start_new_session"] is True for _case, kwargs in launches))
-        self.assertFalse((self.runtime / "suite-failure.json").exists())
-
-
-    def test_cleanup_records_filesystem_failure_and_success(self):
-        fixture = self.root / "cleanup-fixture"; fixture.mkdir()
-        run = self.runtime / "runs/cleanup"; (run / "fixture-source").mkdir(parents=True)
-        for name in ("receipt.json", "source-baseline.json", "source-after.json"):
-            (run / name).write_text("{}\n")
-        (run / "fixture-source/README.md").write_text("fixture\n")
-        with patch.object(self.driver.shutil, "rmtree", side_effect=OSError("read-only fixture")):
-            failed = self.driver.cleanup_fixture(fixture, "cleanup")
-        self.assertFalse(failed["removed"])
-        self.assertIn("fixture cleanup failed", failed["reason"])
-        self.assertTrue((run / "fixture-cleanup.json").is_file())
-        receipt={"outcome":"completed", "failure":None}
-        with patch.object(self.driver.shutil, "rmtree", side_effect=OSError("read-only fixture")):
-            self.driver.require_cleanup(fixture, "cleanup", receipt)
-        self.assertEqual("infrastructure-error", receipt["outcome"])
-        self.assertEqual("CleanupFailure", receipt["failure"]["type"])
-
-        succeeded = self.driver.cleanup_fixture(fixture, "cleanup")
-        self.assertTrue(succeeded["removed"])
-        self.assertFalse(fixture.exists())
-
-    def test_composed_suite_uses_main_routes_and_real_drive_before_manifest(self):
-        """The suite reaches the real parser and both final evidence consumers."""
-        self.driver.PROJECT = self.root.resolve()
-        clock = Clock(); launches = []; continuation_fixtures = set(); rollouts = {}
-        real_run = self.driver.subprocess.run
-        real_popen = self.driver.subprocess.Popen
-
-        def setup(case, _files):
-            slug = {"csv-flawed":"eval-csv-flawed", "csv-continuation":"eval-csv-seed", "csv-complete":"eval-csv-complete",
-                    "booking-flawed":"eval-booking-flawed", "booking-complete":"eval-booking-complete",
-                    "stateful-flawed":"eval-stateful-flawed", "stateful-complete":"eval-stateful-complete"}[case]
-            fixture = self.fixture(str(self.runtime / case), "temporary-seed" if case == "csv-continuation" else slug, "original-csv" if case == "csv-flawed" else f"id-{case}")
-            (fixture / "README.md").write_text("# Fixture\n\n## Current user request\n\n" + self.driver.current_request(case) + "\n")
-            for relative, content in _files.items():
-                path = fixture / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(content if isinstance(content, bytes) else content.encode())
-            intent = fixture / ".kogen/intents/drafts" / slug / "intent.yaml"
-            if case == "csv-complete":
-                intent.write_text("id: id-csv-complete\nslug: eval-csv-complete\ntitle: Rehearsal Draft\nstatus: draft\nshaped_against: {branch: main, head: frozen-head}\nshaping: {harness: codex, model: fake-model, effort: low, started: original-visit}\nshaping_continuations: []\nmay_change_guarded_paths: [app/**, test/**]\n")
-            elif case == "booking-flawed":
-                intent.write_text("{id: id-booking-flawed, slug: eval-booking-flawed, title: Rehearsal Draft, status: draft, description: historical .tmp/calendar-run-17/connection.json is missing and the audience choice remains open, shaped_against: {branch: main, head: frozen-head}, shaping: {harness: codex, model: fake-model, effort: low, started: original-visit}, shaping_continuations: [], may_change_guarded_paths: [app/**, test/**]}\n")
-            elif case.startswith("stateful-"):
-                intent.write_text(f"id: id-{case}\nslug: eval-{case}\ntitle: Rehearsal Draft\nstatus: draft\nshaped_against: {{branch: main, head: frozen-head}}\nshaping: {{harness: codex, model: fake-model, effort: low, started: original-visit}}\nshaping_continuations: []\nmay_change_guarded_paths: [test/**]\n")
-            return fixture
-
-        def popen(argv, **_kwargs):
-            if argv[:3] == ["python3", "-B", str(DRIVER_PATH.resolve())]:
-                case = argv[3]
-                def invoke_case():
-                    with patch.object(sys, "argv", ["driver.py", case]):
-                        result = self.driver.main()
-                    if getattr(self, "corrupt_first_capture", False) and case == "csv-flawed":
-                        state = self.runtime / "runs/csv-flawed/draft-state.json"
-                        state.write_text(json.dumps({"intent_id": None, "baseline": {"branch": None, "head": None},
-                                                     "visit_id": None, "unapproved": True}))
-                    return result
-                return Child(invoke_case)
-            if not argv or argv[0] != "expect":
-                return real_popen(argv, **_kwargs)
-            fixture = Path(argv[2])
-            if Path(argv[1]).name == "shape_transport.exp":
-                receipt_path = _kwargs.get("env", {}).get("KOGEN_CODEX_CONTEXT_RECEIPT")
-                if receipt_path:
-                    Path(receipt_path).write_text(json.dumps({
-                        "executable": sys.executable,
-                        "args": ["-c", "raise SystemExit('rehearsal context is not executed')"],
-                        "env": {},
-                    }))
-                continuation_fixtures.update([fixture] if argv[5] else [])
-                rollouts[str(fixture)] = self.rollout(fixture, f"root-{fixture.name}-{len(launches)}")
-            else:
-                rollout = rollouts[str(fixture)]
-                prompt = Path(argv[4]).read_text(); turn = f"turn-{len(launches)}"
-                with rollout.open("a") as handle:
-                    handle.write(json.dumps({"type":"turn_context","payload":{"turn_id":turn,"model":"fake-model","effort":"low"}})+"\n")
-                    handle.write(json.dumps({"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":prompt}],"internal_chat_message_metadata_passthrough":{"turn_id":turn}}})+"\n")
-                    handle.write(json.dumps({"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"text":"Observed BOM and missing .tmp/calendar-run-17/connection.json"}]}})+"\n")
-                    handle.write(json.dumps({"type":"event_msg","payload":{"type":"task_complete","turn_id":turn}})+"\n")
-                slug = "eval-csv-seed" if fixture.name == "csv-continuation" else ("eval-csv-flawed" if fixture.name == "csv-flawed" else f"eval-{fixture.name}")
-                draft = fixture / ".kogen/intents/drafts" / slug / "intent.yaml"
-                if fixture.name == "csv-continuation":
-                    saved = json.loads(draft.read_text())
-                    saved["shaping_continuations"] = [{"harness": "codex", "model": "fake-model", "effort": "low",
-                                                       "started":"fresh-continuation", "checkout":saved["shaped_against"]}]
-                    draft.write_text(json.dumps(saved))
-                existing_user_turns = sum(1 for line in rollout.read_text().splitlines() if '"role": "user"' in line)
-                if fixture.name == "csv-continuation" and existing_user_turns == 1:
-                    saved = json.loads(draft.read_text())
-                    saved["description"] = "invalid selected rows are all-or-nothing; output replacement remains unanswered"
-                    draft.write_text(json.dumps(saved))
-                elif fixture.name == "csv-continuation" and existing_user_turns >= 2:
-                    saved = json.loads(draft.read_text())
-                    saved["description"] = "transaction recovery settled"
-                    draft.write_text(json.dumps(saved))
-                question = ("What should happen to the existing output when replacement work succeeds or fails?\n"
-                            if fixture.name == "csv-continuation" else
-                            "BOM invalid missing absent .tmp/calendar-run-17/connection.json\n")
-                (draft.parent / "questions.md").write_text(question)
-            launches.append(argv); return Child()
-
-        class Result:
-            def __init__(self, returncode=0): self.returncode=returncode; self.stdout=""; self.stderr=""
-        def run(argv, **_kwargs):
-            if argv[:3] == ["git", "rev-parse", "HEAD"]:
-                result = Result(); result.stdout = "frozen-head\n"; return result
-            if argv[:3] == ["python3", "-B", str(DRIVER_PATH.resolve())]:
-                with patch.object(sys, "argv", ["driver.py", argv[3]]):
-                    result = Result(self.driver.main())
-                if getattr(self, "corrupt_first_capture", False) and argv[3] == "csv-flawed":
-                    state = self.runtime / "runs/csv-flawed/draft-state.json"
-                    state.write_text(json.dumps({"intent_id": None, "baseline": {"branch": None, "head": None},
-                                                 "visit_id": None, "unapproved": True}))
-                return result
-            if argv and argv[0] == "elixir":
-                return real_run(argv, **_kwargs)
-            if argv[:2] == ["python3", "-B"]:
-                return real_run(argv, **_kwargs)
-            return Result()
-        profiles = ({"root":("fake-model","low"),"scout":("fake-model","low"),"worker":("fake-model","low"),"expert":("fake-model","low")}, {"normalized":{}})
-        with patch.object(self.driver.time, "time", clock.time), patch.object(self.driver.time, "monotonic", clock.monotonic), patch.object(self.driver.time, "sleep", clock.sleep), \
-             patch.object(self.driver.subprocess, "Popen", popen), patch.object(self.driver.subprocess, "run", run), \
-             patch.object(self.driver, "setup_fixture", setup), patch.object(self.driver, "configured_profiles", lambda _fixture: profiles), \
-             patch.object(self.driver, "source_snapshot", lambda _fixture: {"README.md":"fixture"}), \
-            patch.object(self.driver, "owned_process_tree", lambda _fixture: []), \
-            patch.object(self.driver, "suite_barrier", lambda _case: None), \
-            patch.object(self.driver, "reap_owned_cli", lambda *_args: {"roots":[],"before":[],"actions":[],"remaining_pids":[],"all_reaped":True}):
-            status = self.driver.run_suite()
-        if getattr(self, "corrupt_first_capture", False):
-            # No-cancel contract: one corrupted case's capture failure never
-            # stops its still-running siblings from dispatching or completing.
-            self.assertEqual(1, status)
-            failure = json.loads((self.runtime / "suite-failure.json").read_text())
-            self.assertIn("captured provenance differs from original Draft", failure["failed_cases"]["csv-flawed"])
-            self.assertEqual(len(self.driver.CASES), sum(Path(argv[1]).name == "shape_transport.exp" for argv in launches))
-            # A failure manifest is still written and printed exactly once,
-            # covering only artifacts that actually exist plus suite-failure.json.
-            self.assertTrue((self.runtime / "evidence-manifest.json").is_file())
-            manifest = json.loads((self.runtime / "evidence-manifest.json").read_text())
-            self.assertTrue(any(entry["path"].endswith("suite-failure.json") for entry in manifest["required_evidence"]))
-            self.assertEqual(1, self.output.getvalue().count("KOGEN_TARGET_EVIDENCE_MANIFEST\t"))
-            return
-        if status:
-            self.fail((self.runtime / "suite-failure.json").read_text())
-        self.assertTrue((self.runtime / "evidence-manifest.json").is_file())
-        state = json.loads((self.runtime / "runs/csv-continuation/draft-state.json").read_text())
-        self.assertEqual("01990000-0000-7000-8000-00000000c501", state["intent_id"])
-        self.assertEqual("csv-continuation", next(iter(continuation_fixtures)).name)
-        self.assertEqual(len(self.driver.CASES), sum(1 for argv in launches if Path(argv[1]).name == "shape_transport.exp"))
-        cases = list(self.driver.CASES)
-        public = [argv for argv in launches if Path(argv[1]).name == "shape_transport.exp"]
-        self.assertEqual(cases, [Path(argv[2]).name for argv in public])
-        root_ids=[]
-        for case, count in zip(cases, [1, 0, 1, 0, 2, 0, 0]):
-            run = self.runtime / "runs" / case
-            receipt = json.loads((run / "receipt.json").read_text())
-            messages = json.loads((run / "messages.json").read_text())
-            self.assertEqual(count, len(messages))
-            self.assertEqual(count, receipt["scripted_replies"])
-            self.assertEqual(count, len(receipt["terminal_events"]))
-            self.assertEqual(count, len({event["turn_id"] for event in receipt["terminal_events"]}))
-            if case == "csv-continuation":
-                self.assertEqual(2, len(messages))
-                self.assertEqual(2, len(receipt["terminal_turn_bindings"]))
-                self.assertEqual(2, len(set(receipt["terminal_turn_bindings"])))
-                self.assertTrue((run / "drafts-by-turn/0/questions.md").is_file())
-            self.assertTrue(all(isinstance(event["root_rollout"], str) for event in receipt["terminal_events"]))
-            root_ids.append(receipt["correlation"]["roots"][0])
-        self.assertEqual(len(cases), len(set(root_ids)))
-        first = json.loads((self.runtime / "runs/csv-flawed/draft/intent.yaml").read_text())
-        seed = json.loads((self.runtime / "continuation-seed/intent.yaml").read_text())
-        partial = json.loads((self.runtime / "runs/csv-continuation/drafts-by-turn/0/intent.yaml").read_text())
-        continued = json.loads((self.runtime / "runs/csv-continuation/draft/intent.yaml").read_text())
-        self.assertNotEqual(first["id"], seed["id"])
-        for document in (partial, continued):
-            for key in ("id", "slug", "shaping", "shaped_against"):
-                self.assertEqual(seed[key], document[key])
-            self.assertEqual(seed["shaping_continuations"] + document["shaping_continuations"][-1:], document["shaping_continuations"])
-        self.assertEqual(partial["shaping_continuations"], continued["shaping_continuations"])
-        self.assertEqual([], first["shaping_continuations"])
-        self.assertEqual(1, len(continued["shaping_continuations"]))
-        self.assertEqual("fresh-continuation", state["visit_id"])
-        self.assertEqual(seed["shaped_against"], state["baseline"])
-        for case in cases[:-1]:
-            self.assertFalse((self.runtime / case).exists())
-        manifest = json.loads((self.runtime / "evidence-manifest.json").read_text())
-        manifested_paths = [entry["path"] for entry in manifest["required_evidence"]]
-        manifest_case_order = [
-            case for path in manifested_paths for case in cases
-            if path.endswith(f"/runs/{case}/review-receipt.json")
-        ]
-        self.assertEqual(cases, manifest_case_order)
-        self.assertFalse(any("/owned-rollouts/" in path or "/private-raw-rollouts/" in path for path in manifested_paths))
-        self.assertFalse(any(path.endswith(("/receipt.json", "/transport.log", "/pty.log")) or "/resume-" in path and path.endswith("-pty.log") for path in manifested_paths))
-        for case in cases:
-            self.assertTrue(any(path.endswith(f"/runs/{case}/review-receipt.json") for path in manifested_paths))
-            self.assertTrue((self.runtime / f"runs/{case}/receipt.json").is_file())
-            self.assertTrue((self.runtime / f"runs/{case}/owned-rollouts").is_dir())
-        for partial_file in (self.runtime / "runs/csv-continuation/drafts-by-turn/0").rglob("*"):
-            if partial_file.is_file():
-                self.assertIn(str(partial_file.relative_to(self.root)), manifested_paths)
-        self.assertIn("runtime/continuation-seed-metadata.json", manifested_paths)
-        self.assertIn("runtime/semantic-counterexamples.json", manifested_paths)
-        self.assertEqual((self.runtime / "semantic-counterexamples.json").read_bytes(),
-                         (HERE / "semantic-counterexamples.json").read_bytes())
-
-        for entry in manifest["required_evidence"]:
-            self.assertEqual(entry["sha256"], hashlib.sha256((self.root / entry["path"]).read_bytes()).hexdigest())
-        # These are the same final consumers used after the live driver.  Do
-        # not replace them with fixture-local schema checks: integrity verifies
-        # native events and hashes, while DraftAudit parses the retained YAML.
-        integrity = importlib.util.spec_from_file_location("rehearsal_integrity", HERE / "integrity.py")
-        integrity_module = importlib.util.module_from_spec(integrity); integrity.loader.exec_module(integrity_module)
-        integrity_module.validate_manifest(self.root, self.runtime / "evidence-manifest.json")
+    def draft_audit(self, runtime):
         code_paths = json.loads(os.environ["KOGEN_SHAPING_EVALUATION_ELIXIR_CODE_PATHS"])
-        audit = "Code.require_file({}, {}); Kogen.ShapingDraftAudit.audit!({})".format(
-            json.dumps(str(HERE / "draft_audit.ex")), json.dumps(str(HERE)), json.dumps(str(self.runtime)))
-        result = real_run(["elixir", *sum((["-pa", path] for path in code_paths), []), "-e", audit],
-                          capture_output=True, text=True, timeout=30)
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        # Rehash mutated state so these negatives reach provenance validators,
-        # rather than claiming a manifest hash failure as proof.
-        state_path = self.runtime / "runs/csv-complete/draft-state.json"
-        original_state = state_path.read_bytes()
-        manifest_path = self.runtime / "evidence-manifest.json"
-        for key, value in (("intent_id", None), ("baseline", {"branch": "main", "head": "altered"}),
-                           ("visit_id", "altered"), ("unapproved", False)):
-            changed = json.loads(original_state); changed[key] = value
-            state_path.write_text(json.dumps(changed))
-            manifest = json.loads(manifest_path.read_text())
-            for entry in manifest["required_evidence"]:
-                entry["sha256"] = hashlib.sha256((self.root / entry["path"]).read_bytes()).hexdigest()
-            manifest_path.write_text(json.dumps(manifest))
-            if key in ("intent_id", "unapproved"):
-                with self.assertRaisesRegex(ValueError, "draft provenance state missing"):
-                    integrity_module.validate_manifest(self.root, manifest_path)
-            else:
-                integrity_module.validate_manifest(self.root, manifest_path)
-            invalid = real_run(["elixir", *sum((["-pa", path] for path in code_paths), []), "-e", audit],
-                               capture_output=True, text=True, timeout=30)
-            self.assertNotEqual(0, invalid.returncode)
-            self.assertIn("captured state differs", invalid.stdout + invalid.stderr)
-        state_path.write_bytes(original_state)
+        audit = "Code.require_file({}); Kogen.ShapingDraftAudit.audit!({})".format(
+            json.dumps(str(HERE / "draft_audit.ex")), json.dumps(str(runtime)))
+        result = self.real_run(["elixir", *sum((["-pa", path] for path in code_paths), []), "-e", audit],
+                               capture_output=True, text=True, timeout=120)
+        return result.returncode, result.stdout + result.stderr
+
+    def test_suite_consumers_accept_one_session_continuation_and_reject_tampering(self):
+        """The quality suite's final consumers, unchanged from the live target: the
+        driver's own write_manifest() (which runs integrity.validate_manifest) and
+        Kogen.ShapingDraftAudit.audit! accept an engine-shaped suite whose
+        continuation is one session, and reject a continuation that became a new
+        session, altered captured state and a slug changed within the session."""
+        runtime = self.engine_shaped_suite()
+        locator = self.driver.write_manifest()
+        self.assertTrue((self.root / locator["manifest_path"]).is_file())
+        status, output = self.draft_audit(runtime)
+        self.assertEqual(0, status, output)
+
+        final = runtime / "runs/csv-continuation/draft/intent.yaml"
+        state = runtime / "runs/csv-continuation/draft-state.json"
+        original_final, original_state = final.read_bytes(), state.read_bytes()
+        document = json.loads(original_final)
+        document["id"] = "01990000-0000-7000-8000-0000000000ff"
+        final.write_text(json.dumps(document) + "\n")
+        state.write_text(json.dumps({**json.loads(original_state), "intent_id": document["id"]}))
+        with self.assertRaisesRegex(RuntimeError, "continuation lost frozen seed identity"):
+            self.driver.write_manifest()
+        status, output = self.draft_audit(runtime)
+        self.assertNotEqual(0, status)
+        self.assertIn("continuation lost the session identity", output)
+        final.write_bytes(original_final); state.write_bytes(original_state)
+
+        complete = runtime / "runs/csv-complete/draft-state.json"
+        original_complete = complete.read_bytes()
+        complete.write_text(json.dumps({**json.loads(original_complete), "visit_id": "altered"}))
+        self.driver.write_manifest()
+        status, output = self.draft_audit(runtime)
+        self.assertNotEqual(0, status)
+        self.assertIn("captured state differs", output)
+        complete.write_bytes(original_complete)
+
+        partial = runtime / "runs/csv-continuation/drafts-by-turn/0/intent.yaml"
+        partial.write_text(json.dumps({**json.loads(partial.read_text()), "slug": "eval-renamed"}) + "\n")
+        self.driver.write_manifest()
+        status, output = self.draft_audit(runtime)
+        self.assertNotEqual(0, status)
+        self.assertIn("same-session clarification changed the Draft's slug", output)
 
 
-
-    def test_valid_yaml_with_null_first_capture_stops_real_suite_before_later_dispatch(self):
-        self.corrupt_first_capture = True
-        self.test_composed_suite_uses_main_routes_and_real_drive_before_manifest()
-
-    def test_main_routes_each_public_case_without_launching_a_provider(self):
-        routed = []; cleaned = []
-        valid = {"transport_exit":0,"scripted_replies":0,"git_status":{"baseline_unchanged":True,"draft_exists":True},
-                 "source_identity":{"unchanged":True},"outcome":"completed",
-                 "correlation":{"exactly_one_root":True,"all_owned_terminal":True,"all_profiles_match":True},
-                 "cleanup":[{"all_reaped":True}]}
-        continuation_fixture = self.runtime / "csv-continuation"
-        continuation_draft = continuation_fixture / ".kogen/intents/drafts/eval-csv-seed"
-        continuation_draft.mkdir(parents=True)
-        (self.runtime / "continuation-seed").mkdir()
-        def setup(case, _files): routed.append(("setup", case)); return self.root / case
-        def drive(case, fixture, slug, messages, triggers, continuation=False):
-            routed.append(("drive", case, fixture, slug, len(messages), continuation)); return valid
-        with patch.object(self.driver, "setup_fixture", setup), patch.object(self.driver, "setup_continuation_seed", lambda: self.runtime / "continuation-seed"), patch.object(self.driver, "drive", drive), \
-             patch.object(self.driver, "cleanup_fixture", lambda fixture, case: cleaned.append((fixture, case))), \
-             patch.object(self.driver, "require_cleanup", lambda fixture, case, receipt: cleaned.append((fixture, case))), \
-             patch.object(self.driver, "csv_files", lambda complete=False: {}), patch.object(self.driver, "booking_files", lambda complete=False: {}):
-            # argparse reads the process argv; driver imports no private CLI wrapper.
-            with patch.object(sys, "argv", ["driver.py", "csv-flawed"]): self.assertEqual(0, self.driver.main())
-            with patch.object(sys, "argv", ["driver.py", "csv-complete"]): self.assertEqual(0, self.driver.main())
-            with patch.object(sys, "argv", ["driver.py", "booking-flawed"]): self.assertEqual(0, self.driver.main())
-            with patch.object(sys, "argv", ["driver.py", "booking-complete"]): self.assertEqual(0, self.driver.main())
-            with patch.object(sys, "argv", ["driver.py", "csv-continuation"]): self.assertEqual(0, self.driver.main())
-            with patch.object(sys, "argv", ["driver.py", "stateful-flawed"]): self.assertEqual(0, self.driver.main())
-            with patch.object(sys, "argv", ["driver.py", "stateful-complete"]): self.assertEqual(0, self.driver.main())
-        self.assertEqual(["csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "stateful-flawed", "stateful-complete"], [entry[1] for entry in routed if entry[0] == "setup"])
-        continuation = next(entry for entry in routed if entry[0] == "drive" and entry[1] == "csv-continuation")
-        self.assertEqual((self.runtime / "csv-continuation").resolve(), continuation[2])
-        self.assertTrue(continuation[-1])
-        self.assertEqual(2, continuation[4])
-
-
-if __name__ == "__main__": unittest.main()
+if __name__ == "__main__":
+    unittest.main()

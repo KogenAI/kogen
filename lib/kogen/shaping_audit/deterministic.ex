@@ -11,7 +11,7 @@ defmodule Kogen.ShapingAudit.Deterministic do
 
   alias Kogen.Build.VerificationPlan
   alias Kogen.Harness.Claude
-  alias Kogen.ShapingAudit.Finding
+  alias Kogen.ShapingAudit.{Finding, HeadlessInput}
   alias Kogen.VerificationPolicy
 
   @ledger_path "priv/kogen/test-reliability.yaml"
@@ -40,7 +40,8 @@ defmodule Kogen.ShapingAudit.Deterministic do
 
     common =
       title_findings(ctx.intent) ++
-        ledger_findings(ctx, guards) ++ stale_anchor_findings(ctx) ++ prior_failure_findings(ctx)
+        ledger_findings(ctx, guards) ++
+        stale_anchor_findings(ctx) ++ prior_failure_findings(ctx) ++ input_findings(ctx)
 
     case VerificationPlan.load(ctx.materialization) do
       {:ok, catalog} ->
@@ -504,6 +505,59 @@ defmodule Kogen.ShapingAudit.Deterministic do
   end
 
   defp last_failure(_), do: nil
+
+  # -- recorded inputs ---------------------------------------------------------
+
+  # Only packages carrying `evidence/inputs/NNNN.md` copies are checked. The
+  # brief lives at `evidence/brief.md` and is outside both rules.
+  defp input_findings(ctx) do
+    inputs =
+      for {path, bytes} <- ctx.files,
+          [_, number] <- [Regex.run(~r/^evidence\/inputs\/(\d+)\.md$/, path)] do
+        digest = :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
+        {number, "in-#{number}-#{String.slice(digest, 0, 8)}"}
+      end
+      |> Enum.sort()
+
+    if inputs == [] do
+      []
+    else
+      questions_text = Map.get(ctx.files, "questions.md")
+
+      accepted =
+        for {number, id} <- inputs,
+            path = "evidence/inputs/#{number}.md",
+            bytes when is_binary(bytes) <- [Map.get(ctx.files, path)],
+            do: %{"id" => id, "text" => bytes}
+
+      exact = HeadlessInput.recorded(questions_text, accepted)
+      per_entry = HeadlessInput.token_counts(questions_text)
+
+      not_recorded =
+        for {_number, id} <- inputs, Map.get(exact, id, 0) != 1 do
+          Finding.new("input-not-recorded", id, %{
+            "paths" => ["questions.md"],
+            "message" =>
+              "accepted input [input #{id}] is not recorded exactly once: add the reversible kogen-recorded-input-v1 frame with its exact bytes under ## Shaper answers"
+          })
+        end
+
+      twice =
+        per_entry
+        |> Enum.filter(fn {_id, count} -> count > 1 end)
+        |> Enum.map(&elem(&1, 0))
+        |> Enum.sort()
+        |> Enum.map(fn id ->
+          Finding.new("input-recorded-twice", id, %{
+            "paths" => ["questions.md"],
+            "message" =>
+              "input #{id} is recorded by more than one ## Shaper answers entry: keep exactly one"
+          })
+        end)
+
+      not_recorded ++ twice
+    end
+  end
 
   # -- title / commit-subject format ----------------------------------------
 

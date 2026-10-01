@@ -1,0 +1,10 @@
+{
+  "name": "csv-complete",
+  "end": "settled",
+  "steps": [
+    {
+      "step": "start",
+      "brief": "brief.md"
+    }
+  ]
+}

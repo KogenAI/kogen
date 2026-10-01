@@ -1,0 +1,10 @@
+{
+  "name": "booking-complete",
+  "end": "settled",
+  "steps": [
+    {
+      "step": "start",
+      "brief": "brief.md"
+    }
+  ]
+}

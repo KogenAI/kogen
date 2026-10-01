@@ -1,0 +1,10 @@
+{
+  "feature": "headless-flow greeting",
+  "scope": "product greeting artifact",
+  "producer": "app/greeting_writer.ex (Kogen.GreetingWriter.write!/2)",
+  "proof_selector": "test/fixture_greeting_contract_test.exs",
+  "artifact": "greeting.txt",
+  "selected_punctuation": "period",
+  "expected_output": "Hello.\n",
+  "engine_observation": "the outer driver separately captures Shaping-engine progress"
+}

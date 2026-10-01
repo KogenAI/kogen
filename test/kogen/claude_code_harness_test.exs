@@ -381,12 +381,12 @@ defmodule Kogen.ClaudeCodeHarnessTest do
       assert developer["kogen-worker"]["tools"] == ~w(Read Grep Glob Bash Edit Write)
       assert developer["kogen-expert"]["tools"] == ~w(Read Grep Glob Bash)
 
-      for role <- ["reviewer", "shaper"],
+      for role <- ["reviewer"],
           {_name, agent} <- Claude.agents(role, @config.helpers) do
         assert Enum.all?(agent["tools"], &(&1 not in ~w(Edit Write NotebookEdit Agent)))
       end
 
-      for role <- ["developer", "reviewer", "shaper"] do
+      for role <- ["developer", "reviewer", "shaping"] do
         agents = Claude.agents(role, @config.helpers)
         assert Map.keys(agents) == ["kogen-expert", "kogen-scout", "kogen-worker"]
 
@@ -400,7 +400,9 @@ defmodule Kogen.ClaudeCodeHarnessTest do
       assert Claude.disallowed_tools("reviewer") -- Claude.disallowed_tools("developer") ==
                ~w(Edit Write NotebookEdit)
 
-      assert Claude.disallowed_tools("shaper") == Claude.disallowed_tools("developer")
+      assert Claude.disallowed_tools("shaping") ==
+               Claude.disallowed_tools("developer") ++
+                 ~w(AskUserQuestion ExitPlanMode EnterPlanMode)
     end
   end
 
@@ -463,33 +465,133 @@ defmodule Kogen.ClaudeCodeHarnessTest do
     end
   end
 
-  describe "Shaper" do
-    test "the interactive Shaper receives the prompt as its first message", %{
-      dir: dir,
-      context: context
-    } do
-      prompt = Path.join(dir, "prompt.md")
-      File.write!(prompt, "Shape one Intent.")
-      stream!(dir, [])
+  describe "Shaping Controller turn" do
+    defp shaping_context(dir, context, extra \\ %{}) do
+      context
+      |> Map.put(:log_path, Path.join(dir, "turns/0001.jsonl"))
+      |> Map.merge(extra)
+    end
 
-      assert 0 == Harness.exec_shaper("claude-opus-5-5", "medium", prompt, context)
+    test "a fresh turn runs -p with --session-id, the prompt on stdin, the role and the log",
+         %{dir: dir, context: context} do
+      uuid = Claude.uuid4()
+
+      stream!(dir, [
+        init(),
+        root("claude-opus-5-5", [%{"type" => "text", "text" => "ok"}]),
+        result(%{"usage" => %{"input_tokens" => 7, "output_tokens" => 2}})
+      ])
+
+      env = [{"KOGEN_SHAPING_SESSION", "s-1"} | context.env]
+      context = shaping_context(dir, %{context | env: env}, %{channel: "CHANNEL TEXT"})
+
+      assert {:ok, turn} =
+               Harness.shaping_turn({:fresh, uuid}, "SHAPE", "claude-opus-5-5", "medium", context)
+
+      assert turn == %{
+               provider_session_id: uuid,
+               exit_code: 0,
+               usage: %{"input_tokens" => 7, "output_tokens" => 2},
+               timed_out: false
+             }
+
       args = argv(dir)
-      refute "-p" in args
-      refute "--output-format" in args
-      assert Enum.take(args, -2) == ["--", "Shape one Intent."]
+      assert Enum.take(args, 4) == ["-p", "--output-format", "stream-json", "--verbose"]
+      assert flag(args, "--session-id") == uuid
+      refute "--resume" in args
+      assert flag(args, "--append-system-prompt") == "CHANNEL TEXT"
       assert flag(args, "--model") == "claude-opus-5-5"
-      assert flag(args, "--effort") == "medium"
-      assert "--dangerously-skip-permissions" in args
-      assert File.read!(Path.join(dir, "env")) =~ "KOGEN_ROLE=shaper"
+      assert "AskUserQuestion" in args
+      assert File.read!(Path.join(dir, "stdin")) == "SHAPE"
+      environment = File.read!(Path.join(dir, "env"))
+      assert environment =~ "KOGEN_ROLE=shaping"
+      assert environment =~ "KOGEN_SHAPING_SESSION=s-1"
+      assert File.read!(context.log_path) =~ ~s("subtype":"init")
+    end
+
+    test "a resume uses --resume with the same id and no channel by default",
+         %{dir: dir, context: context} do
+      stream!(dir, [init(), root("claude-opus-5-5", []), result(%{})])
+
+      assert {:ok, %{provider_session_id: "abc-123", usage: nil}} =
+               Harness.shaping_turn(
+                 {:resume, "abc-123"},
+                 "MORE",
+                 "claude-opus-5-5",
+                 "medium",
+                 shaping_context(dir, context)
+               )
+
+      args = argv(dir)
+      assert flag(args, "--resume") == "abc-123"
+      refute "--session-id" in args
+      refute "--append-system-prompt" in args
+    end
+
+    test "a different init session is a provider_session_mismatch", %{dir: dir, context: context} do
+      stream!(dir, [init(), root("claude-opus-5-5", []), result(%{})])
+
+      result =
+        run(
+          shaping_context(dir, context),
+          &Harness.shaping_turn({:resume, "wanted"}, "p", "claude-opus-5-5", "medium", &1),
+          [{"FAKE_SESSION", "other"}]
+        )
+
+      assert {:error, {:provider_session_mismatch, %{expected: "wanted", actual: "other"}}} =
+               result
+    end
+
+    test "No conversation found on resume is provider_session_unavailable",
+         %{dir: dir, context: context} do
+      File.write!(Path.join(dir, "stream"), "No conversation found with session ID: gone\n")
+
+      result =
+        run(
+          shaping_context(dir, context),
+          &Harness.shaping_turn({:resume, "gone"}, "p", "claude-opus-5-5", "medium", &1),
+          [{"FAKE_EXIT", "1"}]
+        )
+
+      assert {:error, {:provider_session_unavailable, tail}} = result
+      assert tail =~ "No conversation found"
+    end
+
+    test "other failures are provider_failure with the observed session",
+         %{dir: dir, context: context} do
+      stream!(dir, [init(), result(%{"subtype" => "error_during_execution", "is_error" => true})])
+      uuid = Claude.uuid4()
+
+      assert {:error, {:provider_failure, {:provider_error, _}, %{provider_session_id: ^uuid}}} =
+               Harness.shaping_turn(
+                 {:fresh, uuid},
+                 "p",
+                 "claude-opus-5-5",
+                 "medium",
+                 shaping_context(dir, context)
+               )
+    end
+
+    test "the hard timeout reports timeout, not a settled turn", %{dir: dir, context: context} do
+      sleeper = Path.join(dir, "sleepy")
+      File.write!(sleeper, "#!/bin/sh\ncat > /dev/null\nsleep 30\n")
+      File.chmod!(sleeper, 0o755)
+      context = shaping_context(dir, %{context | executable: sleeper}, %{timeout_ms: 300})
+
+      assert {:error, {:timeout, %{provider_session_id: nil}}} =
+               Harness.shaping_turn({:fresh, Claude.uuid4()}, "p", "m", "medium", context)
+    end
+
+    test "a fresh turn without a UUID is rejected", %{dir: dir, context: context} do
+      assert_raise ArgumentError, fn ->
+        Harness.shaping_turn({:fresh, nil}, "p", "m", "medium", shaping_context(dir, context))
+      end
     end
   end
 
   describe "launch environment" do
     test "every role launch overrides an inherited substitution-rm prompt setting with 1",
          %{dir: dir, context: context} do
-      prompt = Path.join(dir, "prompt.md")
-      File.write!(prompt, "Shape one Intent.")
-
       launches = [
         {[init(), root("claude-opus-5-5", []), result(%{"result" => @notes})],
          &Harness.launch_build_developer("p", "claude-opus-5-5", "medium", [], &1)},
@@ -497,7 +599,14 @@ defmodule Kogen.ClaudeCodeHarnessTest do
          &Harness.resume_build_developer("abc-123", "f", "claude-opus-5-5", "medium", [], &1)},
         {[init(), result(%{"structured_output" => @verdict, "result" => ""})],
          &Harness.launch_reviewer("r", "claude-opus-5-5", "medium", &1)},
-        {[], &Harness.exec_shaper("claude-opus-5-5", "medium", prompt, &1)}
+        {[init(), result(%{})],
+         &Harness.shaping_turn(
+           {:fresh, Claude.uuid4()},
+           "p",
+           "claude-opus-5-5",
+           "medium",
+           Map.put(&1, :log_path, Path.join(dir, "turns/env.jsonl"))
+         )}
       ]
 
       for {events, launch} <- launches do

@@ -9,7 +9,9 @@ defmodule Kogen.ShapingAudit do
   under `.kogen/intents/`.
   """
   use Boundary,
+    exports: [Package, Report, Questions, Deterministic, Finding, HeadlessInput, Lock],
     deps: [
+      Kogen.ProcessCustody,
       Kogen.Intent,
       Kogen.Harness,
       Kogen.Jev,
@@ -23,6 +25,7 @@ defmodule Kogen.ShapingAudit do
     Deterministic,
     Finding,
     JevLayer,
+    Lock,
     Materialization,
     Package,
     Questions,
@@ -31,6 +34,7 @@ defmodule Kogen.ShapingAudit do
   }
 
   @refused_roles ~w(developer reviewer expert auditor)
+  @managed_roles ["shaping" | @refused_roles]
   @lock_path ".kogen/build.lock"
   @config_path ".kogen/config.yaml"
 
@@ -56,8 +60,8 @@ defmodule Kogen.ShapingAudit do
         StopHook.run(root, env, opts)
         0
 
-      {:ok, mode, route, auditor?, slug} ->
-        run_command(root, env, io, opts, mode, route, auditor?, slug)
+      {:ok, mode, route, auditor?, confirm?, slug} ->
+        run_command(root, env, io, opts, {mode, route, auditor?, confirm?, slug})
 
       :usage ->
         io.err.(usage())
@@ -66,7 +70,7 @@ defmodule Kogen.ShapingAudit do
   end
 
   defp usage do
-    "usage: mix kogen.audit [--route <name>] [--auditor] <slug> | " <>
+    "usage: mix kogen.audit [--route <name>] [--auditor | --confirm] <slug> | " <>
       "mix kogen.audit --status [--route <name>] <slug> | mix kogen.audit --stop-hook"
   end
 
@@ -78,7 +82,13 @@ defmodule Kogen.ShapingAudit do
 
   defp parse_args(args) do
     case OptionParser.parse(args,
-           strict: [route: :string, auditor: :boolean, status: :boolean, stop_hook: :boolean]
+           strict: [
+             route: :string,
+             auditor: :boolean,
+             confirm: :boolean,
+             status: :boolean,
+             stop_hook: :boolean
+           ]
          ) do
       {[stop_hook: true], [], []} -> {:stop_hook}
       {opts, [slug], []} when slug != "" -> parse_with_slug(opts, slug)
@@ -89,20 +99,26 @@ defmodule Kogen.ShapingAudit do
   defp parse_with_slug(opts, slug) do
     route = Keyword.get(opts, :route)
     auditor? = Keyword.get(opts, :auditor, false)
+    confirm? = Keyword.get(opts, :confirm, false)
     status? = Keyword.get(opts, :status, false)
 
     cond do
       Keyword.get(opts, :stop_hook, false) -> :usage
+      confirm? and (auditor? or status?) -> :usage
       status? and auditor? -> :usage
-      status? -> {:ok, :status, route, false, slug}
-      true -> {:ok, :audit, route, auditor?, slug}
+      status? -> {:ok, :status, route, false, false, slug}
+      true -> {:ok, :audit, route, auditor?, confirm?, slug}
     end
   end
 
-  defp run_command(root, env, io, opts, mode, route, auditor?, slug) do
+  defp run_command(root, env, io, opts, {mode, route, auditor?, confirm?, slug}) do
     role = Map.get(env, "KOGEN_ROLE")
 
     cond do
+      confirm? and role in @managed_roles ->
+        io.err.("mix kogen.audit --confirm refuses managed role #{inspect(role)}")
+        2
+
       role in @refused_roles ->
         io.err.("mix kogen.audit refuses role #{inspect(role)}")
         2
@@ -111,14 +127,14 @@ defmodule Kogen.ShapingAudit do
         io.err.("mix kogen.audit refuses to run while #{@lock_path} is present")
         2
 
-      role == "shaper" and blank?(Map.get(env, "KOGEN_SHAPING_HOOK_OUTPUT")) ->
+      role == "shaping" and blank?(Map.get(env, "KOGEN_SHAPING_HOOK_OUTPUT")) ->
         shaping_session_status(root, io, slug)
 
       mode == :status ->
         run_status(root, env, io, opts, route, slug)
 
       true ->
-        run_audit(root, env, io, opts, route, auditor?, slug)
+        run_audit(root, env, io, opts, route, auditor?, confirm?, slug)
     end
   end
 
@@ -170,8 +186,15 @@ defmodule Kogen.ShapingAudit do
     end
   end
 
-  defp run_audit(root, env, io, opts, route, auditor?, slug) do
-    case audit(root, %{slug: slug, route: route, auditor: auditor?, env: env, opts: opts}) do
+  defp run_audit(root, env, io, opts, route, auditor?, confirm?, slug) do
+    case audit(root, %{
+           slug: slug,
+           route: route,
+           auditor: auditor? or confirm?,
+           confirm?: confirm?,
+           env: env,
+           opts: opts
+         }) do
       {:ok, report, _path} ->
         io.puts.("#{report["readiness"]}: #{report["revision"]}")
         if report["readiness"] == "ready", do: 0, else: 1
@@ -205,6 +228,10 @@ defmodule Kogen.ShapingAudit do
   def error_text({:ambiguous, message}), do: message
   def error_text({:not_found, message}), do: message
   def error_text({:non_regular, path}), do: "refusing non-regular package entry: #{path}"
+
+  def error_text(:confirmation_before_bound),
+    do: "mix kogen.audit --confirm requires the exhausted normal auditor budget"
+
   def error_text(reason), do: "mix kogen.audit failed: #{inspect(reason)}"
 
   @doc """
@@ -214,35 +241,182 @@ defmodule Kogen.ShapingAudit do
   writes `report.json`/`report.md`. The materialization is always removed.
 
   `params`: `:slug`, `:route` (name or `nil` for the default route),
-  `:auditor` (bool, `--auditor`/hook `launch?`), `:env`, `:opts` (`:read`,
-  `:jev_deadline_ms`).
+  `:auditor` (bool, `--auditor`/hook `launch?`), `:confirm?` (bool, external
+  `--confirm` request), `:env`, `:opts` (`:read`,
+  `:jev_deadline_ms`), and
+
+  - `:reuse` (default `false`): when the current revision already has a
+    `"scope" => "full"` report for the same `HEAD` and route, return it
+    without running any layer;
+  - `:scope` (`:full`, the default, or `:checkpoint`): a checkpoint runs only
+    the Deterministic layer and the question checks, the auditor in
+    reuse-only mode, and no Jev. It is never `ready`, never launches a paid
+    auditor and is stored as `checkpoint.json` (see `Report.read_checkpoint/3`),
+    never over a full `report.json`.
+
+  Audits of one slug are serialized by
+  `.kogen/runtime/shaping-audits/<slug>/audit.lock` (held for the whole run),
+  so concurrent audits of one revision run the layers once and the later ones
+  reuse.
   """
   @spec audit(Path.t(), map()) :: {:ok, map(), Path.t()} | {:error, term()}
   def audit(root, params) do
     slug = Map.fetch!(params, :slug)
+
+    with {:ok, package_rel} <- Package.locate(root, slug) do
+      with_slug_lock(root, slug, fn -> audit_locked(root, slug, package_rel, params) end)
+    end
+  end
+
+  defp audit_locked(root, slug, package_rel, params) do
     route = Map.get(params, :route)
     auditor? = Map.get(params, :auditor, false)
+    scope = Map.get(params, :scope, :full)
     env = normalize_env(Map.get(params, :env, System.get_env()))
     opts = Map.get(params, :opts, [])
     read = Keyword.get(opts, :read, &File.read/1)
 
-    with {:ok, package_rel} <- Package.locate(root, slug),
-         {:ok, %{files: files, revision: revision}} <- Package.load(root, package_rel, read),
+    with {:ok, %{files: files, revision: revision}} <- Package.load(root, package_rel, read),
          {:ok, head} <- Kogen.Git.head_sha(root),
-         {:ok, config} <- Kogen.Intent.read_config(Path.join(root, @config_path), route) do
-      base = %{
-        root: root,
-        slug: slug,
-        package_rel: package_rel,
-        files: files,
-        revision: revision,
-        head: head,
-        config: config,
-        env: env,
-        opts: opts
-      }
+         {:ok, config} <- audit_config(root, route, params),
+         :ok <-
+           confirmation_admission(params, %{
+             root: root,
+             slug: slug,
+             revision: revision,
+             head: head,
+             route: config.route
+           }) do
+      case reusable(params, root, slug, revision, head, config.route) do
+        {:ok, report, path} ->
+          {:ok, report, path}
 
-      run_with_materialization(base, auditor?)
+        :none ->
+          base = %{
+            root: root,
+            slug: slug,
+            package_rel: package_rel,
+            files: files,
+            revision: revision,
+            head: head,
+            config: config,
+            env: env,
+            opts: opts,
+            scope: scope,
+            confirm?: Map.get(params, :confirm?, false) and scope == :full
+          }
+
+          run_with_materialization(base, auditor? and scope == :full)
+      end
+    end
+  end
+
+  defp audit_config(_root, route, %{config: %{route: route} = config}), do: {:ok, config}
+
+  defp audit_config(_root, _route, %{config: _}),
+    do: {:error, "audit configuration route mismatch"}
+
+  defp audit_config(root, route, _params),
+    do: Kogen.Intent.read_config(Path.join(root, @config_path), route)
+
+  defp confirmation_admission(%{confirm?: true} = params, ctx) do
+    if Map.get(params, :scope, :full) == :full,
+      do: Auditor.confirmation_admission(ctx),
+      else: :ok
+  end
+
+  defp confirmation_admission(_params, _ctx), do: :ok
+
+  defp reusable(params, root, slug, revision, head, route) do
+    with true <- Map.get(params, :reuse, false),
+         :current <-
+           Report.status(root, slug, revision, head, route, supplied_fingerprint(params)),
+         {:ok, %{"scope" => "full"} = report} <- Report.read(root, slug, revision),
+         true <- reusable_confirmation?(params, report) do
+      {:ok, report, Path.join(Report.dir(root, slug, revision), "report.json")}
+    else
+      _ -> :none
+    end
+  end
+
+  defp supplied_fingerprint(%{config: config}), do: Kogen.Intent.config_fingerprint(config)
+  defp supplied_fingerprint(_params), do: nil
+
+  defp reusable_confirmation?(%{confirm?: true}, report) do
+    report["readiness"] == "ready" and
+      get_in(report, ["layers", "auditor", "budget_state", "confirmation_grant"]) == "used"
+  end
+
+  defp reusable_confirmation?(_params, _report), do: true
+
+  @lock_poll_ms 200
+  @lock_partial_grace_s 2
+
+  defp with_slug_lock(root, slug, fun) do
+    directory = Report.runtime_dir(root, slug)
+    File.mkdir_p!(directory)
+    path = Path.join(directory, "audit.lock")
+
+    case Lock.with_lock(path, 1_800_000, fn ->
+           acquire_lock(path)
+
+           try do
+             fun.()
+           after
+             File.rm(path)
+           end
+         end) do
+      {:ok, result} -> result
+      {:error, :busy} -> {:error, :audit_busy}
+    end
+  end
+
+  defp acquire_lock(path) do
+    case File.open(path, [:write, :exclusive]) do
+      {:ok, io} ->
+        pid = System.pid()
+
+        record = %{
+          "pid" => pid,
+          "started_at" => Kogen.ProcessCustody.process_start(pid)
+        }
+
+        IO.write(io, Jason.encode!(record))
+        File.close(io)
+
+      {:error, :eexist} ->
+        unless reclaim_stale_lock(path), do: Process.sleep(@lock_poll_ms)
+        acquire_lock(path)
+
+      {:error, reason} ->
+        raise "cannot take #{path}: #{inspect(reason)}"
+    end
+  end
+
+  # true when a dead holder's lock was removed.
+  defp reclaim_stale_lock(path) do
+    with {:ok, bytes} <- File.read(path),
+         true <- stale_holder?(path, bytes),
+         {:ok, ^bytes} <- File.read(path) do
+      File.rm(path) == :ok
+    else
+      _ -> false
+    end
+  end
+
+  defp stale_holder?(path, bytes) do
+    case Jason.decode(bytes) do
+      {:ok, %{"pid" => pid, "started_at" => started}} when is_binary(pid) ->
+        started == "" or Kogen.ProcessCustody.process_start(pid) != started
+
+      _partial ->
+        case File.stat(path, time: :posix) do
+          {:ok, %File.Stat{mtime: mtime}} ->
+            System.os_time(:second) - mtime > @lock_partial_grace_s
+
+          _ ->
+            false
+        end
     end
   end
 
@@ -251,7 +425,7 @@ defmodule Kogen.ShapingAudit do
       {:ok, materialization} ->
         try do
           ctx = build_ctx(base, materialization)
-          {report, path} = run_layers_and_write(ctx, auditor?, base.opts)
+          {report, path} = run_layers_and_write(ctx, auditor?, base.opts, base.confirm?)
           {:ok, report, path}
         after
           Materialization.remove(materialization)
@@ -282,7 +456,8 @@ defmodule Kogen.ShapingAudit do
       route: base.config.route,
       config: base.config,
       env: base.env,
-      opts: base.opts
+      opts: base.opts,
+      scope: base.scope
     }
   end
 
@@ -295,7 +470,7 @@ defmodule Kogen.ShapingAudit do
     end
   end
 
-  defp run_layers_and_write(ctx, auditor?, opts) do
+  defp run_layers_and_write(ctx, auditor?, opts, confirm?) do
     {deterministic, det_findings} =
       if ctx.state == :asking do
         findings = Questions.findings(ctx.questions, ctx.files)
@@ -321,21 +496,28 @@ defmodule Kogen.ShapingAudit do
 
     auditor =
       Auditor.run(ctx, det_findings,
-        launch?: auditor?,
+        launch?: auditor? or confirm?,
+        confirm?: confirm?,
         prior_failures: prior_failures
       )
+
+    auditor = apply_previous_dispositions(auditor, ctx.questions)
 
     auditor_findings =
       (auditor["findings"] || [])
       |> Finding.apply_dispositions(ctx.questions.dispositions)
 
-    jev = JevLayer.run(ctx, det_findings ++ auditor_findings)
-    routed_auditor = Map.get(jev, "routed_findings", auditor_findings)
-    jev_findings = jev["findings"] || []
+    {jev, routed_auditor, jev_findings} =
+      if ctx.scope == :checkpoint do
+        {%{"status" => "skipped", "reason" => "checkpoint scope"}, auditor_findings, []}
+      else
+        jev = JevLayer.run(ctx, det_findings ++ auditor_findings)
+
+        {normalize_jev_layer(jev), Map.get(jev, "routed_findings", auditor_findings),
+         jev["findings"] || []}
+      end
 
     all_findings = det_findings ++ routed_auditor ++ jev_findings
-
-    jev = normalize_jev_layer(jev)
 
     layer_reports = %{
       "deterministic" => Map.delete(deterministic, "findings"),
@@ -343,7 +525,10 @@ defmodule Kogen.ShapingAudit do
       "auditor" => auditor
     }
 
-    readiness = readiness(ctx.state, all_findings, layer_reports, auditor?)
+    readiness =
+      if ctx.scope == :checkpoint,
+        do: checkpoint_readiness(ctx.state),
+        else: readiness(ctx.state, all_findings, layer_reports, auditor?)
 
     report =
       %{
@@ -352,6 +537,8 @@ defmodule Kogen.ShapingAudit do
         "revision" => ctx.revision,
         "head" => ctx.head,
         "route" => ctx.route,
+        "config_fingerprint" => Kogen.Intent.config_fingerprint(ctx.config),
+        "scope" => to_string(ctx.scope),
         "state" => to_string(ctx.state),
         "readiness" => readiness,
         "layers" => layer_reports,
@@ -364,6 +551,19 @@ defmodule Kogen.ShapingAudit do
     {:ok, path} = Report.write(ctx.root, ctx.slug, report)
     {report, path}
   end
+
+  defp apply_previous_dispositions(
+         %{"previous_audit" => %{"findings" => findings} = previous} = auditor,
+         questions
+       )
+       when is_list(findings) do
+    previous =
+      Map.put(previous, "findings", Finding.apply_dispositions(findings, questions.dispositions))
+
+    Map.put(auditor, "previous_audit", previous)
+  end
+
+  defp apply_previous_dispositions(auditor, _questions), do: auditor
 
   defp normalize_jev_layer(layer) do
     requests = layer["requests"] || []
@@ -412,6 +612,9 @@ defmodule Kogen.ShapingAudit do
 
   defp intent_id(%{intent: %{"id" => id}}), do: id
   defp intent_id(_ctx), do: nil
+
+  defp checkpoint_readiness(:asking), do: "asking"
+  defp checkpoint_readiness(_state), do: "not_ready"
 
   defp readiness(:asking, _findings, _layers, _auditor?), do: "asking"
 

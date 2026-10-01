@@ -16,7 +16,7 @@ defmodule Kogen.ScenarioSemantic do
 
     File.write!(
       Path.join(root, "config/profiles.json"),
-      "{\"developer\":{\"model\":\"astra\",\"effort\":\"low\"},\"reviewer\":{\"model\":\"terra\",\"effort\":\"medium\"},\"shaper\":{\"model\":\"luna\",\"effort\":\"high\"}}\n"
+      "{\"developer\":{\"model\":\"astra\",\"effort\":\"low\"},\"reviewer\":{\"model\":\"terra\",\"effort\":\"medium\"},\"shaping\":{\"model\":\"luna\",\"effort\":\"high\"}}\n"
     )
 
     File.write!(Path.join(root, "probes/installed_artifact.py"), """
@@ -214,7 +214,7 @@ defmodule Kogen.ScenarioSemantic do
 
     File.write!(
       Path.join(root, "bin/route"),
-      "#!/bin/sh\n[ \"$#\" -eq 3 ] || exit 1\ncase \"$1:$2:$3\" in developer:astra:low|reviewer:terra:medium|shaper:luna:high) exit 0 ;; *) exit 1 ;; esac\n"
+      "#!/bin/sh\n[ \"$#\" -eq 3 ] || exit 1\ncase \"$1:$2:$3\" in developer:astra:low|reviewer:terra:medium|shaping:luna:high) exit 0 ;; *) exit 1 ;; esac\n"
     )
 
     File.write!(

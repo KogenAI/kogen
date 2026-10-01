@@ -2,29 +2,37 @@ defmodule Kogen.ShapingAudit.Auditor do
   @moduledoc """
   The blind, read-only Shaping auditor layer.
 
-  Runs at most twice per slug and `HEAD` (route included): one fresh run on
-  the first revision whose deterministic layer is clean, and a second,
-  confirming run only on a later, changed revision when the first run was
-  `ok` with at least one finding. It never runs while any deterministic
-  finding is still open blocking, and never in `:asking` state. Jev's
-  availability never gates it.
+  Runs at most twice per slug, `HEAD` and route during ordinary Shaping. The
+  second run is fresh when the package revision changes, even if the first
+  run found nothing. A prior result confirms only the exact package revision,
+  `HEAD` and route recorded with it. An external `--confirm` request can use
+  one additional counted run for that slug/`HEAD`/route. It never runs while
+  any deterministic finding is still open blocking, and never in `:asking`
+  state. Jev's availability never gates it.
 
   The auditor is launched through `Kogen.Harness.open_auditor/2` and
   `Kogen.Harness.launch_auditor/4` only; this module never starts a harness
   executable itself. Its prompt is `priv/kogen/prompts/auditor.md` rendered
   with the bounded package and the scoped repository files, read from the
   materialization, never the checkout. Records live under
-  `.kogen/runtime/shaping-audits/<slug>/auditor/<revision>-<route hash>.json`.
+  `.kogen/runtime/shaping-audits/<slug>/auditor/`. Records are append-only so
+  a later audit of the same revision or a changed checkout never replaces
+  earlier evidence.
   """
 
   alias Kogen.ShapingAudit.{Finding, Materialization, Report}
 
   @prompt_path "priv/kogen/prompts/auditor.md"
+  @answer_sentence "Report as `answer-not-applied` any entry under `## Shaper answers` whose decision is not reflected in INTENT.md, scenarios.yaml or `## Assumed`."
   @budget_bytes 160_000
   @max_findings 50
   @max_summary 200
   @max_detail 1000
   @max_paths 10
+  @contract_version "exact-config-reserved-v2"
+
+  @doc false
+  def contract_version, do: @contract_version
 
   @doc """
   Runs (or reuses) the auditor layer for `ctx`. `deterministic_findings` is
@@ -49,74 +57,221 @@ defmodule Kogen.ShapingAudit.Auditor do
   end
 
   defp resolve(ctx, opts) do
-    config = ctx.config || %{route: ctx.route}
-
-    case Kogen.Intent.auditor_config(config) do
-      {:error, reason} -> base_result("unavailable", reason)
-      {:ok, auditor} -> decide(ctx, auditor, opts)
+    case ledger(ctx) do
+      {:ok, records} -> decide(ctx, records, opts)
+      {:error, reason} -> integrity_failure(reason)
     end
   end
 
-  defp decide(ctx, auditor, opts) do
-    counted =
-      ctx
-      |> load_records()
-      |> Enum.filter(&(&1["counted"] != false))
-      |> Enum.sort_by(&(&1["seq"] || 0))
+  @doc false
+  def confirmation_admission(ctx) do
+    case ledger(ctx) do
+      {:ok, records} ->
+        budget = records |> binding_records(ctx) |> budget_state()
 
-    case counted do
-      [] -> first_run(ctx, auditor, opts)
-      [only] -> confirm_or_reuse(ctx, auditor, only, opts)
-      list -> bound_reached(List.last(list))
+        if confirmation_before_bound?(budget, confirm?: true),
+          do: {:error, :confirmation_before_bound},
+          else: :ok
+
+      # The layer retains its explicit integrity diagnostic. Its ledger
+      # failure also invalidates every positive report before cache reuse.
+      {:error, _reason} ->
+        :ok
     end
   end
 
-  defp first_run(ctx, auditor, opts) do
-    if Keyword.get(opts, :launch?, false) do
-      launch_and_record(ctx, auditor, 1, opts)
-    else
-      base_result("not-run", "no prior auditor run to reuse, and launch is disabled")
-    end
-  end
+  defp decide(ctx, all_records, opts) do
+    records = binding_records(all_records, ctx)
+    normal_records = Enum.reject(records, &(&1["confirmation_grant"] == true))
+    latest = List.last(records)
+    budget = budget_state(records)
 
-  defp confirm_or_reuse(ctx, auditor, prior, opts) do
     cond do
-      prior["revision"] == ctx.revision ->
-        to_run_result(prior, false)
+      confirmation_before_bound?(budget, opts) ->
+        missing_confirmation(
+          ctx,
+          latest,
+          budget,
+          "explicit confirmation requires the exhausted normal auditor budget",
+          "unavailable"
+        )
 
-      prior["status"] == "ok" and prior["findings"] == [] ->
-        reason = "ran once on HEAD #{ctx.head} with no findings; not re-run"
+      confirmation_available?(budget, opts) ->
+        launch_new_revision(
+          ctx,
+          next_seq(records),
+          Keyword.put(opts, :confirmation_grant?, true),
+          latest
+        )
 
-        prior
-        |> Map.put("reason", reason)
-        |> to_run_result(true)
+      reusable_latest?(latest, ctx) ->
+        to_run_result(latest, true, bound_reached?(budget))
+        |> Map.put("budget_state", budget)
 
-      prior["status"] == "ok" ->
-        if Keyword.get(opts, :launch?, false) do
-          launch_and_record(ctx, auditor, 2, opts)
-        else
-          base_result("not-run", "a confirming run is due, and launch is disabled")
-        end
+      budget["normal_exhausted"] ->
+        missing_confirmation(ctx, latest, budget, "the normal auditor budget is exhausted")
+
+      Keyword.get(opts, :launch?, false) ->
+        launch_new_revision(ctx, next_seq(records), opts, List.last(normal_records))
 
       true ->
-        prior
-        |> Map.put("status", "unavailable")
-        |> to_run_result(false, true)
+        reason =
+          if latest,
+            do: "the current revision needs a fresh auditor run, and launch is disabled",
+            else: "no prior auditor run to reuse, and launch is disabled"
+
+        missing_confirmation(ctx, latest || latest_diagnostic(ctx), budget, reason, "not-run")
     end
   end
 
-  defp bound_reached(last), do: to_run_result(last, false, true)
+  defp binding_records(records, ctx) do
+    records
+    |> Enum.filter(
+      &(&1["route"] == ctx.route and &1["head"] == ctx.head and &1["counted"] != false)
+    )
+    |> Enum.sort_by(& &1["seq"])
+  end
 
-  defp to_run_result(record, reused?, bound_reached? \\ false) do
+  defp next_seq(records), do: Enum.max([0 | Enum.map(records, & &1["seq"])]) + 1
+
+  defp budget_state(records) do
+    normal = Enum.reject(records, &(&1["confirmation_grant"] == true))
+    grant_used? = Enum.any?(records, &(&1["confirmation_grant"] == true))
+
+    %{
+      "normal_limit" => 2,
+      "normal_count" => length(normal),
+      "normal_exhausted" => normal_budget_exhausted?(normal),
+      "confirmation_grant" => if(grant_used?, do: "used", else: "available")
+    }
+  end
+
+  defp confirmation_available?(budget, opts),
+    do:
+      budget["normal_exhausted"] and Keyword.get(opts, :confirm?, false) and
+        budget["confirmation_grant"] == "available"
+
+  defp confirmation_before_bound?(budget, opts),
+    do: Keyword.get(opts, :confirm?, false) and not budget["normal_exhausted"]
+
+  defp bound_reached?(budget),
+    do: budget["normal_exhausted"] or budget["confirmation_grant"] == "used"
+
+  defp reusable_latest?(nil, _ctx), do: false
+  defp reusable_latest?(latest, ctx), do: same_binding?(latest, ctx) and reusable_record?(latest)
+
+  defp launch_new_revision(ctx, seq, opts, prior) do
+    result = launch_and_record(ctx, seq, opts)
+    prior = prior || latest_diagnostic(ctx)
+
+    if prior && not same_binding?(prior, ctx) do
+      Map.put(result, "previous_audit", diagnostic_record(prior))
+    else
+      result
+    end
+  end
+
+  defp normal_budget_exhausted?(normal_records) do
+    length(normal_records) >= 2 or
+      match?(
+        %{"status" => status} when status in ["unavailable", "rejected"],
+        List.last(normal_records)
+      )
+  end
+
+  defp same_binding?(record, ctx) do
+    record["revision"] == ctx.revision and record["head"] == ctx.head and
+      record["route"] == ctx.route and
+      record["config_fingerprint"] == config_fingerprint(ctx)
+  end
+
+  defp reusable_record?(%{"status" => "ok"} = record),
+    do: record["contract_version"] == @contract_version and record["phase"] == "completed"
+
+  defp reusable_record?(_record), do: true
+
+  @doc false
+  def confirmed?(ctx, layer) when is_map(layer) do
+    with @contract_version <- layer["contract_version"],
+         {:ok, records} <- ledger(ctx),
+         latest when is_map(latest) <-
+           records
+           |> binding_records(ctx)
+           |> List.last() do
+      same_binding?(latest, ctx) and latest["status"] == "ok" and layer["status"] == "ok" and
+        reusable_record?(latest) and latest["attempt_id"] == layer["attempt_id"] and
+        layer["audited_binding"] == ctx_binding(ctx)
+    else
+      _ -> false
+    end
+  end
+
+  def confirmed?(_ctx, _layer), do: false
+
+  defp missing_confirmation(ctx, prior, budget, reason, status \\ "missing-confirmation") do
+    Map.merge(base_result(status, reason), %{
+      "bound_reached" => budget["normal_exhausted"] or budget["confirmation_grant"] == "used",
+      "budget_state" => budget,
+      "previous_audit" => diagnostic_record(prior),
+      "requested_binding" => ctx_binding(ctx)
+    })
+  end
+
+  defp diagnostic_record(nil), do: nil
+
+  defp diagnostic_record(record) do
+    Map.take(record, [
+      "revision",
+      "head",
+      "route",
+      "status",
+      "reason",
+      "seq",
+      "counted",
+      "confirmation_grant",
+      "findings",
+      "session_id",
+      "recorded_at"
+    ])
+  end
+
+  defp ctx_binding(ctx) do
+    binding = %{"revision" => ctx.revision, "head" => ctx.head, "route" => ctx.route}
+
+    case config_fingerprint(ctx) do
+      nil -> binding
+      fingerprint -> Map.put(binding, "config_fingerprint", fingerprint)
+    end
+  end
+
+  defp config_fingerprint(%{config_fingerprint: fingerprint}) when is_binary(fingerprint),
+    do: fingerprint
+
+  defp config_fingerprint(%{config: config}) when is_map(config),
+    do: Kogen.Intent.config_fingerprint(config)
+
+  defp config_fingerprint(_ctx), do: nil
+
+  defp to_run_result(record, reused?, bound_reached?) do
     Map.merge(base_result(record["status"], record["reason"]), %{
       "findings" => record["findings"] || [],
-      "elapsed_ms" => record["elapsed_ms"] || 0,
+      "elapsed_ms" => if(record["phase"] == "reserved", do: nil, else: record["elapsed_ms"] || 0),
+      "effects" => record["effects"],
       "not_audited" => record["not_audited"] || [],
       "session_id" => record["session_id"],
       "launched" => record["launched"] == true,
       "dropped" => record["dropped"] || %{"findings" => 0, "fields" => 0, "paths" => 0},
       "reused" => reused?,
-      "bound_reached" => bound_reached?
+      "attempt_id" => record["attempt_id"],
+      "contract_version" => record["contract_version"],
+      "bound_reached" => bound_reached?,
+      "audited_binding" =>
+        ctx_binding(%{
+          revision: record["revision"],
+          head: record["head"],
+          route: record["route"],
+          config_fingerprint: record["config_fingerprint"]
+        })
     })
   end
 
@@ -137,61 +292,81 @@ defmodule Kogen.ShapingAudit.Auditor do
 
   # -- launching and recording -----------------------------------------
 
-  defp launch_and_record(ctx, auditor, seq, opts) do
-    prior_failures = Keyword.get(opts, :prior_failures, [])
-    {prompt, not_audited} = render_prompt(ctx, prior_failures)
-    manifest = &default_manifest/1
-    launcher = &default_launcher/3
+  defp launch_and_record(ctx, seq, opts) do
+    reservation = %{
+      "schema_version" => 2,
+      "contract_version" => @contract_version,
+      "attempt_id" => new_attempt_id(),
+      "phase" => "reserved",
+      "route" => ctx.route,
+      "config_fingerprint" => config_fingerprint(ctx),
+      "revision" => ctx.revision,
+      "head" => ctx.head,
+      "seq" => seq,
+      "counted" => true,
+      "confirmation_grant" => Keyword.get(opts, :confirmation_grant?, false),
+      "recorded_at" => recorded_at(),
+      "status" => "unavailable",
+      "reason" => "auditor attempt interrupted or completion missing; allowance remains consumed",
+      "findings" => [],
+      "launched" => false,
+      "effects" => "unknown"
+    }
 
-    before_manifest = manifest.(ctx)
-    started_at = System.monotonic_time(:millisecond)
-    outcome = launcher.(ctx, auditor, prompt)
-    elapsed_ms = System.monotonic_time(:millisecond) - started_at
-
-    record =
-      case outcome do
-        {:ok, %{session_id: session_id, message: message}} ->
-          after_manifest = manifest.(ctx)
-
-          if after_manifest == before_manifest do
-            ok_or_unavailable(
-              ctx,
-              auditor,
-              seq,
-              session_id,
-              message,
-              elapsed_ms,
-              not_audited,
-              prompt
-            )
-          else
-            rejected(
-              ctx,
-              auditor,
-              seq,
-              session_id,
-              elapsed_ms,
-              not_audited,
-              prompt,
-              manifest_diff(before_manifest, after_manifest)
-            )
-          end
-
-        {:error, reason} ->
-          launch_failure(ctx, auditor, reason, elapsed_ms, prompt)
-      end
-
-    persist(ctx, record)
-
-    bound_reached? =
-      record["counted"] != false and
-        (seq == 2 or record["status"] in ["unavailable", "rejected"])
-
-    to_run_result(record, false, bound_reached?)
+    case reserve(ctx, reservation) do
+      {:ok, path} -> finish_attempt(ctx, path, reservation, opts)
+      {:error, reason} -> integrity_failure(reason)
+    end
   end
 
-  defp ok_or_unavailable(ctx, auditor, seq, session_id, message, elapsed_ms, not_audited, prompt) do
-    base = record_base(ctx, auditor, seq, session_id, elapsed_ms, not_audited, prompt)
+  defp finish_attempt(ctx, path, reservation, opts) do
+    outcome =
+      case Kogen.Intent.auditor_config(ctx.config || %{route: ctx.route}) do
+        {:ok, auditor} ->
+          execute(ctx, auditor, reservation, opts)
+
+        {:error, reason} ->
+          Map.merge(reservation, %{"reason" => reason, "effects" => "not-launched"})
+      end
+
+    record = outcome |> Map.put("phase", "completed")
+
+    with :ok <- complete(path, reservation, record),
+         {:ok, all_records} <- ledger(ctx) do
+      budget = all_records |> binding_records(ctx) |> budget_state()
+      to_run_result(record, false, bound_reached?(budget)) |> Map.put("budget_state", budget)
+    else
+      {:error, reason} -> integrity_failure(reason)
+    end
+  end
+
+  defp execute(ctx, auditor, reservation, opts) do
+    {prompt, not_audited} = render_prompt(ctx, Keyword.get(opts, :prior_failures, []))
+    before_manifest = default_manifest(ctx)
+    started_at = System.monotonic_time(:millisecond)
+    outcome = default_launcher(ctx, auditor, prompt)
+    elapsed_ms = System.monotonic_time(:millisecond) - started_at
+    after_manifest = default_manifest(ctx)
+
+    base =
+      Map.merge(reservation, %{
+        "harness" => auditor.harness,
+        "model" => auditor.model,
+        "effort" => auditor.effort,
+        "prompt_sha256" => sha256_hex(prompt),
+        "elapsed_ms" => elapsed_ms,
+        "not_audited" => not_audited,
+        "session_id" => nil,
+        "reason" => nil,
+        "dropped" => %{"findings" => 0, "fields" => 0, "paths" => 0},
+        "effects" => "watched-paths-inspected"
+      })
+
+    finish_outcome(base, outcome, manifest_diff(before_manifest, after_manifest))
+  end
+
+  defp finish_outcome(base, {:ok, %{session_id: session_id, message: message}}, []) do
+    base = Map.merge(base, %{"session_id" => session_id, "launched" => true})
 
     case parse_message(message) do
       {:ok, raw_findings} ->
@@ -206,58 +381,19 @@ defmodule Kogen.ShapingAudit.Auditor do
     end
   end
 
-  defp rejected(ctx, auditor, seq, session_id, elapsed_ms, not_audited, prompt, paths) do
-    ctx
-    |> record_base(auditor, seq, session_id, elapsed_ms, not_audited, prompt)
-    |> Map.merge(%{
-      "status" => "rejected",
-      "reason" => "the auditor wrote to: #{Enum.join(paths, ", ")}"
+  defp finish_outcome(base, {:error, reason}, []) do
+    Map.merge(base, %{
+      "status" => "unavailable",
+      "reason" => "auditor launch failed: #{inspect(reason)}"
     })
   end
 
-  defp launch_failure(ctx, auditor, reason, elapsed_ms, prompt) do
-    %{
-      "schema_version" => 1,
-      "route" => ctx.route,
-      "harness" => auditor.harness,
-      "model" => auditor.model,
-      "effort" => auditor.effort,
-      "session_id" => nil,
-      "prompt_sha256" => sha256_hex(prompt),
-      "revision" => ctx.revision,
-      "head" => ctx.head,
-      "status" => "unavailable",
-      "counted" => false,
-      "launched" => false,
-      "elapsed_ms" => elapsed_ms,
-      "findings" => [],
-      "dropped" => %{"findings" => 0, "fields" => 0, "paths" => 0},
-      "not_audited" => [],
-      "reason" => "auditor launch failed: #{inspect(reason)}",
-      "seq" => nil
-    }
-  end
-
-  defp record_base(ctx, auditor, seq, session_id, elapsed_ms, not_audited, prompt) do
-    %{
-      "schema_version" => 1,
-      "route" => ctx.route,
-      "harness" => auditor.harness,
-      "model" => auditor.model,
-      "effort" => auditor.effort,
-      "session_id" => session_id,
-      "prompt_sha256" => sha256_hex(prompt),
-      "revision" => ctx.revision,
-      "head" => ctx.head,
-      "counted" => true,
-      "launched" => true,
-      "elapsed_ms" => elapsed_ms,
-      "findings" => [],
-      "dropped" => %{"findings" => 0, "fields" => 0, "paths" => 0},
-      "not_audited" => not_audited,
-      "reason" => nil,
-      "seq" => seq
-    }
+  defp finish_outcome(base, outcome, paths) do
+    Map.merge(base, %{
+      "status" => "rejected",
+      "launched" => match?({:ok, _}, outcome),
+      "reason" => "the auditor wrote to: #{Enum.join(paths, ", ")}"
+    })
   end
 
   # Outside a Build launch the adapters set no `:cwd`; the auditor's working
@@ -385,43 +521,255 @@ defmodule Kogen.ShapingAudit.Auditor do
 
   # -- records -----------------------------------------------------------
 
-  @doc "The path an auditor record for `revision`/`route` lives at."
-  def record_path(root, slug, revision, route) do
+  @doc "The legacy diagnostic path, or a globally unique counted attempt path."
+  def record_path(root, slug, revision, route, head \\ nil, seq \\ nil) do
     hash = route |> sha256_hex() |> String.slice(0, 12)
-    Path.join([Report.runtime_dir(root, slug), "auditor", "#{revision}-#{hash}.json"])
+
+    suffix =
+      if is_binary(head), do: "-#{head}-#{seq || "uncounted"}-#{new_attempt_id()}", else: ""
+
+    Path.join([Report.runtime_dir(root, slug), "auditor", "#{revision}-#{hash}#{suffix}.json"])
   end
 
-  @doc "Every stored auditor record for `ctx`'s slug, route and HEAD."
+  defp new_attempt_id, do: Base.encode16(:crypto.strong_rand_bytes(24), case: :lower)
+
+  @doc "Stored records, or an explicit integrity error; malformed evidence never restores allowance."
   def load_records(ctx) do
+    with {:ok, records} <- ledger(ctx) do
+      Enum.filter(records, &(&1["route"] == ctx.route and &1["head"] == ctx.head))
+    end
+  end
+
+  defp ledger(ctx) do
     dir = Path.join(Report.runtime_dir(ctx.root, ctx.slug), "auditor")
 
     case File.ls(dir) do
       {:ok, names} ->
-        names
-        |> Enum.filter(&String.ends_with?(&1, ".json"))
-        |> Enum.flat_map(&read_record(dir, &1))
-        |> Enum.filter(&(&1["route"] == ctx.route and &1["head"] == ctx.head))
+        with :ok <- valid_entries(names),
+             {:ok, records} <-
+               read_records(dir, Enum.filter(names, &String.ends_with?(&1, ".json"))),
+             :ok <- unique_records(records) do
+          {:ok, records}
+        end
+
+      {:error, :enoent} ->
+        {:ok, []}
+
+      {:error, reason} ->
+        {:error, "cannot read auditor ledger: #{inspect(reason)}"}
+    end
+  end
+
+  defp valid_entries(names) do
+    invalid =
+      Enum.find(names, fn name ->
+        not String.ends_with?(name, ".json") and
+          not (String.ends_with?(name, ".completion") and
+                 String.replace_suffix(name, ".completion", "") in names)
+      end)
+
+    if invalid, do: {:error, "unexpected auditor ledger entry: #{invalid}"}, else: :ok
+  end
+
+  defp read_records(dir, names) do
+    Enum.reduce_while(names, {:ok, []}, fn name, {:ok, records} ->
+      case read_record(dir, name) do
+        {:ok, record} -> {:cont, {:ok, [record | records]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp unique_records(records) do
+    counted = Enum.filter(records, &(&1["counted"] != false))
+    bindings = Enum.map(counted, &{&1["head"], &1["route"], &1["seq"]})
+    ids = records |> Enum.map(& &1["attempt_id"]) |> Enum.reject(&is_nil/1)
+
+    grants =
+      counted
+      |> Enum.filter(&(&1["confirmation_grant"] == true))
+      |> Enum.map(&{&1["head"], &1["route"]})
+
+    if complete_sequences?(counted) and length(Enum.uniq(bindings)) == length(bindings) and
+         length(Enum.uniq(ids)) == length(ids) and
+         length(Enum.uniq(grants)) == length(grants),
+       do: :ok,
+       else:
+         {:error,
+          "incomplete or duplicate auditor ledger attempt, sequence or confirmation grant"}
+  end
+
+  defp complete_sequences?(records) do
+    records
+    |> Enum.group_by(&{&1["head"], &1["route"]})
+    |> Enum.all?(fn {_binding, attempts} ->
+      Enum.sort(Enum.map(attempts, & &1["seq"])) == Enum.to_list(1..length(attempts))
+    end)
+  end
+
+  defp latest_diagnostic(ctx) do
+    case ledger(ctx) do
+      {:ok, records} ->
+        records
+        |> Enum.reject(&same_binding?(&1, ctx))
+        |> Enum.max_by(&(&1["recorded_at"] || ""), fn -> nil end)
 
       {:error, _} ->
-        []
+        nil
+    end
+  end
+
+  defp recorded_at, do: DateTime.to_iso8601(DateTime.utc_now())
+
+  defp read_json(path) do
+    with {:ok, %File.Stat{type: :regular}} <- File.lstat(path),
+         {:ok, text} <- File.read(path),
+         {:ok, record} when is_map(record) <- Jason.decode(text) do
+      {:ok, record}
+    else
+      _ -> {:error, "invalid auditor ledger record: #{Path.basename(path)}"}
     end
   end
 
   defp read_record(dir, name) do
-    with {:ok, text} <- File.read(Path.join(dir, name)),
-         {:ok, record} <- Jason.decode(text) do
-      [record]
+    path = Path.join(dir, name)
+
+    with {:ok, record} <- read_json(path),
+         true <- valid_record?(record) do
+      read_completion(path, record)
     else
-      _ -> []
+      {:error, _} = error -> error
+      _ -> {:error, "invalid auditor ledger fields: #{name}"}
     end
   end
 
-  defp persist(ctx, record) do
-    path = record_path(ctx.root, ctx.slug, ctx.revision, ctx.route)
-    File.mkdir_p!(Path.dirname(path))
-    tmp = path <> ".tmp-#{System.unique_integer([:positive])}"
-    File.write!(tmp, Jason.encode!(record, pretty: true) <> "\n")
-    File.rename!(tmp, path)
+  defp valid_record?(record) do
+    valid_binding?(record) and valid_result?(record) and valid_count?(record) and
+      valid_version?(record)
+  end
+
+  defp valid_binding?(record) do
+    Enum.all?(~w(revision head route recorded_at), &(is_binary(record[&1]) and record[&1] != ""))
+  end
+
+  defp valid_result?(record) do
+    record["status"] in ["ok", "unavailable", "rejected"] and is_list(record["findings"]) and
+      Enum.all?(record["findings"], &valid_finding?/1)
+  end
+
+  defp valid_finding?(finding) when is_map(finding) do
+    Enum.all?(~w(id rule layer message), &is_binary(finding[&1])) and
+      finding["severity"] in ["blocking", "advisory"] and is_list(finding["paths"])
+  end
+
+  defp valid_finding?(_finding), do: false
+
+  defp valid_count?(record) do
+    record["counted"] in [nil, true, false] and record["confirmation_grant"] in [nil, true, false] and
+      (record["counted"] == false or (is_integer(record["seq"]) and record["seq"] > 0)) and
+      not (record["counted"] == false and record["confirmation_grant"] == true)
+  end
+
+  defp valid_version?(%{"schema_version" => 1}), do: true
+
+  defp valid_version?(%{"schema_version" => 2} = record) do
+    record["contract_version"] in ["exact-latest-reserved-v1", @contract_version] and
+      valid_identity?(record["attempt_id"]) and
+      record["counted"] == true and is_boolean(record["confirmation_grant"]) and
+      valid_phase?(record)
+  end
+
+  defp valid_version?(_record), do: false
+
+  defp valid_identity?(id), do: is_binary(id) and Regex.match?(~r/\A[0-9a-f]{48}\z/, id)
+
+  defp valid_phase?(%{"phase" => "completed"}), do: true
+
+  defp valid_phase?(%{"phase" => "reserved"} = record),
+    do:
+      record["status"] == "unavailable" and record["findings"] == [] and
+        record["effects"] == "unknown" and record["launched"] == false
+
+  defp valid_phase?(_record), do: false
+
+  defp read_completion(path, %{"schema_version" => 1} = record) do
+    case File.lstat(path <> ".completion") do
+      {:error, :enoent} -> {:ok, record}
+      _present_or_unreadable -> {:error, "legacy attempt has unexpected completion"}
+    end
+  end
+
+  defp read_completion(path, reservation) do
+    case File.lstat(path <> ".completion") do
+      {:error, :enoent} ->
+        if reservation["phase"] == "reserved" and reservation["status"] == "unavailable",
+          do: {:ok, reservation},
+          else: {:error, "missing auditor reservation"}
+
+      _ ->
+        with "reserved" <- reservation["phase"],
+             {:ok, completion} <- read_json(path <> ".completion"),
+             true <- valid_record?(completion),
+             "completed" <- completion["phase"],
+             true <- same_attempt?(reservation, completion) do
+          {:ok, completion}
+        else
+          _ -> {:error, "invalid auditor completion: #{Path.basename(path)}"}
+        end
+    end
+  end
+
+  defp same_attempt?(a, b),
+    do:
+      Map.take(
+        a,
+        ~w(schema_version contract_version attempt_id revision head route config_fingerprint seq counted confirmation_grant recorded_at)
+      ) ==
+        Map.take(
+          b,
+          ~w(schema_version contract_version attempt_id revision head route config_fingerprint seq counted confirmation_grant recorded_at)
+        )
+
+  defp reserve(ctx, reservation) do
+    dir = Path.join(Report.runtime_dir(ctx.root, ctx.slug), "auditor")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, reservation["attempt_id"] <> ".json")
+
+    case exclusive_write(path, reservation) do
+      :ok -> {:ok, path}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp complete(path, reservation, record) do
+    case read_json(path) do
+      {:ok, ^reservation} -> exclusive_write(path <> ".completion", record)
+      _ -> {:error, "auditor reservation changed before completion"}
+    end
+  end
+
+  defp exclusive_write(path, record) do
+    case File.open(path, [:write, :exclusive, :binary]) do
+      {:ok, io} ->
+        try do
+          with :ok <- IO.binwrite(io, Jason.encode!(record, pretty: true) <> "\n"),
+               :ok <- :file.sync(io) do
+            :ok
+          else
+            error -> {:error, "cannot persist auditor attempt: #{inspect(error)}"}
+          end
+        after
+          File.close(io)
+        end
+
+      {:error, reason} ->
+        {:error, "cannot exclusively persist auditor attempt: #{inspect(reason)}"}
+    end
+  end
+
+  defp integrity_failure(reason) do
+    base_result("unavailable", "auditor ledger integrity: #{reason}")
+    |> Map.put("bound_reached", true)
   end
 
   # -- parsing the auditor's final message --------------------------------
@@ -522,6 +870,11 @@ defmodule Kogen.ShapingAudit.Auditor do
       |> String.replace("{{revision}}", ctx.revision)
       |> String.replace("{{head}}", ctx.head)
       |> String.replace("{{prior_failures}}", format_prior_failures(prior_failures))
+      |> String.replace(
+        "At the budget, report what you have.",
+        @answer_sentence <> "\n\nAt the budget, report what you have.",
+        global: false
+      )
 
     items = package_items(ctx) ++ scoped_items(ctx)
     budget = max(@budget_bytes - byte_size(header), 0)

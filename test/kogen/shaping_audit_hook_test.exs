@@ -10,7 +10,8 @@ defmodule Kogen.ShapingAuditHookTest do
 
   @project_root Path.expand("../..", __DIR__)
 
-  alias Kogen.ShapingAudit.{Finding, Fixture, StopHook}
+  alias Kogen.Shaping.Store
+  alias Kogen.ShapingAudit.{Finding, Fixture, Package, StopHook}
 
   @t 1_790_000_000_000
 
@@ -89,17 +90,46 @@ defmodule Kogen.ShapingAuditHookTest do
   end
 
   defp hook_env(root, package_rel, extra \\ %{}) do
+    id = intent_id(root, package_rel)
+
     root
     |> Fixture.audit_env!()
     |> Map.merge(%{
-      "KOGEN_ROLE" => "shaper",
-      "KOGEN_SHAPING_INTENT_ID" => intent_id(root, package_rel),
+      "KOGEN_ROLE" => "shaping",
+      "KOGEN_SHAPING_INTENT_ID" => id,
       "KOGEN_SHAPING_ROUTE" => "codex",
       "KOGEN_SHAPING_LAUNCH_ID" => uuid7(@t - 120_000),
       "KOGEN_SHAPING_SKIP_KEY" => "k1",
       "KOGEN_SHAPING_HOOK_OUTPUT" => Path.join(root, "hook-output.json")
     })
     |> Map.merge(extra)
+  end
+
+  defp headless_hook_env(root, package_rel) do
+    id = intent_id(root, package_rel)
+    session_dir = Store.session_dir(root, id)
+
+    brief =
+      case File.read(Path.join([root, package_rel, "evidence/brief.md"])) do
+        {:ok, bytes} -> bytes
+        _ -> "Stop-hook fixture brief for #{id}.\n"
+      end
+
+    Store.write_session!(session_dir, %{
+      "schema" => Store.schema(),
+      "intent_id" => id,
+      "state" => "running",
+      "preexisting_slugs" => []
+    })
+
+    Store.accept_input!(
+      session_dir,
+      brief,
+      %{"kind" => "brief", "interface" => "test"},
+      "hook-brief"
+    )
+
+    hook_env(root, package_rel, %{"KOGEN_SHAPING_SESSION_DIR" => session_dir})
   end
 
   defp silent_io, do: %{puts: fn _ -> :ok end, err: fn _ -> :ok end}
@@ -112,6 +142,81 @@ defmodule Kogen.ShapingAuditHookTest do
     opts = Keyword.merge([stdin: "", clock: default_clock, io: silent_io()], opts)
     assert Kogen.ShapingAudit.main(["--stop-hook"], [root: root, env: env] ++ opts) == 0
     output |> File.read!() |> Jason.decode!()
+  end
+
+  test "native Stop admits the persisted original brief before audit dispatch" do
+    {root, package_rel} = checkout!("complete")
+    env = headless_hook_env(root, package_rel)
+    id = env["KOGEN_SHAPING_INTENT_ID"]
+    dir = Store.session_dir(root, id)
+    brief = Store.brief(dir)
+    target = Path.join([root, package_rel, "evidence/brief.md"])
+    observed = Path.join(root, ".kogen/runtime/brief-at-dispatch.md")
+    wrapper = Path.join(root, ".kogen/runtime/admission-auditor")
+
+    File.write!(wrapper, """
+    #!#{System.find_executable("python3")}
+    import base64, os, pathlib, sys
+    actual = pathlib.Path(#{Jason.encode!(Path.join(package_rel, "evidence/brief.md"))}).read_bytes()
+    assert actual == base64.b64decode(#{Jason.encode!(Base.encode64(brief["text"]))})
+    pathlib.Path(#{Jason.encode!(observed)}).write_bytes(actual)
+    executable = #{Jason.encode!(env["KOGEN_HARNESS"])}
+    os.execv(executable, [executable, *sys.argv[1:]])
+    """)
+
+    File.chmod!(wrapper, 0o755)
+    System.put_env("KOGEN_HARNESS", wrapper)
+    env = Map.put(env, "KOGEN_HARNESS", wrapper)
+
+    refute File.exists?(target)
+    assert Kogen.Shaping.live_runner(dir) == :none
+    stop!(root, env)
+
+    assert File.read!(target) == brief["text"]
+    assert File.read!(observed) == brief["text"]
+    assert File.exists?(Path.join(env["FAKE_AUDITOR_LOG_DIR"], "argv"))
+  end
+
+  test "native Stop collision refuses before Auditor or Jev dispatch" do
+    {root, package_rel} = checkout!("complete")
+    env = headless_hook_env(root, package_rel)
+    id = env["KOGEN_SHAPING_INTENT_ID"]
+    dir = Store.session_dir(root, id)
+    Store.update_session!(dir, &Map.put(&1, "preexisting_slugs", [Path.basename(package_rel)]))
+
+    assert %{"decision" => "block", "reason" => reason} = stop!(root, env)
+    assert reason =~ "brief admission"
+    refute File.exists?(Path.join(env["FAKE_AUDITOR_LOG_DIR"], "argv"))
+    refute File.exists?(env["FAKE_JEV_LOG_DIR"])
+    refute File.exists?(Path.join([root, package_rel, "evidence/brief.md"]))
+  end
+
+  test "native Stop with a missing persisted brief refuses before LLM dispatch" do
+    {root, package_rel} = checkout!("complete")
+    env = headless_hook_env(root, package_rel)
+    dir = Store.session_dir(root, env["KOGEN_SHAPING_INTENT_ID"])
+    File.rm!(Path.join([dir, "inputs", "0001.json"]))
+    File.rm!(Path.join([dir, "inputs", "0001.md"]))
+
+    assert %{"decision" => "block", "reason" => reason} = stop!(root, env)
+    assert reason =~ "brief admission"
+    refute File.exists?(Path.join(env["FAKE_AUDITOR_LOG_DIR"], "argv"))
+    refute File.exists?(env["FAKE_JEV_LOG_DIR"])
+    refute File.exists?(Path.join([root, package_rel, "evidence/brief.md"]))
+  end
+
+  test "native Stop refuses a symlinked package before writing the original brief" do
+    {root, package_rel} = checkout!("complete")
+    env = headless_hook_env(root, package_rel)
+    package = Path.join(root, package_rel)
+    outside = Path.join(root, ".kogen/runtime/linked-package")
+    File.rename!(package, outside)
+    File.ln_s!(outside, package)
+
+    assert %{"decision" => "block", "reason" => reason} = stop!(root, env)
+    assert reason =~ "brief admission"
+    refute File.exists?(Path.join(outside, "evidence/brief.md"))
+    refute File.exists?(Path.join(env["FAKE_AUDITOR_LOG_DIR"], "argv"))
   end
 
   defp runtime(root, slug), do: Path.join(root, ".kogen/runtime/shaping-audits/#{slug}")
@@ -199,7 +304,7 @@ defmodule Kogen.ShapingAuditHookTest do
   defp shell_env(root, extra) do
     [
       {"PATH", "/usr/bin:/bin"},
-      {"KOGEN_ROLE", "shaper"},
+      {"KOGEN_ROLE", "shaping"},
       {"KOGEN_HARNESS_HOME", nil},
       {"KOGEN_ENV_RESTORE_PENDING", nil},
       {"KOGEN_SHAPING_HOOK_OUTPUT", nil},
@@ -492,7 +597,8 @@ defmodule Kogen.ShapingAuditHookTest do
   defp payload(rollout) do
     Jason.encode!(%{
       "session_id" => "s",
-      "transcript_path" => Path.join(@project_root, "test/support/shaping_audit/hook/#{rollout}"),
+      "transcript_path" =>
+        Path.join(@project_root, "test/support/shaping_audit/transcripts/#{rollout}"),
       "stop_hook_active" => false
     })
   end
@@ -742,10 +848,76 @@ defmodule Kogen.ShapingAuditHookTest do
              hook_lines(root2, "proof-defects")
   end
 
-  test "H18 stop_hook.sh allows non-shaper roles without starting mix" do
+  test "H18 stop_hook.sh allows non-shaping roles without starting mix" do
     {root, _package_rel, extra} = shell_checkout!()
     assert sh!(root, [{"KOGEN_ROLE", "developer"} | extra]) == {"{\"continue\":true}\n", 0}
     refute File.exists?(Path.join(root, "fake-mix.log"))
+  end
+
+  test "H18b stop_hook.sh treats the retired KOGEN_ROLE=shaper as a non-shaping role" do
+    {root, _package_rel, extra} = shell_checkout!()
+    assert sh!(root, [{"KOGEN_ROLE", "shaper"} | extra]) == {"{\"continue\":true}\n", 0}
+    refute File.exists?(Path.join(root, "fake-mix.log"))
+
+    # Control: KOGEN_ROLE=shaping reaches mix.
+    fake = "{\"continue\":true,\"systemMessage\":\"fake\"}\n"
+
+    assert sh!(root, [{"KOGEN_ROLE", "shaping"}, {"KOGEN_FAKE_MIX_DECISION", fake} | extra]) ==
+             {fake, 0}
+
+    assert [_entry] = mix_log(root)
+  end
+
+  test "the retired KOGEN_ROLE=shaper is not audited by the Elixir hook either" do
+    {root, package_rel} = checkout!("complete")
+    env = hook_env(root, package_rel, %{"KOGEN_ROLE" => "shaper"})
+    assert stop!(root, env) == %{"continue" => true}
+    refute File.exists?(Path.join(root, ".kogen/runtime/shaping-audits"))
+  end
+
+  test "the shared Codex transcript pair: the helper thread is allowed, the root is audited" do
+    for {name, source} <- [{"helper-rollout.jsonl", "subagent"}, {"root-rollout.jsonl", "cli"}] do
+      path = Path.join(@project_root, "test/support/shaping_audit/transcripts/#{name}")
+      [first | _] = path |> File.read!() |> String.split("\n", parts: 2)
+      assert %{"payload" => %{"source" => meta}} = Jason.decode!(first)
+      assert (is_map(meta) and Map.has_key?(meta, "subagent")) == (source == "subagent")
+      assert meta == "cli" == (source == "cli")
+    end
+  end
+
+  test "a Stop on a revision with a current full report reuses it with zero layer calls" do
+    {root, package_rel} = checkout!("complete")
+    env = hook_env(root, package_rel)
+
+    assert %{"systemMessage" => "ready: " <> _} = stop!(root, env)
+    assert File.dir?(env["FAKE_AUDITOR_LOG_DIR"])
+    [line1] = hook_lines(root, "complete")
+    assert %{"scope" => "full"} = read_json(line1["report"])
+
+    File.rm_rf!(env["FAKE_AUDITOR_LOG_DIR"])
+    File.rm_rf!(env["FAKE_JEV_LOG_DIR"])
+
+    assert %{"systemMessage" => "ready: " <> _} = stop!(root, env)
+    refute File.exists?(env["FAKE_AUDITOR_LOG_DIR"])
+    refute File.exists?(env["FAKE_JEV_LOG_DIR"])
+    assert [%{"kind" => "ready"}, %{"kind" => "ready"}] = hook_lines(root, "complete")
+  end
+
+  test "Package.find_by_id finds drafts before approved and reports a miss" do
+    {root, package_rel} = checkout!("complete")
+    id = intent_id(root, package_rel)
+
+    assert Package.find_by_id(root, id) ==
+             {:ok, %{slug: "complete", package_rel: package_rel, location: :drafts}}
+
+    assert Package.find_by_id(root, "no-such-id") == {:error, :not_found}
+    assert Package.find_by_id(root, nil) == {:error, :not_found}
+
+    approved = Fixture.add_draft!(root, "history", dir: "approved")
+    approved_id = intent_id(root, approved)
+
+    assert {:ok, %{slug: "history", location: :approved, package_rel: ^approved}} =
+             Package.find_by_id(root, approved_id)
   end
 
   test "H19 stop_hook.sh puts KOGEN_SHAPING_TOOLCHAIN_PATH first on PATH and runs the fake mix" do
@@ -865,10 +1037,10 @@ defmodule Kogen.ShapingAuditHookTest do
     assert File.read!(restore_log) == "restored\n"
   end
 
-  test "H24 .codex/hooks/check.sh under KOGEN_ROLE=shaper prints {\"continue\":true}" do
+  test "H24 .codex/hooks/check.sh under KOGEN_ROLE=shaping prints {\"continue\":true}" do
     assert System.cmd("sh", [".codex/hooks/check.sh"],
              env: [
-               {"KOGEN_ROLE", "shaper"},
+               {"KOGEN_ROLE", "shaping"},
                {"KOGEN_HARNESS_HOME", nil},
                {"KOGEN_ENV_RESTORE_PENDING", nil}
              ]
@@ -884,7 +1056,8 @@ defmodule Kogen.ShapingAuditHookTest do
       )
 
     assert readme =~ "mix kogen.audit --stop-hook"
-    assert readme =~ "Inside a Shaping session the Stop hook audits the Draft at every stop"
+    assert readme =~ "`stop` (the Shaping Stop hook, at every root turn end"
+    assert readme =~ "The Stop hook blocks on open blocking findings"
     refute readme =~ "it does not run as a Shaper Stop hook"
     refute readme =~ "The auditor is launched only when"
   end

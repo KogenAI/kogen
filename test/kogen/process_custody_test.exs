@@ -82,6 +82,107 @@ defmodule Kogen.ProcessCustodyTest do
     end
   end
 
+  test "a lock update is never observable as an empty or partial lock", %{base: base} do
+    # A holder killed mid-update (a crashed Shaping runner recording an audit
+    # group) must leave a readable lock; an empty one blocks reclaim for the
+    # whole unreadable-lock grace period.
+    control = control_dir(base)
+    {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
+    on_exit(fn -> Kogen.ProcessCustody.release(control) end)
+    path = Kogen.ProcessCustody.lock_path(control)
+    {:ok, identity} = Kogen.ProcessCustody.read_lock(control)
+    identity = Map.take(identity, ["pid", "started_at", "groups"])
+    padding = String.duplicate("x", 64 * 1024)
+    parent = self()
+
+    reader =
+      spawn_link(fn ->
+        read_until_stopped = fn read_until_stopped, partial ->
+          partial =
+            case File.read(path) do
+              {:ok, bytes} ->
+                case Jason.decode(bytes) do
+                  {:ok, record} when is_map(record) ->
+                    if complete_claim?(record, identity, padding),
+                      do: partial,
+                      else: partial + 1
+
+                  _ ->
+                    partial + 1
+                end
+
+              {:error, _reason} ->
+                partial + 1
+            end
+
+          receive do
+            :stop -> send(parent, {:partial_reads, partial})
+          after
+            0 -> read_until_stopped.(read_until_stopped, partial)
+          end
+        end
+
+        read_until_stopped.(read_until_stopped, 0)
+      end)
+
+    for index <- 1..300,
+        do: :ok = Kogen.ProcessCustody.claim(control, "build-#{index}-#{padding}")
+
+    send(reader, :stop)
+    assert_receive {:partial_reads, 0}, 5_000
+    assert {:ok, %{"build_id" => "build-300-" <> _}} = Kogen.ProcessCustody.read_lock(control)
+
+    # The old truncate/write algorithm fails the same reader invariant while
+    # its writer is paused after truncation. This is a deterministic control,
+    # rather than relying on the scheduler to expose a short empty-file gap.
+    original = File.read!(path)
+
+    writer =
+      Task.async(fn ->
+        {:ok, io} = File.open(path, [:read, :write])
+        :ok = :file.truncate(io)
+        send(parent, :truncated)
+
+        receive do
+          :finish -> :ok
+        end
+
+        :ok = IO.binwrite(io, original)
+        File.close(io)
+      end)
+
+    assert_receive :truncated, 5_000
+    refute match?({:ok, %{}}, Jason.decode(File.read!(path)))
+    send(writer.pid, :finish)
+    assert :ok = Task.await(writer)
+    assert {:ok, %{"build_id" => "build-300-" <> _}} = Kogen.ProcessCustody.read_lock(control)
+    refute complete_claim?(%{}, identity, padding)
+    refute complete_claim?(Map.put(identity, "build_id", "build-1-short"), identity, padding)
+  end
+
+  defp complete_claim?(record, identity, padding) do
+    same_owner? = Map.take(record, ["pid", "started_at", "groups"]) == identity
+
+    valid_claim? =
+      case record["build_id"] do
+        nil -> Map.has_key?(record, "build_id")
+        "build-" <> suffix -> valid_claim_suffix?(suffix, padding)
+        _ -> false
+      end
+
+    same_owner? and valid_claim?
+  end
+
+  defp valid_claim_suffix?(suffix, padding) do
+    case String.split(suffix, "-", parts: 2) do
+      [index, ^padding] -> valid_claim_index?(Integer.parse(index))
+      _ -> false
+    end
+  end
+
+  defp valid_claim_index?({number, ""}), do: number in 1..300
+  defp valid_claim_index?(_), do: false
+
   test "release cannot race a finishing group into recreating the lock", %{base: base} do
     control = control_dir(base)
     {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
@@ -339,8 +440,15 @@ defmodule Kogen.ProcessCustodyTest do
 
     # Registration itself is readable, but recording its group fails at the
     # lock write. The old abort path called teardown/1 here and killed the
-    # already registered sibling group too.
-    :ok = File.chmod(Kogen.ProcessCustody.lock_path(control), 0o444)
+    # already registered sibling group too. The sibling keeps recording new
+    # descendants and a lock write replaces the file by rename, so the chmod
+    # is injected under the write lock: a concurrent write cannot install a
+    # fresh writable lock over it.
+    :ok =
+      Kogen.ProcessCustody.locked(control, fn ->
+        File.chmod(Kogen.ProcessCustody.lock_path(control), 0o444)
+      end)
+
     marker = Path.join(base, "failed-registration-command-ran")
     script = "open(#{inspect(marker)}, 'w').write('started')"
 

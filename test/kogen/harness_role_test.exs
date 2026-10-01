@@ -10,19 +10,14 @@ defmodule Kogen.HarnessRoleTest do
   alias Kogen.Harness.Claude
   alias Mix.Tasks.Kogen.Expert
 
-  test "P2 the Codex Shaper alone carries the Stop-hook override and --search" do
-    prompt_file =
-      Path.join(System.tmp_dir!(), "kogen-shaper-prompt-#{System.unique_integer([:positive])}")
-
-    File.write!(prompt_file, "shape")
-    on_exit(fn -> File.rm(prompt_file) end)
-    shaper = Kogen.Harness.Codex.shaper_args("gpt-6.1-sol", "high", prompt_file)
+  test "P2 the Codex Shaping Controller alone carries the Stop and steer hook overrides and live web search" do
+    shaping = Kogen.Harness.Codex.shaping_args("gpt-6.1-sol", "high")
     developer = Kogen.Harness.Codex.developer_args("gpt-6.1-sol", "high")
     reviewer = Kogen.Harness.Codex.reviewer_args("gpt-6.1-sol", "high")
     expert = Kogen.Harness.Codex.expert_args("gpt-6.1-sol", "high")
     auditor = Kogen.Harness.Codex.auditor_args("gpt-6.1-sol", "high")
 
-    hooks = Enum.filter(shaper, &String.starts_with?(&1, "hooks.Stop="))
+    hooks = Enum.filter(shaping, &String.starts_with?(&1, "hooks.Stop="))
 
     assert hooks == [
              "hooks.Stop=[{hooks=[{type=\"command\",command=\"sh \\\"$(git rev-parse --show-toplevel)/priv/kogen/shaping_audit/stop_hook.sh\\\"\",timeout=1800}]}]"
@@ -37,14 +32,26 @@ defmodule Kogen.HarnessRoleTest do
              "hooks.Stop=[{hooks=[{type=\"command\",command=#{Jason.encode!(command)},timeout=1800}]}]"
            ]
 
-    hook_index = Enum.find_index(shaper, &String.starts_with?(&1, "hooks.Stop="))
-    assert Enum.at(shaper, hook_index - 1) == "-c"
-    assert hook_index < Enum.find_index(shaper, &(&1 == "--"))
-    assert Enum.count(shaper, &(&1 == "--search")) == 1
-    assert Enum.find_index(shaper, &(&1 == "--search")) < Enum.find_index(shaper, &(&1 == "--"))
+    %{command: steer, timeout: 60} = Kogen.Harness.shaping_steer_hook()
+
+    assert steer ==
+             ~s|python3 "$(git rev-parse --show-toplevel)/priv/kogen/shaping/feedback_output.py" posttooluse-output --producer "$(git rev-parse --show-toplevel)/priv/kogen/shaping/steer_hook.py"|
+
+    assert ["hooks.PostToolUse=[{hooks=[{type=\"command\",command=" <> _ = post] =
+             Enum.filter(shaping, &String.starts_with?(&1, "hooks.PostToolUse="))
+
+    assert post =~ "steer_hook.py"
+    refute post =~ "matcher"
+
+    hook_index = Enum.find_index(shaping, &String.starts_with?(&1, "hooks.Stop="))
+    assert Enum.at(shaping, hook_index - 1) == "-c"
+    assert List.last(shaping) == "-"
+    assert ~s(web_search="live") in shaping
+    refute "--search" in shaping
 
     for args <- [developer, reviewer, expert, auditor] do
-      refute Enum.any?(args, &String.starts_with?(&1, "hooks.Stop="))
+      refute Enum.any?(args, &String.starts_with?(&1, "hooks."))
+      refute ~s(web_search="live") in args
       refute "--search" in args
     end
   end
@@ -537,27 +544,7 @@ defmodule Kogen.HarnessRoleTest do
     case "$KOGEN_ROLE" in
       developer) cat >/dev/null || true; printf '%s\\n' '{"type":"thread.started","thread_id":"dev"}' '{"type":"turn.completed","thread_id":"dev"}' ;;
       reviewer) cat >/dev/null || true; printf '%s\\n' '{"candidate_id":"fixture-candidate","attempt_token":"fixture-attempt","verdict":"accept","scenarios":[],"dispositions":[],"findings":[]}' > "$out"; printf '%s\\n' '{"type":"thread.started","thread_id":"review"}' '{"type":"turn.completed","thread_id":"review"}' ;;
-      shaper)
-        [ "$KOGEN_REQUIRE_TTY" != 1 ] || test -t 0 || exit 31
-        case "${KOGEN_SHAPER_BEHAVIOR:-success}" in
-          early) exit 23 ;;
-          missing) sleep 60 ;;
-        esac
-        sleep "${KOGEN_START_DELAY:-0}"
-        : > "$KOGEN_READY_MARKER"
-        case "${KOGEN_SHAPER_BEHAVIOR:-success}" in
-          eof) cat >/dev/null ;;
-          background-success)
-            python3 -c 'import os, subprocess; p = subprocess.Popen(["sleep", "60"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True); open(os.environ["KOGEN_DESCENDANT_PID"], "w").write(str(p.pid))'
-            sleep 0.5
-            ;;
-          background-failure)
-            python3 -c 'import os, subprocess; p = subprocess.Popen(["sleep", "60"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True); open(os.environ["KOGEN_DESCENDANT_PID"], "w").write(str(p.pid))'
-            sleep 0.5
-            exit 29
-            ;;
-        esac
-        ;;
+      shaping) cat >/dev/null || true; printf '%s\\n' '{"type":"thread.started","thread_id":"shape"}' '{"type":"turn.completed","thread_id":"shape","usage":{"input_tokens":3}}' ;;
     esac
     """)
 
@@ -579,39 +566,53 @@ defmodule Kogen.HarnessRoleTest do
     assert File.read!(Path.join(raw_log_dir, "reviewer-verdicts.jsonl")) ==
              "{\"attempt_token\":\"fixture-attempt\",\"candidate_id\":\"fixture-candidate\",\"dispositions\":[],\"findings\":[],\"scenarios\":[],\"session_id\":\"review\",\"verdict\":\"accept\"}\n"
 
-    prompt = Path.join(dir, "prompt")
-    File.write!(prompt, "shape")
-    probe = Path.expand("../support/terminal_probe.py", __DIR__)
-    elixir = System.find_executable("elixir") || raise "elixir executable not found"
+    System.put_env("KOGEN_ROLE", "reviewer")
+    turn_log = Path.join(dir, "turn.jsonl")
+    shaping_context = Map.put(context, :log_path, turn_log)
 
-    code_paths =
-      :code.get_path()
-      |> Enum.map(&List.to_string/1)
-      |> Enum.flat_map(&["-pa", &1])
+    assert {:ok, %{provider_session_id: "shape", usage: %{"input_tokens" => 3}, timed_out: false}} =
+             Kogen.Harness.shaping_turn({:fresh, nil}, "shape", "fake", "low", shaping_context)
 
-    shaper_context = %{harness: "codex", executable: executable, args: [], env: []}
-
-    expression =
-      "System.halt(Kogen.Harness.exec_shaper(\"fake\", \"low\", #{inspect(prompt)}, #{inspect(shaper_context)}))"
-
-    command = [elixir, "--erl", "+S 2:2 +SDcpu 1 +SDio 1"] ++ code_paths ++ ["-e", expression]
-
-    for mode <- ["pipe", "pty"], behavior <- terminal_behaviors() do
-      {output, status, pid_path} =
-        run_shaper_probe(probe, command, executable, log, dir, mode, behavior)
-
-      assert_terminal_outcome(behavior, "#{mode} #{behavior}: #{output}", status)
-
-      if pid_path do
-        pid = pid_path |> File.read!() |> String.trim()
-        assert {_, kill_status} = System.cmd("/bin/kill", ["-0", pid], stderr_to_stdout: true)
-        assert kill_status != 0, "#{mode} #{behavior} descendant #{pid} survived cleanup"
-      end
-    end
+    assert File.read!(turn_log) =~ ~s("thread_id":"shape")
 
     roles = log |> File.read!() |> String.split("\n", trim: true)
-    assert Enum.take(roles, 3) == ["developer", "developer", "reviewer"]
-    assert Enum.count(roles, &(&1 == "shaper")) == 12
+    assert roles == ["developer", "developer", "reviewer", "shaping"]
+  end
+
+  test "the harness exposes the headless shaping turn and no terminal Shaper" do
+    Code.ensure_loaded!(Kogen.Harness)
+    assert function_exported?(Kogen.Harness, :shaping_turn, 5)
+    refute function_exported?(Kogen.Harness, :exec_shaper, 4)
+    refute function_exported?(Kogen.Harness, :shaper_args, 3)
+    assert function_exported?(Kogen.Harness, :shaping_steer_hook, 0)
+
+    # `codex login` still runs through the shared terminal helper.
+    Code.ensure_loaded!(Kogen.Codex)
+    assert function_exported?(Kogen.Codex, :terminal, 2)
+    login = File.read!(Path.join(@project_root, "lib/kogen/codex.ex"))
+    assert login =~ ~s/terminal(context, ["login" | forwarded])/
+  end
+
+  test "role_context tags the shaping role as current_role \"shaping\"" do
+    {:ok, config} =
+      Kogen.Intent.read_config(Path.join(@project_root, ".kogen/config.yaml"), "codex")
+
+    selection = %{
+      harness: "codex",
+      config: %{helpers: %{}},
+      executable: "codex",
+      args: [],
+      env: []
+    }
+
+    runtime = %{
+      route: config,
+      roles: [:shaping, :developer],
+      selections: %{"codex" => selection}
+    }
+
+    assert Kogen.Harness.role_context(runtime, :shaping).config.current_role == "shaping"
+    assert Kogen.Harness.role_context(runtime, :developer).config.current_role == "developer"
   end
 
   test "a hybrid route launches each role only through its assigned harness and profile" do
@@ -842,77 +843,5 @@ defmodule Kogen.HarnessRoleTest do
   defp after_flag(args, flag) do
     index = Enum.find_index(args, &(&1 == flag))
     Enum.at(args, index + 1)
-  end
-
-  defp terminal_behaviors do
-    [:success, :eof, :early, :missing, :background_success, :background_failure]
-  end
-
-  defp run_shaper_probe(probe, command, executable, log, dir, mode, behavior) do
-    marker = Path.join(dir, "ready-#{mode}-#{behavior}")
-
-    pid_path =
-      if behavior in [:background_success, :background_failure],
-        do: Path.join(dir, "descendant-#{mode}-#{behavior}.pid")
-
-    startup_timeout = if behavior == :missing, do: "5", else: "15"
-    completion_timeout = if behavior == :eof, do: "0.3", else: "5"
-
-    ownership_args = if pid_path, do: ["--owned-pid-file", pid_path], else: []
-
-    {output, status} =
-      System.cmd(
-        "python3",
-        [
-          probe,
-          "--mode",
-          mode,
-          "--startup-timeout",
-          startup_timeout,
-          "--timeout",
-          completion_timeout,
-          "--ready-marker",
-          marker
-        ] ++ ownership_args ++ ["--" | command],
-        env: [
-          {"KOGEN_HARNESS", executable},
-          {"ROLE_LOG", log},
-          {"KOGEN_START_DELAY", "0.1"},
-          {"KOGEN_SHAPER_BEHAVIOR", behavior |> Atom.to_string() |> String.replace("_", "-")},
-          {"KOGEN_DESCENDANT_PID", pid_path},
-          {"KOGEN_REQUIRE_TTY", if(mode == "pty", do: "1", else: "0")}
-        ],
-        stderr_to_stdout: true
-      )
-
-    {output, status, pid_path}
-  end
-
-  defp assert_terminal_outcome(:success, output, status) do
-    assert status == 0, output
-  end
-
-  defp assert_terminal_outcome(:eof, output, status) do
-    assert status == 1
-    assert output =~ "did not complete after readiness deadline"
-  end
-
-  defp assert_terminal_outcome(:early, output, status) do
-    assert status == 1
-    assert output =~ "exited before readiness (status 23)"
-  end
-
-  defp assert_terminal_outcome(:missing, output, status) do
-    assert status == 1
-    assert output =~ "did not become ready before startup deadline"
-  end
-
-  defp assert_terminal_outcome(:background_success, output, status) do
-    assert status == 0, output
-  end
-
-  defp assert_terminal_outcome(:background_failure, output, status) do
-    assert status == 1
-    assert output =~ "command exited with status 29"
   end
 end

@@ -347,7 +347,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
   end
 
   test "managed roles cannot run setup", _ctx do
-    for role <- ~w(developer reviewer shaper expert) do
+    for role <- ~w(developer reviewer shaping expert) do
       System.put_env("KOGEN_ROLE", role)
       assert_raise RuntimeError, ~r/explicit user operation/, fn -> ClaudeCode.install() end
 

@@ -46,10 +46,9 @@ mix kogen.codex.install
 mix kogen.codex.login
 mix kogen.codex.status
 make check
-mix kogen.shape
 ```
 
-A hybrid route needs both harnesses; before `mix kogen.shape --route
+A hybrid route needs both harnesses; before `mix kogen.shape --brief brief.md --route
 claude-dominant-adversarial-codex`, also run `mix kogen.codex.install`,
 `mix kogen.codex.login` and `mix kogen.codex.status`.
 
@@ -59,25 +58,28 @@ For a route with `harness: codex`, use `mix kogen.codex.install`,
 that route, or set it as `default_route`. See
 [Choosing a route](#choosing-a-route).
 
-Describe one feature. As the Shaper, discuss its behavior and tradeoffs with Kogen’s Shaping Controller, inspect the Draft it writes, and explicitly approve it in that conversation. Approval moves the Intent from `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`.
-The controller may also reconcile narrow current approval bookkeeping inside the
-package at that point. It preserves agreed requirements, identity, provenance and
-historical evidence; a legacy `status: draft` field is harmless once the package is
-selected from `approved/`, but a genuine current pending-approval contradiction is not.
-
-To continue a saved Draft in a fresh conversation, run:
+Describe one feature in a Markdown brief file. Shaping is headless: there is no terminal session and no interactive conversation. `mix kogen.shape` has exactly five invocations, and each prints exactly one JSON line on stdout (diagnostics go to stderr):
 
 ```sh
-mix kogen.shape <draft-slug>
+mix kogen.shape --brief FILE [--route ROUTE] [--interface NAME] [--request-id RID]   # start
+mix kogen.shape ID                                                                  # status
+mix kogen.shape ID --brief FILE [--interface NAME] [--request-id RID]                # continue
+mix kogen.shape ID --approve PRESENTATION [--interface NAME] [--request-id RID]      # approve
+mix kogen.shape ID --cancel [--request-id RID]                                       # cancel
 ```
 
-Kogen uses current shaping instructions and configured profiles, preserving the
-Draft’s identity and original provenance. The controller reads its saved context,
-summarizes unresolved work, and asks where to continue. Continued saves record a
-separate shaping visit; changed Git baselines require discussion. Approval must
-be explicit in this new conversation. Only drafts can be continued.
+- **Start** mints the Intent ID (a UUIDv7, which is also the session ID), saves the brief as input `0001`, starts a detached runner and returns within seconds with state `running`. The response carries a stable request receipt and the received input id and number; `received` means the exact bytes are durable, not that the Shaper applied them. The runner drives the configured Shaping Controller route (`claude -p` or `codex exec`) in the background and survives the command, its terminal and its process group. The Shaping Controller chooses the Draft slug; you address a session only by its ID.
+- **Status** (`mix kogen.shape ID`) only reads. It shows the state (`running`, `awaiting_answers`, `ready`, `blocked`, `interrupted`, `cancelled`, `failed` or `approved`), the open questions with the controller's recommendation and evidence, the current presentation, ordered inputs and their received/offered/exactly-recorded progress, cancellation status, the log path and any error. If the runner owner died during a turn, status derives `interrupted` from the custody record and reports its cause without changing the session journal or claiming cleanup succeeded.
+- **Questions** appear under `## Ask the Shaper` in the Draft. Kogen shows a macOS notification such as "Kogen: 1 question for <slug> — mix kogen.shape <ID>" once per question. The controller keeps doing independent work meanwhile. Time passing never turns a question into an assumption.
+- **Answers and steering** are answer files: write a Markdown file and run `mix kogen.shape ID --brief answer.md` (the same command sends any steer or feedback). The response carries a stable request receipt and input id and number with `status: received`; Kogen stores the exact bytes durably. Status separately derives whether each input was offered to a provider turn and whether it was recorded exactly once in `## Shaper answers`. Neither receipt, offer nor recording alone proves product application. While the provider turn is running, the next tool call in the same provider session receives them; if the turn has ended, the runner resumes the same provider session (`--resume` / `exec resume`) with them. A message never approves anything, whatever it says.
+- **Ready and approval.** When the audited Draft is ready, Kogen records that exact package revision as a *presentation* with its own id and notifies you. Status shows it under `presented`, including the immutable copy of the package, the audit report and `approve_command`. Approve with `mix kogen.shape ID --approve PRESENTATION`, using the id from the ready notification or `presented.approve_command`. Approval is bound to that presentation: if the Draft, HEAD, route or resolved role configuration changed since, or an input arrived, even while the approval runs, the command refuses with `presentation_superseded` and never approves a newer presentation. Status stops showing a presentation that no longer matches the Draft, HEAD, route, resolved role configuration or its report. After approval, the session takes no further message (`not_ready`). On success Kogen records the approval, re-audits the bookkeeping and moves the Intent from `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`. It does not start a Build. The Shaping Controller never approves and never moves a Draft; a model-written "Approved" approves nothing.
+- **Cancel** records an accepted cancellation receipt before signalling the exact runner owner. The command returns promptly with `effect_status: pending`; status later reports `pending`, `settled` or `uncertain` from the request journal and custody evidence. The receipt means the request was accepted, not that provider children exited, cleanup completed, a product effect was undone or approval was prevented. Kogen settles cancellation only after custody confirms its children are gone and the lock is released. Cleanup failures remain `uncertain` with ownership evidence. While cancellation is unsettled, new messages and approvals return transient `busy`; accepted inputs remain durable. A later message after settlement resumes the same provider session. If approval already committed, status remains `approved` and the cancellation records that observed outcome.
+- **Authority level.** The approval record and status state `authority: interface-attested`: Kogen records the interface (`--interface`, default `cli`) and request id that attested the approval and never derives a human identity from Git. This is provenance, not an enforced authorization boundary; `KOGEN_ROLE` refuses accidental calls from managed roles with `managed_role`.
+- **Requests** are idempotent by `--request-id` (`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`, a fresh UUIDv7 when omitted): replaying the same request prints its exact original outcome and receipt, even if its cancellation effect settled later; reusing an id with different arguments refuses with `request_conflict`. Cancellation phase updates live beside that saved outcome in the same canonical request record. Concurrent retries of one id never run twice: a retry waits for the first attempt or refuses `busy` (retry later), and an interrupted attempt completes the same input. A brief file must be non-empty UTF-8 of at most 1 MiB.
+- **Exit codes:** `0` for an accepted or replayed command, including status; `2` for a refusal, with `error.code` one of `usage`, `session_not_found`, `legacy_draft_unsupported`, `request_conflict`, `invalid_input`, `presentation_superseded`, `not_ready`, `busy`, `managed_role`, `harness_not_ready`, `configuration_changed` or `build_running`; `1` for an internal failure. New start and continue requests check provider readiness, so a missing login refuses with `harness_not_ready`, and they refuse with `build_running` while a Build holds `.kogen/build.lock`. Completed requests replay their exact saved result before these execution checks; changed arguments still refuse `request_conflict`.
+- **Legacy Drafts.** A Draft shaped in the old terminal conversation has no session. Naming it (for example `mix kogen.shape <draft-slug>`) refuses with `legacy_draft_unsupported`, leaves the Draft untouched and asks you to start a new session with `--brief`. It cannot be continued by this engine.
 
-Exit the shaping conversation, then build its chosen slug:
+Then build the approved slug:
 
 ```sh
 mix kogen.build <slug>
@@ -685,9 +687,9 @@ profiles are required on every route, though a role delegates only when
 bounded independent work justifies the startup and integration cost.
 
 Shaping records the selected route in the Draft (`shaping.route`, alongside
-`harness`/`model`/`effort`/`started`), and each continuation records the
+`harness`/`model`/`effort`/`started`), and each resumed turn records the
 route used for that visit; the Draft's original `shaping` block is never
-rewritten, and Drafts saved before routes existed remain continuable. A Build
+rewritten. A Build
 resolves its route once and freezes it — name, harness and every resolved
 role/helper profile under `route`, and the complete role matrix (every
 role's harness/model/effort, including the Expert, and each
@@ -702,7 +704,7 @@ session on the Reviewer's harness with the same review packet. The committed
 `role_assignment`; `evidence.md` names every role's harness.
 
 [Shared execution guidance](priv/kogen/prompts/execution-policy.md) has one
-[renderer](lib/kogen/execution_policy.ex), expanded by fresh/continued Shape
+[renderer](lib/kogen/execution_policy.ex), expanded by Shaping
 and the Developer/Reviewer launch routes. Role templates retain approval, gate,
 Candidate and output authority. Maintain profile values in config and shared
 guidance in that source; update public-route regressions when changing either.
@@ -746,8 +748,8 @@ offline-first policy in [Choosing verification targets](#choosing-verification-t
 | Target | Select when | Classification and prerequisites |
 | --- | --- | --- |
 | `check` | Offline sufficiency covers the behavior and failure controls; a later Intent may use check only. | Offline; installed dependencies, the tools below and staged exact managed runtime pins. Provider dispatch is denied. One run proves the current offline suite, rehearsals and controlled prepares; baseline test changes and timing are diagnostic. |
-| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The configured-default lifecycle or selected-route Review workflow can change. | Provider-backed on the selected route's role harnesses; network, managed runtimes and Kogen logins, `expect`, and `rsync`. |
-| `live-shaping-quality` | Shaping prompts, continuation, Draft quality, evaluation cases, prerequisites, or its evidence manifest can change. | Provider-backed; network, configured Codex authentication, and maintained evaluation sources. |
+| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The configured-default lifecycle or selected-route Review workflow can change. | Provider-backed on the selected route's role harnesses; network, managed runtimes and Kogen logins, and `rsync`. |
+| `live-shaping-quality` | Shaping prompts, the headless engine, Draft quality, evaluation cases, prerequisites, or its evidence manifest can change. | Provider-backed; network, configured Codex authentication, and maintained evaluation sources. |
 | `live-native` | The authenticated native boundary, managed runtime/login/discovery, compatibility runner, helper routing, profiles, or native receipts can change. | Provider-backed; installed pinned Codex runtime and configured authentication. |
 | `cold-offline` | Cold-cache behavior needs an explicit empty-cache diagnosis (offline recipe, dependency copying, toolchain setup, containment, or cold cleanup). Routine Builds do not select it; `check` carries the focused cold setup/dependency regression. | Offline, though expensive; installed dependency sources, `rsync`, and the offline toolchain. Provider dispatch is denied. |
 
@@ -764,7 +766,7 @@ Build validates every selected target against the catalog and Makefile before
 Developer launch. The controller preserves Candidate/session/attempt binding,
 verification retries, required artifacts, receipts, and the fresh-Review boundary.
 
-Kogen loads the tracked project hooks and launches the selected route's harness with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously: Codex CLI with its bypass flags, Claude Code with `--dangerously-skip-permissions` (no permission prompts and no sandbox) for every role, including interactive Shaping and login.
+Kogen loads the tracked project hooks and launches the selected route's harness with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously: Codex CLI with its bypass flags, Claude Code with `--dangerously-skip-permissions` (no permission prompts and no sandbox) for every role, including headless Shaping and interactive login.
 
 Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` remains an offline test override; ordinary work selects Kogen's pinned managed runtime, never a `claude` or `codex` from PATH.
 
@@ -857,7 +859,7 @@ selects — an unselected route may name an unsupported harness without
 blocking other routes. Build, Shape and provider-outcome handling call one
 harness interface; the selected route's adapter supplies install and login
 readiness, launch context, fresh and exactly resumed Developer turns, Reviewer
-verdicts and the interactive Shaper. Controller-owned verification and the
+verdicts and the headless Shaping Controller turn. Controller-owned verification and the
 local Verification Record are shared and harness-independent; the Stop scripts
 are inactive bootstrap remnants under this controller (see "The loop" above).
 Both adapters' offline suites run in every `make check`.
@@ -914,7 +916,7 @@ mix kogen.claude.login -- --help
 
 `mix kogen.claude.status` reports the pin, installation, effective scope and the
 `loggedIn` and `authMethod` metadata of `claude auth status`, never credential
-values or remaining quota. Fresh and continued Shaping and Build stop before any
+values or remaining quota. Shaping (start and continue) and Build stop before any
 model launch and name the fix when the pinned runtime, the selected login, or a
 proven model is missing.
 
@@ -998,11 +1000,11 @@ mix kogen.codex.login -- --help
 
 Device authorization still requires a human. `--project` selects a private project scope before login, so cancellation never falls back to shared credentials. `mix kogen.codex.login --use-default` explicitly reselects shared login without authenticating or deleting retained project credentials. Native Codex owns credential formats and refresh; Kogen never imports personal credentials.
 
-`mix kogen.codex.status` reports the checkout pin, installation and actual active-use records, effective scope, and native local login state. It does not install, authenticate, call a model, expose secrets, or claim remote entitlement. Fresh/continued Shaping and Build stop before provider work when the pinned runtime or selected login is missing.
+`mix kogen.codex.status` reports the checkout pin, installation and actual active-use records, effective scope, and native local login state. It does not install, authenticate, call a model, expose secrets, or claim remote entitlement. Shaping (start and continue) and Build stop before provider work when the pinned runtime or selected login is missing.
 
 Managed distributions, accounts, selectors, settings generations, sessions, and compatibility evidence live under `~/Library/Application Support/Kogen/codex`. Per-launch discovery homes exclude personal Codex settings while project guidance and tracked hooks remain available. Shell tools and hooks retain the caller's HOME and exact set/unset XDG semantics. Every managed Codex role and native helper launch carries one central `-c tool_output_token_limit=4000`, about Claude Code's Bash result cap, so a large tool result is not re-sent in full on every later step. Active operations retain their concrete runtime and session across Review and exact resume; new checkouts select their own pin.
 
-The `live-native` compatibility runner drives discovery, interactive Shaping, the Developer with its controller verification, and the exact Developer resume with its scout helper. The resume is driven by a fixed rework request held in the runner. The real Reviewer is proved by `live-reviewer-rework`, not by a scripted stand-in. The runner owns its own timing: it passes each native turn the unchanged 240 s limit explicitly, and the whole test must finish within 15 minutes. A `timed_out` attempt is rerun once in a fresh fixture, and only if a typical run still fits before that deadline. No other failure is retried. Both attempts' class, provider session ids, elapsed time and cleanup are kept in one repository-relative summary under `.kogen/runtime/codex-compatibility/`, which the test emits as its target evidence manifest.
+The `live-native` compatibility runner drives discovery, headless Shaping, the Developer with its controller verification, and the exact Developer resume with its scout helper. The resume is driven by a fixed rework request held in the runner. The real Reviewer is proved by `live-reviewer-rework`, not by a scripted stand-in. The runner owns its own timing: it passes each native turn the unchanged 240 s limit explicitly, and the whole test must finish within 15 minutes. A `timed_out` attempt is rerun once in a fresh fixture, and only if a typical run still fits before that deadline. No other failure is retried. Both attempts' class, provider session ids, elapsed time and cleanup are kept in one repository-relative summary under `.kogen/runtime/codex-compatibility/`, which the test emits as its target evidence manifest.
 
 Discovery isolation is decided from structured observations, never from a model's absence statement. Bundled `.system` skills are classified against a provenance-bound inventory for the pinned runtime (version, platform, executable and tree digests); an unclassified name is `unproven`, a planted forbidden sentinel is `leak`, and a missing project sentinel fails. Account and remote plugin exclusion is a separate verdict per surface (`native_discovery`, `root`, `helper`, `resume`, `interactive`). Each `live-native` compatibility run produces its own fresh native observation (`Kogen.Codex.AccountObservation`, driver `priv/kogen/codex/compatibility/account_observation.py`): two bounded read-only `codex app-server` sessions on the pinned executable, the selected scope home, the same environment and fixture directory, one with exactly the production launch arguments (apps and plugins disabled) and one positive control with only those two flags enabled. They make no model turn or tool call and are reaped with their process group; secrets are dropped and the account is recorded only as a fingerprint. `native_discovery` is `excluded` only when the control shows enabled remote plugins in the native installed inventory (its catalog fetch may be unavailable) and the production session shows empty discovery, nothing enabled or callable and no installed plugin, both on the same runtime version, executable digest, server-reported scope home, account and launch binding, and fresh. The compatibility probe accepts only that verdict, from receipt files still matching their recorded digests; `leaked`, `unproven`, missing or tampered evidence refuses. The model-visible surfaces are reported as observed (normally `unproven`) and are not claimed; historical probe summaries are references, never acceptance. Bundled skill names never count as account leakage.
 
@@ -1079,35 +1081,93 @@ deterministic checks, the blind auditor and Jev over the package's current
 revision (a SHA-256 over its sorted relative paths and bytes, taken under an
 `lstat` walk that refuses any symlink, FIFO or other non-regular entry
 before reading anything). `--auditor` launches a fresh auditor run when the
-per-`HEAD` bound allows one; plain `mix kogen.audit [--route <name>] <slug>`
-reuses whatever auditor record already exists. `mix kogen.audit --status [--route <name>] <slug>`
-recomputes the revision and `HEAD` and reports whether the stored report is
+normal budget allows one; plain `mix kogen.audit [--route <name>] <slug>`
+reuses an exact auditor record when one exists. Normal budget is at most two
+counted runs per slug, `HEAD` and route, across package revisions. A changed
+revision gets a fresh second run even when the first run was clean. A result
+confirms only its exact package revision, `HEAD` and route. Once the normal
+budget is exhausted, the latest exact revision can reuse its result; another
+revision reports auditor status `missing-confirmation` and remains not ready.
+Reverting to an older ready revision does not restore its confirmation:
+positive reports validate the latest counted attempt in the ledger, including
+its exact binding and contract provenance. The report records `budget_state`
+and keeps earlier findings in
+`previous_audit`, with their original revision, `HEAD` and route. Those older
+findings remain diagnostics and current package dispositions are attached to
+them; they do not count as findings for the current revision.
+
+`mix kogen.audit --confirm [--route <name>] <slug>` is the explicit external
+interface for one additional counted fresh auditor run after the normal
+budget. Earlier requests refuse without launching an ordinary attempt or
+reusing a ready report as confirmation. It never resets the normal count.
+Package or route configuration admission failures create no attempt and never
+reset a recorded allowance. After package and route preflight, the counted attempt is durably reserved
+before the Auditor-setting lookup or model dispatch, so a failed, rejected,
+unavailable or interrupted confirmation consumes the grant. An unused explicit
+grant takes precedence over reuse of an exact failed normal attempt. A repeat
+on the exact confirmed revision replays that attempt, including an unavailable
+result; a later changed revision remains not ready. The command
+reruns the current deterministic, auditor and Jev layers when a cached full
+report is not ready. It is not exposed through the Stop hook, runner or
+approval flow, and `KOGEN_ROLE` refuses this command for managed roles,
+including `shaping`. This interface records an explicit request; it does not
+identify or authenticate the person making it.
+
+A ready report confirms the exact resolved role configuration as well as the
+package revision, `HEAD` and route. Changing configuration and restoring it
+cannot reuse an audit performed under different settings. Older records remain
+diagnostics and consume their recorded allowance; configuration edits do not
+reset the normal or explicit-confirmation budget.
+
+`mix kogen.audit --status [--route <name>] <slug>`
+recomputes the revision, `HEAD` and resolved configuration fingerprint,
+then reports whether the stored report is
 `current`, `stale` (naming what changed) or `missing`, without auditing
 again. The command exits `0` when the report is ready, `1` when it is not
 (including `asking`), and `2` on a usage error, a refused role
 (`developer`, `reviewer`, `expert`, `auditor`), a present
-`.kogen/build.lock`, or a slug that exists in both `drafts/` and
-`approved/`. During Shaping, the Codex Stop hook runs this same audit at every
-root turn end. It blocks on open blocking findings, allows an unchanged
+`.kogen/build.lock`, an early `--confirm` request, or a slug that exists in
+both `drafts/` and `approved/`; `--confirm` also refuses `shaping` and cannot be combined with
+`--auditor`, `--status` or `--stop-hook`. During Shaping, Kogen owns audit scheduling through the same audit
+service, with five triggers: `stop` (the Shaping Stop hook, at every root
+turn end, reusing a current report), `turn_end` (the runner, when a provider
+turn ended without a current report), `checkpoint` (the runner, mid-turn, a
+deterministic-only pass with no paid auditor launch once the package has been
+unchanged for a while), `waiting` (the runner, once per revision while the
+session awaits answers) and `approval` (the approval command, for the presented
+revision and the bookkept revision). Only full audits can make a session
+ready; checkpoint audits never can. The Stop hook blocks on open blocking findings, allows an unchanged
 revision to stall, allows the ninth block in a chain, and allows once the
 auditor bound is reached so a flawed Draft cannot trap the session. The hook
 entry point is `mix kogen.audit --stop-hook` and writes one JSON decision to
-its configured hook output path. Inside a Shaping session the Stop hook audits
-the Draft at every stop; a manual audit prints the last hook report's status.
+its configured hook output path. A manual audit prints the last hook report's status.
 
 Reports live under `.kogen/runtime/shaping-audits/<slug>/<revision>/`:
 `report.json` (schema, revision, `HEAD`, route, each layer's status, every
 finding, and `readiness`) and `report.md`, the same summary for reading.
+Schema 3 invalidates positive reports written under the older cross-revision
+contract. Legacy auditor records remain diagnostics and retain their counted
+allowance, but cannot positively confirm a revision without a new attempt.
+Malformed or ambiguous ledger evidence fails closed with an integrity
+diagnostic and launches nothing.
 Nothing under `.kogen/intents/` is ever created, changed or removed by an
 audit, and its git materialization is always removed. **A report is never
 approval**: it only tells the Shaper and the audit's own callers what is
-still wrong; only the Shaper's own explicit "Approved" moves a Draft
-forward.
+still wrong; only the Shaper's own `mix kogen.shape <ID> --approve
+<presentation>` command approves and moves a Draft forward.
 
-The auditor is launched by the Stop hook when its per-HEAD bound allows it, or
-explicitly by `mix kogen.audit --auditor <slug>`. It is blind to the checkout
-and bounded to counted runs per Draft revision history; failed or rejected runs
-are recorded as unavailable and close that bound.
+The auditor is launched by the Stop hook when its normal budget allows it, or
+explicitly by `mix kogen.audit --auditor <slug>`. `--confirm` is available
+only to an external caller after that normal budget is exhausted; the Stop
+hook never spends the extra grant. Auditor attempt records are append-only
+under `.kogen/runtime/shaping-audits/<slug>/auditor/`: an exclusively created,
+globally unique reservation `<attempt-id>.json` and an exclusively created
+`<attempt-id>.json.completion` carrying that reservation's identity and binding.
+Historical findings keep the revision, `HEAD` and route they came from. A missing
+completion remains a counted unavailable attempt; it never triggers a relaunch,
+and its elapsed time and effects remain unknown. The auditor is blind to the
+checkout; failed, rejected, unavailable or interrupted normal attempts close
+the normal budget, while any reserved `--confirm` consumes its one extra grant.
 
 The Jev layer's Keychain lookup uses the `dev.kogen.jev` item (the same one
 the Build handoff's `Kogen.Jev.request_body/2` reads); when it is missing,
@@ -1205,7 +1265,7 @@ See [the check workflow](scripts/check/README.md) for maintenance and timing con
 
 The provider-backed lifecycle targets are narrow owner routes, not a complete suite. They
 resolve each launched role through the selected route and require network access, its installed runtimes
-and Kogen logins, `expect`, and `rsync`; create disposable
+and Kogen logins, and `rsync`; create disposable
 fixtures; and retains evidence under `.kogen/runtime/`. It covers real failed-check
 correction, exact Developer resume, reviewer-directed rework, and fresh independent
 Review. The Build-only Reviewer-rework fixture creates its project in a

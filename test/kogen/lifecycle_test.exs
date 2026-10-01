@@ -1,4 +1,5 @@
 Code.require_file("../support/compiled_fixture.exs", __DIR__)
+Code.require_file("../support/shaping_engine_fixture.ex", __DIR__)
 
 defmodule Kogen.LifecycleTest do
   @moduledoc """
@@ -993,13 +994,64 @@ defmodule Kogen.LifecycleTest do
     )
   end
 
+  # Headless public Shape against the scripted Shaping Controller
+  # (`test/support/fake_shaping_controller`), which writes the Draft a
+  # compliant controller would write from the rendered prompt. The fixture's
+  # rename stands in for the Shaper's explicit approval; the engine's own
+  # `--approve` is proven in the shaping engine tests.
   defp shape_and_explicitly_approve!(dest) do
-    env = [{"KOGEN_HARNESS", Path.join(dest, "test/support/fake_codex_shaper")}]
+    alias Kogen.ShapingEngineFixture, as: F
 
-    {output, 0} = Kogen.CompiledFixture.mix_task!(dest, "kogen.shape", env)
+    {:ok, config} = Kogen.Intent.read_config(Path.join(dest, ".kogen/config.yaml"))
+    branch = git!(dest, ["branch", "--show-current"])
+    head = git!(dest, ["rev-parse", "HEAD"])
+    template = write_draft_template!(dest, branch, head, config)
 
-    [intent_id] =
-      Regex.run(~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/, output)
+    notifier = Path.join(dest, ".kogen/runtime/notifier")
+    script = Path.join(dest, ".kogen/runtime/fake-script.json")
+    File.mkdir_p!(Path.dirname(notifier))
+    File.write!(notifier, "#!/bin/sh\nexit 0\n")
+    File.chmod!(notifier, 0o755)
+
+    # The first launch is the controller; a later launch (the audit's
+    # auditor, which shares KOGEN_HARNESS) does nothing.
+    File.write!(
+      script,
+      Jason.encode!(%{
+        "turns" => [[%{"create_draft" => %{"template" => template, "slug" => @slug}}], []]
+      })
+    )
+
+    jev = Path.join(@project_root, "test/support/shaping_audit")
+
+    env =
+      F.env(dest, [
+        {"FAKE_SHAPING_SCRIPT", script},
+        {"FAKE_SHAPING_LOG_DIR", Path.join(dest, ".kogen/runtime/fake-shaping-log")},
+        {"KOGEN_SHAPING_NOTIFIER", notifier},
+        {"KOGEN_SHAPING_QUIET_MS", "600000"},
+        {"KOGEN_JEV_TRANSPORT", Path.join(jev, "fake_jev_audit")},
+        {"KOGEN_JEV_SECURITY", Path.join(jev, "fake_security_audit")}
+      ])
+
+    # `F.env/2` also writes its own notifier; the fixture keeps a clean tree.
+    File.rm(Path.join(dest, ".kogen/notifier"))
+
+    brief = Path.join(dest, ".kogen/runtime/brief.md")
+    File.write!(brief, "Add the reviewed fixture value.\n")
+    started = F.mix(dest, ["kogen.shape", "--brief", brief], F.driver_env(env))
+
+    assert started.exit == 0, started.stdout <> started.stderr
+    assert [_one_line] = started.lines
+    assert %{"state" => "running", "session" => intent_id} = started.json
+
+    assert intent_id =~
+             ~r/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+    # The detached runner ends the turn; whatever the audit then decides, the
+    # session leaves `running` and no runner holds it.
+    settled = await_settled!(dest, intent_id, env)
+    assert settled["slug"] == @slug
 
     draft_dir = Path.join(dest, ".kogen/intents/drafts/#{@slug}")
     approved_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
@@ -1010,21 +1062,29 @@ defmodule Kogen.LifecycleTest do
     assert original_intent =~ intent_id
     shaped = YamlElixir.read_from_string!(original_intent)
 
-    assert shaped["shaped_against"] == %{
-             "branch" => git!(dest, ["branch", "--show-current"]),
-             "head" => git!(dest, ["rev-parse", "HEAD"])
-           }
-
-    {:ok, config} = Kogen.Intent.read_config(Path.join(dest, ".kogen/config.yaml"))
+    assert shaped["shaped_against"] == %{"branch" => branch, "head" => head}
     assert shaped["shaping"]["model"] == config.shaping.model
     assert shaped["shaping"]["effort"] == config.shaping.effort
 
-    shaping_args = File.read!(Path.join(dest, ".kogen/runtime/shaping-args"))
-    assert shaping_args =~ "--model\nfixture-shaper\n"
-    assert shaping_args =~ ~s(model_reasoning_effort="shaping-effort")
+    # The controller launched once, headlessly, on the configured profile and
+    # with the minted identity in its prompt.
+    launch =
+      dest
+      |> Path.join(".kogen/runtime/fake-shaping-log/invocation-1.json")
+      |> File.read!()
+      |> Jason.decode!()
 
-    # This rename is the fixture's explicit same-conversation approval. The
-    # fake Shaping Controller itself deliberately writes only a Draft.
+    argv = launch["argv"]
+    assert ["exec" | _] = argv
+    assert Enum.at(argv, Enum.find_index(argv, &(&1 == "--model")) + 1) == "fixture-shaper"
+    assert Enum.any?(argv, &(&1 =~ ~s(model_reasoning_effort="shaping-effort")))
+    assert launch["stdin"] =~ "Intent id: `#{intent_id}`"
+    assert launch["stdin"] =~ "Shaped against branch: `#{branch}`"
+    assert launch["stdin"] =~ "Shaped against head commit: `#{head}`"
+    File.write!(Path.join(dest, ".kogen/runtime/shaping-prompt"), launch["stdin"])
+
+    # This rename is the fixture's explicit approval; the fake Shaping
+    # Controller itself deliberately writes only a Draft.
     File.mkdir_p!(Path.dirname(approved_dir))
     File.rename!(draft_dir, approved_dir)
 
@@ -1032,6 +1092,79 @@ defmodule Kogen.LifecycleTest do
     assert File.dir?(approved_dir)
 
     {intent_id, original_intent, original_scenarios}
+  end
+
+  defp await_settled!(dest, id, env) do
+    alias Kogen.ShapingEngineFixture, as: F
+
+    deadline = System.monotonic_time(:millisecond) + 120_000
+    poll_settled!(dest, id, F.driver_env(env), deadline)
+  end
+
+  defp poll_settled!(dest, id, env, deadline) do
+    status = Kogen.ShapingEngineFixture.mix(dest, ["kogen.shape", id], env).json
+
+    cond do
+      status["runner"] == false and status["state"] != "running" ->
+        status
+
+      System.monotonic_time(:millisecond) > deadline ->
+        flunk("Shaping never settled: #{inspect(status)}")
+
+      true ->
+        Process.sleep(250)
+        poll_settled!(dest, id, env, deadline)
+    end
+  end
+
+  defp write_draft_template!(dest, branch, head, config) do
+    template = Path.join(dest, ".kogen/runtime/draft-template")
+    File.mkdir_p!(template)
+
+    File.write!(Path.join(template, "intent.yaml"), """
+    id: 00000000-0000-7000-8000-000000000000
+    slug: #{@slug}
+    title: Fake shaped intent
+    shaped_against:
+      branch: "#{branch}"
+      head: "#{head}"
+    shaping:
+      route: "#{config.route}"
+      harness: codex
+      model: "#{config.shaping.model}"
+      effort: "#{config.shaping.effort}"
+      started: "2026-01-01T00:00:00Z"
+    may_change_guarded_paths:
+      - dummy.txt
+      - reviewer-rework-marker.txt
+    """)
+
+    File.write!(Path.join(template, "scenarios.yaml"), """
+    - id: shaped-scenario
+      given: a freshly shaped Draft
+      when: the fixture approves it
+      then: public Build commits dummy.txt containing reviewed fixture value and reviewer-rework-marker.txt
+      wrong_result: Shape does not persist an Intent or Build commits the initial unreviewed value
+      verified_by: [check, target_evidence]
+      evidence: public mix kogen.shape against the scripted headless Shaping Controller
+      proof:
+        offline: [test/kogen/focused_fixture_test.exs]
+        paid_target: target_evidence
+        paid_reason: "provider-required: target_evidence; observation: retained fixture artifact settlement; offline-limit: focused fixture cannot establish outer target dispatch"
+        affected_paths: [dummy.txt, reviewer-rework-marker.txt]
+    """)
+
+    File.write!(
+      Path.join(template, "requirement.json"),
+      ~s({"path":"dummy.txt","expected":"reviewed fixture value"}\n)
+    )
+
+    File.write!(Path.join(template, "references.yaml"), """
+    - path: requirement.json
+      description: Normative fixture requirement read independently by Review
+    """)
+
+    template
   end
 
   defp git!(dir, args) do
@@ -1059,7 +1192,8 @@ defmodule Kogen.LifecycleTest do
     case role do
       :shaping ->
         assert prompt =~ "The human retains product and scope decisions"
-        assert prompt =~ "You retain Draft authorship and approval handling"
+        assert prompt =~ "You retain Draft authorship."
+        assert prompt =~ "You never approve the Intent"
         assert prompt =~ "continue accepting steering while helpers work"
 
       :developer ->

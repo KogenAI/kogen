@@ -1,0 +1,10 @@
+{
+  "name": "stateful-complete",
+  "end": "settled",
+  "steps": [
+    {
+      "step": "start",
+      "brief": "brief.md"
+    }
+  ]
+}

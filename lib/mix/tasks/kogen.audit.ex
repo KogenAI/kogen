@@ -10,7 +10,14 @@ defmodule Mix.Tasks.Kogen.Audit do
   `mix kogen.audit --status <slug>` reports whether the latest report is
   `current`, `stale` or `missing` without auditing again.
 
-  `mix kogen.audit --stop-hook` dispatches the Codex Shaper Stop decision and
+  `mix kogen.audit --confirm <slug>` is an explicit external request for the
+  one extra counted auditor attempt after the normal slug/HEAD/route budget
+  is exhausted. The attempt is reserved before dispatch; a failed,
+  unavailable or interrupted attempt consumes the grant. An exact retry
+  replays its recorded result and never launches another attempt.
+  It cannot be combined with `--auditor`, `--status` or `--stop-hook`.
+
+  `mix kogen.audit --stop-hook` dispatches the Codex Shaping Controller Stop decision and
   writes exactly one JSON decision to the hook output path.
 
   The task only delegates to `Kogen.ShapingAudit.main/1` and halts with its

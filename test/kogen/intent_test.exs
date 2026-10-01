@@ -1189,49 +1189,6 @@ defmodule Kogen.IntentTest do
     end
   end
 
-  describe "read_draft/1 route provenance" do
-    # read_draft/1 reads relative to the working directory; run it in a child VM.
-    test "legacy and route-bearing Drafts are both continuable" do
-      dir = tmp_dir!()
-
-      for {slug, route_line} <- [{"legacy-draft", ""}, {"routed-draft", "  route: codex\n"}] do
-        write_yaml!(dir, ".kogen/intents/drafts/#{slug}/intent.yaml", """
-        id: 01a0711c-5df0-7822-925c-640efbec8e6c
-        slug: #{slug}
-        title: Draft
-        shaped_against: {branch: main, head: abc123}
-        shaping:
-        #{route_line}  harness: claude
-          model: claude-opus-5-5
-          effort: medium
-          started: '2026-09-23T07:45:41Z'
-        """)
-      end
-
-      script = """
-      {:ok, _apps} = Application.ensure_all_started(:yaml_elixir)
-
-      for slug <- ["legacy-draft", "routed-draft"] do
-        {:ok, draft} = Kogen.Intent.read_draft(slug)
-        IO.puts(slug <> "=" <> draft.shaping["harness"])
-      end
-      """
-
-      code_paths =
-        Enum.flat_map(:code.get_path(), fn path ->
-          path = to_string(path)
-          if String.contains?(path, "_build"), do: ["-pa", path], else: []
-        end)
-
-      {output, status} =
-        System.cmd("elixir", code_paths ++ ["-e", script], cd: dir, stderr_to_stdout: true)
-
-      assert status == 0, output
-      assert output =~ "legacy-draft=claude"
-      assert output =~ "routed-draft=claude"
-    end
-  end
-
   test "reads an optional commit_subject beside the required title" do
     dir = tmp_dir!()
     base = Path.join(dir, "sample-intent")

@@ -214,6 +214,28 @@ else
   end
 
   unless File.regular?(guard), do: raise("process containment library is missing: #{guard}")
+
+  # Every isolated child is exec'd with this library inserted. A guard the
+  # caller supplied (the offline gate's shared cache) is copied once, now that
+  # it is known present, into a file this VM owns, so no later change to the
+  # shared path can fail a child's exec; children still load the same bytes.
+  guard =
+    if System.get_env("KOGEN_TEST_PROCESS_GUARD") do
+      private =
+        Path.join(
+          System.tmp_dir!(),
+          "kogen-test-guard-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(private)
+      System.at_exit(fn _ -> File.rm_rf(private) end)
+      copy = Path.join(private, "process_group.dylib")
+      File.cp!(guard, copy)
+      copy
+    else
+      guard
+    end
+
   System.put_env("KOGEN_TEST_PROCESS_GUARD", guard)
 
   Enum.each(support, fn {module, beam} ->

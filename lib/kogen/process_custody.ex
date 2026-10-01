@@ -73,24 +73,47 @@ defmodule Kogen.ProcessCustody do
     end
   end
 
+  # An update replaces the lock by rename, so a holder killed mid-write (a
+  # crashed Shaping runner recording an audit group, say) leaves the previous
+  # complete lock rather than an empty one that stays unreadable until its
+  # grace period passes. The temporary file lives under the ignored runtime
+  # directory; one orphaned by a kill is never read as a lock.
   defp write_lock(control, map) do
     path = lock_path(control)
 
-    case File.open(path, [:read, :write]) do
-      {:ok, io} ->
-        result =
-          case :file.truncate(io) do
-            :ok -> IO.binwrite(io, Jason.encode!(map))
-            error -> error
-          end
+    tmp =
+      Path.join([
+        control,
+        ".kogen/runtime",
+        "build.lock.#{System.pid()}-#{System.unique_integer([:positive])}.tmp"
+      ])
 
-        File.close(io)
-        result
-
-      {:error, reason} ->
-        {:error, reason}
+    # A lock that is not writable stays authoritative, exactly as an in-place
+    # write to it would fail.
+    with :ok <- writable_lock(path),
+         :ok <- File.mkdir_p(Path.dirname(tmp)),
+         :ok <- File.write(tmp, Jason.encode!(map)),
+         :ok <- File.rename(tmp, path) do
+      :ok
+    else
+      error ->
+        File.rm(tmp)
+        error
     end
   end
+
+  defp writable_lock(path) do
+    case File.stat(path) do
+      {:ok, %{access: access}} when access in [:read, :none] -> {:error, :eacces}
+      _ -> :ok
+    end
+  end
+
+  # Test seam: a fault injected on the lock file (a chmod, say) inside this
+  # lands between whole lock writes, never between a write's writability
+  # check and its rename.
+  @doc false
+  def locked(control, fun) when is_function(fun, 0), do: with_lock(control, fun)
 
   defp with_lock(control, fun, role \\ nil) do
     lock = {{__MODULE__, Path.expand(lock_path(control))}, self()}
@@ -172,6 +195,14 @@ defmodule Kogen.ProcessCustody do
   end
 
   defp reclaim(control, reaped) do
+    # A process-local test barrier at the actual classified-stale/remove gap.
+    # Production callers have no observer; lock and custody semantics remain
+    # unchanged. Headless session callers serialize this gap across VMs.
+    case Process.get({__MODULE__, :before_reclaim}) do
+      hook when is_function(hook, 1) -> hook.(control)
+      _ -> :ok
+    end
+
     File.rm(lock_path(control))
     named = if reaped == [], do: "no live groups", else: Enum.join(reaped, ", ")
 
