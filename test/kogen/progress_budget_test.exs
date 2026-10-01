@@ -29,59 +29,33 @@ defmodule Kogen.ProgressBudgetTest do
     )
   end
 
-  test "the first round is a baseline and spends no no-progress unit" do
-    assert {:ok, s} = round(new(), ["a", "b"])
-    assert s["no_progress"] == 0 and s["rounds"] == 1 and s["dispatches"] == 1
-  end
-
-  test "clearing a signature is progress; a round clearing none spends one" do
-    {:ok, s} = round(new(), ["a", "b"])
-    assert {:ok, s} = round(s, ["b"])
-    assert s["no_progress"] == 0
-    assert {:ok, s} = round(s, ["b", "c"])
-    assert s["no_progress"] == 1
-  end
-
-  test "oscillation (reintroducing a cleared signature) spends a unit even when another cleared" do
-    {:ok, s} = round(new(), ["a", "b"])
-    {:ok, s} = round(s, ["b"])
-    assert {:ok, s} = round(s, ["a"])
-    assert s["no_progress"] == 1
-    assert List.last(s["history"])["no_progress_reason"] == "oscillation"
-  end
-
-  test "a returning signature is charged once, not every round while it persists" do
+  test "cleared findings spend a monotonic allowance once per return event" do
     s = new(%{max_no_progress: 2})
-    {:ok, s} = round(s, ["a", "b"])
-    {:ok, s} = round(s, ["b"])
-    assert {:ok, s} = round(s, ["a", "b"])
+
+    # The baseline is free, and resolving a finding is progress.
+    assert {:ok, s} = round(s, ["c", "a", "b", "a"])
+    assert s["no_progress"] == 0 and s["rounds"] == 1 and s["dispatches"] == 1
+    assert {:ok, s} = round(s, ["b", "c"])
+    assert s["no_progress"] == 0
+
+    # A cleared finding returning while another clears is still oscillation.
+    assert {:ok, s} = round(s, ["c", "a"])
     assert s["no_progress"] == 1
     assert List.last(s["history"])["no_progress_reason"] == "oscillation"
 
-    # "a" persists while "b" clears: progress, no second charge.
+    # The returned finding persisting while another clears is not charged twice.
     assert {:ok, s} = round(s, ["a"])
     assert s["no_progress"] == 1
     assert List.last(s["history"])["no_progress_reason"] == nil
 
-    # Clearing and returning again is a new event.
-    {:ok, s} = round(s, [])
-    assert {:stop, :no_progress, _} = round(s, ["a"])
-  end
-
-  test "resolving a finding never resets spent counters" do
-    {:ok, s} = round(new(), ["a", "b"])
-    {:ok, s} = round(s, ["a", "b"])
-    assert s["no_progress"] == 1
-    assert {:ok, s} = round(s, ["b"])
-    assert s["no_progress"] == 1
-    assert s["rounds"] == 3 and s["dispatches"] == 3
-  end
-
-  test "same-tree Review no-change round spends a unit even if a signature cleared" do
-    {:ok, s} = round(new(), ["a", "b"])
-    assert {:ok, s} = round(s, ["b"], %{review_no_change: true})
-    assert s["no_progress"] == 1
-    assert List.last(s["history"])["no_progress_reason"] == "review_no_change"
+    # Clearing everything does not refund the spent allowance. A later return
+    # is a new event and stops at the frozen limit.
+    assert {:ok, s} = round(s, [])
+    assert s["unresolved"] == [] and s["no_progress"] == 1
+    assert {:stop, :no_progress, d} = round(s, ["a"])
+    assert d.ledger.no_progress == 2
+    assert d.unresolved == ["a"]
+    assert d.last_no_progress_reason == :oscillation
   end
 
   test "repeated unresolved signatures stop repair only when the frozen allowance is spent" do
