@@ -482,6 +482,97 @@ defmodule Kogen.ParallelSettlementClassificationTest do
              DispatchLedger.classify(dispatched(), evidence(%{"provider_backed" => false}))
   end
 
+  test "explicit cancellation settles success and transport errors as cancelled without inventing telemetry" do
+    cycles = [%{"sequence" => 1, "candidate_id" => "tree-1"}]
+
+    dispatch = fn target, pid ->
+      DispatchLedger.begin(
+        %{target: target, candidate_id: "tree-1", cycle: 1, attempt: "initial"},
+        %{
+          "pid" => pid,
+          "pgid" => pid,
+          "started_at" => "2026-09-30T00:00:00Z"
+        }
+      )
+    end
+
+    cancelled_error_dispatch = dispatch.("cancelled-error", 10)
+
+    cancelled_error =
+      DispatchLedger.finish(
+        cancelled_error_dispatch,
+        {:error, "cancelled before exit telemetry"},
+        true
+      )
+
+    ordinary_error_dispatch = dispatch.("ordinary-error", 11)
+
+    ordinary_error =
+      DispatchLedger.finish(
+        ordinary_error_dispatch,
+        {:error, "transport failed"},
+        false
+      )
+
+    cancelled_success_dispatch = dispatch.("cancelled-success", 12)
+
+    cancelled_success =
+      DispatchLedger.finish(
+        cancelled_success_dispatch,
+        {:ok, %{"exit_code" => 0, "finished_at" => "2026-09-30T00:00:01Z"}},
+        true
+      )
+
+    unknown_exit_dispatch = dispatch.("unknown-exit", 13)
+
+    unknown_exit =
+      DispatchLedger.finish(
+        unknown_exit_dispatch,
+        {:ok, %{"finished_at" => "2026-09-30T00:00:02Z"}},
+        true
+      )
+
+    assert cancelled_error["outcome"] == "cancelled"
+    assert ordinary_error["outcome"] == "transport_error"
+    assert cancelled_success["outcome"] == "cancelled"
+    assert cancelled_success["exit_code"] == 0
+    assert unknown_exit["outcome"] == "cancelled"
+    assert is_nil(unknown_exit["exit_code"])
+
+    refute Map.has_key?(cancelled_error, "exit_code")
+    refute Map.has_key?(ordinary_error, "exit_code")
+    refute Map.has_key?(cancelled_error, "usage")
+    refute Map.has_key?(ordinary_error, "usage")
+
+    for {finished, started} <- [
+          {cancelled_error, cancelled_error_dispatch},
+          {ordinary_error, ordinary_error_dispatch},
+          {cancelled_success, cancelled_success_dispatch},
+          {unknown_exit, unknown_exit_dispatch}
+        ] do
+      assert Map.take(
+               finished,
+               ~w(target candidate_id cycle attempt pid pgid process_started_at started_at)
+             ) ==
+               Map.take(
+                 started,
+                 ~w(target candidate_id cycle attempt pid pgid process_started_at started_at)
+               )
+
+      assert {:ok, _finished_at, _offset} = DateTime.from_iso8601(finished["finished_at"])
+    end
+
+    ledger =
+      DispatchLedger.append(
+        [],
+        [cancelled_error, ordinary_error, cancelled_success, unknown_exit]
+      )
+
+    assert DispatchLedger.count(ledger) == 4
+    assert DispatchLedger.append(ledger, [cancelled_error]) == ledger
+    assert DispatchLedger.validate(ledger, cycles) == :ok
+  end
+
   test "each dispatch is recorded once and validated against its cycles" do
     cycles = [%{"sequence" => 1, "candidate_id" => "tree-1"}]
 

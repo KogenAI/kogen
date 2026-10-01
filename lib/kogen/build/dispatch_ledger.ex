@@ -67,8 +67,9 @@ defmodule Kogen.Build.DispatchLedger do
     })
   end
 
-  def finish(entry, {:error, _reason}, _cancelled?) do
-    Map.merge(entry, %{"finished_at" => now(), "outcome" => "transport_error"})
+  def finish(entry, {:error, _reason}, cancelled?) do
+    outcome = if cancelled?, do: "cancelled", else: "transport_error"
+    Map.merge(entry, %{"finished_at" => now(), "outcome" => outcome})
   end
 
   @doc """
