@@ -42,6 +42,34 @@ defmodule Kogen.ShapeTaskTest do
     args = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
     prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
     refute prompt =~ bulk_sentinel
+    compact_prompt = Regex.replace(~r/\s+/, prompt, " ")
+
+    assert compact_prompt =~
+             "declared-target retries follow the controller's failure-class retry policy separately from that allowance and resume the same Developer session when the applicable class permits a retry"
+
+    assert compact_prompt =~
+             "Offline target, catalog and Candidate-caused `prepare` failures use `offline_retries` when present"
+
+    assert compact_prompt =~
+             "legacy attempt contexts without that field fall back to `verification_retries`"
+
+    assert compact_prompt =~ "Paid provider-backed target failures use `verification_retries`"
+
+    assert compact_prompt =~
+             "Terminal environment or provider failures spend neither retry budget"
+
+    refute compact_prompt =~ "`verification_retries` budget separately governs"
+
+    assert compact_prompt =~
+             "For a Build, its controller alone runs exactly the approved `verified_by` targets and writes their receipts"
+
+    assert compact_prompt =~
+             "The Stop hook audits the Draft at every stop it sees, so ending the turn is how re-auditing happens"
+
+    assert compact_prompt =~
+             "If the hook blocks the stop, fix findings that are within accepted scope"
+
+    refute compact_prompt =~ "Stop-owned verification retries"
     assert args =~ "--model\n#{config.shaping.model}\n"
     assert args =~ ~s(model_reasoning_effort="#{config.shaping.effort}")
     assert_shared_execution_policy!(prompt, :shaping, config)

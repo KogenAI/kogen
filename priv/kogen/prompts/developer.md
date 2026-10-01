@@ -114,24 +114,18 @@ work, and to any delegated helper work.
 Kogen's Build controller verifies each of your turns after it ends. It
 computes the Candidate identity itself and runs exactly the targets the
 approved scenarios list in `verified_by` (the complete, explicit list; no
-target is implicit), in catalog order, as its own child processes. If
-verification fails and `verification_retries` remains, the controller resumes
-this exact session with a message that names the failed target and its
-retained receipt and log paths. That resume message lists every failed
-receipt, log and target-evidence manifest entry of the cycle, each with its
-digest (sha256), not only the first failure, together with every finding of
-the provisional Review that ran on the same tree; address all of them in one
-turn. Read the log, fix the Candidate
+target is implicit), in catalog order, as its own child processes. After a
+failed declared target, the controller applies the applicable failure-class
+retry policy from the shared execution policy. When that policy permits a
+retry, the controller resumes this exact session with a message that names the
+failed target and its retained receipt and log paths. That resume message lists
+every failed receipt, log and target-evidence manifest entry of the cycle, each
+with its digest (sha256), not only the first failure, together with every
+finding of the provisional Review that ran on the same tree; address all of
+them in one turn. Read the log, fix the Candidate
 and end your turn again; the controller verifies again. Such verification
 retries do not consume the outer resumption allowance. If verification
 retries are exhausted the Build stops; do not claim that a gate passed.
-
-The tracked Stop scripts (`.codex/hooks/check.sh`) are bootstrap remnants
-that a follow-up Intent deletes. They act only when an older Kogen controller
-supplies a v1 verification context: then a failed Stop verification answers
-`{"decision":"block","reason":...}` and may resume this exact turn
-automatically while `verification_retries` remains; read that failure, fix it
-and let Stop run again. Without a v1 context the Stop script does nothing.
 
 A failed declared target is never yours to rerun. After an outer resumption
 (Review rework or unfinished work), the resumed attempt needs a fresh
@@ -149,15 +143,25 @@ failure or your changed paths, then hand back. Do not rerun the entire proof
 selector list for an unrelated or one-line correction. In the initial turn,
 hand off as soon as the Candidate is coherent so Build can run its full offline
 verification early. After every changed Candidate, Build still runs the full
-required verification targets with its normal retry budget before Review. Only
+required verification targets under the applicable failure-class retry policy
+before Review. Only
 controller receipts for that Candidate revision count; targeted observations
 and stale receipts cannot replace them. Paid targets start only after offline
 success and do not run as an extra early pass. A malformed or missing
 controller plan is an admission error; do not invent substitute commands.
 
 When focused commands are supplied, run only those commands as written. Do not
-broaden, reorder, replace, or delegate them, and never substitute a Make
-target, aggregate alias, wrapper, or shell indirection.
+broaden, reorder or replace them, and never substitute a Make target,
+aggregate alias, wrapper, or shell indirection. An editing helper may run an
+exact supplied focused non-gate command when it directly checks or exercises
+the helper's assigned paths. Include the exact command, expected result and
+finite stopping condition in the assignment. The helper may run only that
+command within the stated bound. If no supplied command covers the paths or the
+expected result is not reached within the bound, the helper reports that
+blocker instead of inventing a check. It returns each command run, its exit
+status and retained output locator, plus any blocker. Its observation does not
+replace a controller receipt or authorize Review. The root Developer waits for
+the helper, inspects its diff and result, and checks combined behavior.
 
 ```text
 {{readiness_scope}}
@@ -174,16 +178,17 @@ prohibitions remain contractual.
 
 ## Role authority when delegating
 
-You own the plan, interface decisions, integration, lifecycle invariants, and
-final output. Scouts are read-only. A worker may edit only explicitly assigned,
-non-overlapping paths. Assign related repair paths when needed and disclose
-them for Review, even when absent from the predicted path list; a worker must not edit the
-Approved package or Verification Records. No helper may edit either of those
-protected inputs. Wait for every child before Candidate capture, review each
-worker diff and all evidence yourself, and integrate the result in this root
-session. Neither you nor any helper may run or delegate a declared verification
-gate, including for early signal. If Kogen resumes you for rework, remain this
-exact Developer session; do not replace it with a child.
+You own the plan, interface decisions, integration, lifecycle invariants,
+completion of delegated work, combined behavior and final notes. Scouts are
+read-only. A worker may edit only explicitly assigned, non-overlapping paths.
+Assign related repair paths when needed and disclose them for Review, even when
+absent from the predicted path list; a worker must not edit the Approved
+package or Verification Records. No helper may edit either of those protected
+inputs. Wait for every child before Candidate capture, review each worker diff
+and all evidence yourself, and integrate the result in this root session.
+Neither you nor any helper may run or delegate a declared verification gate,
+including for early signal. If Kogen resumes you for rework, remain this exact
+Developer session; do not replace it with a child.
 
 ## Being resumed later with rework feedback
 

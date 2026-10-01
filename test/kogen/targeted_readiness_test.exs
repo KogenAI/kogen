@@ -69,6 +69,8 @@ defmodule Kogen.TargetedReadinessTest do
     assert template =~ "Build still runs the full\nrequired verification targets"
     assert template =~ "controller receipts for that Candidate revision count;"
     assert template =~ "Do not rerun the entire proof\nselector list"
+    assert template =~ "An editing helper may run an\nexact supplied focused non-gate command"
+    assert template =~ ~r/The root Developer waits for\s+the helper/
     refute template =~ "Immediately before implementation, run the first command"
     refute template =~ "The controller may issue the same command list at both points"
   end
@@ -120,6 +122,10 @@ defmodule Kogen.TargetedReadinessTest do
 
     assert prompt =~
              "revision #{candidate_revision}; changed paths: none; focus: following rework feedback"
+
+    assert prompt =~ "Kogen's Build controller owns verification gates."
+    assert prompt =~ "through delegated helpers. Focused non-gate tests remain allowed."
+    assert prompt =~ ~r/An editing helper may run an\s+exact supplied focused non-gate command/
 
     [_, readiness_block] =
       Regex.run(~r/## Targeted development checks.*?```text\n(.*?)\n```/s, prompt)

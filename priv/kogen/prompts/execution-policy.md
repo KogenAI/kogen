@@ -30,8 +30,8 @@ second opinions or to review everything.
 Each packet includes objective, necessary facts, constraints, allowed operations
 or exclusive write ownership, interfaces, expected evidence and stopping
 conditions. Helpers share the workspace: preserve others' work. Propagate the
-role's restrictions, including protected inputs and unified Stop verification
-ownership. Require
+role's restrictions, including protected inputs and the Kogen Build controller's
+ownership of declared verification. Require
 concise advisory conclusions, source locators, observed evidence, uncertainty,
 failures and remaining human decisions. Integrate without repeating bulk
 investigation; check consequential contradictions and questionable citations
@@ -39,12 +39,22 @@ against actual source bytes. Never reconstruct prose as an exact quote.
 
 The root owns integration and final output. Helpers cannot extend role authority:
 Shaping retains human product/UX decisions and explicit same-conversation
-approval; helpers cannot author the final Draft or approve it. Developer owns
-implementation and handoff within approved paths and propagates the prohibition
-on manual or helper-run gates. Stop owns verification retries; the outer
-allowance is reserved for settled verification, handoff, and Review rework.
-Exhaustion stops the role and takes precedence over a misleading handoff or
-verdict.
+approval; helpers cannot author the final Draft or approve it. The Developer
+owns implementation and handoff within approved paths. For a Build, its
+controller alone runs exactly the approved `verified_by` targets and writes
+their receipts. No role or helper may manually run or delegate a declared
+target, including `make check`, invoke one through a wrapper, aggregate alias
+or indirection, or substitute another gate. Focused non-gate checks remain
+observations and cannot stand in for receipts. After a failed declared target,
+the controller applies its failure-class retry policy. Offline target, catalog
+and Candidate-caused `prepare` failures use `offline_retries` when present;
+legacy attempt contexts without that field fall back to `verification_retries`.
+Paid provider-backed target failures use `verification_retries`. Terminal
+environment or provider failures spend neither retry budget. A permitted
+declared-target retry resumes the same Developer session. This class-specific
+retry accounting remains separate from the outer allowance, which remains
+reserved for settled verification, handoff and Review rework. Exhaustion stops
+the Build and takes precedence over a misleading handoff or verdict.
 Reviewer and every child are read-only, preserve the Candidate, and receive no
 Developer conversation as evidence. Reviewer independently assesses evidence,
 resolves all helper work, and emits the final schema-valid verdict itself.

@@ -51,13 +51,53 @@ defmodule Kogen.ExecutionPolicyTest do
             "Never reconstruct prose as an exact quote",
             "Reviewer and every child are read-only",
             "human product/UX decisions and explicit same-conversation",
-            "Developer owns\nimplementation and handoff within approved paths",
+            "Developer\nowns implementation and handoff within approved paths",
             "missing usage is not\nzero",
             "Unit prices or raw tokens do not establish complete-task savings",
             "same-Developer rework, fresh independent Review"
           ] do
         assert policy =~ obligation
       end
+    end
+  end
+
+  test "rendered role policies keep gate ownership and retry accounting with the Build controller" do
+    {:ok, config} = Kogen.Intent.read_config(@config_path)
+
+    for role <- ["shaping", "developer", "reviewer"] do
+      policy = Kogen.ExecutionPolicy.render(config, role, @root)
+      compact_policy = Regex.replace(~r/\s+/, policy, " ")
+
+      assert policy =~
+               ~r/For a Build, its\s+controller alone runs exactly the approved `verified_by` targets and writes\s+their receipts/is
+
+      assert policy =~
+               ~r/No role or helper may manually run or delegate a declared\s+target, including\s+`make check`/is
+
+      assert policy =~ "wrapper, aggregate alias"
+      assert policy =~ "or substitute another gate"
+      assert policy =~ "Focused non-gate checks remain"
+      assert policy =~ "cannot stand in for receipts"
+
+      assert compact_policy =~
+               "Offline target, catalog and Candidate-caused `prepare` failures use `offline_retries` when present"
+
+      assert compact_policy =~
+               "legacy attempt contexts without that field fall back to `verification_retries`"
+
+      assert compact_policy =~ "Paid provider-backed target failures use `verification_retries`"
+
+      assert compact_policy =~
+               "Terminal environment or provider failures spend neither retry budget"
+
+      assert compact_policy =~
+               "A permitted declared-target retry resumes the same Developer session"
+
+      assert compact_policy =~
+               "This class-specific retry accounting remains separate from the outer allowance, which remains reserved for settled verification"
+
+      refute compact_policy =~ "unified Stop verification ownership"
+      refute compact_policy =~ "Stop owns verification retries"
     end
   end
 

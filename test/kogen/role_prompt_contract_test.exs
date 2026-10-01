@@ -64,6 +64,45 @@ defmodule Kogen.RolePromptContractTest do
     assert developer =~ ~r/digest/i
   end
 
+  test "the Developer may delegate only supplied focused non-gate checks for assigned paths" do
+    developer = File.read!(@developer_path)
+
+    assert developer =~ ~r/editing helper may run an\s+exact supplied focused non-gate command/is
+    assert developer =~ ~r/directly checks or exercises\s+the helper's assigned paths/is
+    assert developer =~ ~r/exact command, expected result and\s+finite stopping condition/is
+
+    assert developer =~
+             ~r/each command run, its exit\s+status and retained output locator, plus any blocker/is
+
+    assert developer =~ ~r/completion of delegated work.{0,80}combined behavior/is
+
+    assert developer =~
+             ~r/Neither you nor any helper may run or delegate a declared verification gate/is
+
+    assert developer =~ "{{verification_ownership}}"
+
+    refute developer =~ ~r/do not.{0,35}delegate (them|focused commands)/is
+  end
+
+  test "the prompts no longer describe the bootstrap Stop path as active verification ownership" do
+    developer = File.read!(@developer_path)
+    compact_developer = Regex.replace(~r/\s+/, developer, " ")
+    reviewer = File.read!(@reviewer_path)
+
+    refute developer =~ ~r/older Kogen controller.{0,100}v1 verification context/is
+    refute developer =~ ~r/let Stop run again/is
+    refute reviewer =~ "Stop script settles instead"
+
+    assert developer =~ ~r/Kogen's Build controller verifies each of your turns/is
+    assert reviewer =~ ~r/Kogen's Build controller owns verification/is
+
+    assert compact_developer =~
+             "applicable failure-class retry policy from the shared execution policy"
+
+    refute compact_developer =~ "`verification_retries` remains"
+    refute compact_developer =~ "normal retry budget"
+  end
+
   test "the Reviewer prompt's findings say what was checked and what wasn't, citing evidence locators" do
     reviewer = File.read!(@reviewer_path)
 

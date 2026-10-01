@@ -60,14 +60,12 @@ is genuinely satisfied, not merely plausible.
 
 Kogen's Build controller owns verification: after each Developer turn it runs
 exactly the approved `verified_by` targets itself and records one
-Candidate-bound receipt per target (under an older controller, the bootstrap
-Stop script settles instead; its scripts are remnants a follow-up Intent
-deletes). Read the recorded receipts; do not run any gate yourself or use a
-second run to replace missing verification evidence. Failed or exhausted
-verification precedes handoff and Review; never invent a verdict or retry a
-gate. A receipt marked `reused_from` is a provider-backed target's earlier pass
-on the byte-identical Candidate and catalog within this attempt; `check` and
-every offline target always ran fresh.
+Candidate-bound receipt per target. Read the recorded receipts; do not run any
+gate yourself or use a second run to replace missing verification evidence.
+Failed or exhausted verification precedes handoff and Review; never invent a
+verdict or retry a gate. A receipt marked `reused_from` is a provider-backed
+target's earlier pass on the byte-identical Candidate and catalog within this
+attempt; `check` and every offline target always ran fresh.
 
 Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Its
 `review_packet` (path, sha256, byte count) is your evidence source: read that
