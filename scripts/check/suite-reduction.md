@@ -33,3 +33,46 @@ The defect and wrong-fix runs verify that the shorter group still distinguishes 
 On the restored source, the selected command passed all 12 tests in 0.07 s of ExUnit time (0.91 s wall time, including compilation). `mix format --check-formatted test/kogen/progress_budget_test.exs` passed in 0.22 s. `mix credo --strict test/kogen/progress_budget_test.exs` passed 69 checks on one file in 0.48 s. The first focused test run compiled 78 files and took 2.60 s wall time. No full gate or unrelated tests were run.
 
 This pure group contributes negligible time beside the receipt's process-heavy cases; the case and line reductions are measured, while any whole-gate time change remains unmeasured. After this commit becomes the admission `HEAD`, a future full gate will enumerate the reduced inventory as its prospective baseline.
+
+## Follow-on: precondition fixture cross-product
+
+This follow-on starts from `3f4f2a29` (the integrated suite reduction plus
+current project-command integration). It changes only
+`test/kogen/build_preconditions_test.exs` and this report. The qualification
+receipt records 350 `BuildPreconditionsTest` cases totaling 628.425 s. At that
+source pin, the test file had 1,271 physical lines.
+
+The module applies its 50-entry `@precondition_cases` parameter list to every
+test in the module. Only `precondition failures never launch the harness`
+consumes those case parameters. The two other precondition checks repeat the
+same missing-Keychain and missing-`deps/` setup 50 times apiece. Four route
+tests ignore the matrix parameters and use `Kogen.SharedOutcome` to assert the
+same fixture outcome each time. The repetition adds isolated child starts and
+fixture setup without extending the set of checked states.
+
+Those six independent tests now live in a non-parameterized isolated module;
+the 50 admission variants remain unchanged. The combined group therefore goes
+from 350 invocations to 56 (50 matrix variants plus six single scenarios), a
+reduction of 294 invocations or 84%. All seven source-level test definitions
+and their assertions remain; the file grows from 1,271 to 1,296 physical lines
+for the sibling module and its small shared fixture API. No case is excluded,
+renamed, or weakened.
+
+The first version put the template in a later `setup_all` callback. The
+offline gate sets `KOGEN_WARM_POOL=1`, so `Kogen.IsolatedCase` registered its
+speculative jobs before that callback and omitted `:template` from the queued
+child context. A focused warm-pool run reproduced six `KeyError` failures at
+`PreconditionFixture.child_template!/0`. The template now comes from a module
+tag, which is present before `Kogen.IsolatedCase` registers those jobs.
+
+Both focused paths pass on the corrected source. The ordinary command
+`MIX_ENV=test mix test test/kogen/build_preconditions_test.exs
+--warnings-as-errors --seed 1` passed all 56 tests in 20.2 s ExUnit / 21.13 s
+wall. The same command with `KOGEN_WARM_POOL=1` passed all 56 in 16.9 s / 17.99
+s. `mix format --check-formatted test/kogen/build_preconditions_test.exs`
+passed in 0.27 s, and `mix credo --strict
+test/kogen/build_preconditions_test.exs` passed 69 checks on one file in 0.50
+s. `git diff --check` passed. No full gate was run, so the global inventory
+and total-gate timing after this integration are not measured. The earlier
+ProgressBudget sensitivity controls remain documented above; this follow-on
+moves existing checks and introduces no product-code behavior.
