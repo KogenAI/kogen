@@ -1,9 +1,0 @@
-id: 01965000-0000-7000-8000-00000000f00c
-slug: stale-unavailable
-title: Cite a baseline anchor that moved
-commit_subject: Cite a baseline anchor that moved
-may_change_guarded_paths:
-  - lib/a.ex
-shaped_against:
-  branch: main
-  head: 0000000000000000000000000000000000000000

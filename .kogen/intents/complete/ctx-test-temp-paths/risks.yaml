@@ -1,3 +1,0 @@
-- id: leftover-paths-on-this-machine
-  scenario_ids: [ctx-temp-paths-collision-free]
-  description: Paths left by earlier runs stay in the tmp dir; with the pid+time nonce they can no longer collide, so no cleanup of old files is needed.

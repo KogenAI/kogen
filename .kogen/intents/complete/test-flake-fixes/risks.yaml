@@ -1,9 +1,0 @@
-- id: custody-self-hosting
-  scenario_ids: [custody-release-race]
-  description: The installing Build runs under the old controller (isolation keeps the Candidate's process_custody.ex out of it). The fix touches the lock protocol every Build uses; keep the lock file format and the stale-reclaim behaviour unchanged.
-- id: terminal-probe-residual
-  scenario_ids: [probe-and-installer-tests]
-  description: terminal_probe_test.exs:60 may still flake under load until its cause is known; this Intent only makes the failure name the missed deadline.
-- id: drain-settle
-  scenario_ids: [custody-release-race]
-  description: The grandchild ignores SIGTERM, so release/1 always waits the full 2 s settle (process_custody.ex:254) inside drain_standin's 5 s budget; a residual load sensitivity, not changed here.

@@ -1,6 +1,0 @@
-- id: running-controller-reads-config
-  scenario_ids: [codex-developer-high]
-  description: The Build that installs this runs under the old config (read at admission); the new effort applies from the next Build.
-- id: cost-and-duration
-  scenario_ids: [codex-developer-high]
-  description: High effort makes Developer turns slower; no timeout is changed. If turns start timing out, that is a finding, not a reason to raise a timeout.

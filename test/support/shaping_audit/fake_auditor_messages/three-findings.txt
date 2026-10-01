@@ -1,9 +1,0 @@
-I read the inlined package and scoped files. Here are the findings.
-
-```json
-{"findings": [
-  {"label": "missing-selector", "summary": "scenario X has no offline selector", "detail": "add test/kogen/x_test.exs to proof.offline", "paths": ["test/kogen/x_test.exs"]},
-  {"label": "unguarded-path", "summary": "lib/a.ex is edited but not guarded", "detail": "add lib/a.ex to may_change_guarded_paths", "paths": ["lib/a.ex"]},
-  {"label": "wrong-citation", "summary": "cited path:line does not exist at HEAD", "detail": "the cited lib/a.ex:99 is out of range; update the citation", "paths": ["lib/a.ex"]}
-]}
-```

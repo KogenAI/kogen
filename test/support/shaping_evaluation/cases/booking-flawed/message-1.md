@@ -1,1 +1,0 @@
-Limit this feature to an already connected organizer with availability.read. Use the maintained synthetic capability seed to recreate a private connection per run, refuse collisions and remove only run-owned data afterward. Preserve the seed and its supplied lifecycle; these checks establish synthetic availability only, not real OAuth. This is clarification, not approval.

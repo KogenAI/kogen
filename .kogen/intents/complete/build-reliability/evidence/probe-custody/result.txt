@@ -1,4 +1,0 @@
-ctrl-c default               exited_after=24.81 status=None tail='READY  | ^C   | \x1b[JBREAK: (a)bort (A)bort with dump (c)ontinue (p)roc info (i)nfo   |        (l)oaded (v)ersion (k)ill (D)b-tables (d)istribution   | '
-ctrl-c +Bd                   exited_after=0.0 status=0 tail='READY  | ^C'
-ctrl-c +Bc                   exited_after=24.83 status=None tail='READY  | ^C'
-sighup default               exited_after=24.87 status=None tail='READY  | '

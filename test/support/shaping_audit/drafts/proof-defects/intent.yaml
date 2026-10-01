@@ -1,9 +1,0 @@
-id: 01965000-0000-7000-8000-00000000d001
-slug: proof-defects
-title: Break every proof predicate
-commit_subject: Break every proof predicate
-may_change_guarded_paths:
-  - test/**
-shaped_against:
-  branch: main
-  head: __HEAD__

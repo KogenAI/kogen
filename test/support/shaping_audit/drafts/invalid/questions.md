@@ -1,3 +1,0 @@
-## Settled
-
-No open questions.

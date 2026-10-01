@@ -1,1 +1,0 @@
-After successful complete validation, replace an existing regular output or create a missing output. On failure preserve the old output bytes, or leave it absent. Report success only after the final output is written. Clean only temporary files created by this invocation. This is clarification, not approval.

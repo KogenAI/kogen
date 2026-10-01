@@ -1,3 +1,0 @@
-existing destination silently merged: true
-external source after copied-link mutation: "changed through fixture"
-destination symlink target received copy: true

@@ -1,4 +1,0 @@
-parsed .kogen/intents/drafts/reliable-isolated-tests/intent.yaml
-parsed .kogen/intents/drafts/reliable-isolated-tests/references.yaml
-parsed .kogen/intents/drafts/reliable-isolated-tests/risks.yaml
-parsed .kogen/intents/drafts/reliable-isolated-tests/scenarios.yaml

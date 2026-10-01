@@ -1,2 +1,0 @@
-exited_after None status None
-'n/4b512dac-a2b0-40ed-9bd1-89b099e1f0c6/scratchpad/probe/ctrlc/launcher.py"\x1b[0m, line \x1b[35m3\x1b[0m, in \x1b[35m<module>\x1b[0m\r\n    \x1b[31mos.setpgid\x1b[0m\x1b[1;31m(0, 0)\x1b[0m\r\n    \x1b[31m~~~~~~~~~~\x1b[0m\x1b[1;31m^^^^^^\x1b[0m\r\n\x1b[1;35mPermissionError\x1b[0m: \x1b[35m[Errno 1] Operation not permitted\x1b[0m\r\nPARENT saw child exit 1\r\n'

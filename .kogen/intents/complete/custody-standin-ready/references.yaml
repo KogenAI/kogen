@@ -1,6 +1,0 @@
-- kind: failure-analysis
-  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/ORCHESTRATOR-LOG.md
-  note: 2026-09-27 ~09:15 entry (durable-builds Build KaDgVkNh0zDUlhDCsTUm-HE8 stop).
-- kind: intent
-  path: .kogen/intents/complete/test-flake-fixes
-  note: Made stop mode wait for the group registration; hang mode kept the fixed sleep.

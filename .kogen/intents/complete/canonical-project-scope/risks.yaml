@@ -1,6 +1,0 @@
-- id: boundary-cycle
-  scenario_ids: [symlinked-spellings-share-one-id]
-  description: Kogen.ProjectScope must stay a leaf (deps []); the boundary checker in `mix compile` enforces it.
-- id: no-auth-change
-  scenario_ids: [real-callers-unchanged]
-  description: Every real caller's id is unchanged, so no login scope changes (D1 not triggered); proven by the old-formula comparison.

@@ -1,9 +1,0 @@
-id: 01965000-0000-7000-8000-00000000f005
-slug: paid-unproven
-title: Select live-x without proving the path
-commit_subject: Select live-x without proving the path
-may_change_guarded_paths:
-  - test/**
-shaped_against:
-  branch: main
-  head: __HEAD__

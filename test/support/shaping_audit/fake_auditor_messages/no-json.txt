@@ -1,2 +1,0 @@
-I ran out of time before I could produce structured findings. Sorry about
-that, here is prose instead of JSON.

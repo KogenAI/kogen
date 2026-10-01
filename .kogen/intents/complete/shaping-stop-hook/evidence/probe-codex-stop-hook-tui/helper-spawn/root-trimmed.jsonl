@@ -1,9 +1,0 @@
-{"type": "session_meta", "payload": {"id": "01a0e58f-9749-7873-9e4d-efcec8d40fcf", "source": "exec", "cli_version": "0.157.1", "originator": "codex_exec"}, "line": 0}
-{"type": "event_msg", "payload": {"type": "task_started", "turn_id": "01a0e58f-9790-7093-9ea4-2da4b14f6267"}, "line": 1}
-{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"text": "<environment_context>\u2026(trimmed)"}], "internal_chat_message_metadata_passthrough": {"turn_id": "01a0e58f-9790-7093-9ea4-2da4b14f6267"}}, "line": 5}
-{"type": "turn_context", "payload": {"turn_id": "01a0e58f-9790-7093-9ea4-2da4b14f6267", "model": "gpt-6-luna", "effort": "low"}, "line": 7}
-{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"text": "Probe only. Use your spawn_agent tool exactly once to start one helper agent whose task is: reply with exactly the word HELPER-OK and finish. Wait for it with wait_agent. Then reply with exactly the word DONE. Run no shell commands."}], "internal_chat_message_metadata_passthrough": {"turn_id": "01a0e58f-9790-7093-9ea4-2da4b14f6267"}}, "line": 8}
-{"type": "response_item", "payload": {"type": "function_call", "name": "spawn_agent"}, "line": 10}
-{"type": "response_item", "payload": {"type": "function_call", "name": "wait_agent"}, "line": 16}
-{"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"text": "DONE"}], "internal_chat_message_metadata_passthrough": {"turn_id": "01a0e58f-9790-7093-9ea4-2da4b14f6267"}}, "line": 25}
-{"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "01a0e58f-9790-7093-9ea4-2da4b14f6267"}, "line": 28}

@@ -1,9 +1,0 @@
-id: 01965000-0000-7000-8000-00000000f009
-slug: stale-disputed
-title: Cite a moved anchor, disputed
-commit_subject: Cite a moved anchor, disputed
-may_change_guarded_paths:
-  - lib/a.ex
-shaped_against:
-  branch: main
-  head: __FIRST_COMMIT__

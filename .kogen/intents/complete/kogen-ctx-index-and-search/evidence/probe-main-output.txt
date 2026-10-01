@@ -1,8 +1,0 @@
-sqlite 3.53.2
-fts5 trigram hits 1; unicode61 hits 1
-root source errors false
-[["kw","defmodule",1],["name","A.B",1]]
-[["kw","def",3],["name","run",3]]
-[["mod","D",3],["fun","go",3]]
-[["kw","defp",4],["name","hidden",4]]
-[["kw","def",5],["name","two",5]]

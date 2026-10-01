@@ -1,9 +1,0 @@
-id: 01965000-0000-7000-8000-00000000f003
-slug: long-title
-title: Own verification in the Build controller with Candidate-bound receipts.
-commit_subject: own verification in the Build controller with Candidate-bound receipts and more
-may_change_guarded_paths:
-  - lib/a.ex
-shaped_against:
-  branch: main
-  head: __HEAD__

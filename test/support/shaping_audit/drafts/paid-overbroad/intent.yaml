@@ -1,9 +1,0 @@
-id: 01965000-0000-7000-8000-00000000f006
-slug: paid-overbroad
-title: Select live-x for driver mechanics only
-commit_subject: Select live-x for driver mechanics only
-may_change_guarded_paths:
-  - test/support/**
-shaped_against:
-  branch: main
-  head: __HEAD__

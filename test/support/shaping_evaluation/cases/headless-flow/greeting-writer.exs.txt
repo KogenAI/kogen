@@ -1,7 +1,0 @@
-defmodule Kogen.GreetingWriter do
-  @moduledoc false
-
-  def write!(path, punctuation) when punctuation in [".", "!"] do
-    File.write!(path, ["Hello", punctuation, "\n"])
-  end
-end

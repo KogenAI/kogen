@@ -1,1 +1,0 @@
-The package's own settled decision is recorded here at HEAD.

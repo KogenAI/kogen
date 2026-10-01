@@ -1,1 +1,0 @@
-exited_after 0.0 status None 'READY\r\n^C'

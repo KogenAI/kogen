@@ -1,5 +1,0 @@
-guards=[] -> {:error, "Candidate changed paths outside Approved guards: .gitignore, hidden.txt"}
-guards=[".gitignore"] -> {:error, "Candidate changed paths outside Approved guards: hidden.txt"}
-guards=[".gitignore", "hidden.txt"] -> :ok
-gitignore-only, guards=[.gitignore] -> :ok
-gitignore-only, guards=[] -> {:error, "Candidate changed paths outside Approved guards: .gitignore"}

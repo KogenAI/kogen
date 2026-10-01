@@ -1,9 +1,0 @@
--1789998731105-554 csv-flawed         rollouts=3 task_complete=[2, 1, 1] drafts_by_turn=['0'] scenarios.yaml=True scripted_sent=1
--1789998731105-554 csv-complete       rollouts=1 task_complete=[1] drafts_by_turn=[] scenarios.yaml=True scripted_sent=0
--1789998731105-554 booking-flawed     rollouts=2 task_complete=[2, 1] drafts_by_turn=['0'] scenarios.yaml=True scripted_sent=1
--1789998731105-554 booking-complete   rollouts=1 task_complete=[1] drafts_by_turn=[] scenarios.yaml=True scripted_sent=0
--1789998731105-554 csv-continuation   rollouts=1 task_complete=[3] drafts_by_turn=['0', '1'] scenarios.yaml=True scripted_sent=2
--1789998731105-554 stateful-flawed    rollouts=2 task_complete=[1, 1] drafts_by_turn=[] scenarios.yaml=True scripted_sent=0
--1789998731105-554 stateful-complete  rollouts=3 task_complete=[1, 1, 1] drafts_by_turn=[] scenarios.yaml=True scripted_sent=0
--1790361927352-586 stateful-complete  rollouts=1 task_complete=[1] drafts_by_turn=[] scenarios.yaml=False scripted_sent=0
--1790363015551-586 stateful-flawed    rollouts=1 task_complete=[1] drafts_by_turn=[] scenarios.yaml=False scripted_sent=0

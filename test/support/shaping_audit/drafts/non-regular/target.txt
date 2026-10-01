@@ -1,1 +1,0 @@
-The regular target of the symlink the test adds as link.txt.

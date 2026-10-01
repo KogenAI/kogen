@@ -1,8 +1,0 @@
-{
-  "hook_block_then_pass": true,
-  "schemas": [
-    "attempt-one.schema.json",
-    "attempt-two.schema.json"
-  ],
-  "limitation": "Deterministic hook only; no native enforcement claim"
-}

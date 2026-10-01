@@ -1,4 +1,0 @@
-Your previous verdict failed Kogen validation with these exact errors:
-- /scenarios/0/evidence/0/path: "calc.py" is not cited with a line locator the controller can verify; set locator to "calc.py:2".
-- /scenarios/1/evidence/0/receipt: must be null unless citing a review-packet receipt.
-Return the same judgement (same verdict value and scenario outcomes), corrected in shape only.
