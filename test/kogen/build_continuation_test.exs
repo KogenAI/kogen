@@ -298,6 +298,109 @@ defmodule Kogen.BuildContinuationTest do
     [{_c2, _path, _record}] = new_records(dir, [pid, c1])
   end
 
+  test "inherited progress is checkpointed before two killed continuations and preserved on acceptance" do
+    dir = Fixture.fixture!()
+
+    assert {:error, message} =
+             Fixture.run(dir,
+               reviews: "rework",
+               provider_fail: ["developer-2"],
+               provider_tail: tail!()
+             )
+
+    assert message =~ "category: provider"
+    [{parent_id, _parent_path, parent_record}] = Fixture.records!(dir)
+    parent_report = report!(dir, parent_id)
+    assert parent_report["category"] == "provider"
+    assert parent_report["continuable"] == true
+
+    before = latest_progress(parent_record)
+    assert before["rounds"] > 0
+    assert before["developer_resumptions"] > 0
+    assert before["unresolved"] != []
+    assert before["history"] != []
+    assert before["elapsed_ms"] > 0
+    refute Map.has_key?(before, "usage")
+
+    candidate = parent_record["candidate"]
+    harness = candidate["harness_home"]
+    review_count = Path.join(harness, "fake-state/reviews")
+    assert File.read!(review_count) |> String.trim() == "1"
+    assert File.exists?(Path.join(harness, "fake-state/reviewer-prompt-1"))
+    refute File.exists?(Path.join(harness, "fake-state/reviewer-prompt-2"))
+
+    prior_guard_violations =
+      parent_record["attempts"] |> List.last() |> then(&List.wrap(&1["guard_violations"]))
+
+    kill_continuation_at!(dir, "developer-3")
+    [{first_id, first_path, first_record}] = new_records(dir, [parent_id])
+    [first_attempt] = first_record["attempts"]
+    assert first_attempt["progress"] == before
+    assert first_attempt["developer_session_id"] == parent_report["developer_session_id"]
+    assert first_attempt["guard_violations"] == prior_guard_violations
+    assert is_map(first_attempt["verification_context"])
+    assert first_record["continues"]["build_id"] == parent_id
+    assert first_record["candidate"]["worktree_path"] == candidate["worktree_path"]
+    assert first_record["candidate"]["branch"] == candidate["branch"]
+    assert first_record["candidate"]["harness_home"] == harness
+    refute File.exists?(FailureReport.report_path(dir, first_id))
+    assert File.exists?(first_path)
+
+    kill_continuation_at!(dir, "developer-4")
+    assert report!(dir, first_id)["category"] == "interrupted"
+    [{second_id, _second_path, second_record}] = new_records(dir, [parent_id, first_id])
+    [second_attempt] = second_record["attempts"]
+    assert second_attempt["progress"] == before
+    assert second_attempt["developer_session_id"] == parent_report["developer_session_id"]
+    assert second_attempt["guard_violations"] == prior_guard_violations
+    assert is_map(second_attempt["verification_context"])
+    assert second_record["continues"]["build_id"] == first_id
+    assert second_record["candidate"]["worktree_path"] == candidate["worktree_path"]
+    assert second_record["candidate"]["branch"] == candidate["branch"]
+    assert second_record["candidate"]["harness_home"] == harness
+    assert owner!(dir, parent_id)["tracking_build_id"] == second_id
+
+    assert :ok = Fixture.run(dir)
+    [{final_id, _final_path, final_record}] = new_records(dir, [parent_id, first_id, second_id])
+    assert final_record["status"] == "accepted"
+    assert final_record["continues"]["build_id"] == second_id
+
+    after_progress = latest_progress(final_record)
+    assert after_progress["limits"] == before["limits"]
+
+    for key <- ~w(rounds no_progress dispatches developer_resumptions elapsed_ms) do
+      assert after_progress[key] >= before[key]
+    end
+
+    assert Enum.take(after_progress["history"], length(before["history"])) == before["history"]
+
+    assert Enum.take(after_progress["cycles_ms"], length(before["cycles_ms"])) ==
+             before["cycles_ms"]
+
+    assert Enum.take(after_progress["turn_nudges"], length(before["turn_nudges"])) ==
+             before["turn_nudges"]
+
+    assert MapSet.subset?(MapSet.new(before["cleared"]), MapSet.new(after_progress["cleared"]))
+
+    assert MapSet.subset?(
+             MapSet.new(before["unresolved"]),
+             MapSet.new(after_progress["unresolved"] ++ after_progress["cleared"])
+           )
+
+    assert Enum.all?(before["phases"], fn {phase, elapsed} ->
+             after_progress["phases"][phase] >= elapsed
+           end)
+
+    assert not before["nudged"] or after_progress["nudged"]
+    refute Map.has_key?(after_progress, "usage")
+    assert File.read!(review_count) |> String.trim() == "2"
+    assert File.exists?(Path.join(harness, "fake-state/reviewer-prompt-2"))
+    assert File.exists?(Path.join(harness, "fake-state/reviewer-addendum-prompt-1"))
+    assert Workspace.list(dir) == []
+    assert File.exists?(Path.join(dir, ".kogen/intents/complete/scripted-build"))
+    assert final_id != parent_id
+  end
+
   test "a killed controller is reconciled and continued by the rerun" do
     dir = Fixture.fixture!()
     standin = Fixture.start_standin!(dir, %{fail_first: [1], hang: ["developer-2"]})
@@ -695,6 +798,83 @@ defmodule Kogen.BuildContinuationTest do
     |> File.read!()
     |> Jason.decode!()
     |> Map.fetch!("output")
+  end
+
+  defp latest_progress(record) do
+    record["attempts"]
+    |> Enum.reverse()
+    |> Enum.find_value(& &1["progress"])
+  end
+
+  defp kill_continuation_at!(dir, developer_invocation) do
+    standin = Fixture.start_standin!(dir, %{hang: [developer_invocation]})
+    standin_started_at = process_started_at!(standin.pid)
+
+    on_exit(fn ->
+      stop_if_owned!(standin.pid, standin_started_at)
+      close_port(standin.port)
+    end)
+
+    fake_pid = Fixture.await_hanging!(dir)
+    fake_started_at = process_started_at!(fake_pid)
+    on_exit(fn -> stop_if_owned!(fake_pid, fake_started_at) end)
+
+    stop_if_owned!(standin.pid, standin_started_at)
+    stop_if_owned!(fake_pid, fake_started_at)
+    clear_hanging_marker!(dir, fake_pid)
+    :ok
+  end
+
+  defp process_started_at!(pid) do
+    case current_process_started_at(pid) do
+      started_at when is_binary(started_at) and started_at != "" -> started_at
+      _ -> raise "could not identify owned process #{pid}"
+    end
+  end
+
+  defp stop_if_owned!(pid, started_at) do
+    if current_process_started_at(pid) == started_at do
+      _ = System.cmd("/bin/kill", ["-9", Integer.to_string(pid)], stderr_to_stdout: true)
+      wait_owned_process_gone!(pid, started_at)
+    end
+  end
+
+  defp wait_owned_process_gone!(
+         pid,
+         started_at,
+         deadline \\ System.monotonic_time(:millisecond) + 20_000
+       ) do
+    if current_process_started_at(pid) == started_at do
+      if System.monotonic_time(:millisecond) >= deadline do
+        raise "owned process #{pid} remained alive"
+      end
+
+      Process.sleep(50)
+      wait_owned_process_gone!(pid, started_at, deadline)
+    end
+  end
+
+  defp current_process_started_at(pid) do
+    case System.cmd("ps", ["-p", Integer.to_string(pid), "-o", "lstart="], stderr_to_stdout: true) do
+      {output, 0} -> String.trim(output)
+      _ -> nil
+    end
+  end
+
+  defp clear_hanging_marker!(dir, pid) do
+    dir
+    |> Workspace.project_dir()
+    |> Path.join("harness/*/fake-state/developer-hanging")
+    |> Path.wildcard()
+    |> Enum.each(fn marker ->
+      if File.read!(marker) |> String.trim() == Integer.to_string(pid), do: File.rm!(marker)
+    end)
+  end
+
+  defp close_port(port) do
+    if Port.info(port), do: Port.close(port)
+  rescue
+    _ -> :ok
   end
 
   defp provider_stopped!(dir) do

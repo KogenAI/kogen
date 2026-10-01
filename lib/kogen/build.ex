@@ -867,8 +867,9 @@ defmodule Kogen.Build do
   end
 
   @doc """
-  Opens one attempt: appends it to the tracking record (with `extra` fields) and
-  initializes its controller verification context. It launches nothing.
+  Opens one attempt: atomically appends its current progress checkpoint and
+  `extra` fields to the tracking record, then initializes its controller
+  verification context. It launches nothing.
   """
   @spec open_attempt(map(), String.t() | nil, non_neg_integer(), map()) ::
           {:ok, map()} | {:error, map(), String.t()}
@@ -892,6 +893,11 @@ defmodule Kogen.Build do
         _ ->
           attempt
       end
+
+    attempt =
+      if is_map(ctx.progress),
+        do: Map.put(attempt, "progress", Progress.to_map(ctx.progress)),
+        else: attempt
 
     record = ctx.tracking.record
 
