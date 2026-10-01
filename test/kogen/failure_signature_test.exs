@@ -338,10 +338,16 @@ defmodule Kogen.FailureSignatureTest do
   end
 
   describe "primary_lines/2 keeps a make target's own failing output" do
-    @tag :tmp_dir
-    test "a target echoing a marker-free message then exiting 1 keeps that line", %{
-      tmp_dir: dir
-    } do
+    test "a target echoing a marker-free message then exiting 1 keeps that line" do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "kogen-failure-signature-#{Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false)}"
+        )
+
+      File.mkdir!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
       File.write!(
         Path.join(dir, "Makefile"),
         "check:\n\t@echo 'dummy.txt is missing. Required exact content: shape2build-k4q9z'\n\t@exit 1\n"

@@ -994,6 +994,17 @@ defmodule Kogen.ParallelSettlementVerificationTest do
 
   describe "resume across attempts (prior receipts)" do
     setup %{root: root} do
+      # IsolatedCase setup also runs in the shared parent VM. The prior cycle
+      # clears KOGEN_LIVE_LOG_DIR while it runs, so create it only in the child.
+      # Parent dispatch still needs these keys for the test context patterns.
+      if Kogen.WorkspaceFixture.isolated_child?() do
+        prior_cycle!(root)
+      else
+        {:ok, plan: nil, env: nil, roots: nil, prior: nil, prior_execution: nil, digest: nil}
+      end
+    end
+
+    defp prior_cycle!(root) do
       # `b-fail-marker` is gitignored, so toggling it never changes the tree.
       {plan, env} = install!(root, [{"a", "@echo a-ok"}, {"b", "@test ! -f b-fail-marker"}])
       File.write!(Path.join(root, "b-fail-marker"), "x")

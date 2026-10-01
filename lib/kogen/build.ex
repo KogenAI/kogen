@@ -1189,7 +1189,7 @@ defmodule Kogen.Build do
     ctx = observe_turn(ctx)
 
     case time_gate(ctx, "verification") do
-      {:ok, ctx} -> verify_turn_bound(ctx, session_id, number, notes, invocation)
+      {:ok, ctx} -> verify_turn_with_inputs(ctx, session_id, number, notes, invocation)
       {:stop, result} -> result
     end
   end
@@ -1198,16 +1198,6 @@ defmodule Kogen.Build do
     case note_time(ctx, boundary) do
       {:ok, ctx} -> {:ok, ctx}
       {:error, reason} -> {:stop, stop(ctx, reason)}
-    end
-  end
-
-  defp verify_turn_bound(ctx, session_id, number, notes, invocation) do
-    case rebind_candidate_references(ctx) do
-      {:ok, ctx} ->
-        verify_turn_with_inputs(ctx, session_id, number, notes, invocation)
-
-      {:error, ctx, reason} ->
-        stop(ctx, reason)
     end
   end
 
@@ -1225,34 +1215,58 @@ defmodule Kogen.Build do
     end
   end
 
-  # A completed Developer repair may legitimately produce a new Candidate
+  # A Developer repair may legitimately produce a new Candidate
   # revision. Keep its prior citation bytes as immutable history, while
   # dropping only the old revision's mutable source-file guards. The next
   # handoff snapshots and binds any citations it still uses.
   defp rebind_candidate_references(ctx) do
     attempt = current_attempt(ctx)
     previous_candidate = attempt["candidate_id"]
-    record_path = Tracking.relative_path(ctx.tracking)
-    candidate_references = Map.delete(ctx.references, record_path)
 
-    if is_binary(previous_candidate) and map_size(candidate_references) > 0 do
+    if is_binary(previous_candidate) do
       case Kogen.Git.candidate_id(ctx.root) do
         {:ok, ^previous_candidate} ->
           {:ok, ctx}
 
-        {:ok, _candidate_id} ->
-          history =
-            List.wrap(attempt["reference_snapshot_history"]) ++
-              [%{"candidate_id" => previous_candidate, "snapshots" => candidate_references}]
+        {:ok, candidate_id} ->
+          case mutable_reference_paths(ctx, previous_candidate) do
+            {:ok, paths} ->
+              candidate_references = Map.take(ctx.references, paths)
+              active_references = Map.drop(ctx.references, paths)
+              reviewer_references = attempt["reviewer_reference_snapshots"] || %{}
+              retained_reviewer = Map.drop(reviewer_references, paths)
 
-          active_references = Map.take(ctx.references, [record_path])
+              history =
+                attempt["reference_snapshot_history"]
+                |> List.wrap()
+                |> archive_references(previous_candidate, candidate_references)
 
-          case record_attempt(ctx, %{
-                 "reference_snapshot_history" => history,
-                 "reference_snapshots" => active_references
-               }) do
-            {:ok, ctx} -> {:ok, %{ctx | references: active_references}}
-            {:error, reason} -> {:error, ctx, reason}
+              # Tracking requires the exact prior Reviewer map when replacing it.
+              # Retire its source entries now, under their actual revision, so a
+              # fresh Review cannot later archive old bytes under the repaired id.
+              history =
+                if reviewer_references == retained_reviewer,
+                  do: history,
+                  else: archive_references(history, previous_candidate, reviewer_references)
+
+              changes =
+                Map.merge(supersede_packet(attempt), %{
+                  "candidate_id" => candidate_id,
+                  "reference_snapshot_history" => history,
+                  "reference_snapshots" => active_references,
+                  "reviewer_reference_snapshots" => retained_reviewer
+                })
+
+              case record_attempt(ctx, changes) do
+                {:ok, ctx} ->
+                  {:ok, %{ctx | references: active_references, review_packet: nil}}
+
+                {:error, reason} ->
+                  {:error, ctx, reason}
+              end
+
+            {:error, reason} ->
+              {:error, ctx, reason}
           end
 
         {:error, reason} ->
@@ -1260,6 +1274,41 @@ defmodule Kogen.Build do
       end
     else
       {:ok, ctx}
+    end
+  end
+
+  defp archive_references(history, _candidate_id, snapshots) when map_size(snapshots) == 0,
+    do: history
+
+  defp archive_references(history, candidate_id, snapshots) do
+    entry = %{"candidate_id" => candidate_id, "snapshots" => snapshots}
+    if entry in history, do: history, else: history ++ [entry]
+  end
+
+  # Use the cited revision's tree, rather than today's ignore rules or file
+  # existence: new source files and deleted source files can both be repaired.
+  # Ignored evidence and controller/Approved inputs never become mutable just
+  # because a source repair changed the tree.
+  defp mutable_reference_paths(ctx, candidate_id) do
+    case System.cmd("git", ["ls-tree", "-r", "--name-only", "-z", candidate_id],
+           cd: ctx.root,
+           stderr_to_stdout: true
+         ) do
+      {output, 0} ->
+        paths =
+          output
+          |> String.split(<<0>>, trim: true)
+          |> Enum.reject(fn path ->
+            Map.has_key?(ctx.guarded_snapshot.ignored, path) or
+              path == Tracking.relative_path(ctx.tracking) or
+              String.starts_with?(path, ".kogen/runtime/") or
+              String.starts_with?(path, @approved_base <> "/")
+          end)
+
+        {:ok, paths}
+
+      {output, _code} ->
+        {:error, "could not identify mutable Candidate citations: #{String.trim(output)}"}
     end
   end
 
@@ -2854,6 +2903,13 @@ defmodule Kogen.Build do
   # message}`. Ordinary extra edits are disclosed, not refused. `ctx` carries
   # the refreshed snapshot and control Git environment events.
   defp post_developer_inputs_unchanged(ctx) do
+    case rebind_candidate_references(ctx) do
+      {:ok, ctx} -> guard_developer_inputs(ctx)
+      {:error, ctx, reason} -> {{:stop, stop_category(reason), reason}, ctx}
+    end
+  end
+
+  defp guard_developer_inputs(ctx) do
     case handoff_inputs_unchanged(ctx) do
       {:ok, added} ->
         {result, snapshot, events} =
