@@ -33,6 +33,8 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
+For the pinned local bundle and startup procedure, see [Local package](docs/local-package.md).
+
 Use Elixir 1.20 with Erlang/OTP 29, Git, Make, Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.285 and Codex 0.159.2. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `dev.kogen.jev` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s dev.kogen.jev -a <account> -w` before building, or Build stops before launching the Developer.
 
 For this checkout's hybrid default route (`optimum`), prepare both managed harnesses:
