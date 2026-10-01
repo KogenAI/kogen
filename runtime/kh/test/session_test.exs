@@ -115,6 +115,130 @@ defmodule Kh.SessionTest do
     GenServer.stop(session)
   end
 
+  test "scripted echo returns only the actual successful Bash result" do
+    root = temp_dir!()
+    checkpoint = Path.join(root, "echo.json")
+    expected_output = ~s({"candidate_id":"fixture-candidate","verdict":"ready"})
+
+    replies = [
+      %{
+        "expect" => %{"last_user_text" => "read the candidate record"},
+        "reply" => %{
+          "tool_calls" => [
+            %{
+              "name" => "bash",
+              "args" => %{"command" => "printf '%s' '#{expected_output}'"}
+            }
+          ]
+        }
+      },
+      %{
+        "expect" => %{
+          "last_message_role" => "tool",
+          "last_tool_name" => "bash",
+          "last_tool_is_error" => false
+        },
+        "reply" => %{"text_from_last_tool" => true}
+      }
+    ]
+
+    {:ok, session} = Kh.Session.open(session_config(root, checkpoint, replies))
+    {:ok, run_ref} = Kh.Session.run(session, "read the candidate record")
+    {:ok, result} = Kh.Session.await(session, run_ref, 5_000)
+    assert get_in(result, ["summary", "status"]) == "ok"
+    assert get_in(result, ["summary", "final_text"]) == expected_output
+    GenServer.stop(session)
+
+    no_output_replies = [
+      %{
+        "expect" => %{"last_user_text" => "check an empty command"},
+        "reply" => %{
+          "tool_calls" => [
+            %{"name" => "bash", "args" => %{"command" => "true"}}
+          ]
+        }
+      },
+      %{
+        "expect" => %{
+          "last_message_role" => "tool",
+          "last_tool_name" => "bash",
+          "last_tool_is_error" => false
+        },
+        "reply" => %{"text_from_last_tool" => true}
+      }
+    ]
+
+    {:ok, no_output} = Kh.Session.open(session_config(root, Path.join(root, "no-output.json"), no_output_replies))
+    {:ok, no_output_ref} = Kh.Session.run(no_output, "check an empty command")
+    {:ok, no_output_result} = Kh.Session.await(no_output, no_output_ref, 5_000)
+    assert get_in(no_output_result, ["summary", "status"]) == "error"
+    assert get_in(no_output_result, ["summary", "error_kind"]) == "fatal"
+    assert get_in(no_output_result, ["summary", "error"]) =~ "nonempty successful bash output"
+    refute get_in(no_output_result, ["summary", "final_text"]) == "(no output)"
+    GenServer.stop(no_output)
+
+    assert {:error, "script steps require expectation maps and reply maps"} =
+             session_config(root, Path.join(root, "ungated.json"), [
+               %{
+                 "expect" => %{"last_tool_name" => "bash"},
+                 "reply" => %{"text_from_last_tool" => true}
+               }
+             ])
+             |> Kh.Session.open()
+
+    wrong_tool_replies = [
+      %{
+        "expect" => %{"last_user_text" => "write a marker"},
+        "reply" => %{
+          "tool_calls" => [
+            %{"name" => "write", "args" => %{"path" => "marker.txt", "content" => "saved"}}
+          ]
+        }
+      },
+      %{
+        "expect" => %{
+          "last_message_role" => "tool",
+          "last_tool_name" => "bash",
+          "last_tool_is_error" => false
+        },
+        "reply" => %{"text_from_last_tool" => true}
+      }
+    ]
+
+    {:ok, wrong_tool} = Kh.Session.open(session_config(root, Path.join(root, "wrong.json"), wrong_tool_replies))
+    {:ok, wrong_ref} = Kh.Session.run(wrong_tool, "write a marker")
+    {:ok, wrong_result} = Kh.Session.await(wrong_tool, wrong_ref, 5_000)
+    assert get_in(wrong_result, ["summary", "status"]) == "error"
+    assert get_in(wrong_result, ["summary", "error_kind"]) == "fatal"
+    assert File.read!(Path.join(root, "marker.txt")) == "saved"
+    GenServer.stop(wrong_tool)
+
+    missing_output_replies = [
+      %{
+        "expect" => %{
+          "last_message_role" => "tool",
+          "last_tool_name" => "bash",
+          "last_tool_is_error" => false
+        },
+        "reply" => %{"text_from_last_tool" => true}
+      }
+    ]
+
+    {:ok, missing_output} =
+      Kh.Session.open(session_config(root, Path.join(root, "missing.json"), missing_output_replies))
+
+    request = %{
+      "messages" => [
+        %{role: :tool, name: "bash", is_error: false, content: ""}
+      ]
+    }
+
+    assert {:error, {:fatal, "scripted last-tool echo requires nonempty successful bash output"}} =
+             Kh.Session.scripted_request(missing_output, nil, request)
+
+    GenServer.stop(missing_output)
+  end
+
   test "strict scripted request proves max remains max for supported models" do
     root = temp_dir!()
     checkpoint = Path.join(root, "session.json")

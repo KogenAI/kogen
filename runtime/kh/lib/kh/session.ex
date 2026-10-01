@@ -5,7 +5,8 @@ defmodule Kh.Session do
   Sessions are opened with an explicit provider, model, working directory,
   system prompt and private checkpoint path. ChatGPT credentials are passed
   in memory by the caller. Scripted sessions use only an in-memory queue owned
-  by this process and cannot fall through to a network provider.
+  by this process and cannot fall through to a network provider. A scripted
+  reply may explicitly echo a successful Bash result as its final text.
   """
   use GenServer
 
@@ -158,7 +159,7 @@ defmodule Kh.Session do
     case state.script do
       [%{"expect" => expect, "reply" => reply} | rest] ->
         if expectation_matches?(expect, request) do
-          {result, state} = scripted_reply(reply, state)
+          {result, state} = scripted_reply(reply, state, request)
           {:reply, result, %{state | script: rest, scripted_uncommitted: true}}
         else
           {:reply, {:error, {:fatal, "unexpected scripted provider request: expectation mismatch"}}, state}
@@ -629,7 +630,8 @@ defmodule Kh.Session do
 
   defp valid_script_step?(%{"expect" => expect, "reply" => reply}) when is_map(expect) and is_map(reply) do
     expectation_keys = Enum.map(@script_expectations, &Atom.to_string/1)
-    Enum.all?(Map.keys(expect), &(&1 in expectation_keys)) and valid_expectation?(expect) and valid_reply?(reply)
+    Enum.all?(Map.keys(expect), &(&1 in expectation_keys)) and valid_expectation?(expect) and
+      valid_reply?(reply) and valid_echo_expectation?(expect, reply)
   end
 
   defp valid_script_step?(_), do: false
@@ -650,9 +652,10 @@ defmodule Kh.Session do
   end
 
   defp valid_reply?(reply) do
-    allowed = ~w(text reasoning tool_calls usage error message)
+    allowed = ~w(text text_from_last_tool reasoning tool_calls usage error message)
     Enum.all?(Map.keys(reply), &(&1 in allowed)) and
       (is_nil(reply["text"]) or is_binary(reply["text"])) and
+      valid_echo_reply?(reply) and
       (is_nil(reply["reasoning"]) or is_binary(reply["reasoning"])) and
       (is_nil(reply["usage"]) or valid_script_usage?(reply["usage"])) and
       (is_nil(reply["message"]) or is_binary(reply["message"])) and
@@ -660,6 +663,24 @@ defmodule Kh.Session do
       (is_nil(reply["error"]) or reply["error"] in ~w(fatal transient rate_limit auth timeout)) and
       (is_nil(reply["error"]) or is_nil(reply["tool_calls"]))
   end
+
+  defp valid_echo_reply?(reply) do
+    case reply["text_from_last_tool"] do
+      nil -> true
+      true ->
+        is_nil(reply["text"]) and is_nil(reply["reasoning"]) and
+          is_nil(reply["tool_calls"]) and is_nil(reply["error"]) and is_nil(reply["message"])
+
+      _ -> false
+    end
+  end
+
+  defp valid_echo_expectation?(expect, %{"text_from_last_tool" => true}) do
+    expect["last_message_role"] == "tool" and expect["last_tool_name"] == "bash" and
+      expect["last_tool_is_error"] == false
+  end
+
+  defp valid_echo_expectation?(_expect, _reply), do: true
 
   defp valid_script_calls?(calls) when is_list(calls) do
     Enum.all?(calls, fn
@@ -711,14 +732,31 @@ defmodule Kh.Session do
     end)
   end
 
-  defp scripted_reply(%{"error" => kind} = reply, state) when kind in ["fatal", "transient", "rate_limit", "auth", "timeout"] do
+  defp scripted_reply(%{"text_from_last_tool" => true} = reply, state, request) do
+    case last_tool_message(request["messages"]) do
+      %{name: "bash", is_error: false, content: content}
+      when is_binary(content) ->
+        output = String.trim(content)
+
+        if output != "" and output != "(no output)" do
+          scripted_reply(reply |> Map.delete("text_from_last_tool") |> Map.put("text", content), state, request)
+        else
+          {{:error, {:fatal, "scripted last-tool echo requires nonempty successful bash output"}}, state}
+        end
+
+      _ ->
+        {{:error, {:fatal, "scripted last-tool echo requires nonempty successful bash output"}}, state}
+    end
+  end
+
+  defp scripted_reply(%{"error" => kind} = reply, state, _request) when kind in ["fatal", "transient", "rate_limit", "auth", "timeout"] do
     usage = usage(reply["usage"])
     meta = if is_nil(usage), do: %{}, else: %{usage: usage}
     result = if meta == %{}, do: {:error, {String.to_existing_atom(kind), reply["message"] || "scripted error"}}, else: {:error, {String.to_existing_atom(kind), reply["message"] || "scripted error"}, meta}
     {result, state}
   end
 
-  defp scripted_reply(reply, state) do
+  defp scripted_reply(reply, state, _request) do
     calls =
       Enum.with_index(reply["tool_calls"] || [])
       |> Enum.map(fn {call, index} ->
@@ -781,11 +819,14 @@ defmodule Kh.Session do
   end
 
   defp last_tool(messages, key) do
-    case Enum.find(Enum.reverse(messages), &(&1[:role] == :tool)) do
+    case last_tool_message(messages) do
       nil -> nil
       message -> Map.get(message, key)
     end
   end
+
+  defp last_tool_message(messages),
+    do: Enum.find(Enum.reverse(messages), &(&1[:role] == :tool))
 
   defp json_safe(nil), do: nil
   defp json_safe(value) when is_binary(value) or is_number(value) or is_boolean(value), do: value
