@@ -105,3 +105,35 @@ same focused suite passed 12 tests in 1.7 s ExUnit / 2.35 s wall. `mix format
 --strict test/kogen/git_test.exs` passed 69 checks on one file in 0.39 s.
 `git diff --check` passed. No full or live gate was run; this measures only
 the retained Git test group and does not establish a whole-suite time change.
+
+## Follow-on: settlement ledger no-op matrix
+
+This unit starts at `09bdd28` and changes only
+`test/kogen/check_settlement_test.exs` and this report. The seven settlement
+records each exercised the meaningful Verification Record assertion and also
+reran the same independent ledger test. The ledger test guarded its assertions
+with a case-name condition, so six of those seven executions only asserted
+`true`.
+
+The seven Verification Record cases remain parameterized and unchanged. The
+ledger test now runs once in a separate non-parameterized module. Its five
+`Contract.verdict/5` assertions remain intact: acceptance without a ledger in
+both supported arities, acceptance with the matching disposition, and rejection
+for both ledger mismatches. The group drops from 14 invocations to 8 (seven
+settlement checks and one ledger check); both source-level test definitions
+remain. The test file shrinks from 169 to 165 lines. No case was excluded or
+weakened, and no product code changed.
+
+On the original source, the focused command
+`MIX_ENV=test mix test test/kogen/check_settlement_test.exs
+--warnings-as-errors --seed 1` passed 14 tests in 0.02 s ExUnit / 0.88 s wall.
+With `KOGEN_WARM_POOL=1`, it passed 14 in 0.02 s / 0.66 s. On the reduced
+source, the same ordinary command passed 8 in 0.01 s / 0.76 s; the warm-pool
+command passed 8 in 0.02 s / 0.64 s. These subsecond wall timings are noisy and
+do not establish a suite speedup; the measured reduction is six redundant
+invocations.
+
+`mix format --check-formatted test/kogen/check_settlement_test.exs` passed in
+0.22 s wall. `mix credo --strict test/kogen/check_settlement_test.exs` passed
+69 checks on one file with no issues in 0.35 s wall, and `git diff --check`
+passed. No full or live gate was run.
