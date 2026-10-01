@@ -201,6 +201,67 @@ fn external_project_dispatch_keeps_args_paths_stdio_and_exit_status() {
 }
 
 #[test]
+fn current_directory_is_the_default_project_checkout() {
+    let area = TestArea::new("default project directory");
+    let project = area.dir("caller checkout");
+    let engine = area.dir("engine checkout");
+    init_git_checkout(&project);
+    create_engine(&engine);
+    let fake_mix = FakeMix::install(&area);
+
+    let output = Command::new(binary())
+        .args(["--engine", engine.to_str().unwrap(), "status", "session 3"])
+        .current_dir(&project)
+        .env("PATH", fake_mix.env_path())
+        .env("KOGEN_TEST_ARGS", &fake_mix.args_path)
+        .env("KOGEN_TEST_CWD", &fake_mix.cwd_path)
+        .env("KOGEN_TEST_EXIT", "0")
+        .output()
+        .expect("run kogen without --project");
+
+    assert_eq!(output.status.code(), Some(0));
+    fake_mix.assert_capture(
+        &[
+            "run",
+            "--no-compile",
+            "-e",
+            "Kogen.Command.main(System.argv())",
+            "--",
+            "--project",
+            project.canonicalize().unwrap().to_str().unwrap(),
+            "--invocation-root",
+            project.canonicalize().unwrap().to_str().unwrap(),
+            "status",
+            "session 3",
+        ],
+        &engine.canonicalize().unwrap(),
+    );
+}
+
+#[test]
+fn default_project_must_be_a_git_checkout() {
+    let area = TestArea::new("default non Git project");
+    let project = area.dir("plain caller directory");
+    let engine = area.dir("engine");
+    create_engine(&engine);
+    let fake_mix = FakeMix::install(&area);
+
+    let output = Command::new(binary())
+        .args(["--engine", engine.to_str().unwrap(), "status", "session"])
+        .current_dir(&project)
+        .env("PATH", fake_mix.env_path())
+        .env("KOGEN_TEST_ARGS", &fake_mix.args_path)
+        .env("KOGEN_TEST_CWD", &fake_mix.cwd_path)
+        .env("KOGEN_TEST_EXIT", "0")
+        .output()
+        .expect("run kogen from a non-Git directory");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not a Git checkout"));
+    assert!(!fake_mix.was_started());
+}
+
+#[test]
 fn engine_environment_selects_engine_from_outside_source_checkout() {
     let area = TestArea::new("engine environment");
     let project = area.dir("external project");
@@ -410,7 +471,10 @@ fn malformed_globals_are_refused_before_git_or_engine_dispatch() {
         let output = run_cli(&caller, &args, &fake_mix, 0);
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("usage: kogen"));
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("usage: kogen [--project PATH] [--engine PATH]")
+        );
     }
     assert!(!fake_mix.was_started());
 }
@@ -478,10 +542,18 @@ fn help_documents_retained_headless_operation_flags() {
         .arg("--help")
         .output()
         .expect("run kogen help");
+    let alias = Command::new(binary())
+        .arg("help")
+        .output()
+        .expect("run kogen help alias");
     let help = String::from_utf8(output.stdout).expect("UTF-8 help");
 
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
+    assert_eq!(alias.status.code(), Some(0));
+    assert_eq!(alias.stdout.as_slice(), help.as_bytes());
+    assert!(help.contains("kogen [--project PATH] [--engine PATH] <command> [args...]"));
+    assert!(help.contains("--project PATH  Git checkout to work on (default: current directory)"));
     for fragment in [
         "shape --brief FILE [--configuration NAME] [--request-id RID]",
         "input SESSION --file FILE",

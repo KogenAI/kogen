@@ -20,12 +20,15 @@ installer or release process.
 
 ## Run a command
 
-The target is an explicit Git checkout. The engine defaults to the Kogen
-checkout used to build the binary; `--engine PATH` or `KOGEN_ENGINE_ROOT`
-selects another engine checkout. `--engine` takes precedence over the
-environment variable.
+The target defaults to the Git checkout in the directory where you run
+`kogen`. Use `--project PATH` to target another checkout without changing
+directories. The engine defaults to the Kogen checkout used to build the
+binary; `--engine PATH` or `KOGEN_ENGINE_ROOT` selects another engine
+checkout. `--engine` takes precedence over the environment variable.
 
 ```sh
+kogen shape --brief ./brief.md
+kogen status SESSION_ID
 kogen --project /path/to/project shape --brief ./brief.md
 kogen --project /path/to/project status SESSION_ID
 ```
@@ -35,6 +38,7 @@ with the canonical directory where `kogen` was invoked. The engine resolves
 them during admission. The target and engine must resolve to different
 directories.
 
-Run `kogen --help` for the retained headless command forms. Arguments after a
-command are passed through to the engine, which owns command-specific options
-and behavior.
+Run `kogen --help` or `kogen help` for the retained headless command forms.
+Arguments after a command are passed through to the engine, which owns
+command-specific options and behavior.
+

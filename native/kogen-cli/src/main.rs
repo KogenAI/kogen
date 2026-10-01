@@ -11,15 +11,15 @@ const COMMANDS: &[&str] = &[
     "shape", "input", "present", "approve", "build", "status", "cancel", "resume", "result",
 ];
 
-const USAGE: &str = "usage: kogen --project PATH [--engine PATH] <command> [args...]";
+const USAGE: &str = "usage: kogen [--project PATH] [--engine PATH] <command> [args...]";
 const HELP: &str = "\
 Shape and build changes in a Git project through Kogen's workflow engine.
 
 Usage:
-  kogen --project PATH [--engine PATH] <command> [args...]
+  kogen [--project PATH] [--engine PATH] <command> [args...]
 
 Global options:
-  --project PATH  Git checkout to work on (required)
+  --project PATH  Git checkout to work on (default: current directory)
   --engine PATH   Kogen engine checkout (or KOGEN_ENGINE_ROOT)
   -h, --help      Show this help
 
@@ -72,7 +72,7 @@ impl fmt::Display for CliError {
 enum Invocation {
     Help,
     Command {
-        project: PathBuf,
+        project: Option<PathBuf>,
         engine: Option<PathBuf>,
         command: OsString,
         args: Vec<OsString>,
@@ -112,6 +112,7 @@ fn run(args: Vec<OsString>) -> Result<u8, CliError> {
     };
 
     let git_local_env = git_local_env_vars()?;
+    let project = project.unwrap_or_else(|| invocation_root.clone());
     let project_root = resolve_project(&project, &invocation_root, &git_local_env)?;
     let engine_root = resolve_engine(engine.as_deref(), &invocation_root)?;
     if project_root == engine_root {
@@ -137,7 +138,8 @@ fn parse_args(args: Vec<OsString>) -> Result<Invocation, CliError> {
 
     while position < args.len() {
         let token = &args[position];
-        if token == OsStr::new("--help") || token == OsStr::new("-h") {
+        if token == OsStr::new("--help") || token == OsStr::new("-h") || token == OsStr::new("help")
+        {
             return Ok(Invocation::Help);
         }
 
@@ -168,7 +170,6 @@ fn parse_args(args: Vec<OsString>) -> Result<Invocation, CliError> {
         if let Some(name) = token.to_str().filter(|name| COMMANDS.contains(name)) {
             let command = OsString::from(name);
             let rest = args[position + 1..].to_vec();
-            let project = project.ok_or_else(|| CliError::usage("--project is required"))?;
             return Ok(Invocation::Command {
                 project,
                 engine,
