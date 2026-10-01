@@ -26,8 +26,10 @@ Two duties beyond running the command:
 
 Two IO modes:
 - `"batch"` (default): the child's stdout+stderr are redirected to
-  `spec["log"]`; the child's stdin comes from `spec["stdin_path"]` or is
-  closed. The supervisor's own stdout carries exactly one line of JSON facts
+  `spec["log"]`; the child's stdin comes from `spec["stdin_path"]`, an
+  anonymous pipe when `stdin_size` is supplied, or is closed. Input bytes
+  arrive only through the supervisor's stdin, never the spec or files.
+  The supervisor's own stdout carries exactly one line of JSON facts
   at the end, matching `VerificationRunner`'s existing contract.
 - `"passthrough"`: the child inherits the supervisor's own stdio verbatim (so
   a caller that itself piped a Port's stdio through to this supervisor gets a
@@ -97,6 +99,22 @@ def controller_alive(pid):
         return False
     except PermissionError:
         return True
+
+
+def forward_stdin(child, size, result):
+    try:
+        data = sys.stdin.buffer.read(size)
+        if len(data) != size:
+            raise EOFError("anonymous stdin ended early")
+        child.stdin.write(data)
+        child.stdin.flush()
+    except (OSError, ValueError, EOFError):
+        result["error"] = "anonymous stdin transfer failed"
+    finally:
+        try:
+            child.stdin.close()
+        except OSError:
+            result["error"] = "anonymous stdin close failed"
 
 
 def main():
@@ -179,6 +197,8 @@ def main():
 
     log_file = None
     stdin_file = None
+    input_thread = None
+    input_result = {}
     try:
         if mode == "passthrough":
             stdout_target = None
@@ -188,7 +208,12 @@ def main():
             log_file = open(spec["log"], "xb")
             stdout_target = log_file
             stderr_target = subprocess.STDOUT
-            if spec.get("stdin_path"):
+            if spec.get("stdin_size") is not None:
+                size = spec["stdin_size"]
+                if not isinstance(size, int) or not 0 <= size <= 16384 or spec.get("stdin_path"):
+                    raise ValueError("invalid anonymous stdin specification")
+                stdin_target = subprocess.PIPE
+            elif spec.get("stdin_path"):
                 stdin_file = open(spec["stdin_path"], "rb")
                 stdin_target = stdin_file
             else:
@@ -207,6 +232,11 @@ def main():
                 log_file.write(("Kogen could not start command: %s\n" % error).encode())
         else:
             child_holder["child"] = child
+            if spec.get("stdin_size") is not None:
+                input_thread = threading.Thread(
+                    target=forward_stdin, args=(child, spec["stdin_size"], input_result), daemon=True
+                )
+                input_thread.start()
             pgid = child.pid
             if spec.get("register_path"):
                 registration = {"pid": child.pid, "pgid": pgid, "started_at": lstart(child.pid)}
@@ -216,6 +246,12 @@ def main():
                 os.replace(tmp, spec["register_path"])
 
             code = child.wait()
+            if input_thread:
+                input_thread.join(timeout=1.0)
+                if input_thread.is_alive():
+                    input_result["error"] = "anonymous stdin transfer did not settle"
+                if input_result.get("error"):
+                    code = 1
             if code < 0:
                 code = 128 - code
             timed_out = bool(child_holder.get("timed_out"))
@@ -255,6 +291,7 @@ def main():
         "timed_out": timed_out,
         "watchdog_reaped": watchdog_reaped,
         "spawn_error": spawn_error,
+        "stdin_error": input_result.get("error"),
         "started_at": started,
         "finished_at": finished,
         "elapsed_ms": int((time.monotonic() - clock) * 1000),

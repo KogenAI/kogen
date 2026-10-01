@@ -430,6 +430,8 @@ defmodule Kogen.ProcessCustody do
     :persistent_term.erase({__MODULE__, :cleanup_grace_ms, Path.expand(lock_path(control))})
   end
 
+  defp cleanup_grace_ms(nil), do: @cleanup_grace_ms
+
   defp cleanup_grace_ms(control) do
     :persistent_term.get(
       {__MODULE__, :cleanup_grace_ms, Path.expand(lock_path(control))},
@@ -1093,6 +1095,9 @@ defmodule Kogen.ProcessCustody do
   - `:role` — a label recorded with the group (for example `"developer"`).
   - `:stdin_path` — a temporary prompt file fed to the child and removed by
     the supervisor when the child ends.
+  - `:stdin_bytes` — at most 16 KiB sent through an anonymous input pipe,
+    then closed. Mutually exclusive with `:stdin_path`; bytes never enter
+    the supervisor's arguments, environment or files.
   - `:log_path` — combined output destination; when omitted, output is
     captured to a controller-owned temporary file and returned as
     `"output"`, then removed.
@@ -1119,6 +1124,23 @@ defmodule Kogen.ProcessCustody do
   """
   @spec run([String.t()], Path.t(), keyword()) :: {:ok, map()} | {:error, String.t()}
   def run(argv, cwd, opts \\ []) when is_list(argv) and argv != [] do
+    with :ok <- validate_stdin(opts), do: run_supervised(argv, cwd, opts)
+  end
+
+  defp validate_stdin(opts) do
+    bytes = Keyword.get(opts, :stdin_bytes)
+
+    cond do
+      is_nil(bytes) -> :ok
+      not is_binary(bytes) -> {:error, "stdin_bytes must be a binary"}
+      byte_size(bytes) > 16_384 -> {:error, "stdin_bytes exceeds 16 KiB"}
+      Keyword.get(opts, :stdin_path) != nil -> {:error, "stdin_bytes and stdin_path conflict"}
+      true -> :ok
+    end
+  end
+
+  defp run_supervised(argv, cwd, opts) do
+    stdin_bytes = Keyword.get(opts, :stdin_bytes)
     control = Keyword.get(opts, :control)
     on_start = Keyword.get(opts, :on_start)
     start_gate = if control || on_start, do: temp_path("start-gate")
@@ -1134,6 +1156,7 @@ defmodule Kogen.ProcessCustody do
       "log" => Path.expand(log_path),
       "mode" => "batch",
       "stdin_path" => Keyword.get(opts, :stdin_path),
+      "stdin_size" => if(is_binary(stdin_bytes), do: byte_size(stdin_bytes)),
       "tmp_dir" => Keyword.get(opts, :tmp_dir),
       "timeout" => opt_seconds(opts, :timeout_ms),
       "soft_timeout" => Keyword.get(opts, :soft_timeout, false),
@@ -1160,15 +1183,29 @@ defmodule Kogen.ProcessCustody do
         ]
       )
 
-    complete_supervised_run(
-      port,
-      register_path,
-      start_gate,
-      {control, on_start},
-      role,
-      owned_log,
-      log_path
-    )
+    case send_stdin(port, stdin_bytes) do
+      :ok ->
+        complete_supervised_run(
+          port,
+          register_path,
+          start_gate,
+          {control, on_start},
+          role,
+          owned_log,
+          log_path
+        )
+
+      {:error, reason} ->
+        abort_unregistered_run(port, register_path, start_gate, control, reason)
+    end
+  end
+
+  defp send_stdin(_port, nil), do: :ok
+
+  defp send_stdin(port, bytes) do
+    if Port.command(port, bytes), do: :ok, else: {:error, "anonymous stdin send failed"}
+  rescue
+    ArgumentError -> {:error, "anonymous stdin port closed before send"}
   end
 
   defp supervised_argv(argv, nil), do: argv
