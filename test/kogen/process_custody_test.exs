@@ -15,13 +15,23 @@ defmodule Kogen.ProcessCustodyTest do
   """
 
   @provider_script Path.expand("../support/fake_orphaning_provider/provider.sh", __DIR__)
+  @standin_ready_timeout_ms 10_000
+  @standin_cleanup_timeout_ms 5_000
 
   setup do
     base =
-      Path.join(System.tmp_dir!(), "kogen-custody-test-#{System.unique_integer([:positive])}")
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-custody-test-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
 
     File.mkdir_p!(base)
-    on_exit(fn -> File.rm_rf(base) end)
+
+    on_exit(fn ->
+      cleanup_fixture_standins!(base)
+      File.rm_rf(base)
+    end)
+
     %{base: base}
   end
 
@@ -707,7 +717,7 @@ defmodule Kogen.ProcessCustodyTest do
 
   defp mix_executable, do: System.find_executable("mix") || raise("mix not found on PATH")
 
-  defp start_standin(mode, control, out) do
+  defp start_standin(mode, control, out, ready_timeout_ms \\ @standin_ready_timeout_ms) do
     port =
       Port.open(
         {:spawn_executable, mix_executable() |> to_charlist()},
@@ -732,29 +742,596 @@ defmodule Kogen.ProcessCustodyTest do
       )
 
     {:os_pid, pid} = Port.info(port, :os_pid)
-    assert wait_for_standin_ready(port, "")
-    %{port: port, pid: pid}
-  end
+    started_at = Kogen.ProcessCustody.process_start(pid)
+    standin = %{port: port, pid: pid, started_at: started_at, control: control, out: out}
 
-  defp wait_for_standin_ready(port, acc) do
-    receive do
-      {^port, {:data, data}} ->
-        acc = acc <> data
-        if acc =~ "READY", do: true, else: wait_for_standin_ready(port, acc)
+    # `on_exit/2` runs after a test process exits, including after an assertion
+    # failure, in a separate process. Register this immediately after Port.open
+    # so a readiness assertion can never strand the controller and its pipe.
+    on_exit(fn -> cleanup_standin!(standin) end)
 
-      {^port, {:exit_status, _status}} ->
-        false
-    after
-      10_000 -> false
+    case wait_for_standin_ready(port, ready_timeout_ms) do
+      {:ready, output} ->
+        standin
+        |> read_standin_owner!()
+        |> Map.put(:ready_output, output)
+
+      {:exit_status, status, output} ->
+        reason =
+          "controller stand-in exited before readiness (status #{status}); output: #{inspect(output)}"
+
+        cleanup_standin!(standin)
+        flunk(reason)
+
+      {:timeout, output} ->
+        reason =
+          "controller stand-in did not report readiness within #{ready_timeout_ms}ms; " <>
+            "output: #{inspect(output)}"
+
+        cleanup_standin!(standin)
+        flunk(reason)
     end
   end
 
-  defp drain_standin(port, budget_ms \\ 5_000) do
-    receive do
-      {^port, {:data, _data}} -> drain_standin(port, budget_ms)
-      {^port, {:exit_status, status}} -> {:ok, status}
+  defp wait_for_standin_ready(port, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    collect_standin_ready(port, [], deadline)
+  end
+
+  defp collect_standin_ready(port, chunks, deadline) do
+    remaining_ms = deadline - System.monotonic_time(:millisecond)
+
+    if remaining_ms <= 0 do
+      {:timeout, chunks |> Enum.reverse() |> IO.iodata_to_binary()}
+    else
+      output = chunks |> Enum.reverse() |> IO.iodata_to_binary()
+
+      if output =~ "READY" do
+        {:ready, output}
+      else
+        receive do
+          {^port, {:data, data}} -> collect_standin_ready(port, [data | chunks], deadline)
+          {^port, {:exit_status, status}} -> {:exit_status, status, output}
+        after
+          remaining_ms -> {:timeout, output}
+        end
+      end
+    end
+  end
+
+  test "an expired readiness deadline wins over queued READY output" do
+    port = make_ref()
+    ready_message = {port, {:data, "READY\n"}}
+    send(self(), ready_message)
+
+    try do
+      deadline = System.monotonic_time(:millisecond) - 1
+      assert {:timeout, ""} = collect_standin_ready(port, [], deadline)
+      assert_receive ^ready_message, 0
     after
-      budget_ms -> :timeout
+      flush_standin_messages(port)
+    end
+
+    assert port_message_count(port) == 0
+  end
+
+  test "an expired drain deadline leaves a substantial queued pipe output untouched" do
+    port = make_ref()
+    messages = for index <- 1..20_000, do: {port, {:data, "chunk-#{index}\n"}}
+    Enum.each(messages, &send(self(), &1))
+
+    try do
+      deadline = System.monotonic_time(:millisecond) - 1
+      assert {:timeout, "prefix"} = drain_standin_until(port, deadline, ["prefix"])
+      assert port_message_count(port) == length(messages)
+    after
+      flush_standin_messages(port)
+    end
+
+    assert port_message_count(port) == 0
+  end
+
+  test "readiness preserves a coalesced completion chunk before the exit status" do
+    port = make_ref()
+    completion = {port, {:data, "READY\nSTOPPED\n"}}
+    exit_status = {port, {:exit_status, 0}}
+    send(self(), completion)
+    send(self(), exit_status)
+
+    try do
+      assert {:ready, output} = wait_for_standin_ready(port, 1_000)
+      assert output == "READY\nSTOPPED\n"
+      assert {:ok, 0, ""} = drain_standin(port, 1_000)
+    after
+      flush_standin_messages(port)
+    end
+
+    assert port_message_count(port) == 0
+  end
+
+  defp cleanup_standin!(standin) do
+    {standin, owner_result} = resolve_standin_owner(standin)
+    pid = standin.pid
+    started_at = standin.started_at
+
+    results =
+      [
+        {:owner_identity, owner_result},
+        {:controller_stop, cleanup_step(fn -> stop_owned_standin!(pid, started_at) end)},
+        {:lock_cleanup, cleanup_step(fn -> clean_standin_lock!(standin) end)},
+        {:port_settlement, settle_and_close_standin_port(Map.get(standin, :port))},
+        {:provider_processes_stopped,
+         cleanup_step(fn -> assert_owned_provider_processes_stopped!(standin.out) end)},
+        {:port_closed,
+         cleanup_step(fn -> if standin.port, do: assert_standin_port_closed!(standin.port) end)}
+      ]
+
+    errors = Enum.filter(results, fn {_name, result} -> match?({:error, _}, result) end)
+    probe_result = write_cleanup_probe_artifact(standin, results, errors)
+    errors = if probe_result == :ok, do: errors, else: errors ++ [{:probe_artifact, probe_result}]
+
+    case errors do
+      [] ->
+        IO.puts(:stderr, "CUSTODY_STANDIN_CLEANUP_OK pid=#{pid}")
+        :ok
+
+      failures ->
+        raise "controller stand-in cleanup had failures: #{format_cleanup_failures(failures)}"
+    end
+  end
+
+  defp resolve_standin_owner(standin) do
+    {fixture_standin_owner(standin), :ok}
+  rescue
+    error -> {standin, {:error, {:error, Exception.message(error)}}}
+  catch
+    kind, reason -> {standin, {:error, {kind, inspect(reason)}}}
+  end
+
+  defp cleanup_step(fun) do
+    fun.()
+    :ok
+  rescue
+    error -> {:error, {:error, Exception.message(error)}}
+  catch
+    kind, reason -> {:error, {kind, inspect(reason)}}
+  end
+
+  defp settle_and_close_standin_port(nil), do: :ok
+
+  defp settle_and_close_standin_port(port) do
+    settle_result = cleanup_step(fn -> settle_standin_port!(port) end)
+    close_result = cleanup_step(fn -> close_standin_port!(port) end)
+
+    case {settle_result, close_result} do
+      {:ok, :ok} -> :ok
+      _ -> {:error, %{settlement: settle_result, close: close_result}}
+    end
+  end
+
+  defp close_standin_port!(port) do
+    case Port.info(port) do
+      nil ->
+        :ok
+
+      _info ->
+        true = Port.close(port)
+        :ok
+    end
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp write_cleanup_probe_artifact(standin, results, errors) do
+    case System.get_env("KOGEN_CUSTODY_PROBE_ARTIFACT") do
+      nil ->
+        :ok
+
+      path ->
+        write_cleanup_probe_artifact(path, standin, results, errors)
+    end
+  rescue
+    error ->
+      {:error, {:error, "could not write cleanup probe artifact: #{Exception.message(error)}"}}
+  catch
+    kind, reason -> {:error, {kind, "could not write cleanup probe artifact: #{inspect(reason)}"}}
+  end
+
+  defp write_cleanup_probe_artifact(path, standin, results, errors) do
+    prior = prior_cleanup_probe_artifact(path)
+    cleanup = cleanup_probe_results(standin, results, errors)
+    inject_failure? = System.get_env("KOGEN_CUSTODY_PROBE_INJECT_CALLBACK_FAILURE") == "1"
+    cleanup = Map.put(cleanup, "stage", cleanup_probe_stage())
+
+    artifact =
+      prior
+      |> Map.put("cleanup", cleanup)
+      |> Map.put("injected_callback_failure", inject_failure?)
+
+    with :ok <- File.write(path, Jason.encode!(artifact, pretty: true)) do
+      cleanup_probe_write_result(inject_failure?)
+    end
+  end
+
+  defp prior_cleanup_probe_artifact(path) do
+    case File.read(path) do
+      {:ok, bytes} -> decode_prior_cleanup_probe_artifact(bytes)
+      {:error, :enoent} -> %{}
+      {:error, reason} -> %{"prior_artifact_error" => inspect(reason)}
+    end
+  end
+
+  defp decode_prior_cleanup_probe_artifact(bytes) do
+    case Jason.decode(bytes) do
+      {:ok, artifact} when is_map(artifact) -> artifact
+      other -> %{"prior_artifact_error" => inspect(other)}
+    end
+  end
+
+  defp cleanup_probe_results(standin, results, errors) do
+    %{
+      "stage" => "assertion_abort_on_exit_cleanup_complete",
+      "controller_stopped" => not same_process?(standin.pid, standin.started_at),
+      "lock_absent" => not File.exists?(Kogen.ProcessCustody.lock_path(standin.control)),
+      "provider_processes_stopped" => provider_processes_stopped?(standin.out),
+      "port_closed" => port_closed?(Map.get(standin, :port)),
+      "check_results" =>
+        Map.new(results, fn {name, result} -> {Atom.to_string(name), result_json(result)} end),
+      "errors" =>
+        Enum.map(errors, fn {name, result} ->
+          %{"check" => Atom.to_string(name), "result" => result_json(result)}
+        end)
+    }
+  end
+
+  defp cleanup_probe_stage do
+    case System.get_env("KOGEN_CUSTODY_PROBE_MODE") do
+      "startup" -> "startup_failure_inline_cleanup_complete"
+      _ -> "assertion_abort_on_exit_cleanup_complete"
+    end
+  end
+
+  defp cleanup_probe_write_result(true),
+    do: {:error, {:error, "injected callback failure after completed owned-process cleanup"}}
+
+  defp cleanup_probe_write_result(false), do: :ok
+
+  defp provider_processes_stopped?(out) do
+    Enum.all?(["provider.pid", "grandchild.pid"], fn name ->
+      case File.read(Path.join(out, name)) do
+        {:ok, contents} ->
+          pid = String.trim(contents) |> String.to_integer()
+          not alive?(pid)
+
+        {:error, :enoent} ->
+          true
+
+        {:error, _reason} ->
+          false
+      end
+    end)
+  rescue
+    ArgumentError -> false
+  end
+
+  defp port_closed?(nil), do: true
+
+  defp port_closed?(port) do
+    Port.info(port) == nil
+  rescue
+    ArgumentError -> true
+  end
+
+  defp result_json(:ok), do: %{"status" => "ok"}
+  defp result_json({:error, reason}), do: %{"status" => "error", "reason" => inspect(reason)}
+
+  defp format_cleanup_failures(failures) do
+    Enum.map_join(failures, "; ", fn {name, result} ->
+      "#{name}=#{inspect(result)}"
+    end)
+  end
+
+  defp cleanup_fixture_standins!(base) do
+    base
+    |> Path.join("out-*")
+    |> Path.wildcard()
+    |> Enum.each(&cleanup_fixture_standin!(&1, base))
+  end
+
+  defp cleanup_fixture_standin!(out, base) do
+    case File.read(Path.join(out, "standin-owner.json")) do
+      {:ok, bytes} ->
+        cleanup_fixture_standin_bytes!(bytes, out, base)
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        raise "could not read stand-in owner marker in #{out}: #{inspect(reason)}"
+    end
+  end
+
+  defp cleanup_fixture_standin_bytes!(bytes, out, base) do
+    case Jason.decode(bytes) do
+      {:ok, %{"pid" => pid, "started_at" => started_at, "control" => control}}
+      when is_integer(pid) and is_binary(started_at) ->
+        expanded_control = fixture_standin_control!(control, base)
+
+        cleanup_standin!(%{
+          pid: pid,
+          started_at: started_at,
+          control: expanded_control,
+          out: out,
+          port: nil
+        })
+
+      other ->
+        raise "invalid stand-in owner marker in #{out}: #{inspect(other)}"
+    end
+  end
+
+  defp fixture_standin_control!(control, base) do
+    expanded_control = Path.expand(control)
+
+    unless Path.dirname(expanded_control) == Path.expand(base) and
+             String.starts_with?(Path.basename(expanded_control), "control-") do
+      raise "refusing to clean a stand-in outside its private test fixture: #{inspect(control)}"
+    end
+
+    expanded_control
+  end
+
+  defp read_standin_owner!(standin) do
+    owner_path = Path.join(standin.out, "standin-owner.json")
+
+    case File.read(owner_path) do
+      {:ok, bytes} ->
+        case Jason.decode(bytes) do
+          {:ok, %{"pid" => pid, "started_at" => started_at}}
+          when is_integer(pid) and is_binary(started_at) and started_at != "" ->
+            %{standin | pid: pid, started_at: started_at}
+
+          other ->
+            flunk("invalid controller stand-in owner marker: #{inspect(other)}")
+        end
+
+      {:error, reason} ->
+        flunk("controller stand-in did not write its owner marker: #{inspect(reason)}")
+    end
+  end
+
+  defp fixture_standin_owner(standin) do
+    owner_path = Path.join(standin.out, "standin-owner.json")
+
+    case File.read(owner_path) do
+      {:ok, bytes} -> fixture_standin_owner_from_bytes(standin, bytes)
+      _ -> fixture_standin_lock_owner(standin)
+    end
+  end
+
+  defp fixture_standin_owner_from_bytes(standin, bytes) do
+    case Jason.decode(bytes) do
+      {:ok, %{"pid" => pid, "started_at" => started_at}}
+      when is_integer(pid) and is_binary(started_at) and started_at != "" ->
+        %{standin | pid: pid, started_at: started_at}
+
+      _ ->
+        standin
+    end
+  end
+
+  defp fixture_standin_lock_owner(standin) do
+    case Kogen.ProcessCustody.read_lock(standin.control) do
+      {:ok, %{"pid" => pid, "started_at" => started_at}}
+      when is_integer(pid) and is_binary(started_at) and started_at != "" ->
+        %{standin | pid: pid, started_at: started_at}
+
+      _ ->
+        standin
+    end
+  end
+
+  defp stop_owned_standin!(pid, started_at) do
+    if same_process?(pid, started_at) do
+      signal_owned_standin!(pid, started_at, "-TERM")
+      stop_owned_standin_after_term!(pid, started_at)
+    end
+  end
+
+  defp stop_owned_standin_after_term!(pid, started_at) do
+    unless wait_until(fn -> !same_process?(pid, started_at) end, @standin_cleanup_timeout_ms) do
+      signal_owned_standin!(pid, started_at, "-KILL")
+      ensure_owned_standin_stopped!(pid, started_at)
+    end
+  end
+
+  defp ensure_owned_standin_stopped!(pid, started_at) do
+    unless wait_until(fn -> !same_process?(pid, started_at) end, @standin_cleanup_timeout_ms) do
+      raise "could not stop owned controller stand-in #{pid} (start #{started_at})"
+    end
+  end
+
+  defp signal_owned_standin!(pid, started_at, signal) do
+    # The Port supplies the PID, and the start-time check prevents a delayed
+    # cleanup from signalling an unrelated process after PID reuse.
+    if same_process?(pid, started_at) do
+      run_owned_standin_signal(pid, started_at, signal)
+    end
+  end
+
+  defp run_owned_standin_signal(pid, started_at, signal) do
+    case System.cmd("/bin/kill", [signal, to_string(pid)], stderr_to_stdout: true) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        raise_owned_standin_signal_failure(pid, started_at, signal, status, output)
+    end
+  end
+
+  defp raise_owned_standin_signal_failure(pid, started_at, signal, status, output) do
+    if same_process?(pid, started_at) do
+      raise "could not signal owned controller stand-in #{pid} with #{signal} " <>
+              "(status #{status}): #{String.trim(output)}"
+    end
+  end
+
+  defp same_process?(pid, started_at)
+       when is_integer(pid) and is_binary(started_at) and started_at != "" do
+    Kogen.ProcessCustody.process_start(pid) == started_at
+  end
+
+  defp same_process?(_pid, _started_at), do: false
+
+  defp clean_standin_lock!(%{control: control, pid: pid, started_at: started_at}) do
+    case Kogen.ProcessCustody.read_lock(control) do
+      {:error, :enoent} ->
+        :ok
+
+      {:ok, other} ->
+        if fixture_lock_owner?(other, pid, started_at) do
+          clean_owned_standin_lock!(control, other)
+        else
+          raise "refusing to clean a controller lock with different ownership: #{inspect(other)}"
+        end
+
+      {:error, reason} ->
+        raise "could not read controller lock during cleanup: #{inspect(reason)}"
+    end
+  end
+
+  defp clean_owned_standin_lock!(control, lock) do
+    lock_pid = lock["pid"]
+    lock_started_at = lock["started_at"]
+
+    case Kogen.ProcessCustody.teardown(control) do
+      {:error, reason} -> raise "could not reap owned controller groups: #{reason}"
+      _reaped -> :ok
+    end
+
+    case Kogen.ProcessCustody.read_lock(control) do
+      {:ok,
+       %{
+         "pid" => ^lock_pid,
+         "started_at" => ^lock_started_at,
+         "groups" => []
+       }} ->
+        case File.rm(Kogen.ProcessCustody.lock_path(control)) do
+          :ok ->
+            :ok
+
+          {:error, :enoent} ->
+            :ok
+
+          {:error, reason} ->
+            raise "could not remove owned controller lock: #{inspect(reason)}"
+        end
+
+      {:ok,
+       %{
+         "pid" => ^lock_pid,
+         "started_at" => ^lock_started_at,
+         "groups" => groups
+       }} ->
+        raise "owned controller lock retained live groups after cleanup: #{inspect(groups)}"
+
+      other ->
+        raise "owned controller lock changed during cleanup: #{inspect(other)}"
+    end
+  end
+
+  defp fixture_lock_owner?(lock, pid, started_at) do
+    actual_owner = {lock["pid"], lock["started_at"]}
+    fixture_owner = {pid, started_at}
+    current = Kogen.ProcessCustody.self_identity()
+    test_owner = {current["pid"], current["started_at"]}
+
+    actual_owner in [fixture_owner, test_owner]
+  end
+
+  defp assert_owned_provider_processes_stopped!(out) do
+    Enum.each(["provider.pid", "grandchild.pid"], &assert_owned_provider_pid_stopped!(out, &1))
+  end
+
+  defp assert_owned_provider_pid_stopped!(out, name) do
+    case File.read(Path.join(out, name)) do
+      {:ok, contents} ->
+        contents |> String.trim() |> String.to_integer() |> assert_provider_pid_stopped!()
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        raise "could not inspect fake provider PID file #{name}: #{inspect(reason)}"
+    end
+  end
+
+  defp assert_provider_pid_stopped!(pid) do
+    if alive?(pid), do: raise("owned fake provider process #{pid} remained after cleanup")
+  end
+
+  defp assert_standin_port_closed!(port) do
+    case Port.info(port) do
+      nil -> :ok
+      info -> raise "controller output port remained open after cleanup: #{inspect(info)}"
+    end
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp settle_standin_port!(port) do
+    case Port.info(port) do
+      nil ->
+        :ok
+
+      _info ->
+        case drain_standin(port, @standin_cleanup_timeout_ms) do
+          {:ok, _status, _output} ->
+            :ok
+
+          {:timeout, output} ->
+            raise "controller output pipe did not close after cleanup: #{inspect(output)}"
+        end
+    end
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp drain_standin(port, budget_ms \\ 5_000) do
+    drain_standin_until(port, System.monotonic_time(:millisecond) + budget_ms, [])
+  end
+
+  defp drain_standin_until(port, deadline, chunks) do
+    remaining_ms = deadline - System.monotonic_time(:millisecond)
+
+    if remaining_ms <= 0 do
+      {:timeout, chunks |> Enum.reverse() |> IO.iodata_to_binary()}
+    else
+      receive do
+        {^port, {:data, data}} ->
+          drain_standin_until(port, deadline, [data | chunks])
+
+        {^port, {:exit_status, status}} ->
+          output = chunks |> Enum.reverse() |> IO.iodata_to_binary()
+          {:ok, status, output}
+      after
+        remaining_ms ->
+          output = chunks |> Enum.reverse() |> IO.iodata_to_binary()
+          {:timeout, output}
+      end
+    end
+  end
+
+  defp port_message_count(port) do
+    {:messages, messages} = Process.info(self(), :messages)
+    Enum.count(messages, &match?({^port, _message}, &1))
+  end
+
+  defp flush_standin_messages(port) do
+    receive do
+      {^port, _message} -> flush_standin_messages(port)
+    after
+      0 -> :ok
     end
   end
 
@@ -772,6 +1349,7 @@ defmodule Kogen.ProcessCustodyTest do
 
       System.cmd("/bin/kill", [unquote(signal), to_string(standin.pid)], stderr_to_stdout: true)
 
+      assert {:ok, _status, _output} = drain_standin(standin.port, @standin_cleanup_timeout_ms)
       assert wait_until(fn -> !alive?(standin.pid) end)
       assert wait_until(fn -> !alive?(grandchild_pid) end)
       refute alive?(provider_pid)
@@ -792,6 +1370,7 @@ defmodule Kogen.ProcessCustodyTest do
 
     System.cmd("/bin/kill", ["-9", to_string(standin.pid)], stderr_to_stdout: true)
 
+    assert {:ok, _status, _output} = drain_standin(standin.port, @standin_cleanup_timeout_ms)
     assert wait_until(fn -> !alive?(standin.pid) end)
     assert wait_until(fn -> !alive?(grandchild_pid) end)
     refute alive?(provider_pid)
@@ -801,6 +1380,7 @@ defmodule Kogen.ProcessCustodyTest do
     # present; the next Build reclaims it, printing one line naming what it
     # reaped (nothing live, since the watchdog already won the race).
     assert {:ok, {:reclaimed, _reaped}} = Kogen.ProcessCustody.acquire(control)
+    assert :ok = Kogen.ProcessCustody.release(control)
   end
 
   @tag :unconfined
@@ -831,6 +1411,7 @@ defmodule Kogen.ProcessCustodyTest do
     refute alive?(grandchild_pid)
 
     assert {:ok, {:reclaimed, _reaped}} = Kogen.ProcessCustody.acquire(control)
+    assert :ok = Kogen.ProcessCustody.release(control)
   end
 
   test "a real controller's normal Stop tears its own groups down and releases the lock", %{
@@ -840,7 +1421,11 @@ defmodule Kogen.ProcessCustodyTest do
     control = control_dir(base)
 
     standin = start_standin("stop", control, out)
-    assert {:ok, 0} = drain_standin(standin.port)
+    assert standin.ready_output =~ "READY"
+    assert {:ok, 0, drained_output} = drain_standin(standin.port)
+    output = standin.ready_output <> drained_output
+    assert output =~ "READY"
+    assert output =~ "STOPPED"
 
     provider_pid = wait_for_pid_file(out, "provider.pid")
     grandchild_pid = wait_for_pid_file(out, "grandchild.pid")
@@ -855,7 +1440,11 @@ defmodule Kogen.ProcessCustodyTest do
     control = control_dir(base)
 
     standin = start_standin("timeout", control, out)
-    assert {:ok, 0} = drain_standin(standin.port)
+    assert standin.ready_output =~ "READY"
+    assert {:ok, 0, drained_output} = drain_standin(standin.port)
+    output = standin.ready_output <> drained_output
+    assert output =~ "READY"
+    assert output =~ "TIMED_OUT=true"
 
     provider_pid = wait_for_pid_file(out, "provider.pid")
     grandchild_pid = wait_for_pid_file(out, "grandchild.pid")
@@ -863,6 +1452,211 @@ defmodule Kogen.ProcessCustodyTest do
     refute alive?(provider_pid)
     refute alive?(grandchild_pid)
     refute File.exists?(Kogen.ProcessCustody.lock_path(control))
+  end
+
+  test "cleanup closes its owned pipe even when the lock ownership check fails", %{base: base} do
+    out = out_dir(base)
+    control = control_dir(base)
+    standin_pid = String.to_integer(System.pid()) + 10_000_000
+    standin_started_at = "synthetic-controller-start"
+    owner_path = Path.join(out, "standin-owner.json")
+    lock_path = Kogen.ProcessCustody.lock_path(control)
+
+    foreign_lock = %{
+      "pid" => standin_pid + 1,
+      "started_at" => "different-controller-start",
+      "groups" => []
+    }
+
+    foreign_lock_bytes = Jason.encode!(foreign_lock)
+
+    File.write!(
+      owner_path,
+      Jason.encode!(%{"pid" => standin_pid, "started_at" => standin_started_at})
+    )
+
+    File.write!(lock_path, foreign_lock_bytes)
+
+    port = Port.open({:spawn_executable, "/bin/cat"}, [:exit_status])
+    port_pid = Port.info(port)[:os_pid]
+
+    standin = %{
+      pid: standin_pid,
+      started_at: standin_started_at,
+      control: control,
+      out: out,
+      port: port
+    }
+
+    try do
+      assert_raise RuntimeError, ~r/lock_cleanup=/, fn -> cleanup_standin!(standin) end
+      assert_standin_port_closed!(port)
+      assert File.read!(lock_path) == foreign_lock_bytes
+      assert wait_until(fn -> not alive?(port_pid) end, 1_000)
+    after
+      close_standin_port!(port)
+      File.rm(owner_path)
+      File.rm(lock_path)
+    end
+  end
+
+  @tag startup_cleanup_probe: true
+  test "a failed readiness assertion cleans the owned controller, group, and output pipe", %{
+    base: base
+  } do
+    if System.get_env("KOGEN_CUSTODY_FAILURE_PROBE") == "1" do
+      start_standin(
+        "unready",
+        System.fetch_env!("KOGEN_CUSTODY_CONTROL"),
+        System.fetch_env!("KOGEN_CUSTODY_OUT"),
+        @standin_ready_timeout_ms
+      )
+    else
+      out = out_dir(base)
+      control = control_dir(base)
+      {output, status} = run_custody_cleanup_probe("startup", control, out)
+
+      assert status == 0, output
+      assert output =~ "did not report readiness"
+      assert output =~ "STARTUP_FAILED=readiness was deliberately withheld"
+      assert output =~ "CUSTODY_STARTUP_FAILURE_PROBE_PASS"
+      assert output =~ "CUSTODY_STANDIN_CLEANUP_OK"
+      refute File.exists?(Kogen.ProcessCustody.lock_path(control))
+      assert_owned_provider_processes_stopped!(out)
+
+      owner = out |> Path.join("standin-owner.json") |> File.read!() |> Jason.decode!()
+      refute same_process?(owner["pid"], owner["started_at"])
+    end
+  end
+
+  @tag assertion_abort_cleanup_probe: true
+  test "an assertion abort with live owned children is settled by on_exit", %{base: base} do
+    if System.get_env("KOGEN_CUSTODY_FAILURE_PROBE") == "1" do
+      run_assertion_abort_probe_body!()
+    else
+      out = out_dir(base)
+      control = control_dir(base)
+      {output, status} = run_custody_cleanup_probe("assertion_abort", control, out)
+
+      assert status == 0, output
+      assert output =~ "CUSTODY_ASSERTION_ABORT_PROBE_PASS"
+      assert_probe_cleanup_artifact!(out)
+
+      artifact = read_probe_artifact!(out)
+      live = artifact["live"]
+      refute same_process?(live["controller_pid"], live["controller_started_at"])
+      refute alive?(live["provider_pid"])
+      refute alive?(live["grandchild_pid"])
+      refute File.exists?(Kogen.ProcessCustody.lock_path(control))
+    end
+  end
+
+  @tag cleanup_callback_failure_probe: true
+  test "a cleanup callback failure remains visible after real cleanup", %{base: base} do
+    if System.get_env("KOGEN_CUSTODY_FAILURE_PROBE") == "1" do
+      run_assertion_abort_probe_body!()
+    else
+      out = out_dir(base)
+      control = control_dir(base)
+
+      {output, status} =
+        run_custody_cleanup_probe("assertion_abort_negative_control", control, out)
+
+      assert status != 0, output
+      assert output =~ "CUSTODY_ASSERTION_ABORT_PROBE_CALLBACK_FAILURE_CAPTURED"
+      assert_probe_cleanup_artifact!(out)
+
+      artifact = read_probe_artifact!(out)
+      assert artifact["injected_callback_failure"] == true
+      live = artifact["live"]
+      refute same_process?(live["controller_pid"], live["controller_started_at"])
+      refute alive?(live["provider_pid"])
+      refute alive?(live["grandchild_pid"])
+      refute File.exists?(Kogen.ProcessCustody.lock_path(control))
+    end
+  end
+
+  defp run_assertion_abort_probe_body! do
+    control = System.fetch_env!("KOGEN_CUSTODY_CONTROL")
+    out = System.fetch_env!("KOGEN_CUSTODY_OUT")
+    standin = start_standin("hang", control, out)
+    provider_pid = wait_for_pid_file(out, "provider.pid")
+    grandchild_pid = wait_for_pid_file(out, "grandchild.pid")
+    assert provider_pid && grandchild_pid
+    assert same_process?(standin.pid, standin.started_at)
+    assert alive?(provider_pid)
+    assert alive?(grandchild_pid)
+    assert Port.info(standin.port)
+
+    {:ok, lock} = Kogen.ProcessCustody.read_lock(control)
+    assert lock["pid"] == standin.pid
+    assert lock["started_at"] == standin.started_at
+    assert lock["groups"] != []
+
+    artifact_path = System.fetch_env!("KOGEN_CUSTODY_PROBE_ARTIFACT")
+
+    live = %{
+      "controller_pid" => standin.pid,
+      "controller_started_at" => standin.started_at,
+      "provider_pid" => provider_pid,
+      "grandchild_pid" => grandchild_pid,
+      "group_count" => length(lock["groups"]),
+      "pipe_open" => true
+    }
+
+    File.write!(
+      artifact_path,
+      Jason.encode!(
+        %{
+          "probe" => "assertion-abort-owned-process-cleanup",
+          "stage" => "live_owned_processes_before_assertion_abort",
+          "live" => live
+        },
+        pretty: true
+      )
+    )
+
+    assert false,
+           "intentional assertion abort after identifying the live controller, provider group, lock, and pipe"
+  end
+
+  defp run_custody_cleanup_probe(mode, control, out) do
+    probe = Path.expand("../support/custody_standin_startup_failure_probe.exs", __DIR__)
+
+    env =
+      if mode == "assertion_abort_negative_control",
+        do: [{"KOGEN_CUSTODY_PROBE_INJECT_CALLBACK_FAILURE", "1"}],
+        else: []
+
+    System.cmd(mix_executable(), ["run", "--no-compile", probe, mode, control, out],
+      cd: System.fetch_env!("KOGEN_TEST_ROOT"),
+      stderr_to_stdout: true,
+      env: env
+    )
+  end
+
+  defp read_probe_artifact!(out) do
+    out
+    |> Path.join("custody-assertion-abort-cleanup-probe.json")
+    |> File.read!()
+    |> Jason.decode!()
+  end
+
+  defp assert_probe_cleanup_artifact!(out) do
+    artifact = read_probe_artifact!(out)
+    assert artifact["probe"] == "assertion-abort-owned-process-cleanup"
+    assert artifact["stage"] == "live_owned_processes_before_assertion_abort"
+    assert artifact["live"]["pipe_open"] == true
+    assert artifact["live"]["group_count"] > 0
+
+    assert %{
+             "stage" => "assertion_abort_on_exit_cleanup_complete",
+             "controller_stopped" => true,
+             "lock_absent" => true,
+             "provider_processes_stopped" => true,
+             "port_closed" => true,
+             "errors" => []
+           } = artifact["cleanup"]
   end
 
   # -- process-and-capacity: outer-fixture death ------------------------------

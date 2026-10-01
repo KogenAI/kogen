@@ -5,7 +5,7 @@
 # without depending on a full Build.
 #
 # Usage: mix run test/support/custody_controller_standin.exs <mode> <control> <out>
-#   mode is one of: hang | stop | timeout
+#   mode is one of: hang | stop | unready | timeout
 #   control is the control checkout (holds .kogen/build.lock)
 #   out is the fake provider's output directory (pid files)
 #
@@ -23,7 +23,18 @@ provider =
 launch = fn ->
   Kogen.ProcessCustody.run([provider, out], System.tmp_dir!(),
     control: control,
-    role: "developer"
+    role: "developer",
+    log_path: Path.join(out, "controller.log")
+  )
+end
+
+record_owner = fn ->
+  {:ok, %{"pid" => pid, "started_at" => started_at}} =
+    Kogen.ProcessCustody.read_lock(control)
+
+  File.write!(
+    Path.join(out, "standin-owner.json"),
+    Jason.encode!(%{"pid" => pid, "started_at" => started_at, "control" => control})
   )
 end
 
@@ -58,6 +69,7 @@ case mode do
 
     {:ok, _} = Kogen.ProcessCustody.acquire(control)
     Kogen.ProcessCustody.claim(control, "standin")
+    record_owner.()
     Task.start(launch)
 
     wait_for_ready.(wait_for_ready)
@@ -67,6 +79,7 @@ case mode do
   "stop" ->
     {:ok, _} = Kogen.ProcessCustody.acquire(control)
     Kogen.ProcessCustody.claim(control, "standin")
+    record_owner.()
     task = Task.async(launch)
 
     wait_for_ready.(wait_for_ready)
@@ -76,9 +89,22 @@ case mode do
     Task.await(task, 5_000)
     IO.puts("STOPPED")
 
+  "unready" ->
+    {:ok, _} = Kogen.ProcessCustody.acquire(control)
+    Kogen.ProcessCustody.claim(control, "standin")
+    record_owner.()
+    Task.start(launch)
+
+    wait_for_ready.(wait_for_ready)
+    IO.puts("STARTUP_FAILED=readiness was deliberately withheld")
+    # Keep both the controller and its child group alive so the test's
+    # readiness-failure cleanup exercises a real process tree and open pipe.
+    Process.sleep(:infinity)
+
   "timeout" ->
     {:ok, _} = Kogen.ProcessCustody.acquire(control)
     Kogen.ProcessCustody.claim(control, "standin")
+    record_owner.()
     IO.puts("READY")
 
     group_alive? = fn pgid ->
@@ -106,6 +132,7 @@ case mode do
         Kogen.ProcessCustody.run([provider, out], System.tmp_dir!(),
           control: control,
           role: "developer",
+          log_path: Path.join(out, "timeout-#{timeout_ms}.log"),
           timeout_ms: timeout_ms
         )
 
