@@ -48,11 +48,13 @@ git clone --branch package /path/to/kogen-source.bundle /tmp/kogen-bundle
 ```
 
 The allowlist includes the engine, Rust CLI, maintained documentation and
-workflows, check scripts, toolchain files, `.kogen/config.yaml`, and the five
-engine-owned custom role prompts. It excludes `.kogen/intents/**`, `.kogen/runtime/**`,
-`.codex/**`, `test/**`, dependency/build directories, and ignored or untracked
-worktree state. The package does not include credentials, caches, sessions,
-runtime transcripts, or private grader fixtures.
+workflows, check scripts, toolchain files, `.kogen/config.yaml`, the five
+engine-owned custom role prompts, and `runtime/kh/lib` plus its `mix.exs` when
+present in the pinned tree. It excludes `.kogen/intents/**`, `.kogen/runtime/**`,
+`.codex/**`, product and runtime tests, runtime provenance records,
+dependency/build directories, and ignored or untracked worktree state. The
+package does not include credentials, caches, sessions, runtime transcripts,
+or private grader fixtures.
 
 ## Startup
 
@@ -64,16 +66,31 @@ The target project and engine must be different directories.
 
 The engine requires Elixir 1.20, Erlang/OTP 29, and its locked Mix dependencies.
 After extracting the source, prepare dependencies and compile the engine in
-that directory before invoking the Rust CLI:
+that directory before invoking the Rust CLI. Use the same `MIX_ENV` for compile
+and startup; the packaged CLI starts Mix with `--no-compile`:
 
 ```sh
 cd /path/to/kogen-source
-mix deps.get
-mix compile
+MIX_ENV=dev mix deps.get
+MIX_ENV=dev mix compile
 cd /path/to/target-project
-/path/to/package/kogen --project "$PWD" \
+MIX_ENV=dev /path/to/package/kogen --project "$PWD" \
   --engine /path/to/kogen-source status SESSION_ID
 ```
+
+The `runtime/kh` path is carried as local source so a Kogen pin that declares
+it as a Mix path dependency can compile it from the transferred tree. In the
+source pin `48107fe1`, `runtime/kh` is still a standalone Mix project and the
+top-level Kogen app does not yet dispatch through `Kh.Session`. For that pin,
+its provider-free leaf compile is:
+
+```sh
+cd /path/to/kogen-source/runtime/kh
+MIX_ENV=dev mix compile
+```
+
+That compile checks only the standalone runtime source. It does not prove the
+role adapter or Kogen engine uses the runtime.
 
 `mix deps.get` may need network access to obtain locked dependencies. For
 offline startup, the destination must already have the required locked Mix

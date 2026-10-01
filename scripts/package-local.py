@@ -26,6 +26,7 @@ CURATED_PREFIXES = (
     "lib/",
     "priv/kogen/",
     "native/kogen-cli/src/",
+    "runtime/kh/lib/",
     "docs/",
     "scripts/check/",
     "workflows/",
@@ -39,6 +40,7 @@ CURATED_FILES = (
     "Makefile",
     "NOTICE",
     "README.md",
+    "runtime/kh/mix.exs",
     "mix.exs",
     "mix.lock",
     "mise.toml",
@@ -52,6 +54,7 @@ EXCLUDED_PATHS = [
     ".kogen/runtime/** (sessions and runtime receipts)",
     ".codex/** (local harness configuration and authentication)",
     "test/** and native/kogen-cli/tests/** (test and grader material)",
+    "runtime/kh/test/** and runtime/kh/provenance.json (tests and source review record)",
     "deps/**, _build/**, cover/** (dependencies and build output)",
     "ignored and untracked worktree files (including caches and credentials)",
 ]
@@ -411,6 +414,11 @@ def write_manifest(
         },
         "engine_runtime": {
             "requires": ["Elixir 1.20", "Erlang/OTP 29", "locked Mix dependencies"],
+            "included_mix_projects": (
+                ["runtime/kh"]
+                if any(item["path"] == "runtime/kh/mix.exs" for item in included)
+                else []
+            ),
             "dependencies_included": False,
             "compiled_mix_output_included": False,
         },
