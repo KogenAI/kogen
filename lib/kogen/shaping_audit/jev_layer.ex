@@ -371,13 +371,15 @@ defmodule Kogen.ShapingAudit.JevLayer do
   # question it knows (live: `no_objection`, from `Kogen.Jev`'s objection
   # set, for the gate). `Kogen.Jev` rejects such an answer strictly; the
   # gate re-asks the identical request once, and a second answer outside
-  # the sent options still fails the layer.
+  # the sent options still fails the layer. Retry by its bounded diagnostic
+  # classification; never depend on the response's unsent option text.
   @out_of_vocabulary_retries 1
+  @out_of_vocabulary_classification "response_classification=answer_option_not_sent"
 
   defp ask_in_vocabulary(state, questions, opts, retries \\ @out_of_vocabulary_retries) do
     case Jev.ask(state, questions, opts) do
       {:error, reason} = error ->
-        if retries > 0 and String.contains?(reason, "was not sent)"),
+        if retries > 0 and String.contains?(reason, @out_of_vocabulary_classification),
           do: ask_in_vocabulary(state, questions, opts, retries - 1),
           else: error
 

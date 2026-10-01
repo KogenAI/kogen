@@ -281,7 +281,8 @@ defmodule Kogen.ShapingAuditQuestionGateTest do
               "confidence" => 0.9,
               "probabilities" => %{"none" => 0.9}
             }
-          }
+          },
+          "usage" => %{"diagnostic_only" => "RAW_RESPONSE_MARKER"}
         })
 
       result =
@@ -294,8 +295,115 @@ defmodule Kogen.ShapingAuditQuestionGateTest do
         )
 
       assert result["status"] == "unavailable"
-      assert result["reason"] =~ "was not sent"
+      assert result["reason"] =~ "answer option that was not sent"
+      assert result["reason"] =~ "response_classification=answer_option_not_sent"
+      [first_request, second_request] = drain_requests()
+      assert first_request.body == second_request.body
+      assert result["reason"] =~ "request_sha256=#{sha256(first_request.body)}"
+      assert result["reason"] =~ "request_bytes=#{byte_size(first_request.body)}"
+      assert result["reason"] =~ "response_classification=answer_option_not_sent"
+      refute result["reason"] =~ first_request.body
+      refute result["reason"] =~ "RAW_RESPONSE_MARKER"
+      refute result["reason"] =~ FakeJevAudit.sentinel_key()
+    end
+
+    test "a response choice equal to the Keychain key is rejected without echoing the key" do
+      key = FakeJevAudit.sentinel_key()
+
+      response =
+        Jason.encode!(%{
+          "model" => "jev-1.13.0",
+          "answers" => %{
+            "gate" => %{
+              "type" => "choice",
+              "choice" => key,
+              "confidence" => 0.9,
+              "probabilities" => %{key => 0.9}
+            },
+            "settled_by" => valid_settled_by_answer()
+          }
+        })
+
+      result =
+        JevLayer.run(
+          with_transport(
+            build_ctx("Should hook-state.json count blocks per session id or per process?"),
+            FakeJevAudit.replay([{200, response}, {200, response}], self())
+          ),
+          []
+        )
+
+      assert result["status"] == "unavailable"
+      assert result["reason"] =~ "response_classification=answer_option_not_sent"
+      refute result["reason"] =~ key
+      refute Jason.encode!(result) =~ key
       assert length(drain_requests()) == 2
+      assert byte_size(result["reason"]) < 512
+    end
+
+    test "a huge unasked answer id stays out of the failed-request diagnostic" do
+      unasked_id = String.duplicate("x", 1_114_112)
+
+      response =
+        Jason.encode!(%{
+          "model" => "jev-1.13.0",
+          "answers" => %{
+            "gate" => valid_gate_answer(),
+            "settled_by" => valid_settled_by_answer(),
+            unasked_id => %{"choice" => "none", "confidence" => 0.9}
+          }
+        })
+
+      result =
+        JevLayer.run(
+          with_transport(
+            build_ctx("Should hook-state.json count blocks per session id or per process?"),
+            FakeJevAudit.replay([{200, response}], self())
+          ),
+          []
+        )
+
+      assert result["status"] == "unavailable"
+      assert result["reason"] =~ "response_classification=invalid_response"
+      refute result["reason"] =~ unasked_id
+      refute Jason.encode!(result) =~ unasked_id
+      [request] = drain_requests()
+      assert result["reason"] =~ "request_sha256=#{sha256(request.body)}"
+      assert result["reason"] =~ "request_bytes=#{byte_size(request.body)}"
+      assert byte_size(result["reason"]) < 512
+      assert byte_size(Jason.encode!(result)) < 2_048
+    end
+
+    test "a transport error containing the raw request body stays out of diagnostics" do
+      private_marker = "PRIVATE_REQUEST_MARKER"
+      owner = self()
+
+      transport = fn request ->
+        send(owner, {:jev_request, request})
+        {:error, %{body: request.body, credential: FakeJevAudit.sentinel_key()}}
+      end
+
+      result =
+        JevLayer.run(
+          with_transport(
+            build_ctx("Should hook-state.json preserve #{private_marker} in its fixture?"),
+            transport
+          ),
+          []
+        )
+
+      assert result["status"] == "unavailable"
+      assert result["reason"] =~ "response_classification=transport_failure"
+      refute result["reason"] =~ private_marker
+      refute result["reason"] =~ FakeJevAudit.sentinel_key()
+      refute Jason.encode!(result) =~ private_marker
+      refute Jason.encode!(result) =~ FakeJevAudit.sentinel_key()
+      [request] = drain_requests()
+      assert request.body =~ private_marker
+      refute result["reason"] =~ request.body
+      assert result["reason"] =~ "request_sha256=#{sha256(request.body)}"
+      assert result["reason"] =~ "request_bytes=#{byte_size(request.body)}"
+      assert byte_size(result["reason"]) < 512
     end
   end
 
@@ -426,5 +534,25 @@ defmodule Kogen.ShapingAuditQuestionGateTest do
     after
       0 -> Enum.reverse(acc)
     end
+  end
+
+  defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+
+  defp valid_gate_answer do
+    %{
+      "type" => "choice",
+      "choice" => "technical",
+      "confidence" => 0.9,
+      "probabilities" => %{"technical" => 0.9, "product_ux" => 0.05, "already_settled" => 0.05}
+    }
+  end
+
+  defp valid_settled_by_answer do
+    %{
+      "type" => "choice",
+      "choice" => "none",
+      "confidence" => 0.9,
+      "probabilities" => %{"none" => 0.9}
+    }
   end
 end

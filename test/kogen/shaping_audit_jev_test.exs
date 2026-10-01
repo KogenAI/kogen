@@ -76,6 +76,20 @@ defmodule Kogen.ShapingAuditJevTest do
     end
   end
 
+  test "ask_body keeps the calibrated root and question field order byte for byte" do
+    body =
+      Kogen.Jev.ask_body(%{"item" => "sample"}, %{
+        "gate" => %{
+          "criteria" => %{"technical" => "controller"},
+          "instructions" => %{"task" => "Choose a route."},
+          "type" => "choice"
+        }
+      })
+
+    assert body ==
+             ~s({"model":"jev-1.13.0","state":{"item":"sample"},"questions":{"gate":{"type":"choice","instructions":{"task":"Choose a route."},"criteria":{"technical":"controller"}}}})
+  end
+
   test "main/2 persists advisory Jev requests and answers and remains ready" do
     root = Fixture.repo!(second_commit: false, working_tree: false, prior_failures: false)
     File.mkdir_p!(Path.join(root, "test/kogen"))
@@ -118,8 +132,13 @@ defmodule Kogen.ShapingAuditJevTest do
     refute Jason.encode!(report) =~ "usage"
   end
 
-  test "fixed auditor findings receive a fix-check and retain or close still_open" do
-    for {choice, still_open} <- [{"partly", true}, {"addressed", false}] do
+  test "fixed auditor findings use the calibrated fix-check gate for still_open" do
+    for {choice, confidence, still_open} <- [
+          {"partly", 0.9, true},
+          {"addressed", 0.9, false},
+          {"not_addressed", 0.6, true},
+          {"not_addressed", 0.599, false}
+        ] do
       ctx = build_ctx("jev-clauses")
 
       finding = %{
@@ -145,12 +164,12 @@ defmodule Kogen.ShapingAuditJevTest do
               "fix-check" => %{
                 "type" => "choice",
                 "choice" => choice,
-                "confidence" => 0.9,
-                "probabilities" => %{
-                  "addressed" => if(choice == "addressed", do: 0.9, else: 0.05),
-                  "partly" => if(choice == "partly", do: 0.9, else: 0.05),
-                  "not_addressed" => if(choice == "not_addressed", do: 0.9, else: 0.05)
-                }
+                "confidence" => confidence,
+                "probabilities" =>
+                  Map.new(["addressed", "partly", "not_addressed"], fn
+                    option ->
+                      {option, if(option == choice, do: confidence, else: (1 - confidence) / 2)}
+                  end)
               }
             }
           else
@@ -514,9 +533,9 @@ defmodule Kogen.ShapingAuditJevTest do
           {"HTTP 401", [{401, "no"}], "HTTP 401"},
           {"HTTP 422", [{422, "bad"}], "HTTP 422"},
           {"HTTP 429 three times", [{429, "x"}, {429, "x"}, {429, "x"}], "HTTP 429"},
-          {"invalid JSON", [{200, "not json"}], "not a JSON object"},
+          {"invalid JSON", [{200, "not json"}], "Jev returned an invalid response"},
           {"echoed key", [{:error, "refused with Bearer kogen-offline-sentinel-jev-key"}],
-           "[redacted]"}
+           "Jev transport failed"}
         ] do
       test "#{label} makes the layer unavailable with a precise reason", %{ctx: ctx} do
         ctx =
@@ -541,7 +560,8 @@ defmodule Kogen.ShapingAuditJevTest do
       ctx = with_transport(ctx, FakeJevAudit.replay([{200, body}]))
       result = JevLayer.run(ctx, [])
       assert result["status"] == "unavailable"
-      assert result["reason"] =~ "answer for settled_by is missing"
+      assert result["reason"] =~ "Jev returned an invalid response"
+      assert result["reason"] =~ "response_classification=invalid_response"
       assert [%{"rule" => "jev-unavailable"}] = result["findings"]
     end
 

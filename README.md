@@ -1137,9 +1137,9 @@ Jev's answers here are strictly advisory: the 14 contract-question findings
 (`priv/kogen/shaping_audit/question-gate-v1.json`) never make a report ready
 or not ready by themselves, except that a Jev outage makes the layer itself
 `unavailable` (which does affect readiness). A "fixed" auditor-finding
-disposition can be kept open by the fix-check (`not_addressed >= 0.6`, never
-on `partly`); the Controller may still dispute that as not a defect, with a
-reason the Shaper sees.
+disposition can be kept open by the fix-check (`not_addressed >= 0.6` or
+`partly` is the most probable option); the Controller may still dispute that
+as not a defect, with a reason the Shaper sees.
 
 ### Shaping auditor
 

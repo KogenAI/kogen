@@ -552,8 +552,11 @@ defmodule Kogen.Jev do
   answer's option (a Choice `choice`, and every key of a returned
   `probabilities` distribution) is validated against the question's
   `criteria`; a Noul answer is validated to be a number in `0..1`. Full
-  distributions are kept as sent by Jev. The response body itself is never
-  returned; only the parsed answers and the request digest are.
+  distributions are kept as sent by Jev. Error reasons include the request
+  digest and byte count plus a bounded response classification; they omit
+  arbitrary response and transport values. Request and response bodies and
+  credentials are never returned; successful results keep only parsed answers
+  and the request digest.
 
   Options (tests only): `:transport`, `:security`, `:timeout` (as
   `read_notes/3`) and `:sleep` (a `(non_neg_integer() -> any())` replacing
@@ -565,27 +568,60 @@ defmodule Kogen.Jev do
     request = %{"sha256" => digest(body), "byte_count" => byte_size(body)}
 
     case ask_with_key(opts, &ask_send(&1, body, questions, opts, 0)) do
-      {:ok, result} -> {:ok, Map.put(result, "request", request)}
-      {:error, reason} -> {:error, reason}
+      {:ok, result} ->
+        {:ok, Map.put(result, "request", request)}
+
+      {:error, reason, classification} ->
+        {:error, ask_failure_reason(reason, request, classification)}
     end
   end
 
   @doc "The exact request bytes `ask/3` would send for `state` and `questions`."
   @spec ask_body(map(), map()) :: binary()
   def ask_body(state, questions) do
-    Jason.encode!(%{"model" => @model, "state" => state, "questions" => questions})
+    ordered_questions =
+      Enum.map(questions, fn {id, question} -> {id, ordered_question(question)} end)
+      |> Jason.OrderedObject.new()
+
+    Jason.encode!(
+      Jason.OrderedObject.new([
+        {"model", @model},
+        {"state", state},
+        {"questions", ordered_questions}
+      ])
+    )
+  end
+
+  @question_field_order ["type", "instructions", "criteria"]
+
+  defp ordered_question(question) do
+    preferred =
+      Enum.flat_map(@question_field_order, fn key ->
+        case Map.fetch(question, key) do
+          {:ok, value} -> [{key, value}]
+          :error -> []
+        end
+      end)
+
+    extras = question |> Map.drop(@question_field_order) |> Enum.to_list()
+    Jason.OrderedObject.new(preferred ++ extras)
   end
 
   defp ask_with_key(opts, function) do
     case security(opts, ["find-generic-password", "-s", @keychain_service, "-w"]) do
       {:ok, output} ->
         case String.trim_trailing(output, "\n") do
-          "" -> {:error, "Keychain item `#{@keychain_service}` returned an empty key"}
-          key -> function.(key)
+          "" ->
+            {:error, "Keychain item `#{@keychain_service}` returned an empty key",
+             "not_sent_keychain_empty"}
+
+          key ->
+            function.(key)
         end
 
       :error ->
-        {:error, "Keychain item `#{@keychain_service}` could not be read at call time"}
+        {:error, "Keychain item `#{@keychain_service}` could not be read at call time",
+         "not_sent_keychain_unavailable"}
     end
   end
 
@@ -600,34 +636,98 @@ defmodule Kogen.Jev do
       timeout: Keyword.get(opts, :timeout, @timeout_ms)
     }
 
-    case safe_post(transport(opts), request) do
-      {:ok, %{status: 200, body: response}} ->
-        ask_answered(response, questions)
+    result = safe_post(transport(opts), request)
+    dispatch_ask_result(result, key, body, questions, opts, tries)
+  end
 
-      {:ok, %{status: 429}} when tries < @ask_max_retries ->
-        sleep = Keyword.get(opts, :sleep, &:timer.sleep/1)
-        sleep.(@ask_backoff_ms * (tries + 1))
-        ask_send(key, body, questions, opts, tries + 1)
+  defp dispatch_ask_result(
+         {:ok, %{status: 200, body: response}},
+         _key,
+         _body,
+         questions,
+         _opts,
+         _tries
+       )
+       when is_binary(response),
+       do: ask_response_result(ask_answered(response, questions))
 
-      {:ok, %{status: status, body: response}} ->
-        _ = response
-        {:error, "HTTP #{status}"}
+  defp dispatch_ask_result({:ok, %{status: 200}}, _key, _body, _questions, _opts, _tries),
+    do: {:error, "Jev returned an invalid response", "invalid_response"}
 
-      {:error, :timeout} ->
-        {:error, "timeout after #{Keyword.get(opts, :timeout, @timeout_ms)} ms"}
+  defp dispatch_ask_result({:ok, %{status: 429}}, key, body, questions, opts, tries)
+       when tries < @ask_max_retries do
+    sleep = Keyword.get(opts, :sleep, &:timer.sleep/1)
+    sleep.(@ask_backoff_ms * (tries + 1))
+    ask_send(key, body, questions, opts, tries + 1)
+  end
 
-      {:error, reason} ->
-        {:error, "transport failure: " <> redact(inspect(reason), key)}
-    end
+  defp dispatch_ask_result({:ok, %{status: status}}, _key, _body, _questions, _opts, _tries),
+    do: ask_http_status(status)
+
+  defp dispatch_ask_result({:error, :timeout}, _key, _body, _questions, _opts, _tries),
+    do: {:error, "Jev request timed out", "timeout"}
+
+  defp dispatch_ask_result({:error, _reason}, _key, _body, _questions, _opts, _tries),
+    do: {:error, "Jev transport failed", "transport_failure"}
+
+  defp dispatch_ask_result(_other, _key, _body, _questions, _opts, _tries),
+    do: {:error, "Jev transport returned an invalid result", "invalid_transport_result"}
+
+  defp ask_response_result({:ok, result}), do: {:ok, result}
+
+  defp ask_response_result({:error, :option_not_sent}),
+    do: {:error, "Jev returned an answer option that was not sent", "answer_option_not_sent"}
+
+  defp ask_response_result({:error, _classification}),
+    do: {:error, "Jev returned an invalid response", "invalid_response"}
+
+  defp ask_http_status(status) when is_integer(status) and status in 100..599,
+    do: {:error, "HTTP #{status}", "http_status_#{status}"}
+
+  defp ask_http_status(_status),
+    do: {:error, "transport returned an invalid HTTP status", "invalid_http_status"}
+
+  defp ask_failure_reason(reason, request, classification) do
+    details =
+      [
+        "request_sha256=#{request["sha256"]}",
+        "request_bytes=#{request["byte_count"]}",
+        "response_classification=#{classification}"
+      ]
+      |> Enum.join(", ")
+
+    "#{reason} (#{details})"
   end
 
   defp ask_answered(response, questions) do
-    with {:ok, decoded} <- decode(response),
-         :ok <- same_model(decoded),
+    with {:ok, decoded} <- decode_ask(response),
+         :ok <- ask_model(decoded),
          {:ok, answers} <- validate_ask_answers(decoded["answers"], questions) do
       {:ok, %{"answers" => answers, "usage" => usage(decoded)}}
     end
   end
+
+  defp decode_ask(response) do
+    case Jason.decode(response, objects: :ordered_objects) do
+      {:ok, %Jason.OrderedObject{} = decoded} ->
+        if unique_keys?(decoded) and unique_keys?(decoded["answers"]),
+          do: {:ok, plain(decoded)},
+          else: {:error, :invalid_response}
+
+      _ ->
+        {:error, :invalid_response}
+    end
+  end
+
+  defp unique_keys?(%Jason.OrderedObject{values: values}) do
+    keys = Enum.map(values, &elem(&1, 0))
+    length(keys) == length(Enum.uniq(keys))
+  end
+
+  defp unique_keys?(_value), do: true
+
+  defp ask_model(%{"model" => @model}), do: :ok
+  defp ask_model(_decoded), do: {:error, :invalid_response}
 
   defp validate_ask_answers(answers, questions) when is_map(answers) do
     asked_ids = Map.keys(questions)
@@ -636,32 +736,29 @@ defmodule Kogen.Jev do
       [] ->
         Enum.reduce_while(questions, {:ok, %{}}, &collect_ask_answer(answers, &1, &2))
 
-      extra ->
-        {:error, "response answers unasked questions: #{Enum.join(Enum.sort(extra), ", ")}"}
+      _extra ->
+        {:error, :invalid_response}
     end
   end
 
-  defp validate_ask_answers(_answers, _questions), do: {:error, "response has no answers object"}
+  defp validate_ask_answers(_answers, _questions), do: {:error, :invalid_response}
 
   defp collect_ask_answer(answers, {id, question}, {:ok, acc}) do
     case valid_ask_answer(answers[id], question) do
       {:ok, answer} -> {:cont, {:ok, Map.put(acc, id, answer)}}
-      {:error, problem} -> {:halt, {:error, "answer for #{id} is #{problem}"}}
+      {:error, classification} -> {:halt, {:error, classification}}
     end
   end
 
-  defp valid_ask_answer(nil, _question), do: {:error, "missing"}
+  defp valid_ask_answer(nil, _question), do: {:error, :invalid_response}
 
   defp valid_ask_answer(answer, %{"type" => "noul"}) do
     case answer do
       %{"noul" => noul} when is_number(noul) and noul >= 0 and noul <= 1 ->
         {:ok, %{"type" => "noul", "noul" => noul}}
 
-      %{"noul" => _noul} ->
-        {:error, "invalid (noul out of range)"}
-
       _ ->
-        {:error, "invalid (not a noul)"}
+        {:error, :invalid_response}
     end
   end
 
@@ -680,22 +777,22 @@ defmodule Kogen.Jev do
         end
 
       _ ->
-        {:error, "invalid (not a choice)"}
+        {:error, :invalid_response}
     end
   end
 
-  defp valid_ask_answer(_answer, _question), do: {:error, "invalid (unknown question type)"}
+  defp valid_ask_answer(_answer, _question), do: {:error, :invalid_response}
 
   defp valid_ask_option(choice, options) do
     if choice in options,
       do: :ok,
-      else: {:error, "invalid (option #{inspect(choice)} was not sent)"}
+      else: {:error, :option_not_sent}
   end
 
   defp valid_ask_confidence(confidence) do
     if confidence >= 0 and confidence <= 1,
       do: :ok,
-      else: {:error, "invalid (confidence out of range)"}
+      else: {:error, :invalid_response}
   end
 
   defp valid_ask_distribution(nil, _options), do: {:ok, nil}
@@ -703,11 +800,11 @@ defmodule Kogen.Jev do
   defp valid_ask_distribution(probabilities, options) when is_map(probabilities) do
     case Map.keys(probabilities) -- options do
       [] -> {:ok, probabilities}
-      extra -> {:error, "invalid (probabilities name unsent options #{inspect(extra)})"}
+      _extra -> {:error, :invalid_response}
     end
   end
 
-  defp valid_ask_distribution(_probabilities, _options), do: {:error, "invalid (probabilities)"}
+  defp valid_ask_distribution(_probabilities, _options), do: {:error, :invalid_response}
 
   defp maybe_put_probabilities(answer, nil), do: answer
 
