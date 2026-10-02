@@ -24,7 +24,7 @@ defmodule Kogen.Provider.ChatGPT.Transport do
          {:ok, _apps} <- Application.ensure_all_started(:ssl) do
       request(url, headers, body, timeout_ms)
     else
-      _ -> {:error, :transport}
+      {:error, _reason} -> {:error, :transport}
     end
   end
 

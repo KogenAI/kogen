@@ -16,7 +16,12 @@ defmodule Mix.Tasks.Kogen.RecordProvider do
     with {:ok, options} <- parse_options(args),
          {:ok, auth_path} <- required_auth_path(options),
          {:ok, config} <- ChatGPT.config(auth_path),
-         request = request(Keyword.get(options, :scenario, "text"), options),
+         request =
+           Codec.recording_request(
+             Keyword.get(options, :scenario, "text"),
+             Keyword.get(options, :model, "gpt-6-luna"),
+             Keyword.get(options, :effort, "low")
+           ),
          {:ok, response, body} <- ChatGPT.respond_with_transcript(config, request),
          :ok <- expected_response(request, response),
          {:ok, events} <- Codec.sse_lines(body),
@@ -64,50 +69,6 @@ defmodule Mix.Tasks.Kogen.RecordProvider do
     end
   end
 
-  defp request(scenario, options) do
-    %ModelRequest{
-      model: Keyword.get(options, :model, "gpt-6-luna"),
-      effort: Keyword.get(options, :effort, "low"),
-      instructions: instructions(scenario),
-      input: [user_input(scenario)],
-      tools: tools(scenario),
-      previous_response_id: nil
-    }
-  end
-
-  defp instructions("tool_call"),
-    do: "Call the echo_phrase function exactly once with phrase set to recorded."
-
-  defp instructions(_scenario), do: "Answer exactly with the word recorded."
-
-  defp user_input("tool_call"),
-    do: %{
-      "role" => "user",
-      "content" => [%{"type" => "input_text", "text" => "Use the function tool now."}]
-    }
-
-  defp user_input(_scenario),
-    do: %{"role" => "user", "content" => [%{"type" => "input_text", "text" => "Reply now."}]}
-
-  defp tools("tool_call") do
-    [
-      %{
-        "type" => "function",
-        "name" => "echo_phrase",
-        "description" => "Echo a phrase supplied by the user.",
-        "parameters" => %{
-          "type" => "object",
-          "properties" => %{"phrase" => %{"type" => "string"}},
-          "required" => ["phrase"],
-          "additionalProperties" => false
-        },
-        "strict" => false
-      }
-    ]
-  end
-
-  defp tools(_scenario), do: []
-
   defp expected_response(%ModelRequest{tools: []}, %{text: text}) when text != "", do: :ok
   defp expected_response(%ModelRequest{tools: [_]}, %{tool_calls: [_ | _]}), do: :ok
   defp expected_response(_request, _response), do: {:error, :unexpected_response}
@@ -128,11 +89,7 @@ defmodule Mix.Tasks.Kogen.RecordProvider do
   end
 
   defp fixture_contents(config, request, events) do
-    with {:ok, fingerprint} <- Codec.request_fingerprint(request) do
-      rows = [%{"kind" => "recording", "model" => request.model, "request_sha256" => fingerprint}]
-      rows = rows ++ Enum.map(events, &%{"kind" => "sse", "data" => &1})
-      contents = Enum.map_join(rows, "\n", &encode_row/1) <> "\n"
-
+    with {:ok, contents} <- Codec.encode_recording(request, events) do
       if safe_fixture?(contents, config) do
         {:ok, contents}
       else
@@ -140,8 +97,6 @@ defmodule Mix.Tasks.Kogen.RecordProvider do
       end
     end
   end
-
-  defp encode_row(row), do: row |> :json.encode() |> IO.iodata_to_binary()
 
   defp safe_fixture?(contents, config) do
     normalized = String.downcase(contents)
@@ -159,7 +114,8 @@ defmodule Mix.Tasks.Kogen.RecordProvider do
          true <- saved == contents do
       :ok
     else
-      _ -> {:error, :fixture_write_failed}
+      {:error, _reason} -> {:error, :fixture_write_failed}
+      false -> {:error, :fixture_write_failed}
     end
   end
 

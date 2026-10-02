@@ -2,6 +2,7 @@ defmodule Kogen.Provider.ChatGPT.Auth do
   @moduledoc false
 
   alias Kogen.Contracts.ProviderError
+  alias Kogen.Provider.ChatGPT.Codec
 
   defmodule Credentials do
     @moduledoc false
@@ -17,7 +18,7 @@ defmodule Kogen.Provider.ChatGPT.Auth do
   @spec load(Path.t()) :: credential_result()
   def load(path) when is_binary(path) do
     case File.read(path) do
-      {:ok, contents} -> decode_credentials(contents)
+      {:ok, contents} -> credentials(contents)
       {:error, _reason} -> login_error()
     end
   end
@@ -25,44 +26,14 @@ defmodule Kogen.Provider.ChatGPT.Auth do
   @spec load(term()) :: credential_result()
   def load(_path), do: login_error()
 
-  defp decode_credentials(contents) do
-    with {:ok, %{"tokens" => tokens}} <- decode_object(contents),
-         %{"access_token" => access_token, "account_id" => account_id} <- tokens,
-         true <- valid_credentials?(access_token, account_id),
-         :ok <- token_not_expired(access_token) do
-      {:ok, %Credentials{access_token: access_token, account_id: account_id}}
-    else
-      _ -> login_error()
+  defp credentials(contents) do
+    case Codec.decode_credentials(contents) do
+      {:ok, {access_token, account_id}} ->
+        {:ok, %Credentials{access_token: access_token, account_id: account_id}}
+
+      {:error, %ProviderError{} = error} ->
+        {:error, error}
     end
-  end
-
-  defp decode_object(contents) do
-    case :json.decode(contents) do
-      object when is_map(object) -> {:ok, object}
-      _ -> {:error, :invalid_json}
-    end
-  rescue
-    ErlangError -> {:error, :invalid_json}
-  end
-
-  defp valid_credentials?(access_token, account_id) do
-    is_binary(access_token) and access_token != "" and is_binary(account_id) and account_id != ""
-  end
-
-  defp token_not_expired(token) do
-    with [_, payload, _] <- String.split(token, "."),
-         {:ok, decoded_payload} <- Base.url_decode64(payload, padding: false),
-         %{"exp" => expiry} when is_integer(expiry) <- decode_payload(decoded_payload) do
-      if expiry > :erlang.system_time(:second), do: :ok, else: {:error, :expired}
-    else
-      _ -> {:error, :invalid_token}
-    end
-  end
-
-  defp decode_payload(payload) do
-    :json.decode(payload)
-  rescue
-    ErlangError -> nil
   end
 
   defp login_error do

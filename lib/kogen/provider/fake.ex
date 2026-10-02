@@ -62,43 +62,22 @@ defmodule Kogen.Provider.Fake do
     do: malformed_error("Provider fixture configuration or request is invalid.")
 
   defp load_recording(path) when is_binary(path) do
-    with {:ok, contents} <- File.read(path),
-         [metadata | event_rows] <- String.split(contents, "\n", trim: true),
-         {:ok, %{"kind" => "recording", "model" => model, "request_sha256" => fingerprint}} <-
-           decode_row(metadata),
-         true <- is_binary(model) and is_binary(fingerprint),
-         {:ok, event_lines} <- event_lines(event_rows) do
-      {:ok, %Recording{model: model, request_sha256: fingerprint, event_lines: event_lines}}
-    else
-      _ -> malformed_error("Provider fixture is missing or malformed.")
+    case File.read(path) do
+      {:ok, contents} ->
+        case Codec.decode_recording(contents) do
+          {:ok, {model, fingerprint, event_lines}} ->
+            {:ok, %Recording{model: model, request_sha256: fingerprint, event_lines: event_lines}}
+
+          {:error, %ProviderError{} = error} ->
+            {:error, error}
+        end
+
+      {:error, _reason} ->
+        malformed_error("Provider fixture is missing or malformed.")
     end
   end
 
   defp load_recording(_path), do: malformed_error("Provider fixture path is invalid.")
-
-  defp event_lines(rows) do
-    rows
-    |> Enum.reduce_while({:ok, []}, fn row, {:ok, lines} ->
-      case decode_row(row) do
-        {:ok, %{"kind" => "sse", "data" => data}} when is_binary(data) ->
-          {:cont, {:ok, [data | lines]}}
-
-        _ ->
-          {:halt, malformed_error("Provider fixture contains an invalid SSE event.")}
-      end
-    end)
-    |> case do
-      {:ok, []} -> malformed_error("Provider fixture contains no SSE events.")
-      {:ok, lines} -> {:ok, Enum.reverse(lines)}
-      error -> error
-    end
-  end
-
-  defp decode_row(row) do
-    {:ok, :json.decode(row)}
-  rescue
-    ErlangError -> {:error, :invalid_json}
-  end
 
   defp find_recording(recordings, model, fingerprint) do
     Enum.find(recordings, fn recording ->
