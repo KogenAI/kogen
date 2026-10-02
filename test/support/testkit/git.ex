@@ -24,9 +24,7 @@ defmodule Kogen.Testkit.Git do
   end
 
   defp git!(repo, args) do
-    case System.cmd("git", ["-C", repo | args], env: @git_env, stderr_to_stdout: true) do
-      {_output, 0} -> :ok
-      {output, status} -> raise "git #{Enum.join(args, " ")} failed (#{status}): #{output}"
-    end
+    _ = Kogen.Testkit.Proc.cmd!("git", ["-C", repo | args], env: @git_env)
+    :ok
   end
 end

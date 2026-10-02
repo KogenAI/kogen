@@ -76,8 +76,6 @@ defmodule Kogen.Proc.ProcTest do
   end
 
   test "only explicit environment values reach the child", %{tmp_dir: tmp_dir} do
-    assert System.get_env("HOME")
-
     assert {:ok, %ProcResult{output_tail: "unset|visible"}} =
              run(
                ["sh", "-c", ~s(printf '%s|%s' "${HOME-unset}" "$KOGEN_PASSED")],
@@ -164,7 +162,13 @@ defmodule Kogen.Proc.ProcTest do
     source_path = Path.join(tmp_dir, "nested_beam.exs")
     File.write!(source_path, source)
 
-    nested_env = %{"PATH" => System.get_env("PATH") || "/usr/bin:/bin"}
+    nested_env = %{
+      "PATH" =>
+        Enum.join(
+          [Path.dirname(elixir), Path.join(:code.root_dir(), "bin"), "/usr/bin", "/bin"],
+          ":"
+        )
+    }
 
     test_owner = self()
 

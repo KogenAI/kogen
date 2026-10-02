@@ -108,6 +108,7 @@
              included_paths: ["lib/"],
              codec_modules: [
                Kogen.Contracts.Yaml,
+               Kogen.Proc.Request,
                Kogen.Provider.ChatGPT.Codec,
                Kogen.Checks.Ledger,
                Kogen.State.Json
