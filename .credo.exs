@@ -109,6 +109,7 @@
              codec_modules: [
                Kogen.Contracts.Yaml,
                Kogen.Proc.Request,
+               Kogen.Project.Loader,
                Kogen.Provider.ChatGPT.Codec,
                Kogen.Checks.Ledger,
                Kogen.State.Json
