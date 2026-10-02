@@ -15,6 +15,7 @@ defmodule Kogen.Contracts do
       ProviderError,
       ProviderPort,
       Receipt,
-      ToolCall
+      ToolCall,
+      Yaml
     ]
 end

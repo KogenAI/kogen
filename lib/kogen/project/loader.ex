@@ -1,0 +1,215 @@
+defmodule Kogen.Project.Loader do
+  @moduledoc false
+
+  alias Kogen.Contracts.CheckSpec
+  alias Kogen.Contracts.Project
+  alias Kogen.Contracts.Yaml
+
+  @project_keys ~w(name checks fix diagnose protected_paths domains)
+
+  @type error :: %{line: pos_integer() | nil, message: String.t()}
+
+  @spec load(Path.t()) :: {:ok, Project.t()} | {:error, [error()]}
+  def load(checkout_root) do
+    path = Path.join([checkout_root, ".kogen", "project.yaml"])
+
+    case File.read(path) do
+      {:ok, source} -> load_source(source, checkout_root)
+      {:error, reason} -> error("cannot read #{path}: #{inspect(reason)}")
+    end
+  end
+
+  defp load_source(source, checkout_root) do
+    case Yaml.parse(source) do
+      {:ok, document} when is_map(document) -> validate_document(document, checkout_root)
+      {:ok, _value} -> error("project.yaml must contain a map at the document root")
+      {:error, issues} -> {:error, issues}
+    end
+  end
+
+  defp validate_document(document, checkout_root) do
+    {name, name_errors} = name(document)
+    {checks, check_errors} = check_specs(document, "checks", true)
+    {fix, fix_errors} = check_specs(document, "fix", false)
+    {diagnose, diagnose_errors} = diagnostics(document)
+    {protected_paths, protected_errors} = protected_paths(document)
+    {domains, domain_errors} = domains(document)
+
+    errors =
+      unknown_keys(document, @project_keys, "project") ++
+        name_errors ++
+        check_errors ++ fix_errors ++ diagnose_errors ++ protected_errors ++ domain_errors
+
+    if errors == [] do
+      {:ok,
+       %Project{
+         root: checkout_root,
+         name: name,
+         checks: checks,
+         fix: fix,
+         diagnose: diagnose,
+         protected_paths: protected_paths,
+         domains: domains
+       }}
+    else
+      {:error, errors}
+    end
+  end
+
+  defp name(document) do
+    case Map.fetch(document, "name") do
+      {:ok, value} when is_binary(value) and value != "" -> {value, []}
+      {:ok, _value} -> {nil, [issue("`name` must be a non-empty string")]}
+      :error -> {nil, [issue("missing required key `name`")]}
+    end
+  end
+
+  defp check_specs(document, key, required?) do
+    case Map.fetch(document, key) do
+      {:ok, values} when is_list(values) -> parse_specs(values, key)
+      {:ok, _value} -> {[], [issue("`#{key}` must be a list of CheckSpec maps")]}
+      :error when required? -> {[], [issue("missing required key `#{key}`")]}
+      :error -> {[], []}
+    end
+  end
+
+  defp parse_specs(values, key) do
+    values
+    |> Enum.with_index(1)
+    |> Enum.reduce({[], []}, fn {value, index}, {specs, errors} ->
+      case check_spec(value, "#{key}[#{index}]") do
+        {:ok, spec} -> {[spec | specs], errors}
+        {:error, spec_errors} -> {specs, errors ++ spec_errors}
+      end
+    end)
+    |> then(fn {specs, errors} -> {Enum.reverse(specs), errors} end)
+  end
+
+  defp check_spec(value, label) when is_map(value) do
+    keys = ~w(name argv timeout_ms)
+    unknown = unknown_keys(value, keys, label)
+    {name, name_errors} = string_field(value, "name", label)
+    {argv, argv_errors} = string_list_field(value, "argv", label, true)
+    {timeout, timeout_errors} = timeout_field(value, label)
+    errors = unknown ++ name_errors ++ argv_errors ++ timeout_errors
+
+    if errors == [],
+      do: {:ok, %CheckSpec{name: name, argv: argv, timeout_ms: timeout}},
+      else: {:error, errors}
+  end
+
+  defp check_spec(_value, label), do: {:error, [issue("#{label} must be a map")]}
+
+  defp string_field(value, key, label) do
+    case Map.fetch(value, key) do
+      {:ok, field} when is_binary(field) and field != "" -> {field, []}
+      {:ok, _field} -> {nil, [issue("#{label}.#{key} must be a non-empty string")]}
+      :error -> {nil, [issue("#{label} is missing required key `#{key}`")]}
+    end
+  end
+
+  defp string_list_field(value, key, label, non_empty?) do
+    case Map.fetch(value, key) do
+      {:ok, fields} when is_list(fields) -> validate_string_list(fields, key, label, non_empty?)
+      {:ok, _fields} -> {[], [issue("#{label}.#{key} must be a list of strings")]}
+      :error -> {[], [issue("#{label} is missing required key `#{key}`")]}
+    end
+  end
+
+  defp validate_string_list(fields, key, label, non_empty?) do
+    valid = Enum.all?(fields, &(is_binary(&1) and &1 != ""))
+
+    cond do
+      non_empty? and fields == [] -> {[], [issue("#{label}.#{key} must not be empty")]}
+      not valid -> {[], [issue("#{label}.#{key} must contain only non-empty strings")]}
+      true -> {fields, []}
+    end
+  end
+
+  defp timeout_field(value, label) do
+    case Map.fetch(value, "timeout_ms") do
+      {:ok, field} when is_binary(field) -> positive_integer(field, "#{label}.timeout_ms")
+      {:ok, _field} -> {nil, [issue("#{label}.timeout_ms must be a positive integer")]}
+      :error -> {nil, [issue("#{label} is missing required key `timeout_ms`")]}
+    end
+  end
+
+  defp positive_integer(text, label) do
+    case Integer.parse(text) do
+      {number, ""} when number > 0 -> {number, []}
+      _ -> {nil, [issue("#{label} must be a positive integer")]}
+    end
+  end
+
+  defp diagnostics(document) do
+    case Map.fetch(document, "diagnose") do
+      {:ok, values} when is_list(values) -> parse_diagnostics(values)
+      {:ok, _value} -> {[], [issue("`diagnose` must be a list of diagnostic maps")]}
+      :error -> {[], []}
+    end
+  end
+
+  defp parse_diagnostics(values) do
+    values
+    |> Enum.with_index(1)
+    |> Enum.reduce({[], []}, fn {value, index}, {items, errors} ->
+      case diagnostic(value, index) do
+        {:ok, item} -> {[item | items], errors}
+        {:error, item_errors} -> {items, errors ++ item_errors}
+      end
+    end)
+    |> then(fn {items, errors} -> {Enum.reverse(items), errors} end)
+  end
+
+  defp diagnostic(value, index) when is_map(value) do
+    label = "diagnose[#{index}]"
+    unknown = unknown_keys(value, ~w(glob argv), label)
+    {glob, glob_errors} = string_field(value, "glob", label)
+    {argv, argv_errors} = string_list_field(value, "argv", label, true)
+    errors = unknown ++ glob_errors ++ argv_errors
+    if errors == [], do: {:ok, %{glob: glob, argv: argv}}, else: {:error, errors}
+  end
+
+  defp diagnostic(_value, index), do: {:error, [issue("diagnose[#{index}] must be a map")]}
+
+  defp protected_paths(document) do
+    case Map.fetch(document, "protected_paths") do
+      {:ok, paths} when is_list(paths) ->
+        validate_string_list(paths, "protected_paths", "project", false)
+
+      {:ok, _paths} ->
+        {[], [issue("`protected_paths` must be a list of strings")]}
+
+      :error ->
+        {[], []}
+    end
+  end
+
+  defp domains(document) do
+    case Map.fetch(document, "domains") do
+      {:ok, values} when is_map(values) -> validate_domains(values)
+      {:ok, _values} -> {%{}, [issue("`domains` must be a map of domain names to path lists")]}
+      :error -> {%{}, []}
+    end
+  end
+
+  defp validate_domains(values) do
+    Enum.reduce(values, {%{}, []}, fn {domain, paths}, {domains, errors} ->
+      case validate_string_list(paths, "paths", "domains.#{domain}", false) do
+        {valid_paths, []} -> {Map.put(domains, domain, valid_paths), errors}
+        {_paths, path_errors} -> {domains, errors ++ path_errors}
+      end
+    end)
+  end
+
+  defp unknown_keys(value, allowed, label) do
+    value
+    |> Map.keys()
+    |> Enum.reject(&(&1 in allowed))
+    |> Enum.sort()
+    |> Enum.map(&issue("#{label} has unknown key #{inspect(&1)}"))
+  end
+
+  defp issue(message), do: %{line: nil, message: message}
+  defp error(message), do: {:error, [issue(message)]}
+end
