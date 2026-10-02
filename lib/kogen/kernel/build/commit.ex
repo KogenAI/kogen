@@ -2,7 +2,6 @@ defmodule Kogen.Kernel.Build.Commit do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
-  alias Kogen.Contracts.ProcResult
   alias Kogen.Kernel.Build.Guard
   alias Kogen.Kernel.Build.Session
   alias Kogen.State
@@ -73,7 +72,7 @@ defmodule Kogen.Kernel.Build.Commit do
   defp squash_to_base(session) do
     case Workspace.rev_parse(session.workdir, "HEAD", session.git_env) do
       {:ok, sha} when sha == session.base_sha -> :ok
-      {:ok, _sha} -> git_ok(session, ["reset", "--soft", session.base_sha])
+      {:ok, _sha} -> Workspace.reset_soft(session.workdir, session.base_sha, session.git_env)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -89,7 +88,7 @@ defmodule Kogen.Kernel.Build.Commit do
     Workspace.commit(session.workdir, "Build #{session.intent.slug}", trailers, session.git_env)
   end
 
-  defp rebase(session), do: git_ok(session, ["rebase", session.base_sha])
+  defp rebase(session), do: Workspace.rebase(session.workdir, session.base_sha, session.git_env)
 
   defp recheck(session, expected_tree) do
     with :ok <- guard(session),
@@ -184,22 +183,6 @@ defmodule Kogen.Kernel.Build.Commit do
 
   defp record_commit(session, commit, tree),
     do: State.record(session.run, %{event: :commit_result, commit: commit, tree: tree})
-
-  defp git_ok(session, argv) do
-    case Kogen.Proc.run(argv, cd: session.workdir, env: session.git_env, timeout_ms: 120_000) do
-      {:ok, %ProcResult{exit_status: 0, timed_out: false}} ->
-        :ok
-
-      {:ok, %ProcResult{timed_out: true}} ->
-        {:error, :git_timeout}
-
-      {:ok, %ProcResult{exit_status: status, output_tail: output}} ->
-        {:error, {:git_failed, status, output}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
 
   @spec tag(
           atom(),

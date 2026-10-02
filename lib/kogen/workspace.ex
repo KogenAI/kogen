@@ -31,6 +31,12 @@ defmodule Kogen.Workspace do
   def commit(path, message, trailers, git_env),
     do: Checkout.commit(path, message, trailers, git_env)
 
+  @spec reset_soft(Path.t(), String.t(), git_env()) :: :ok | {:error, term()}
+  def reset_soft(path, base_sha, git_env), do: Checkout.reset_soft(path, base_sha, git_env)
+
+  @spec rebase(Path.t(), String.t(), git_env()) :: :ok | {:error, term()}
+  def rebase(path, base_sha, git_env), do: Checkout.rebase(path, base_sha, git_env)
+
   @spec land(Path.t(), Path.t(), String.t(), String.t(), String.t(), git_env()) ::
           :ok | {:error, term()}
   def land(path, origin, branch, expected_old_sha, run_id, git_env),

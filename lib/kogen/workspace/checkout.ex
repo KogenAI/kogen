@@ -83,6 +83,30 @@ defmodule Kogen.Workspace.Checkout do
     end
   end
 
+  @spec reset_soft(Path.t(), String.t(), %{String.t() => String.t()}) :: :ok | {:error, term()}
+  def reset_soft(path, base_sha, git_env) do
+    run_base_command(path, base_sha, ["reset", "--soft", base_sha], git_env)
+  end
+
+  @spec rebase(Path.t(), String.t(), %{String.t() => String.t()}) :: :ok | {:error, term()}
+  def rebase(path, base_sha, git_env) do
+    run_base_command(path, base_sha, ["rebase", base_sha], git_env)
+  end
+
+  @spec run_base_command(Path.t(), String.t(), [String.t()], %{String.t() => String.t()}) ::
+          :ok | {:error, term()}
+  defp run_base_command(path, base_sha, argv, git_env) do
+    if Git.valid_worktree_path?(path) and valid_sha?(base_sha) do
+      case Git.run(path, argv, git_env) do
+        {:ok, 0, _output} -> :ok
+        {:ok, status, _output} -> {:error, {:git_failed, status}}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, :invalid_rebase}
+    end
+  end
+
   @spec destroy(Path.t()) :: :ok | {:error, term()}
   def destroy(path) do
     if Git.valid_worktree_path?(path) do
@@ -275,6 +299,9 @@ defmodule Kogen.Workspace.Checkout do
   end
 
   defp validate_commit(_message, _trailers), do: {:error, :invalid_commit_message}
+
+  @spec valid_sha?(String.t()) :: boolean()
+  defp valid_sha?(sha), do: Regex.match?(~r/\A(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\z/, sha)
 
   @spec message_with_trailers(String.t(), [{String.t(), String.t()}]) :: binary()
   defp message_with_trailers(message, []), do: String.trim_trailing(message, "\n") <> "\n"

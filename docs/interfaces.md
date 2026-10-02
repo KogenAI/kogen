@@ -20,6 +20,8 @@ This file is the contract between domains. Change it only through the integrator
 - `tree_hash(path, git_env) :: {:ok, sha}`: includes untracked, non-ignored files; private index.
 - `changed_paths(path, base_sha, git_env) :: {:ok, [rel_path]}`
 - `commit(path, message, trailers :: [{key, value}], git_env) :: {:ok, sha}`: `git add -A` + `git commit`. Signing follows the user's config; tests disable it via git_env.
+- `reset_soft(path, base_sha, git_env) :: :ok | {:error, term()}`: move Candidate HEAD to the approved base while preserving staged changes.
+- `rebase(path, base_sha, git_env) :: :ok | {:error, term()}`: rebase the Candidate onto the approved base.
 - `land(path, origin, branch, expected_old_sha, run_id, git_env) :: :ok | {:error, :base_moved | :ref_locked | :not_fast_forward | term()}`: push HEAD to `refs/kogen/incoming/<run_id>`, CAS `refs/heads/<branch>`, delete the temp ref. Requires HEAD's sole parent == expected_old_sha.
 - `park(path, origin, run_id, git_env) :: :ok`: pushes HEAD to `refs/kogen/parked/<run_id>`.
 - `destroy(path) :: :ok`

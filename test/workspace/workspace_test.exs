@@ -58,6 +58,8 @@ defmodule Kogen.Workspace.WorkspaceTest do
                @git_env
              )
 
+    assert :ok = Workspace.rebase(candidate, base_sha, @git_env)
+
     assert {:ok, message} = Workspace.commit_message(candidate, commit_sha, @git_env)
     assert message =~ "Kogen-Intent: feature"
     assert message =~ "Kogen-Receipt: tree123"
@@ -109,6 +111,19 @@ defmodule Kogen.Workspace.WorkspaceTest do
 
     assert Workspace.ancestor?(source, base_sha, state_sha, @git_env)
     assert {:ok, ^clean_tree} = Workspace.tree_hash(source, @git_env)
+  end
+
+  test "soft reset moves candidate commits onto the approved base", %{tmp_dir: tmp_dir} do
+    %{source: source, base_sha: base_sha} = fixture(tmp_dir)
+
+    assert {:ok, %{path: candidate}} =
+             Workspace.create(source, base_sha, tmp_dir, "reset-soft", @git_env)
+
+    File.write!(Path.join(candidate, "README.md"), "candidate\n")
+    assert {:ok, _commit_sha} = Workspace.commit(candidate, "candidate", [], @git_env)
+    assert :ok = Workspace.reset_soft(candidate, base_sha, @git_env)
+    assert {:ok, ^base_sha} = Workspace.rev_parse(candidate, "HEAD", @git_env)
+    assert {:ok, ["README.md"]} = Workspace.changed_paths(candidate, base_sha, @git_env)
   end
 
   test "lands a single-parent commit through a temporary ref and removes the temporary ref", %{
