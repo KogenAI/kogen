@@ -1,0 +1,15 @@
+name: hello-app
+checks:
+  - name: check
+    argv: [make, check]
+    timeout_ms: 10000
+fix:
+  - name: format
+    argv: [mix, format, --force]
+    timeout_ms: 30000
+diagnose:
+  - glob: "lib/**/*.ex"
+    argv: [mise, exec, --, mix, compile, --warnings-as-errors]
+protected_paths: [Makefile, mix.exs, .kogen/project.yaml]
+domains:
+  greeter: [lib/hello_app, test/hello_app]
