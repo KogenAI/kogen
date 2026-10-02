@@ -95,6 +95,7 @@ defmodule KogenChecks.GateWiringTest do
         Kogen.Contracts.Yaml,
         Kogen.Proc.Request,
         Kogen.Project.Loader,
+        Kogen.Workspace.Git,
         Kogen.Provider.ChatGPT.Codec,
         Kogen.Checks.Ledger,
         Kogen.State.Json
