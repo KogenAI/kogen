@@ -38,7 +38,7 @@ defmodule Kogen.Kernel.CLITest do
     assert output =~ "frontmatter must start"
   end
 
-  test "status emits JSON and derives draft from the selected project branch", %{
+  test "status emits text and derives draft from the selected project branch", %{
     tmp_dir: tmp_dir
   } do
     project = Kogen.Testkit.Git.create!(tmp_dir)
@@ -47,17 +47,13 @@ defmodule Kogen.Kernel.CLITest do
     File.mkdir_p!(Path.dirname(intent_path))
     File.write!(intent_path, "draft Intent\n")
 
-    assert {0, output} =
+    assert {0, "greet draft run=- landed=-\n"} =
+             CLI.execute(["status", "--project", project, "--base", "main"])
+
+    assert {2, output} =
              CLI.execute(["status", "--project", project, "--base", "main", "--json"])
 
-    assert [
-             %{
-               "slug" => "greet",
-               "status" => "draft",
-               "run_id" => :null,
-               "landed_sha" => :null
-             }
-           ] = :json.decode(String.trim(output))
+    assert output =~ "option is not valid for this command"
   end
 
   test "report requires JSON output" do

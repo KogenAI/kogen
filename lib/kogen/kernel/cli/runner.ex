@@ -6,7 +6,6 @@ defmodule Kogen.Kernel.CLI.Runner do
   alias Kogen.Kernel.CLI.Args
   alias Kogen.Kernel.Types.ApprovalPreview
   alias Kogen.Kernel.Types.BuildResult
-  alias Kogen.Kernel.Types.IntentStatus
 
   @spec run(Args.t()) :: {non_neg_integer(), String.t()}
   def run(%Args{command: :version} = args), do: version(args)
@@ -113,7 +112,7 @@ defmodule Kogen.Kernel.CLI.Runner do
   defp status(args) do
     with :ok <- project_directory(args),
          {:ok, statuses} <- Kogen.Kernel.status(args.project, args.origin, args.base) do
-      if args.json, do: {0, status_json(statuses)}, else: {0, status_text(statuses)}
+      {0, status_text(statuses)}
     else
       {:error, reason} -> command_error(reason)
     end
@@ -145,20 +144,6 @@ defmodule Kogen.Kernel.CLI.Runner do
     Enum.map_join(statuses, "", fn status ->
       "#{status.slug} #{status.status} run=#{value(status.run_id)} landed=#{value(status.landed_sha)}\n"
     end)
-  end
-
-  defp status_json(statuses) do
-    rows = Enum.map(statuses, &status_row/1)
-    rows |> :json.encode() |> IO.iodata_to_binary() |> Kernel.<>("\n")
-  end
-
-  defp status_row(%IntentStatus{} = status) do
-    Map.new([
-      {"slug", status.slug},
-      {"status", Atom.to_string(status.status)},
-      {"run_id", nullable(status.run_id)},
-      {"landed_sha", nullable(status.landed_sha)}
-    ])
   end
 
   defp approval_screen(preview) do
@@ -263,6 +248,4 @@ defmodule Kogen.Kernel.CLI.Runner do
 
   defp value(nil), do: "-"
   defp value(value), do: value
-  defp nullable(nil), do: :null
-  defp nullable(value), do: value
 end
