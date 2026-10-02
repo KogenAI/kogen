@@ -95,7 +95,7 @@ defmodule Kogen.Build.Cycle do
 
   defp stage_succeeded(state, :context, _data) do
     next = %{state | stage: :plan}
-    {next, [record(:stage_ok, %{stage: :context})]}
+    {next, [record(:stage_ok, %{stage: :context}), run(:plan, stage_args(next))]}
   end
 
   defp stage_succeeded(state, :plan, _data) do

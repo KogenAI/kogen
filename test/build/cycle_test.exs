@@ -70,7 +70,7 @@ defmodule Kogen.Build.CycleTest do
 
   defp pipeline_rows do
     [
-      {"context succeeds", state_at(:context), {:stage_ok, :context, %{}}, :plan, 2, :record},
+      {"context succeeds", state_at(:context), {:stage_ok, :context, %{}}, :plan, 2, :plan_run},
       {"plan succeeds", state_at(:plan), {:stage_ok, :plan, %{}}, :develop, 2, :develop_run},
       {"developer succeeds", state_at(:develop), {:stage_ok, :develop, %{tree: "tree-1"}},
        :done_gate, 2, :record},
@@ -146,6 +146,7 @@ defmodule Kogen.Build.CycleTest do
   defp effect_kind([{:finish, :parked, _reason} | _rest]), do: :finish_parked
   defp effect_kind([{:record, %{event: :landing_prepared}}, {:run, :land, _args}]), do: :land_run
   defp effect_kind([{:record, _record} | rest]) when rest != [], do: effect_kind(rest)
+  defp effect_kind([{:run, :plan, _args} | _rest]), do: :plan_run
   defp effect_kind([{:run, :develop, _args} | _rest]), do: :develop_run
   defp effect_kind([{:run, :fix, _args} | _rest]), do: :fix_run
   defp effect_kind([{:run, :check, _args} | _rest]), do: :check_run
