@@ -10,8 +10,11 @@ defmodule Kogen.Workspace do
 
   @spec create(Path.t(), String.t(), Path.t(), String.t(), git_env()) ::
           {:ok, %{path: Path.t(), base_sha: String.t()}} | {:error, term()}
-  def create(origin, base_sha, root, build_id, git_env),
-    do: Checkout.create(origin, base_sha, root, build_id, git_env)
+  @spec create(Path.t(), String.t(), Path.t(), String.t(), git_env(), keyword()) ::
+          {:ok, %{path: Path.t(), base_sha: String.t()}} | {:error, term()}
+  def create(origin, base_sha, root, build_id, git_env, options \\ []) do
+    Checkout.create(origin, base_sha, root, build_id, git_env, options)
+  end
 
   @spec insert_files(Path.t(), %{String.t() => binary()}) :: :ok | {:error, term()}
   def insert_files(path, files), do: Checkout.insert_files(path, files)

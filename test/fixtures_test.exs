@@ -8,7 +8,7 @@ defmodule Kogen.FixturesTest do
   @reference_root Path.expand("../fixtures/hello_app_reference", __DIR__)
   @project_script """
   root = hd(System.argv())
-  source = File.read!(Path.join([root, "demo/intents/status-json.md"]))
+  source = File.read!(Path.join([root, ".kogen/intents/status-json/intent.md"]))
 
   with {:ok, project} <- Kogen.Project.load(root),
        {:ok, intent} <- Kogen.Intent.parse_binary(source, "status-json/intent.md"),

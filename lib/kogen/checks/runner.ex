@@ -10,7 +10,13 @@ defmodule Kogen.Checks.Runner do
   alias Kogen.Proc
   alias Kogen.Workspace
 
-  @spec run_all(Path.t(), Project.t(), Path.t(), %{String.t() => String.t()}) ::
+  @spec run_all(
+          Path.t(),
+          Project.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()}
+        ) ::
           {:ok,
            %{
              tree: String.t(),
@@ -18,10 +24,13 @@ defmodule Kogen.Checks.Runner do
              status: :pass | {:fail, [String.t()]}
            }}
           | {:error, Failure.t()}
-  def run_all(workdir, %Project{} = project, run_dir, git_env) do
+  def run_all(workdir, project, run_dir, env, git_env),
+    do: run_all_with_project(workdir, project, run_dir, env, git_env)
+
+  defp run_all_with_project(workdir, %Project{} = project, run_dir, env, git_env) do
     with :ok <- prepare_logs(run_dir),
          {:ok, before_tree} <- Workspace.tree_hash(workdir, git_env) do
-      state = %RunState{workdir: workdir, run_dir: run_dir, env: git_env, tree: before_tree}
+      state = %RunState{workdir: workdir, run_dir: run_dir, env: env, tree: before_tree}
       results = run_specs(project.checks, state)
 
       with {:ok, after_tree} <- Workspace.tree_hash(workdir, git_env),

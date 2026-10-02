@@ -7,20 +7,29 @@ defmodule Kogen.Checks.Fixer do
   alias Kogen.Proc
 
   @spec run(Path.t(), Project.t(), Path.t()) :: {:ok, [ProcResult.t()]} | {:error, Failure.t()}
-  def run(workdir, %Project{} = project, run_dir) do
+  def run(workdir, project, run_dir), do: run(workdir, project, run_dir, %{})
+
+  @spec run(Path.t(), Project.t(), Path.t(), %{String.t() => String.t()}) ::
+          {:ok, [ProcResult.t()]} | {:error, Failure.t()}
+  def run(workdir, %Project{} = project, run_dir, env) do
     with :ok <- prepare_logs(run_dir) do
-      run_specs(project.fix, workdir, run_dir, 1, [])
+      run_specs(project.fix, workdir, run_dir, env, 1, [])
     end
   end
 
-  defp run_specs([], _workdir, _run_dir, _index, results), do: {:ok, Enum.reverse(results)}
+  defp run_specs([], _workdir, _run_dir, _env, _index, results), do: {:ok, Enum.reverse(results)}
 
-  defp run_specs([spec | rest], workdir, run_dir, index, results) do
+  defp run_specs([spec | rest], workdir, run_dir, env, index, results) do
     log_path = Path.join([run_dir, "logs", "fix-#{index}-#{safe_name(spec.name)}.log"])
 
-    case Proc.run(spec.argv, cd: workdir, timeout_ms: spec.timeout_ms, log_path: log_path) do
+    case Proc.run(spec.argv,
+           cd: workdir,
+           env: env,
+           timeout_ms: spec.timeout_ms,
+           log_path: log_path
+         ) do
       {:ok, %ProcResult{exit_status: 0, timed_out: false} = result} ->
-        run_specs(rest, workdir, run_dir, index + 1, [result | results])
+        run_specs(rest, workdir, run_dir, env, index + 1, [result | results])
 
       {:ok, %ProcResult{timed_out: true}} ->
         {:error, failure(:candidate, :fix_timeout, "safe formatter timed out: #{spec.name}")}

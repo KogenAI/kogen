@@ -30,7 +30,11 @@ defmodule Kogen.Acceptance.StatusJSONTest do
     output =
       Proc.cmd!(
         "elixir",
-        child_args() ++ ["-e", ~s{Kogen.Kernel.CLI.main(["status", "--json"])}],
+        child_args() ++
+          [
+            "-e",
+            ~s{Kogen.Kernel.CLI.main(["status", "--project", "#{repo}", "--json"])}
+          ],
         cd: repo
       )
 

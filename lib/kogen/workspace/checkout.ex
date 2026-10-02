@@ -8,12 +8,21 @@ defmodule Kogen.Workspace.Checkout do
 
   @spec create(Path.t(), String.t(), Path.t(), String.t(), %{String.t() => String.t()}) ::
           {:ok, %{path: Path.t(), base_sha: String.t()}} | {:error, term()}
-  def create(origin, base_sha, root, build_id, git_env) do
-    with :ok <- validate_create(origin, root, build_id),
+  @spec create(
+          Path.t(),
+          String.t(),
+          Path.t(),
+          String.t(),
+          %{String.t() => String.t()},
+          keyword()
+        ) :: {:ok, %{path: Path.t(), base_sha: String.t()}} | {:error, term()}
+  def create(origin, base_sha, root, build_id, git_env, options \\ []) do
+    with {:ok, seed_from} <- seed_source(origin, options),
+         :ok <- validate_create(origin, root, build_id),
          :ok <- File.mkdir_p(Path.join(root, "w")),
          :ok <- ensure_destination_absent(Path.join([root, "w", build_id])),
          :ok <- clone(origin, root, build_id, git_env) do
-      finish_create(Path.join([root, "w", build_id]), origin, base_sha, git_env)
+      finish_create(Path.join([root, "w", build_id]), seed_from, base_sha, git_env)
     end
   end
 
@@ -134,10 +143,10 @@ defmodule Kogen.Workspace.Checkout do
 
   @spec finish_create(Path.t(), Path.t(), String.t(), %{String.t() => String.t()}) ::
           {:ok, %{path: Path.t(), base_sha: String.t()}} | {:error, term()}
-  defp finish_create(path, origin, base_sha, git_env) do
+  defp finish_create(path, seed_from, base_sha, git_env) do
     with {:ok, _output} <- git_ok(path, ["checkout", "--detach", base_sha], git_env),
          {:ok, head} <- git_ok(path, ["rev-parse", "--verify", "HEAD"], git_env),
-         :ok <- seed(path, origin, git_env) do
+         :ok <- seed(path, seed_from, git_env) do
       {:ok, %{path: path, base_sha: Git.trim_line(head)}}
     else
       {:error, reason} -> cleanup_failed_create(path, reason)
@@ -160,6 +169,17 @@ defmodule Kogen.Workspace.Checkout do
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  @spec seed_source(Path.t(), keyword()) :: {:ok, Path.t()} | {:error, atom()}
+  defp seed_source(origin, options) do
+    if Keyword.keyword?(options) and Keyword.keys(options) -- [:seed_from] == [] do
+      source = Keyword.get(options, :seed_from, origin)
+
+      if absolute_directory?(source), do: {:ok, source}, else: {:error, :invalid_seed_source}
+    else
+      {:error, :invalid_options}
+    end
   end
 
   @spec seed_directory(Path.t(), Path.t(), String.t(), %{String.t() => String.t()}) ::

@@ -15,7 +15,7 @@ This file is the contract between domains. Change it only through the integrator
 - A non-zero exit is `{:ok, %ProcResult{exit_status: n}}`, not an error. A timeout is `{:ok, %ProcResult{timed_out: true, exit_status: nil}}`.
 
 ## Kogen.Workspace (git through Kogen.Proc; every function takes explicit repo paths and a `git_env` map)
-- `create(origin, base_sha, root, build_id, git_env) :: {:ok, %{path: String.t(), base_sha: String.t()}} | {:error, term()}`: clone --local from origin into `<root>/w/<build_id>` and check out `base_sha` detached. Seeds deps/_build from `seed_from` (opt) with `cp -c -R`.
+- `create(origin, base_sha, root, build_id, git_env, options \\ []) :: {:ok, %{path: String.t(), base_sha: String.t()}} | {:error, term()}`: clone --local from origin into `<root>/w/<build_id>` and check out `base_sha` detached. `options` may contain `seed_from:`; deps/_build are copied from that checkout (or origin by default) with `cp -c -R`.
 - `insert_files(path, %{dest_rel_path => binary}) :: :ok`
 - `tree_hash(path, git_env) :: {:ok, sha}`: includes untracked, non-ignored files; private index.
 - `changed_paths(path, base_sha, git_env) :: {:ok, [rel_path]}`
@@ -61,10 +61,10 @@ This file is the contract between domains. Change it only through the integrator
   - `limits` (`%{max_turns: 60, wall_ms: 1_800_000}`)
 
 ## Kogen.Checks
-- `fix(workdir, Project.t(), run_dir) :: {:ok, [ProcResult]}`: safe formatters only.
-- `run_all(workdir, Project.t(), run_dir, git_env) :: {:ok, %{tree: sha, receipts: [Receipt.t()], status: :pass | {:fail, [String.t()]}}} | {:error, Failure.t()}`: the tree is hashed before and after; a change is a Failure `:candidate`/`:tree_mutated`.
-- `acceptance(workdir, Intent.t(), run_dir) :: {:ok, %{status: :pass | {:fail, [id]}, ledger: [map()]}} | {:error, Failure.t()}`: the formatter source is embedded in the module and written into run_dir, never into the Candidate.
-- `red_on_base(base_workdir, Intent.t(), run_dir) :: :ok | {:error, Failure.t()}`
+- `fix(workdir, Project.t(), run_dir, env) :: {:ok, [ProcResult]}`: safe formatters only; `env` is the target project's explicit process environment.
+- `run_all(workdir, Project.t(), run_dir, env, git_env) :: {:ok, %{tree: sha, receipts: [Receipt.t()], status: :pass | {:fail, [String.t()]}}} | {:error, Failure.t()}`: checks run with `env`, Git tree calls use `git_env`; the tree is hashed before and after, with a change reported as `:candidate`/`:tree_mutated`.
+- `acceptance(workdir, Intent.t(), run_dir, env, git_env) :: {:ok, %{status: :pass | {:fail, [id]}, ledger: [LedgerRow.t()]}} | {:error, Failure.t()}`: the formatter source is embedded at compile time and written into run_dir, never into the Candidate. Tests run with `env`; Git tree calls use `git_env`.
+- `red_on_base(base_workdir, Intent.t(), run_dir, env, git_env) :: :ok | {:error, Failure.t()}`
 - `protected_violations(workdir, base_sha, manifest :: %{path => sha256}, git_env) :: {:ok, [path]}`
 - `scope_violations(workdir, base_sha, Intent.t(), Project.t(), allowed_extra :: [path], git_env) :: {:ok, [path]}`
 

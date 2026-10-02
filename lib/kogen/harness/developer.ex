@@ -43,6 +43,9 @@ defmodule Kogen.Harness.Developer do
   alias Kogen.Harness.Usage
 
   @empty_done_message "Kogen found no changed files. Make the requested change before claiming done."
+  @developer_prompt_source Path.expand("../../../priv/prompts/developer.md", __DIR__)
+  @external_resource @developer_prompt_source
+  @developer_prompt File.read!(@developer_prompt_source)
 
   @spec run(Opts.t(), String.t(), Plan.t() | nil, map() | nil) ::
           {:ok, Result.t()} | {:error, term()}
@@ -246,15 +249,7 @@ defmodule Kogen.Harness.Developer do
   end
 
   defp developer_prompt do
-    path = Application.app_dir(:kogen, "priv/prompts/developer.md")
-
-    case File.read(path) do
-      {:ok, prompt} ->
-        {:ok, prompt}
-
-      {:error, reason} ->
-        error(:prompt_unavailable, "Cannot read Developer prompt: #{inspect(reason)}")
-    end
+    {:ok, @developer_prompt}
   end
 
   defp validate_limits(opts) do
