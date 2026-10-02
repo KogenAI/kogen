@@ -1,0 +1,200 @@
+defmodule Kogen.Harness.Opts do
+  @moduledoc "Explicit runtime inputs for one Harness pipeline."
+
+  @enforce_keys [:workdir, :run_dir, :project, :provider_mod, :provider_config, :proc_mod]
+  defstruct [
+    :workdir,
+    :run_dir,
+    :project,
+    :provider_mod,
+    :provider_config,
+    :proc_mod,
+    env: %{},
+    models: %{builder: {"gpt-6-luna", "max"}, strong: {"gpt-6.1-sol", "high"}},
+    limits: %{max_turns: 60, wall_ms: 1_800_000},
+    repairs_left: 2
+  ]
+
+  @type model :: {String.t(), String.t()}
+  @type t :: %__MODULE__{
+          workdir: Path.t(),
+          run_dir: Path.t(),
+          project: Kogen.Contracts.Project.t(),
+          provider_mod: module(),
+          provider_config: term(),
+          proc_mod: module(),
+          env: %{String.t() => String.t()},
+          models: %{builder: model(), strong: model()},
+          limits: %{max_turns: pos_integer(), wall_ms: pos_integer()},
+          repairs_left: non_neg_integer()
+        }
+end
+
+defmodule Kogen.Harness.Pack do
+  @moduledoc "Read-only context collected for a single Intent."
+
+  @enforce_keys [:text, :refs, :usage, :files, :snippets]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          text: String.t(),
+          refs: [String.t()],
+          usage: map(),
+          files: [Path.t()],
+          snippets: [String.t()]
+        }
+end
+
+defmodule Kogen.Harness.Plan do
+  @moduledoc "One strong-model implementation plan, scoped to its Intent."
+
+  @enforce_keys [:text, :usage]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{text: String.t(), usage: map()}
+end
+
+defmodule Kogen.Harness.Review do
+  @moduledoc "One advisory review result."
+
+  @enforce_keys [:verdict, :findings, :usage]
+  defstruct @enforce_keys
+
+  @type verdict :: :accept | :revise
+  @type t :: %__MODULE__{verdict: verdict(), findings: [String.t()], usage: map()}
+end
+
+defmodule Kogen.Harness.Result do
+  @moduledoc "Outcome of one Developer pass and its single in-session gate."
+
+  @enforce_keys [:outcome, :gate, :items, :turns, :usage, :transcript_path]
+  defstruct @enforce_keys
+
+  @type outcome :: :done | :gate_red | :gave_up
+  @type t :: %__MODULE__{
+          outcome: outcome(),
+          gate: map() | nil,
+          items: list(),
+          turns: non_neg_integer(),
+          usage: map(),
+          transcript_path: Path.t()
+        }
+end
+
+defmodule Kogen.Harness.Usage do
+  @moduledoc false
+
+  @enforce_keys [:input, :cached_input, :cache_write, :output, :reasoning]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          input: non_neg_integer(),
+          cached_input: non_neg_integer(),
+          cache_write: non_neg_integer(),
+          output: non_neg_integer(),
+          reasoning: non_neg_integer()
+        }
+
+  @spec zero() :: t()
+  def zero, do: %__MODULE__{input: 0, cached_input: 0, cache_write: 0, output: 0, reasoning: 0}
+
+  @spec add(t(), t()) :: t()
+  def add(%__MODULE__{} = left, %__MODULE__{} = right) do
+    %__MODULE__{
+      input: left.input + right.input,
+      cached_input: left.cached_input + right.cached_input,
+      cache_write: left.cache_write + right.cache_write,
+      output: left.output + right.output,
+      reasoning: left.reasoning + right.reasoning
+    }
+  end
+
+  @spec to_map(t()) :: map()
+  def to_map(%__MODULE__{} = usage), do: Map.from_struct(usage)
+end
+
+defmodule Kogen.Harness.ToolArgs do
+  @moduledoc false
+
+  @enforce_keys [:name]
+  defstruct [
+    :name,
+    :path,
+    :pattern,
+    :offset,
+    :limit,
+    :old_text,
+    :new_text,
+    :content,
+    :cmd
+  ]
+
+  @type t :: %__MODULE__{
+          name: String.t(),
+          path: String.t() | nil,
+          pattern: String.t() | nil,
+          offset: pos_integer() | nil,
+          limit: pos_integer() | nil,
+          old_text: String.t() | nil,
+          new_text: String.t() | nil,
+          content: String.t() | nil,
+          cmd: String.t() | nil
+        }
+end
+
+defmodule Kogen.Harness.Error do
+  @moduledoc false
+
+  @enforce_keys [:reason, :detail]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{reason: atom(), detail: String.t()}
+end
+
+defmodule Kogen.Harness.ToolResult do
+  @moduledoc false
+
+  @enforce_keys [:output, :is_error, :paths]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{output: String.t(), is_error: boolean(), paths: [Path.t()]}
+end
+
+defmodule Kogen.Harness.GateCommand do
+  @moduledoc false
+
+  @enforce_keys [:name, :exit_status, :timed_out, :output]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          name: String.t(),
+          exit_status: integer() | nil,
+          timed_out: boolean(),
+          output: String.t()
+        }
+end
+
+defmodule Kogen.Harness.GateResult do
+  @moduledoc false
+
+  alias Kogen.Harness.GateCommand
+
+  @enforce_keys [:status, :fixes, :checks, :failures]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          status: :pass | :fail,
+          fixes: [GateCommand.t()],
+          checks: [GateCommand.t()],
+          failures: [String.t()]
+        }
+end
+
+defmodule Kogen.Harness.TranscriptEntry do
+  @moduledoc false
+
+  @enforce_keys [:event, :stage, :turn, :payload]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{event: atom(), stage: atom(), turn: non_neg_integer(), payload: term()}
+end
