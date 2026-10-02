@@ -2,3 +2,6 @@
 /deps/
 /kogen
 /.elixir_ls/
+
+# Kogen run records (local, never committed)
+/.kogen/runs/
