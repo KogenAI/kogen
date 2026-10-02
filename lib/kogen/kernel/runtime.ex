@@ -29,6 +29,7 @@ defmodule Kogen.Kernel.Runtime do
   def process_env(%__MODULE__{} = runtime, toolchain_env) do
     runtime.base_env
     |> Map.merge(toolchain_env)
+    |> include_mise_binary(runtime.mise)
     |> Map.merge(runtime_markers_from(runtime.base_env))
   end
 
@@ -47,6 +48,20 @@ defmodule Kogen.Kernel.Runtime do
   defp selected_environment(system_env) do
     Map.filter(system_env, fn {key, _value} ->
       key in @base_keys or String.starts_with?(key, ["GIT_", "MISE_"])
+    end)
+  end
+
+  defp include_mise_binary(env, mise) do
+    mise_dir = Path.dirname(mise)
+    entries = env |> path_value() |> String.split(":", trim: true)
+    path = Enum.join(Enum.uniq([mise_dir | entries]), ":")
+    Map.merge(env, Map.new([{"PATH", path}]))
+  end
+
+  defp path_value(env) do
+    Enum.find_value(env, "", fn
+      {"PATH", path} -> path
+      _other -> nil
     end)
   end
 
