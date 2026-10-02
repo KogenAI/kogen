@@ -4,9 +4,9 @@ defmodule Kogen.State.RunStore do
   alias Kogen.State.Approval
   alias Kogen.State.ApprovalStore
   alias Kogen.State.FileStore
+  alias Kogen.State.Json
   alias Kogen.State.Run
   alias Kogen.State.Run.Landing
-  alias Kogen.State.Serialization
 
   @spec start_run(Path.t(), Approval.t()) :: {:ok, Run.t()} | {:error, term()}
   def start_run(root, %Approval{} = approval) do
@@ -36,7 +36,7 @@ defmodule Kogen.State.RunStore do
 
   @spec record(Run.t(), map()) :: :ok | {:error, term()}
   def record(%Run{} = run, event) when is_map(event) do
-    with {:ok, encoded} <- Serialization.encode(event),
+    with {:ok, encoded} <- Json.encode_event(event),
          {:ok, current} <- load_dir(run.dir),
          {:ok, with_landing} <- landing_from_event(current, event),
          :ok <- FileStore.append_line(Path.join(run.dir, "events.jsonl"), encoded),
@@ -106,53 +106,10 @@ defmodule Kogen.State.RunStore do
   end
 
   defp load_dir(dir) do
-    with {:ok, contents} <- File.read(Path.join(dir, "run.json")),
-         {:ok, decoded} <- Serialization.decode(contents) do
-      run_from_json(dir, decoded)
+    with {:ok, contents} <- File.read(Path.join(dir, "run.json")) do
+      Json.decode_run(contents, dir)
     end
   end
-
-  defp run_from_json(dir, json) do
-    with 1 <- Map.get(json, "schema"),
-         id when is_binary(id) <- Map.get(json, "run_id"),
-         :ok <- safe_id(id),
-         slug when is_binary(slug) <- Map.get(json, "slug"),
-         hash when is_binary(hash) <- Map.get(json, "intent_sha256"),
-         branch when is_binary(branch) <- Map.get(json, "target_branch"),
-         {:ok, status} <- run_status(Map.get(json, "status")),
-         {:ok, approval_commit} <- nullable_string(Map.get(json, "approval_commit")),
-         {:ok, landing} <- landing_from_json(Map.get(json, "landing"), id) do
-      {:ok,
-       %Run{
-         id: id,
-         dir: dir,
-         slug: slug,
-         intent_sha256: hash,
-         target_branch: branch,
-         approval_commit: approval_commit,
-         status: status,
-         landing: landing
-       }}
-    else
-      _invalid -> {:error, :invalid_run}
-    end
-  end
-
-  defp landing_from_json(:null, _run_id), do: {:ok, nil}
-
-  defp landing_from_json(json, run_id) when is_map(json) do
-    values = %{
-      approval_commit: Map.get(json, "approval_commit"),
-      run_id: Map.get(json, "run_id"),
-      expected_parent: Map.get(json, "expected_parent"),
-      final_tree: Map.get(json, "final_tree"),
-      candidate_commit: Map.get(json, "candidate_commit")
-    }
-
-    landing(values, run_id)
-  end
-
-  defp landing_from_json(_json, _run_id), do: {:error, :invalid_run}
 
   defp landing_from_event(run, %{event: :landing_prepared, landing: identity})
        when is_map(identity) do
@@ -199,43 +156,10 @@ defmodule Kogen.State.RunStore do
   defp valid_identity_value?(value), do: is_binary(value) and value != ""
 
   defp persist(%Run{} = run) do
-    json = %{
-      schema: 1,
-      run_id: run.id,
-      slug: run.slug,
-      intent_sha256: run.intent_sha256,
-      target_branch: run.target_branch,
-      approval_commit: run.approval_commit,
-      status: run.status,
-      landing: landing_to_json(run.landing)
-    }
-
-    with {:ok, encoded} <- Serialization.encode(json) do
+    with {:ok, encoded} <- Json.encode_run(run) do
       FileStore.atomic_write(Path.join(run.dir, "run.json"), encoded)
     end
   end
-
-  defp landing_to_json(nil), do: nil
-
-  defp landing_to_json(%Landing{} = landing) do
-    %{
-      approval_commit: landing.approval_commit,
-      run_id: landing.run_id,
-      expected_parent: landing.expected_parent,
-      final_tree: landing.final_tree,
-      candidate_commit: landing.candidate_commit
-    }
-  end
-
-  defp run_status("running"), do: {:ok, :running}
-  defp run_status("landed"), do: {:ok, :landed}
-  defp run_status("failed"), do: {:ok, :failed}
-  defp run_status("parked"), do: {:ok, :parked}
-  defp run_status(_status), do: {:error, :invalid_run}
-
-  defp nullable_string(:null), do: {:ok, nil}
-  defp nullable_string(value) when is_binary(value), do: {:ok, value}
-  defp nullable_string(_value), do: {:error, :invalid_run}
 
   defp safe_id(id) do
     if Regex.match?(~r/\A[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\z/, id),

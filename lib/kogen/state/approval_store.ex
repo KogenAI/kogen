@@ -2,7 +2,7 @@ defmodule Kogen.State.ApprovalStore do
   @moduledoc false
 
   alias Kogen.State.Approval
-  alias Kogen.State.Serialization
+  alias Kogen.State.Json
 
   @approval_ref_prefix "refs/kogen/intents/"
   @approval_json "approval.json"
@@ -26,8 +26,9 @@ defmodule Kogen.State.ApprovalStore do
          {:ok, sha} <- workspace_call(workspace, :ref_read, [repo, ref, git_env]),
          {:ok, record_bytes} <-
            workspace_call(workspace, :read_file_at, [repo, sha, approval_path(slug), git_env]),
-         {:ok, json} <- Serialization.decode(record_bytes),
-         {:ok, approval} <- reconstruct(repo, sha, slug, json, git_env, workspace) do
+         {:ok, approval_record, acceptance_paths} <- Json.decode_approval(record_bytes, slug),
+         {:ok, approval} <-
+           reconstruct(repo, sha, approval_record, acceptance_paths, git_env, workspace) do
       {:ok, approval}
     else
       false -> {:error, :invalid_slug}
@@ -86,20 +87,7 @@ defmodule Kogen.State.ApprovalStore do
   defp require_valid(false, reason), do: {:error, reason}
 
   defp package_files(approval) do
-    metadata = %{
-      schema: 1,
-      slug: approval.slug,
-      intent_sha256: approval.intent_sha256,
-      target_branch: approval.target_branch,
-      base_sha: approval.base_sha,
-      domains: approval.domains,
-      acceptance_paths: approval.acceptance_files |> Map.keys() |> Enum.sort(),
-      protected_manifest: approval.protected_manifest,
-      by: approval.by,
-      at: DateTime.to_iso8601(approval.at)
-    }
-
-    with {:ok, encoded} <- Serialization.encode(metadata) do
+    with {:ok, encoded} <- Json.encode_approval(approval) do
       files =
         approval.acceptance_files
         |> Map.put(intent_path(approval.slug), approval.intent_bytes)
@@ -118,7 +106,7 @@ defmodule Kogen.State.ApprovalStore do
   end
 
   defp commit_package(repo, files, parents, approval, git_env, workspace) do
-    message = approval_message(approval)
+    message = Json.approval_message(approval)
 
     workspace_call(workspace, :commit_tree_with_files, [
       repo,
@@ -137,62 +125,16 @@ defmodule Kogen.State.ApprovalStore do
     workspace_call(workspace, :ref_update, [repo, @approval_ref_prefix <> slug, sha, old, git_env])
   end
 
-  defp reconstruct(repo, sha, slug, json, git_env, workspace) do
-    with {:ok, metadata} <- metadata_from_json(json, slug),
-         {:ok, intent_bytes} <- read_file(repo, sha, intent_path(slug), git_env, workspace),
+  defp reconstruct(repo, sha, %Approval{} = approval, acceptance_paths, git_env, workspace) do
+    with {:ok, intent_bytes} <-
+           read_file(repo, sha, intent_path(approval.slug), git_env, workspace),
          {:ok, acceptance_files} <-
-           read_acceptance_files(repo, sha, metadata.acceptance_paths, git_env, workspace),
+           read_acceptance_files(repo, sha, acceptance_paths, git_env, workspace),
          {:ok, message} <- workspace_call(workspace, :commit_message, [repo, sha, git_env]),
-         :ok <- verify_trailers(message, metadata),
-         approval = %Approval{
-           slug: slug,
-           intent_bytes: intent_bytes,
-           intent_sha256: metadata.intent_sha256,
-           target_branch: metadata.target_branch,
-           base_sha: metadata.base_sha,
-           domains: metadata.domains,
-           acceptance_files: acceptance_files,
-           protected_manifest: metadata.protected_manifest,
-           by: metadata.by,
-           at: metadata.at
-         },
+         :ok <- Json.verify_approval_trailers(message, approval),
+         approval = %{approval | intent_bytes: intent_bytes, acceptance_files: acceptance_files},
          :ok <- validate(approval) do
       {:ok, approval}
-    end
-  end
-
-  defp metadata_from_json(json, slug) do
-    with 1 <- Map.get(json, "schema"),
-         ^slug <- Map.get(json, "slug"),
-         hash when is_binary(hash) <- Map.get(json, "intent_sha256"),
-         branch when is_binary(branch) <- Map.get(json, "target_branch"),
-         base when is_binary(base) <- Map.get(json, "base_sha"),
-         domains when is_list(domains) <- Map.get(json, "domains"),
-         paths when is_list(paths) <- Map.get(json, "acceptance_paths"),
-         manifest when is_map(manifest) <- Map.get(json, "protected_manifest"),
-         by when is_binary(by) <- Map.get(json, "by"),
-         at_text when is_binary(at_text) <- Map.get(json, "at"),
-         {:ok, at, _offset} <- DateTime.from_iso8601(at_text),
-         true <- Enum.all?(domains, &is_binary/1),
-         true <- Enum.all?(paths, &is_binary/1),
-         true <- Enum.all?(paths, &safe_repo_path?/1),
-         true <- Enum.all?(paths, &(&1 not in [intent_path(slug), approval_path(slug)])),
-         true <-
-           Enum.all?(manifest, fn {path, digest} -> is_binary(path) and is_binary(digest) end) do
-      {:ok,
-       %{
-         slug: slug,
-         intent_sha256: hash,
-         target_branch: branch,
-         base_sha: base,
-         domains: domains,
-         acceptance_paths: paths,
-         protected_manifest: manifest,
-         by: by,
-         at: at
-       }}
-    else
-      _invalid -> {:error, :invalid_approval}
     end
   end
 
@@ -207,40 +149,6 @@ defmodule Kogen.State.ApprovalStore do
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
-  end
-
-  defp verify_trailers(message, metadata) do
-    trailers = trailers(message)
-
-    expected = %{
-      "Kogen-Approval" => metadata.slug,
-      "Kogen-Approved-By" => metadata.by,
-      "Kogen-Approved-Hash" => metadata.intent_sha256,
-      "Kogen-Approved-At" => DateTime.to_iso8601(metadata.at)
-    }
-
-    if Enum.all?(expected, fn {key, value} -> Map.get(trailers, key) == value end),
-      do: :ok,
-      else: {:error, :approval_trailer_mismatch}
-  end
-
-  defp trailers(message) do
-    message
-    |> String.split("\n")
-    |> Enum.reduce(%{}, fn line, result ->
-      case String.split(line, ": ", parts: 2) do
-        [key, value] -> Map.put(result, key, value)
-        _other -> result
-      end
-    end)
-  end
-
-  defp approval_message(approval) do
-    "Kogen immutable approval package\n\n" <>
-      "Kogen-Approval: #{approval.slug}\n" <>
-      "Kogen-Approved-By: #{approval.by}\n" <>
-      "Kogen-Approved-Hash: #{approval.intent_sha256}\n" <>
-      "Kogen-Approved-At: #{DateTime.to_iso8601(approval.at)}"
   end
 
   defp valid_files?(files, reserved) do

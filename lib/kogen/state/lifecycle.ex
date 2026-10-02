@@ -2,10 +2,12 @@ defmodule Kogen.State.Lifecycle do
   @moduledoc false
 
   alias Kogen.State.ApprovalStore
+  alias Kogen.State.Json
   alias Kogen.State.Run
   alias Kogen.State.RunStore
 
   @claim_ref "refs/kogen/claim"
+  @claim_path ".kogen/claim"
 
   @spec claim(term(), String.t(), map(), module()) :: :ok | {:error, term()}
   def claim(repo, run_id, git_env, workspace) when is_binary(run_id) and is_map(git_env) do
@@ -27,7 +29,7 @@ defmodule Kogen.State.Lifecycle do
     case workspace_call(workspace, :ref_read, [repo, @claim_ref, git_env]) do
       {:ok, sha} ->
         with {:ok, message} <- workspace_call(workspace, :commit_message, [repo, sha, git_env]),
-             ^run_id <- claim_run_id(message) do
+             ^run_id <- Json.claim_run_id(message) do
           workspace_call(workspace, :ref_delete, [repo, @claim_ref, sha, git_env])
         else
           nil -> {:error, :not_owner}
@@ -67,11 +69,12 @@ defmodule Kogen.State.Lifecycle do
   end
 
   defp claim_commit(repo, run_id, git_env, workspace) do
-    message = "Kogen project claim\n\nKogen-Run: #{run_id}"
+    message = Json.claim_message(run_id)
+    files = Map.new([{@claim_path, run_id}])
 
     workspace_call(workspace, :commit_tree_with_files, [
       repo,
-      %{".kogen/claim" => run_id},
+      files,
       [],
       message,
       git_env
@@ -82,7 +85,7 @@ defmodule Kogen.State.Lifecycle do
     case workspace_call(workspace, :ref_read, [repo, @claim_ref, git_env]) do
       {:ok, sha} ->
         with {:ok, message} <- workspace_call(workspace, :commit_message, [repo, sha, git_env]),
-             run_id when is_binary(run_id) <- claim_run_id(message) do
+             run_id when is_binary(run_id) <- Json.claim_run_id(message) do
           {:error, {:claimed, run_id}}
         else
           {:error, reason} -> {:error, reason}
@@ -195,15 +198,6 @@ defmodule Kogen.State.Lifecycle do
 
   defp state!({:ok, state}), do: state
   defp state!({:error, reason}), do: raise(ArgumentError, "cannot read State: #{inspect(reason)}")
-
-  defp claim_run_id(message) do
-    message
-    |> String.split("\n")
-    |> Enum.find_value(fn
-      "Kogen-Run: " <> run_id -> run_id
-      _line -> nil
-    end)
-  end
 
   defp branch_ref("refs/heads/" <> _branch = ref), do: ref
   defp branch_ref(branch), do: "refs/heads/" <> branch
