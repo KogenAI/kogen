@@ -50,10 +50,17 @@ defmodule Kogen.Kernel.CLITest do
     assert {0, "greet draft run=- landed=-\n"} =
              CLI.execute(["status", "--project", project, "--base", "main"])
 
-    assert {2, output} =
+    assert {0, output} =
              CLI.execute(["status", "--project", project, "--base", "main", "--json"])
 
-    assert output =~ "option is not valid for this command"
+    assert :json.decode(output) == [
+             %{
+               "slug" => "greet",
+               "status" => "draft",
+               "run_id" => :null,
+               "landed_sha" => :null
+             }
+           ]
   end
 
   test "report requires JSON output" do

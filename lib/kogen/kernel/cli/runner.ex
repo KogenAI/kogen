@@ -112,7 +112,8 @@ defmodule Kogen.Kernel.CLI.Runner do
   defp status(args) do
     with :ok <- project_directory(args),
          {:ok, statuses} <- Kogen.Kernel.status(args.project, args.origin, args.base) do
-      {0, status_text(statuses)}
+      output = if args.json, do: status_json(statuses), else: status_text(statuses)
+      {0, output}
     else
       {:error, reason} -> command_error(reason)
     end
@@ -145,6 +146,24 @@ defmodule Kogen.Kernel.CLI.Runner do
       "#{status.slug} #{status.status} run=#{value(status.run_id)} landed=#{value(status.landed_sha)}\n"
     end)
   end
+
+  defp status_json(statuses) do
+    records =
+      Enum.map(statuses, fn status ->
+        Map.new([
+          {"slug", status.slug},
+          {"status", Atom.to_string(status.status)},
+          {"run_id", json_value(status.run_id)},
+          {"landed_sha", json_value(status.landed_sha)}
+        ])
+      end)
+
+    json = records |> :json.encode() |> IO.iodata_to_binary()
+    json <> "\n"
+  end
+
+  defp json_value(nil), do: :null
+  defp json_value(value), do: value
 
   defp approval_screen(preview) do
     intent = preview.intent

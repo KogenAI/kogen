@@ -72,7 +72,7 @@ defmodule Kogen.Kernel.CLI.Arguments do
   defp allowed_flags(:version), do: [:project, :origin, :base]
   defp allowed_flags(:approve), do: [:project, :origin, :base, :by, :yes]
   defp allowed_flags(:build), do: [:project, :origin, :base, :model, :effort]
-  defp allowed_flags(:status), do: [:project, :origin, :base]
+  defp allowed_flags(:status), do: [:project, :origin, :base, :json]
   defp allowed_flags(:report), do: [:project, :origin, :base, :json]
   defp allowed_flags(:reconcile), do: [:project, :origin, :base]
 
