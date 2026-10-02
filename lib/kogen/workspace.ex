@@ -1,4 +1,91 @@
 defmodule Kogen.Workspace do
-  @moduledoc "Creates and maintains isolated project checkouts and worktrees."
+  @moduledoc "Creates isolated checkouts and performs safe Git ref operations."
   use Boundary, deps: [Kogen.Contracts, Kogen.Proc], exports: []
+
+  alias Kogen.Workspace.Checkout
+  alias Kogen.Workspace.Landing
+  alias Kogen.Workspace.Refs
+
+  @type git_env :: %{String.t() => String.t()}
+
+  @spec create(Path.t(), String.t(), Path.t(), String.t(), git_env()) ::
+          {:ok, %{path: Path.t(), base_sha: String.t()}} | {:error, term()}
+  def create(origin, base_sha, root, build_id, git_env),
+    do: Checkout.create(origin, base_sha, root, build_id, git_env)
+
+  @spec insert_files(Path.t(), %{String.t() => binary()}) :: :ok | {:error, term()}
+  def insert_files(path, files), do: Checkout.insert_files(path, files)
+
+  @spec tree_hash(Path.t(), git_env()) :: {:ok, String.t()} | {:error, term()}
+  def tree_hash(path, git_env), do: Checkout.tree_hash(path, git_env)
+
+  @spec changed_paths(Path.t(), String.t(), git_env()) ::
+          {:ok, [String.t()]} | {:error, term()}
+  def changed_paths(path, base_sha, git_env), do: Checkout.changed_paths(path, base_sha, git_env)
+
+  @spec commit(Path.t(), String.t(), [{String.t(), String.t()}], git_env()) ::
+          {:ok, String.t()} | {:error, term()}
+  def commit(path, message, trailers, git_env),
+    do: Checkout.commit(path, message, trailers, git_env)
+
+  @spec land(Path.t(), Path.t(), String.t(), String.t(), String.t(), git_env()) ::
+          :ok | {:error, term()}
+  def land(path, origin, branch, expected_old_sha, run_id, git_env),
+    do: Landing.land(path, origin, branch, expected_old_sha, run_id, git_env)
+
+  @spec park(Path.t(), Path.t(), String.t(), git_env()) :: :ok | {:error, term()}
+  def park(path, origin, run_id, git_env), do: Landing.park(path, origin, run_id, git_env)
+
+  @spec destroy(Path.t()) :: :ok | {:error, term()}
+  def destroy(path), do: Checkout.destroy(path)
+
+  @spec ref_read(Path.t(), String.t(), git_env()) ::
+          {:ok, String.t()} | {:error, :missing | term()}
+  def ref_read(repo, ref, git_env), do: Refs.ref_read(repo, ref, git_env)
+
+  @spec ref_create(Path.t(), String.t(), String.t(), git_env()) ::
+          :ok | {:error, :exists | term()}
+  def ref_create(repo, ref, sha, git_env), do: Refs.ref_create(repo, ref, sha, git_env)
+
+  @spec ref_update(Path.t(), String.t(), String.t(), String.t(), git_env()) ::
+          :ok | {:error, :stale | term()}
+  def ref_update(repo, ref, new_sha, old_sha, git_env),
+    do: Refs.ref_update(repo, ref, new_sha, old_sha, git_env)
+
+  @spec ref_delete(Path.t(), String.t(), String.t(), git_env()) :: :ok | {:error, :stale | term()}
+  def ref_delete(repo, ref, expected_sha, git_env),
+    do: Refs.ref_delete(repo, ref, expected_sha, git_env)
+
+  @spec commit_tree_with_files(
+          Path.t(),
+          %{String.t() => binary()},
+          [String.t()],
+          String.t(),
+          git_env()
+        ) :: {:ok, String.t()} | {:error, term()}
+  def commit_tree_with_files(repo, files, parents, message, git_env),
+    do: Refs.commit_tree_with_files(repo, files, parents, message, git_env)
+
+  @spec read_file_at(Path.t(), String.t(), String.t(), git_env()) ::
+          {:ok, binary()} | {:error, :missing | term()}
+  def read_file_at(repo, rev, path, git_env), do: Refs.read_file_at(repo, rev, path, git_env)
+
+  @spec commit_message(Path.t(), String.t(), git_env()) :: {:ok, binary()} | {:error, term()}
+  def commit_message(repo, rev, git_env), do: Refs.commit_message(repo, rev, git_env)
+
+  @spec rev_parse(Path.t(), String.t(), git_env()) ::
+          {:ok, String.t()} | {:error, :missing | term()}
+  def rev_parse(repo, rev, git_env), do: Refs.rev_parse(repo, rev, git_env)
+
+  @spec ancestor?(Path.t(), String.t(), String.t(), git_env()) :: boolean()
+  def ancestor?(repo, a, b, git_env), do: Refs.ancestor?(repo, a, b, git_env)
+end
+
+defmodule Kogen.Workspace.Process do
+  @moduledoc false
+
+  alias Kogen.Contracts.ProcResult
+
+  @spec run([String.t()], keyword()) :: {:ok, ProcResult.t()} | {:error, term()}
+  def run(argv, options), do: Kogen.Proc.run(argv, options)
 end
