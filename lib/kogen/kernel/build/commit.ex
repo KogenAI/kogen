@@ -13,13 +13,13 @@ defmodule Kogen.Kernel.Build.Commit do
           | {:error, Session.t(), Failure.t()}
           | {:base_moved, Session.t()}
   def run(%Session{} = session) do
-    with {:ok, tree} <- Workspace.tree_hash(session.workdir, session.git_env),
-         :ok <- squash_to_base(session),
-         {:ok, commit} <- commit_tree(session, tree),
-         :ok <- rebase(session),
-         {:ok, receipts, ledger} <- recheck(session, tree),
-         :ok <- branch_unchanged(session),
-         :ok <- record_commit(session, commit, tree) do
+    with {:ok, tree} <- tag(:tree_hash, Workspace.tree_hash(session.workdir, session.git_env)),
+         :ok <- tag(:squash, squash_to_base(session)),
+         {:ok, commit} <- tag(:candidate_commit, commit_tree(session, tree)),
+         :ok <- tag(:rebase, rebase(session)),
+         {:ok, receipts, ledger} <- tag(:recheck, recheck(session, tree)),
+         :ok <- tag(:base_check, branch_unchanged(session)),
+         :ok <- tag(:commit_receipt, record_commit(session, commit, tree)) do
       identity = landing_identity(session, tree, commit)
 
       session = %{
@@ -187,12 +187,37 @@ defmodule Kogen.Kernel.Build.Commit do
 
   defp git_ok(session, argv) do
     case Kogen.Proc.run(argv, cd: session.workdir, env: session.git_env, timeout_ms: 120_000) do
-      {:ok, %ProcResult{exit_status: 0, timed_out: false}} -> :ok
-      {:ok, %ProcResult{timed_out: true}} -> {:error, :git_timeout}
-      {:ok, %ProcResult{exit_status: status}} -> {:error, {:git_failed, status}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %ProcResult{exit_status: 0, timed_out: false}} ->
+        :ok
+
+      {:ok, %ProcResult{timed_out: true}} ->
+        {:error, :git_timeout}
+
+      {:ok, %ProcResult{exit_status: status, output_tail: output}} ->
+        {:error, {:git_failed, status, output}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
+
+  @spec tag(
+          atom(),
+          {:ok, term()}
+          | {:ok, term(), term()}
+          | :ok
+          | {:error, :base_moved | Failure.t() | term()}
+        ) ::
+          {:ok, term()}
+          | {:ok, term(), term()}
+          | :ok
+          | {:error, :base_moved | Failure.t() | {atom(), term()}}
+  defp tag(_operation, {:ok, _value} = result), do: result
+  defp tag(_operation, {:ok, _value, _extra} = result), do: result
+  defp tag(_operation, :ok), do: :ok
+  defp tag(_operation, {:error, :base_moved} = result), do: result
+  defp tag(_operation, {:error, %Failure{}} = result), do: result
+  defp tag(operation, {:error, reason}), do: {:error, {operation, reason}}
 
   defp fail(session, stage, %Failure{} = failure) do
     event = %{
