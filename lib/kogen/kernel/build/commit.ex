@@ -142,12 +142,12 @@ defmodule Kogen.Kernel.Build.Commit do
     with :ok <-
            State.record(session.run, %{
              event: :check_result,
-             status: checks.status,
+             result: checks.status,
              receipts: checks.receipts
            }) do
       State.record(session.run, %{
         event: :acceptance_result,
-        status: acceptance_status(acceptance.status),
+        result: acceptance_status(acceptance.status),
         ledger: acceptance.ledger
       })
     end

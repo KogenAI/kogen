@@ -175,7 +175,7 @@ defmodule Kogen.Kernel.Build.StageRunner do
              session.run_dir,
              session.process_env
            ),
-         :ok <- record(session, %{event: :fix_result, status: :pass}) do
+         :ok <- record(session, %{event: :fix_result, result: :pass}) do
       {:ok, %{session | failure: nil, failure_text: nil}, [{:stage_ok, :fix, %{}}]}
     else
       {:error, %Failure{} = failure} -> fail(session, :fix, failure)
@@ -249,12 +249,12 @@ defmodule Kogen.Kernel.Build.StageRunner do
     with :ok <-
            record(session, %{
              event: :check_result,
-             status: check_result.status,
+             result: check_result.status,
              receipts: check_result.receipts
            }) do
       record(session, %{
         event: :acceptance_result,
-        status: acceptance_status(acceptance_result.status),
+        result: acceptance_status(acceptance_result.status),
         ledger: acceptance_result.ledger
       })
     end

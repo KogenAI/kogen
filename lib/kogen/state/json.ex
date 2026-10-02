@@ -21,6 +21,7 @@ defmodule Kogen.State.Json do
     reason: "reason",
     detail: "detail",
     status: "status",
+    result: "result",
     approval_commit: "approval_commit",
     base_sha: "base_sha",
     ledger: "ledger",

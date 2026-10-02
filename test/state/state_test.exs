@@ -244,6 +244,11 @@ defmodule Kogen.State.StateTest do
     assert_status(context, approved.slug, :landed)
   end
 
+  test "journal decoding keeps verification result separate from lifecycle status" do
+    assert {:ok, %Kogen.State.Event{event: "check_result", status: nil, result: "pass"}} =
+             State.decode_event(~s({"event":"check_result","result":"pass"}))
+  end
+
   test "reconcile records a landing after CAS and releases only its own claim", context do
     approved = approval()
 

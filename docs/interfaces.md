@@ -81,7 +81,7 @@ This file is the contract between domains. Change it only through the integrator
 
 ## Kogen.State
 - `%Kogen.State.Approval{}`, as defined in T9's brief.
-- `%Kogen.State.Event{}` is a decoded run-journal entry. `decode_event/1` owns its JSON string-key edge and returns typed fields for reports.
+- `%Kogen.State.Event{}` is a decoded run-journal entry. `decode_event/1` owns its JSON string-key edge and returns typed fields for reports. Its top-level `status` is reserved for run lifecycle values; check and acceptance outcomes use `result`.
 - Functions:
   - `approve(repo, Approval, git_env)`
   - `approval(repo, slug, git_env)`
