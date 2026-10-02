@@ -2,6 +2,7 @@ defmodule Kogen.Kernel.RuntimeTest do
   use Kogen.Testkit.Case
 
   alias Kogen.Kernel.Runtime
+  alias Kogen.Kernel.RuntimeDiscovery
 
   test "project PATH keeps mise available alongside the target toolchain" do
     runtime = Runtime.new(%{"PATH" => "/system/bin"}, "/mise/bin/mise", nil, "/erts", "/erts/bin")
@@ -21,5 +22,9 @@ defmodule Kogen.Kernel.RuntimeTest do
     File.ln_s!(generation, link)
 
     assert {:ok, ^generation} = Runtime.resolve_script_path(link)
+  end
+
+  test "runtime discovery accepts BEAM callers without an escript path" do
+    assert {:ok, %Runtime{}} = RuntimeDiscovery.runtime()
   end
 end

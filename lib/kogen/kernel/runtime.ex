@@ -212,8 +212,12 @@ defmodule Kogen.Kernel.RuntimeDiscovery do
 
   defp escript_path do
     case :escript.script_name() do
-      [] -> nil
-      name -> List.to_string(name)
+      [] ->
+        nil
+
+      name ->
+        path = List.to_string(name)
+        if File.regular?(path), do: path
     end
   end
 
