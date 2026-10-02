@@ -40,7 +40,8 @@ This file is the contract between domains. Change it only through the integrator
 - `Kogen.Intent.lint(Intent.t()) :: [%{rule: atom(), message: String.t(), line: pos_integer() | nil}]`
 - `Kogen.Intent.hash(binary) :: String.t()` (sha256 hex)
 - `Kogen.Project.load(checkout_root) :: {:ok, Project.t()} | {:error, [%{line, message}]}`, reading `.kogen/project.yaml`
-- Acceptance test files for an Intent `<slug>` live at `.kogen/acceptance/<slug>_test.exs` in the checkout, and are installed into the Candidate at `test/acceptance/<slug>_test.exs`.
+- Intent files live at `.kogen/intents/<slug>/intent.md`; `parse/1` derives `<slug>` from the parent directory.
+- Acceptance test files live at `.kogen/acceptance/<slug>_test.exs` in the checkout, and are installed into the Candidate at `test/acceptance/<slug>_test.exs`.
 
 ## Kogen.Provider
 - `Kogen.Provider.ChatGPT.config(auth_path) :: {:ok, %Kogen.Provider.ChatGPT.Config{}} | {:error, ProviderError.t()}`
@@ -59,6 +60,7 @@ This file is the contract between domains. Change it only through the integrator
   - `proc_mod`
   - `models` (`%{builder: {"gpt-6-luna", "max"}, strong: {"gpt-6.1-sol", "high"}}`)
   - `limits` (`%{max_turns: 60, wall_ms: 1_800_000}`)
+  - `before_gate` optional zero-arity callback; Kernel uses it to check the approval protected manifest and scope before the done gate runs a fixer or check.
 
 ## Kogen.Checks
 - `fix(workdir, Project.t(), run_dir, env) :: {:ok, [ProcResult]}`: safe formatters only; `env` is the target project's explicit process environment.
@@ -79,6 +81,7 @@ This file is the contract between domains. Change it only through the integrator
 
 ## Kogen.State
 - `%Kogen.State.Approval{}`, as defined in T9's brief.
+- `%Kogen.State.Event{}` is a decoded run-journal entry. `decode_event/1` owns its JSON string-key edge and returns typed fields for reports.
 - Functions:
   - `approve(repo, Approval, git_env)`
   - `approval(repo, slug, git_env)`
@@ -86,6 +89,7 @@ This file is the contract between domains. Change it only through the integrator
   - `release(repo, run_id, git_env)`
   - `start_run(root, Approval) :: {:ok, %Kogen.State.Run{}}`
   - `record(Run, map) :: :ok`
+  - `decode_event(binary) :: {:ok, Event.t()} | {:error, :invalid_event}`
   - `put_landing(Run, %{approval_commit, expected_parent, final_tree, candidate_commit}) :: :ok`
   - `load(root, run_id)`
   - `list(root)`
@@ -98,3 +102,14 @@ This file is the contract between domains. Change it only through the integrator
 - `Kogen-Run: <run_id>`
 - `Kogen-Approval: <approval commit sha>`
 - `Kogen-Receipt: <final tree sha>`
+
+## Kogen.Kernel and CLI
+- `Kogen.Kernel.intent_check(path) :: {:ok, Intent.t()} | {:error, term()}` parses and lints a local Intent.
+- `approval_preview(slug, project_root, origin, base, by) :: {:ok, ApprovalPreview.t()} | {:error, term()}` reads the project Intent and acceptance file, captures the current base SHA, and prepares the protected-file manifest.
+- `approve(ApprovalPreview.t()) :: {:ok, approval_commit_sha} | {:error, term()}` writes the immutable approval ref.
+- `build(slug, project_root, origin, base, model, effort) :: {:ok, BuildResult.t()} | {:error, term()}` interprets Cycle effects in context → plan → develop → fix → checks and acceptance → review → repair → commit → land order. Candidate/environment/provider/controller failures map to CLI exit codes 1/3/4/70. Candidate repair resumes Developer with the failure output, up to two repairs.
+- `status(project_root, origin, base) :: {:ok, [IntentStatus.t()]} | {:error, term()}` reports one record for each `.kogen/intents/*/intent.md`; landed state is verified by candidate reachability from the selected branch.
+- `report(slug, project_root, origin, base) :: {:ok, json_binary} | {:error, term()}` returns the latest run's approval/base/candidate/landed SHAs, acceptance ledger, check receipts, model stages and failures.
+- `reconcile(run_id, project_root, origin, base) :: {:ok, :landed | :unchanged} | {:error, term()}` closes a run journal after a crash following successful CAS.
+- Every command except `--help` requires `--project <checkout>` and accepts `--origin <repo>` (default project checkout) and `--base <branch>` (default `main`). Build additionally accepts `--model` and `--effort`; approval requires `--by` and supports `--yes` to skip its TTY prompt.
+- Runtime discovery, including HOME, environment, cwd, `mise`, credential paths and escript/ERTS markers, lives in the Kernel. Per-build toolchain variables come from `mise env -C <workdir> --json` through Proc. Harness and checks receive the target process environment; Workspace receives its Git-allowlisted projection.

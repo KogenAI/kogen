@@ -164,7 +164,7 @@ defmodule Kogen.State.Lifecycle do
     if current_approval, do: validate_approval!(repo, slug, git_env, workspace)
 
     cond do
-      ref_value!(repo, @claim_ref, git_env, workspace) != nil ->
+      claimed_run?(repo, runs, git_env, workspace) ->
         :building
 
       terminal_for_approval?(runs, current_approval, :parked) ->
@@ -178,6 +178,25 @@ defmodule Kogen.State.Lifecycle do
 
       true ->
         :draft
+    end
+  end
+
+  defp claimed_run?(repo, runs, git_env, workspace) do
+    case ref_value!(repo, @claim_ref, git_env, workspace) do
+      nil ->
+        false
+
+      sha ->
+        with {:ok, message} <- workspace_call(workspace, :commit_message, [repo, sha, git_env]),
+             run_id when is_binary(run_id) <- Json.claim_run_id(message) do
+          Enum.any?(runs, &(&1.id == run_id))
+        else
+          {:error, reason} ->
+            raise ArgumentError, "cannot inspect project claim: #{inspect(reason)}"
+
+          _invalid ->
+            raise ArgumentError, "project claim is malformed"
+        end
     end
   end
 

@@ -10,6 +10,7 @@ defmodule Kogen.Harness.Opts do
     :provider_config,
     :proc_mod,
     env: %{},
+    before_gate: nil,
     models: %{builder: {"gpt-6-luna", "max"}, strong: {"gpt-6.1-sol", "high"}},
     limits: %{max_turns: 60, wall_ms: 1_800_000},
     repairs_left: 2
@@ -24,6 +25,7 @@ defmodule Kogen.Harness.Opts do
           provider_config: term(),
           proc_mod: module(),
           env: %{String.t() => String.t()},
+          before_gate: (-> :ok | {:error, term()}) | nil,
           models: %{builder: model(), strong: model()},
           limits: %{max_turns: pos_integer(), wall_ms: pos_integer()},
           repairs_left: non_neg_integer()

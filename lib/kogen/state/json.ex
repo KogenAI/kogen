@@ -2,6 +2,7 @@ defmodule Kogen.State.Json do
   @moduledoc false
 
   alias Kogen.State.Approval
+  alias Kogen.State.Event
   alias Kogen.State.Run
   alias Kogen.State.Run.Landing
 
@@ -11,6 +12,22 @@ defmodule Kogen.State.Json do
     {"Kogen-Approved-Hash", :approved_hash},
     {"Kogen-Approved-At", :approved_at},
     {"Kogen-Run", :run}
+  ]
+
+  @event_fields [
+    event: "event",
+    stage: "stage",
+    class: "class",
+    reason: "reason",
+    detail: "detail",
+    status: "status",
+    approval_commit: "approval_commit",
+    base_sha: "base_sha",
+    ledger: "ledger",
+    receipts: "receipts",
+    model: "model",
+    effort: "effort",
+    tokens: "tokens"
   ]
 
   @spec encode_approval(Approval.t()) :: {:ok, binary()} | {:error, :invalid_json_value}
@@ -60,6 +77,18 @@ defmodule Kogen.State.Json do
 
   @spec encode_event(map()) :: {:ok, binary()} | {:error, :invalid_json_value}
   def encode_event(event) when is_map(event), do: encode(event)
+
+  @spec decode_event(binary()) :: {:ok, Event.t()} | {:error, :invalid_event}
+  def decode_event(binary) when is_binary(binary) do
+    with {:ok, value} <- decode_object(binary),
+         {:ok, event} <- event_from_json(value) do
+      {:ok, event}
+    else
+      _invalid -> {:error, :invalid_event}
+    end
+  rescue
+    ArgumentError -> {:error, :invalid_event}
+  end
 
   @spec approval_message(Approval.t()) :: String.t()
   def approval_message(%Approval{} = approval) do
@@ -158,6 +187,16 @@ defmodule Kogen.State.Json do
       _invalid -> {:error, :invalid_run}
     end
   end
+
+  defp event_from_json(json) do
+    values = Enum.reduce(@event_fields, %{}, &event_field(json, &1, &2))
+
+    if is_binary(values.event),
+      do: {:ok, struct!(Event, values)},
+      else: {:error, :invalid_event}
+  end
+
+  defp event_field(json, {field, key}, values), do: Map.put(values, field, Map.get(json, key))
 
   defp landing_from_json(:null, _run_id), do: {:ok, nil}
 

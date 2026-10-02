@@ -8,9 +8,10 @@ defmodule Kogen.Harness.Gate do
   alias Kogen.Harness.GateResult
   alias Kogen.Harness.Opts
 
-  @spec run(Opts.t(), integer()) :: {:ok, GateResult.t()} | {:error, Error.t()}
+  @spec run(Opts.t(), integer()) :: {:ok, GateResult.t()} | {:error, term()}
   def run(%Opts{} = opts, deadline) do
-    with {:ok, fixes} <- run_specs(opts, opts.project.fix, deadline, :fix),
+    with :ok <- before_gate(opts.before_gate),
+         {:ok, fixes} <- run_specs(opts, opts.project.fix, deadline, :fix),
          {:ok, checks} <- run_specs(opts, opts.project.checks, deadline, :check) do
       commands = fixes ++ checks
       failures = Enum.flat_map(commands, &failure_text/1)
@@ -18,6 +19,9 @@ defmodule Kogen.Harness.Gate do
       {:ok, %GateResult{status: status, fixes: fixes, checks: checks, failures: failures}}
     end
   end
+
+  defp before_gate(nil), do: :ok
+  defp before_gate(guard) when is_function(guard, 0), do: guard.()
 
   defp run_specs(opts, specs, deadline, kind) do
     specs

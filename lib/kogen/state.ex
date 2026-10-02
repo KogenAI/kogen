@@ -3,9 +3,11 @@ defmodule Kogen.State do
 
   use Boundary,
     deps: [Kogen.Contracts, Kogen.Workspace],
-    exports: [Approval, Run]
+    exports: [Approval, Event, Run]
 
   alias Kogen.State.Approval
+  alias Kogen.State.Event
+  alias Kogen.State.Json
   alias Kogen.State.Operations
   alias Kogen.State.Run
 
@@ -38,6 +40,9 @@ defmodule Kogen.State do
 
   @spec record(Run.t(), map()) :: :ok | {:error, term()}
   defdelegate record(run, event), to: Operations
+
+  @spec decode_event(binary()) :: {:ok, Event.t()} | {:error, :invalid_event}
+  defdelegate decode_event(binary), to: Json
 
   @spec put_landing(Run.t(), map()) :: :ok | {:error, term()}
   defdelegate put_landing(run, identity), to: Operations

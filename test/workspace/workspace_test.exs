@@ -139,6 +139,23 @@ defmodule Kogen.Workspace.WorkspaceTest do
     refute File.exists?(Path.join(origin, "refs/heads/main.lock"))
   end
 
+  test "seeds deps and build artifacts from a checkout when the origin is bare", %{
+    tmp_dir: tmp_dir
+  } do
+    %{source: source, base_sha: base_sha} = fixture(tmp_dir)
+    File.mkdir_p!(Path.join(source, "deps"))
+    File.mkdir_p!(Path.join(source, "_build"))
+    File.write!(Path.join([source, "deps", "seed.txt"]), "deps seed")
+    File.write!(Path.join([source, "_build", "seed.txt"]), "build seed")
+    origin = bare_origin!(source, tmp_dir)
+
+    assert {:ok, %{path: candidate}} =
+             Workspace.create(origin, base_sha, tmp_dir, "bare-seed", @git_env, seed_from: source)
+
+    assert File.read!(Path.join([candidate, "deps", "seed.txt"])) == "deps seed"
+    assert File.read!(Path.join([candidate, "_build", "seed.txt"])) == "build seed"
+  end
+
   test "refuses a moved base and leaves no incoming ref or ref lock", %{tmp_dir: tmp_dir} do
     %{source: source, base_sha: base_sha} = fixture(tmp_dir)
     origin = bare_origin!(source, tmp_dir)

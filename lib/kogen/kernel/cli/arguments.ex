@@ -1,0 +1,101 @@
+defmodule Kogen.Kernel.CLI.Arguments do
+  @moduledoc false
+
+  alias Kogen.Kernel.CLI.Args
+
+  @switches [
+    project: :string,
+    origin: :string,
+    base: :string,
+    model: :string,
+    effort: :string,
+    by: :string,
+    yes: :boolean,
+    json: :boolean
+  ]
+
+  @spec parse([String.t()]) :: {:ok, Args.t()} | {:error, String.t()}
+  def parse(["--help"]), do: {:ok, %Args{command: :help}}
+  def parse(["help"]), do: {:ok, %Args{command: :help}}
+  def parse(["version" | rest]), do: parse_options(:version, [], rest)
+  def parse(["--version" | rest]), do: parse_options(:version, [], rest)
+  def parse(["intent", "check", path | rest]), do: parse_options(:intent_check, [path], rest)
+  def parse(["approve", slug | rest]), do: parse_options(:approve, [slug], rest)
+  def parse(["build", slug | rest]), do: parse_options(:build, [slug], rest)
+  def parse(["status" | rest]), do: parse_options(:status, [], rest)
+  def parse(["report", slug | rest]), do: parse_options(:report, [slug], rest)
+  def parse(["reconcile", run_id | rest]), do: parse_options(:reconcile, [run_id], rest)
+  def parse(_argv), do: {:error, "invalid command or arguments"}
+
+  defp parse_options(command, positionals, argv) do
+    {options, leftovers, invalid} = OptionParser.parse(argv, strict: @switches)
+
+    with :ok <- no_unknown_options(leftovers, invalid),
+         :ok <- valid_positionals(command, positionals),
+         :ok <- valid_flags(command, options),
+         {:ok, project, origin, base} <- paths(options) do
+      {:ok,
+       %Args{
+         command: command,
+         positionals: positionals,
+         project: project,
+         origin: origin,
+         base: base,
+         model: Keyword.get(options, :model, "gpt-6-luna"),
+         effort: Keyword.get(options, :effort, "max"),
+         by: Keyword.get(options, :by),
+         yes: Keyword.get(options, :yes, false),
+         json: Keyword.get(options, :json, false)
+       }}
+    end
+  end
+
+  defp no_unknown_options([], []), do: :ok
+  defp no_unknown_options(_leftovers, _invalid), do: {:error, "unknown option or argument"}
+
+  defp valid_positionals(:status, []), do: :ok
+  defp valid_positionals(:version, []), do: :ok
+  defp valid_positionals(_command, [_one]), do: :ok
+  defp valid_positionals(_command, _positionals), do: {:error, "invalid number of arguments"}
+
+  defp valid_flags(command, options) do
+    flags = Keyword.keys(options)
+    allowed = allowed_flags(command)
+
+    case flags -- allowed do
+      [] -> required_flags(command, options)
+      _unknown -> {:error, "option is not valid for this command"}
+    end
+  end
+
+  defp allowed_flags(:intent_check), do: [:project, :origin, :base]
+  defp allowed_flags(:version), do: [:project, :origin, :base]
+  defp allowed_flags(:approve), do: [:project, :origin, :base, :by, :yes]
+  defp allowed_flags(:build), do: [:project, :origin, :base, :model, :effort]
+  defp allowed_flags(:status), do: [:project, :origin, :base, :json]
+  defp allowed_flags(:report), do: [:project, :origin, :base, :json]
+  defp allowed_flags(:reconcile), do: [:project, :origin, :base]
+
+  defp required_flags(:approve, options) do
+    if Keyword.has_key?(options, :by), do: :ok, else: {:error, "approve requires --by"}
+  end
+
+  defp required_flags(:report, options) do
+    if Keyword.get(options, :json, false), do: :ok, else: {:error, "report requires --json"}
+  end
+
+  defp required_flags(_command, _options), do: :ok
+
+  defp paths(options) do
+    case Keyword.fetch(options, :project) do
+      {:ok, project} ->
+        project = Path.expand(project)
+        origin = options |> Keyword.get(:origin, project) |> Path.expand()
+        base = Keyword.get(options, :base, "main")
+        {:ok, project, origin, base}
+
+      :error ->
+        {:error, "every command requires --project <checkout>"}
+    end
+  end
+end

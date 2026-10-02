@@ -220,9 +220,16 @@ defmodule Kogen.State.StateTest do
 
     assert_status(context, approved.slug, :approved)
 
-    assert :ok = State.claim(context.repo, "run-building", %{}, workspace: context.workspace)
+    other = %{approved | slug: "other-feature"}
+
+    assert {:ok, _other_commit} =
+             State.approve(context.repo, other, %{}, workspace: context.workspace)
+
+    {:ok, building_run} = State.start_run(context.tmp_dir, approved)
+    assert :ok = State.claim(context.repo, building_run.id, %{}, workspace: context.workspace)
     assert_status(context, approved.slug, :building)
-    assert :ok = State.release(context.repo, "run-building", %{}, workspace: context.workspace)
+    assert_status(context, other.slug, :approved)
+    assert :ok = State.release(context.repo, building_run.id, %{}, workspace: context.workspace)
 
     record_terminal_run(context, approved, approval_commit, :failed, :red)
     assert_status(context, approved.slug, :failed)
