@@ -11,6 +11,7 @@ defmodule KogenChecks.Check.ForbiddenCall do
     explanations: [check: "Ambient or unbounded calls must go through ctx / the Proc port."]
 
   @impl Credo.Check
+  @spec run(Credo.SourceFile.t(), Keyword.t()) :: [Credo.Issue.t()]
   def run(%SourceFile{} = source_file, params) do
     rules =
       params

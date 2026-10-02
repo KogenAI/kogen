@@ -8,6 +8,7 @@ defmodule Kogen.MixProject do
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:boundary] ++ Mix.compilers(),
+      elixirc_options: compiler_options(Mix.env()),
       boundary: [
         default: [type: :strict, check: [aliases: true, apps: [{:mix, :runtime}]]]
       ],
@@ -26,6 +27,10 @@ defmodule Kogen.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp compiler_options(:dev), do: [tracers: [KogenChecks.CapabilityGuard]]
+
+  defp compiler_options(_env), do: []
 
   defp deps do
     [

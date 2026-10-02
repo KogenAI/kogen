@@ -10,6 +10,7 @@ defmodule KogenChecks.Check.SizeLimits do
     explanations: [check: "Split instead of growing. No exemptions."]
 
   @impl Credo.Check
+  @spec run(Credo.SourceFile.t(), Keyword.t()) :: [Credo.Issue.t()]
   def run(%SourceFile{} = source_file, params) do
     im = IssueMeta.for(source_file, params)
     max_file = Params.get(params, :max_file_lines, __MODULE__)

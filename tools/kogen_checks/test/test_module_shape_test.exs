@@ -33,6 +33,16 @@ defmodule KogenChecks.Check.TestModuleShapeTest do
     |> assert_issue(fn i -> assert i.message =~ "32 test runs (8 tests x 4 params" end)
   end
 
+  test "caps each module independently" do
+    tests = Enum.map_join(1..16, "\n", &"  test \"t#{&1}\", do: assert(true)")
+
+    ("defmodule ATest do\n  use ExUnit.Case, async: true\n#{tests}\nend\n" <>
+       "defmodule BTest do\n  use ExUnit.Case, async: true\n#{tests}\nend\n")
+    |> to_source_file("test/build/multiple_test.exs")
+    |> run_check(TestModuleShape, max_tests: 20)
+    |> refute_issues()
+  end
+
   test "ignores non-test files" do
     "defmodule S do\n  use ExUnit.Case\nend\n"
     |> to_source_file("test/support/s.ex")

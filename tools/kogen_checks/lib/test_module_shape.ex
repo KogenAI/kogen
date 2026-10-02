@@ -1,62 +1,86 @@
 defmodule KogenChecks.Check.TestModuleShape do
   @moduledoc """
-  For *_test.exs files:
-  * every test case must use `async: true`; Kogen.Testkit.Case is async by construction;
-    serial exceptions live in the protected .credo.exs and need a human edit;
-  * at most `max_tests` test cases per module, where a `parameterize:` list literal
-    multiplies the count (develop's BuildPreconditions: 56 tests x params = 350 runs).
+  Requires async test cases and caps the run count per test module. A literal
+  `parameterize:` list multiplies the module's test count; serial exceptions belong
+  in the protected Credo configuration.
   """
   use Credo.Check,
     category: :warning,
     base_priority: :high,
     param_defaults: [max_tests: 30, serial_allowed: []],
-    explanations: [check: "Tests run async and modules stay small."]
+    explanations: [check: "Test modules run async and stay small."]
+
+  defmodule ModuleStats do
+    @moduledoc false
+    defstruct line: 1, uses: [], tests: 0, params: 1, serial_allowed?: false
+  end
 
   @impl Credo.Check
+  @spec run(Credo.SourceFile.t(), Keyword.t()) :: [Credo.Issue.t()]
   def run(%SourceFile{filename: filename} = source_file, params) do
     if String.ends_with?(filename, "_test.exs") do
-      im = IssueMeta.for(source_file, params)
       max = Params.get(params, :max_tests, __MODULE__)
       serial_ok = filename in Params.get(params, :serial_allowed, __MODULE__)
 
       source_file
-      |> Credo.Code.prewalk(&collect/2, %{uses: [], tests: 0, params: 1, line: 1})
-      |> Map.put(:serial_ok, serial_ok)
-      |> issues(im, max)
+      |> SourceFile.ast()
+      |> collect_modules(serial_ok)
+      |> Enum.flat_map(&issues(&1, source_file, params, max))
     else
       []
     end
   end
 
-  defp collect({:defmodule, meta, _} = ast, acc), do: {ast, %{acc | line: meta[:line] || 1}}
+  defp collect_modules(ast, serial_ok) do
+    ast
+    |> Macro.prewalk([], fn
+      {:defmodule, meta, [_name, body]} = node, modules ->
+        stats = module_stats(body, meta[:line] || 1, serial_ok)
+        {node, [stats | modules]}
 
-  defp collect({:use, meta, [{:__aliases__, _, parts}, opts]} = ast, acc) when is_list(opts) do
+      node, modules ->
+        {node, modules}
+    end)
+    |> elem(1)
+  end
+
+  defp module_stats(body, line, serial_ok) do
+    stats = %ModuleStats{line: line, serial_allowed?: serial_ok}
+
+    body
+    |> Macro.prewalk(stats, fn
+      {:defmodule, _, _}, current ->
+        {:skip, current}
+
+      node, current ->
+        collect(node, current)
+    end)
+    |> elem(1)
+  end
+
+  defp collect({:use, meta, [{:__aliases__, _, parts}, opts]} = node, stats) when is_list(opts) do
     if case_module?(parts) do
-      n = if is_list(opts[:parameterize]), do: length(opts[:parameterize]), else: 1
-
-      {ast,
-       %{
-         acc
-         | uses: [
-             {meta[:line], async_case?(parts, opts)} | acc.uses
-           ],
-           params: n
-       }}
+      count = if is_list(opts[:parameterize]), do: length(opts[:parameterize]), else: 1
+      use_stats = {meta[:line] || stats.line, async_case?(parts, opts)}
+      {node, %{stats | uses: [use_stats | stats.uses], params: count}}
     else
-      {ast, acc}
+      {node, stats}
     end
   end
 
-  defp collect({:use, meta, [{:__aliases__, _, parts}]} = ast, acc) do
-    if case_module?(parts),
-      do: {ast, %{acc | uses: [{meta[:line], async_case?(parts, [])} | acc.uses]}},
-      else: {ast, acc}
+  defp collect({:use, meta, [{:__aliases__, _, parts}]} = node, stats) do
+    if case_module?(parts) do
+      use_stats = {meta[:line] || stats.line, async_case?(parts, [])}
+      {node, %{stats | uses: [use_stats | stats.uses]}}
+    else
+      {node, stats}
+    end
   end
 
-  defp collect({:test, _, [name | _]} = ast, acc) when is_binary(name) or is_tuple(name),
-    do: {ast, %{acc | tests: acc.tests + 1}}
+  defp collect({:test, _, [name | _]} = node, stats) when is_binary(name) or is_tuple(name),
+    do: {node, %{stats | tests: stats.tests + 1}}
 
-  defp collect(ast, acc), do: {ast, acc}
+  defp collect(node, stats), do: {node, stats}
 
   defp case_module?(parts),
     do: parts |> List.last() |> Atom.to_string() |> String.ends_with?("Case")
@@ -69,35 +93,38 @@ defmodule KogenChecks.Check.TestModuleShape do
       opts[:async] == true or
         (Keyword.has_key?(opts, :layer) and not Keyword.has_key?(opts, :async))
 
-  defp issues(acc, im, max) do
-    async_issues =
-      for {line, async} <- acc.uses, async != true, not acc.serial_ok do
-        format_issue(im,
+  defp issues(stats, source_file, params, max) do
+    source_file
+    |> IssueMeta.for(params)
+    |> then(&async_issues(stats, &1))
+    |> Kernel.++(size_issues(stats, source_file, params, max))
+  end
+
+  defp async_issues(stats, issue_meta) do
+    for {line, async} <- stats.uses, async != true, not stats.serial_allowed? do
+      format_issue(issue_meta,
+        message:
+          "Test module is not `async: true`. Inject explicit values instead of mutating globals; add a reviewed serial entry only when needed.",
+        line_no: line,
+        trigger: "use"
+      )
+    end
+  end
+
+  defp size_issues(stats, source_file, params, max) do
+    runs = stats.tests * stats.params
+
+    if runs > max do
+      [
+        format_issue(IssueMeta.for(source_file, params),
           message:
-            "Test module is not `async: true`. Inject ctx (root/env/clock) instead of mutating globals. " <>
-              "Serial modules need a human-approved entry in .credo.exs serial_allowed.",
-          line_no: line,
-          trigger: "use"
+            "Test module defines #{runs} test runs (#{stats.tests} tests x #{stats.params} params; max #{max}). Split it into smaller test modules.",
+          line_no: stats.line,
+          trigger: "defmodule"
         )
-      end
-
-    runs = acc.tests * acc.params
-
-    size_issues =
-      if runs > max do
-        [
-          format_issue(im,
-            message:
-              "Test module defines #{runs} test runs (#{acc.tests} tests x #{acc.params} params; max #{max}). " <>
-                "Split by behaviour, or drop parameters that most tests ignore.",
-            line_no: acc.line,
-            trigger: "defmodule"
-          )
-        ]
-      else
-        []
-      end
-
-    async_issues ++ size_issues
+      ]
+    else
+      []
+    end
   end
 end

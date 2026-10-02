@@ -7,7 +7,7 @@ export KOGEN_PLT_DIR
 
 TEST_ENV = GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME='Kogen Test' GIT_AUTHOR_EMAIL=test@kogen.invalid GIT_COMMITTER_NAME='Kogen Test' GIT_COMMITTER_EMAIL=test@kogen.invalid TZ=Europe/Sarajevo LC_ALL=C
 
-.PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test dialyzer
+.PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test kogen-checks-test dialyzer
 
 check:
 	+$(MAKE) --no-print-directory guard fmt compile-dev compile-test xref credo test dialyzer
@@ -41,8 +41,10 @@ xref: compile-dev
 credo: compile-dev
 	$(M) mix credo --strict
 
-test: compile-test
+test: compile-test kogen-checks-test
 	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile
+
+kogen-checks-test: compile-test
 	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile tools/kogen_checks/test
 
 dialyzer: compile-dev

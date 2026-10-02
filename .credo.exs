@@ -56,7 +56,7 @@
                    {System, :delete_env},
                    {Application, :put_env}
                  ],
-                 message: "Pass ctx.root / ctx.env instead of mutating process-global state.",
+                 message: "Pass explicit values instead of mutating process-global state.",
                  allow: []
                },
                %{
@@ -65,28 +65,81 @@
                  allow: []
                },
                %{
-                 calls: [{System, :cmd}, {Port, :open}, {:os, :cmd}, {System, :shell}],
+                 calls: [{System, :cmd}, {System, :shell}, {Port, :open}, {:os, :cmd}],
                  message: "Spawn through the Proc port (own group, wall deadline, TERM->KILL).",
-                 allow: ["lib/kogen/proc/", "test/support/testkit/"]
+                 allow: [
+                   "lib/kogen/proc/",
+                   "lib/kogen/proc.ex",
+                   "test/support/testkit/proc.ex",
+                   "test/support/testkit/git.ex"
+                 ]
                },
                %{
                  calls: [
                    {System, :get_env},
                    {System, :fetch_env!},
+                   {System, :fetch_env},
+                   {System, :user_home},
+                   {System, :user_home!},
                    {File, :cwd!},
                    {File, :cwd},
                    {DateTime, :utc_now},
                    {System, :os_time}
                  ],
-                 message: "Read root/env/clock from ctx.",
-                 allow: ["lib/kogen/kernel/", "test/"]
+                 message: "Pass explicit values; read ambient configuration in Kogen.Kernel.",
+                 allow: ["lib/kogen/kernel/"]
                }
              ]
            ]},
+          {KogenChecks.Check.CtxBag,
+           [
+             banned_names: [:ctx, :context],
+             allowed_names: [:conn, :socket],
+             min_clauses: 4,
+             min_passed_ratio: 0.5,
+             min_fields: 8,
+             min_ambient: 2,
+             ambient_fields:
+               ~w(root cwd dir env tmp_dir tmp now clock time runner proc cmd git io shell config opts options control state log log_path logger harness provider http client repo context ctx timeout deadline registry store cache runtime deps services)a,
+             included_paths: ["lib/"]
+           ]},
+          {KogenChecks.Check.StringKeyAccess,
+           [
+             included_paths: ["lib/"],
+             codec_modules: [
+               Kogen.Contracts.Yaml,
+               Kogen.Provider.ChatGPT.Codec,
+               Kogen.Checks.Ledger,
+               Kogen.State.Json
+             ]
+           ]},
+          {KogenChecks.Check.FailOpenWith, [included_paths: ["lib/"]]},
           {KogenChecks.Check.SizeLimits,
            [max_file_lines: 400, max_module_lines: 400, max_function_lines: 40]},
           {KogenChecks.Check.TestModuleShape, [max_tests: 30, serial_allowed: []]},
-          {KogenChecks.Check.DomainReach, [also_allowed: [Kogen.Testkit]]},
+          {KogenChecks.Check.DomainReach,
+           [
+             dependencies: %{
+               Kogen.Workspace => [Kogen.Proc],
+               Kogen.State => [Kogen.Workspace],
+               Kogen.Checks => [Kogen.Proc, Kogen.Workspace, Kogen.Project],
+               Kogen.Harness => [Kogen.Proc, Kogen.Provider, Kogen.Project],
+               Kogen.Kernel => [
+                 Kogen.Proc,
+                 Kogen.Project,
+                 Kogen.Intent,
+                 Kogen.Provider,
+                 Kogen.Build,
+                 Kogen.Workspace,
+                 Kogen.State,
+                 Kogen.Checks,
+                 Kogen.Harness
+               ]
+             },
+             root: Kogen,
+             shared: [Kogen.Contracts],
+             also_allowed: [Kogen.Testkit]
+           ]},
           {KogenChecks.Check.DomainSize, [max_lines: 3000]},
           {KogenChecks.Check.BroadRescue, []}
         ],

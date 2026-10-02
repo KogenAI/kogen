@@ -12,6 +12,7 @@ defmodule KogenChecks.Check.BroadRescue do
   @broad [Exception, RuntimeError, ErlangError]
 
   @impl Credo.Check
+  @spec run(Credo.SourceFile.t(), Keyword.t()) :: [Credo.Issue.t()]
   def run(%SourceFile{} = source_file, params) do
     im = IssueMeta.for(source_file, params)
     Credo.Code.prewalk(source_file, &walk(&1, &2, im))

@@ -3,13 +3,13 @@ defmodule KogenChecks.Check.DomainSize do
   use Credo.Check,
     category: :refactor,
     base_priority: :high,
-    param_defaults: [max_lines: 3000, overrides: %{"kernel" => 600}],
-    explanations: [check: "A domain over its ceiling must be re-sliced, never exempted."]
+    param_defaults: [max_lines: 3000],
+    explanations: [check: "A domain over 3,000 lines must be re-sliced."]
 
   @impl Credo.Check
+  @spec run_on_all_source_files(Credo.Execution.t(), [Credo.SourceFile.t()], Keyword.t()) :: :ok
   def run_on_all_source_files(exec, source_files, params) do
     max = Params.get(params, :max_lines, __MODULE__)
-    overrides = Params.get(params, :overrides, __MODULE__)
 
     source_files
     |> Enum.flat_map(fn sf ->
@@ -21,7 +21,7 @@ defmodule KogenChecks.Check.DomainSize do
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Enum.each(fn {d, files} ->
       total = files |> Enum.map(&length(SourceFile.lines(&1))) |> Enum.sum()
-      limit = Map.get(overrides, d, max)
+      limit = max
 
       if total > limit do
         sf = Enum.max_by(files, &length(SourceFile.lines(&1)))
@@ -43,5 +43,6 @@ defmodule KogenChecks.Check.DomainSize do
   end
 
   @impl Credo.Check
+  @spec run(Credo.SourceFile.t(), Keyword.t()) :: [Credo.Issue.t()]
   def run(_source_file, _params), do: []
 end
