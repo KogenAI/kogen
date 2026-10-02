@@ -1,4 +1,4 @@
 defmodule Kogen.Build do
-  @moduledoc "Runs the Developer loop and manages a candidate build lifecycle."
-  use Boundary, deps: [Kogen.Contracts], exports: []
+  @moduledoc "Pure build-cycle decisions and their effect data."
+  use Boundary, deps: [Kogen.Contracts], exports: [Cycle]
 end

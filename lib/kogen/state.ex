@@ -1,4 +1,74 @@
 defmodule Kogen.State do
-  @moduledoc "Persists build progress, state transitions, and verification receipts."
-  use Boundary, deps: [Kogen.Contracts, Kogen.Workspace], exports: []
+  @moduledoc "Persists run records and coordinates Git-derived Build state."
+
+  use Boundary,
+    deps: [Kogen.Contracts, Kogen.Workspace],
+    exports: [Approval, Run]
+
+  alias Kogen.State.Approval
+  alias Kogen.State.Operations
+  alias Kogen.State.Run
+
+  @type status :: :draft | :approved | :building | :landed | :failed | :parked
+
+  @spec approve(Path.t(), Approval.t(), %{String.t() => String.t()}) ::
+          {:ok, String.t()} | {:error, term()}
+  @spec approve(Path.t(), Approval.t(), %{String.t() => String.t()}, keyword()) ::
+          {:ok, String.t()} | {:error, term()}
+  defdelegate approve(repo, approval, git_env, options \\ []), to: Operations
+
+  @spec approval(Path.t(), String.t(), %{String.t() => String.t()}) ::
+          {:ok, Approval.t()} | {:error, term()}
+  @spec approval(Path.t(), String.t(), %{String.t() => String.t()}, keyword()) ::
+          {:ok, Approval.t()} | {:error, term()}
+  defdelegate approval(repo, slug, git_env, options \\ []), to: Operations
+
+  @spec claim(Path.t(), String.t(), %{String.t() => String.t()}) :: :ok | {:error, term()}
+  @spec claim(Path.t(), String.t(), %{String.t() => String.t()}, keyword()) ::
+          :ok | {:error, term()}
+  defdelegate claim(repo, run_id, git_env, options \\ []), to: Operations
+
+  @spec release(Path.t(), String.t(), %{String.t() => String.t()}) :: :ok | {:error, term()}
+  @spec release(Path.t(), String.t(), %{String.t() => String.t()}, keyword()) ::
+          :ok | {:error, term()}
+  defdelegate release(repo, run_id, git_env, options \\ []), to: Operations
+
+  @spec start_run(Path.t(), Approval.t()) :: {:ok, Run.t()} | {:error, term()}
+  defdelegate start_run(root, approval), to: Operations
+
+  @spec record(Run.t(), map()) :: :ok | {:error, term()}
+  defdelegate record(run, event), to: Operations
+
+  @spec put_landing(Run.t(), map()) :: :ok | {:error, term()}
+  defdelegate put_landing(run, identity), to: Operations
+
+  @spec load(Path.t(), String.t()) :: {:ok, Run.t()} | {:error, term()}
+  defdelegate load(root, run_id), to: Operations
+
+  @spec list(Path.t()) :: {:ok, [Run.t()]} | {:error, term()}
+  defdelegate list(root), to: Operations
+
+  @spec status(Path.t(), Path.t(), String.t(), String.t(), %{String.t() => String.t()}) ::
+          status()
+  @spec status(
+          Path.t(),
+          Path.t(),
+          String.t(),
+          String.t(),
+          %{String.t() => String.t()},
+          keyword()
+        ) :: status()
+  defdelegate status(repo, root, slug, branch, git_env, options \\ []), to: Operations
+
+  @spec reconcile(Path.t(), Path.t(), Run.t(), String.t(), %{String.t() => String.t()}) ::
+          {:ok, :landed | :unchanged} | {:error, term()}
+  @spec reconcile(
+          Path.t(),
+          Path.t(),
+          Run.t(),
+          String.t(),
+          %{String.t() => String.t()},
+          keyword()
+        ) :: {:ok, :landed | :unchanged} | {:error, term()}
+  defdelegate reconcile(repo, root, run, branch, git_env, options \\ []), to: Operations
 end
