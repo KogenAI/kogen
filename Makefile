@@ -7,7 +7,7 @@ export KOGEN_PLT_DIR
 
 TEST_ENV = GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME='Kogen Test' GIT_AUTHOR_EMAIL=test@kogen.invalid GIT_COMMITTER_NAME='Kogen Test' GIT_COMMITTER_EMAIL=test@kogen.invalid TZ=Europe/Sarajevo LC_ALL=C
 
-.PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test integration kogen-checks-test dialyzer
+.PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test integration kogen-checks-test dialyzer install-local demo-fixture
 
 check:
 	+$(MAKE) --no-print-directory guard fmt compile-dev compile-test xref credo test dialyzer
@@ -46,6 +46,36 @@ test: compile-test kogen-checks-test
 
 integration:
 	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --include fixture test/fixtures_test.exs
+
+install-local:
+	$(M) mix escript.build
+	@home="$(HOME)"; gen_root="$$home/.kogen/gen"; gen_sha="$$(git rev-parse HEAD)"; gen_dir="$$gen_root/$$gen_sha"; installed="$$gen_dir/kogen"; link="$$home/.local/bin/kogen"; \
+	mkdir -p "$$gen_root" "$$home/.local/bin"; \
+	if [ -d "$$gen_dir" ]; then \
+	  if [ -f "$$installed" ] && python3 -c 'import sys,zipfile; a,b=sys.argv[1:]; same=open(a,"rb").read()[:61]==open(b,"rb").read()[:61]; left=zipfile.ZipFile(a); right=zipfile.ZipFile(b); same=same and [(i.filename,left.read(i)) for i in left.infolist()]==[(i.filename,right.read(i)) for i in right.infolist()]; sys.exit(0 if same else 1)' kogen "$$installed"; then \
+	    :; \
+	  else \
+	    echo "refusing differing generation directory: $$gen_dir" >&2; exit 1; \
+	  fi; \
+	else \
+	  mkdir "$$gen_dir"; cp kogen "$$installed"; chmod 755 "$$installed"; \
+	fi; \
+	if [ -L "$$link" ]; then rm "$$link"; elif [ -e "$$link" ]; then \
+	  echo "refusing to replace non-symlink: $$link" >&2; exit 1; \
+	fi; \
+	ln -s "$$installed" "$$link"; echo "installed: $$installed"
+
+demo-fixture:
+	@demo_root="$(HOME)/Areas/Kogen/kogen-demo"; seed="$$demo_root/hello_app"; origin="$$demo_root/hello_app-origin-$$(date +%Y%m%d%H%M%S)-$$$$.git"; \
+	if [ -e "$$seed" ] || [ -e "$$origin" ]; then \
+	  echo "refusing to replace existing demo fixture path" >&2; exit 1; \
+	fi; \
+	mkdir -p "$$demo_root"; git init --bare --quiet "$$origin"; \
+	git clone --quiet "$$origin" "$$seed"; cp -R fixtures/hello_app/. "$$seed/"; \
+	git -C "$$seed" add --all; git -C "$$seed" commit --quiet -m "Seed hello_app demo"; \
+	git -C "$$seed" branch -M main; git -C "$$seed" push --quiet --set-upstream origin main; \
+	git -C "$$origin" symbolic-ref HEAD refs/heads/main; \
+	printf 'origin=%s\nseed=%s\n' "$$origin" "$$seed"
 
 kogen-checks-test: compile-test
 	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile tools/kogen_checks/test
