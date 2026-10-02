@@ -5,3 +5,4 @@
 
 # Kogen run records (local, never committed)
 /.kogen/runs/
+/.kogen/w/

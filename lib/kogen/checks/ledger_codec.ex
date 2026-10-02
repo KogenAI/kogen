@@ -18,13 +18,19 @@ defmodule Kogen.Checks.LedgerCodec do
          %LedgerRow{
            tag: unescape(tag),
            test: unescape(test),
-           status: String.to_existing_atom(status)
+           status: status_atom(status)
          }}
 
       _ ->
         {:error, :invalid_row}
     end
   end
+
+  defp status_atom("passed"), do: :passed
+  defp status_atom("failed"), do: :failed
+  defp status_atom("skipped"), do: :skipped
+  defp status_atom("excluded"), do: :excluded
+  defp status_atom("invalid"), do: :invalid
 
   defp string(binary), do: "\"" <> (binary |> String.to_charlist() |> escape()) <> "\""
 

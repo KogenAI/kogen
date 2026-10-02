@@ -25,9 +25,18 @@ defmodule Kogen.Kernel.CLI do
 
   @spec main([String.t()]) :: no_return()
   def main(argv) do
+    preload_modules()
     {status, output} = execute(argv)
     IO.write(output)
     System.halt(status)
+  end
+
+  # An escript loads modules lazily from its archive. Loading everything up front
+  # keeps atoms and code consistent for the whole run, even if the installed file changes.
+  defp preload_modules do
+    _ = Application.load(:kogen)
+    {:ok, modules} = :application.get_key(:kogen, :modules)
+    Enum.each(modules, &Code.ensure_loaded!/1)
   end
 
   @spec execute([String.t()]) :: {non_neg_integer(), String.t()}
