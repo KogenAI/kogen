@@ -28,7 +28,12 @@ defmodule Kogen.Kernel do
   alias Kogen.Kernel.Types.IntentStatus
   alias Kogen.Provider.ChatGPT
 
-  @type toolchain_error :: :mise_missing | :toolchain_failed | :invalid_toolchain_environment
+  @type toolchain_error ::
+          :mise_missing
+          | :toolchain_failed
+          | :invalid_toolchain_environment
+          | :too_many_script_symlinks
+          | {:script_path_unavailable, term()}
 
   @spec version() :: String.t()
   def version, do: :kogen |> Application.spec(:vsn) |> List.to_string()
@@ -132,7 +137,7 @@ defmodule Kogen.Kernel do
     do: Environment.project(workdir, runtime)
 
   @doc false
-  @spec runtime() :: {:ok, Runtime.t()} | {:error, :mise_missing}
+  @spec runtime() :: {:ok, Runtime.t()} | {:error, toolchain_error()}
   def runtime do
     RuntimeDiscovery.runtime()
   end

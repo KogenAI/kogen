@@ -40,6 +40,13 @@ defmodule Kogen.Kernel.Runtime do
     end)
   end
 
+  @spec resolve_script_path(Path.t() | nil) :: {:ok, Path.t() | nil} | {:error, term()}
+  def resolve_script_path(nil), do: {:ok, nil}
+
+  def resolve_script_path(path) when is_binary(path) do
+    resolve_script_link(Path.expand(path), 0)
+  end
+
   @spec for_project(t(), map()) :: t()
   def for_project(%__MODULE__{} = runtime, process_env) when is_map(process_env) do
     %{runtime | git_env: git_environment(process_env)}
@@ -63,6 +70,16 @@ defmodule Kogen.Kernel.Runtime do
       {"PATH", path} -> path
       _other -> nil
     end)
+  end
+
+  defp resolve_script_link(_path, depth) when depth >= 40, do: {:error, :too_many_script_symlinks}
+
+  defp resolve_script_link(path, depth) do
+    case File.read_link(path) do
+      {:ok, target} -> resolve_script_link(Path.expand(target, Path.dirname(path)), depth + 1)
+      {:error, :einval} -> {:ok, path}
+      {:error, reason} -> {:error, {:script_path_unavailable, reason}}
+    end
   end
 
   defp runtime_markers(script_path, ert_dir, ert_bin) do
@@ -141,17 +158,25 @@ defmodule Kogen.Kernel.RuntimeDiscovery do
   alias Kogen.Kernel.Runtime
   alias Kogen.Provider.ChatGPT
 
-  @spec runtime() :: {:ok, Runtime.t()} | {:error, :mise_missing}
+  @spec runtime() ::
+          {:ok, Runtime.t()}
+          | {:error,
+             :mise_missing | :too_many_script_symlinks | {:script_path_unavailable, term()}}
   def runtime do
     system_env = System.get_env()
     mise = System.find_executable("mise")
-    script = escript_path()
     ert = runtime_path(:erts)
     bindir = runtime_path(:bindir)
 
     case mise do
       nil -> {:error, :mise_missing}
-      path -> {:ok, Runtime.new(system_env, path, script, ert, bindir)}
+      path -> runtime_with_script(system_env, path, ert, bindir)
+    end
+  end
+
+  defp runtime_with_script(system_env, mise, ert, bindir) do
+    with {:ok, script} <- Runtime.resolve_script_path(escript_path()) do
+      {:ok, Runtime.new(system_env, mise, script, ert, bindir)}
     end
   end
 

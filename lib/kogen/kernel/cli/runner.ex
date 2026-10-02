@@ -226,6 +226,12 @@ defmodule Kogen.Kernel.CLI.Runner do
   defp command_error(:invalid_toolchain_environment),
     do: {3, "environment/invalid_toolchain_environment: mise returned invalid JSON\n"}
 
+  defp command_error({:script_path_unavailable, reason}),
+    do: {3, "environment/script_path_unavailable: #{inspect(reason)}\n"}
+
+  defp command_error(:too_many_script_symlinks),
+    do: {3, "environment/too_many_script_symlinks: cannot resolve kogen path\n"}
+
   defp command_error(:intent_not_approved),
     do: {3, "environment/not_approved: Intent has no approval ref\n"}
 
