@@ -1,0 +1,173 @@
+defmodule Kogen.Checks.Ledger do
+  @moduledoc false
+
+  alias Kogen.Checks.Ledger.Report
+  alias Kogen.Checks.Ledger.Validation
+  alias Kogen.Checks.LedgerRow
+  alias Kogen.Contracts.Failure
+  alias Kogen.Contracts.Intent
+  alias Kogen.Contracts.ProcResult
+  alias Kogen.Proc
+  alias Kogen.Workspace
+
+  @formatter_source Path.expand("../../../priv/ledger/kogen_ledger_formatter.ex", __DIR__)
+  @formatter File.read!(@formatter_source)
+  @git_env %{}
+
+  @spec acceptance(Path.t(), Intent.t(), Path.t()) ::
+          {:ok, %{status: :pass | {:fail, [String.t()]}, ledger: [LedgerRow.t()]}}
+          | {:error, Failure.t()}
+  def acceptance(workdir, %Intent{} = intent, run_dir) do
+    with {:ok, items} <- test_items(intent),
+         {:ok, before_tree} <- Workspace.tree_hash(workdir, @git_env) do
+      result = report(workdir, intent.slug, run_dir)
+
+      with {:ok, after_tree} <- Workspace.tree_hash(workdir, @git_env),
+           :ok <- same_tree(before_tree, after_tree),
+           {:ok, rows, exit_status} <- result do
+        failures = Validation.candidate(items, rows, exit_status, intent.slug)
+        status = if failures == [], do: :pass, else: {:fail, failures}
+        {:ok, %{status: status, ledger: rows}}
+      end
+    else
+      {:error, %Failure{} = failure} -> {:error, failure}
+      {:error, reason} -> {:error, failure(:controller, :workspace_failed, inspect(reason))}
+    end
+  end
+
+  @spec red_on_base(Path.t(), Intent.t(), Path.t()) :: :ok | {:error, Failure.t()}
+  def red_on_base(workdir, %Intent{} = intent, run_dir) do
+    with {:ok, items} <- test_items(intent),
+         {:ok, before_tree} <- Workspace.tree_hash(workdir, @git_env) do
+      result = report(workdir, intent.slug, run_dir)
+
+      with {:ok, after_tree} <- Workspace.tree_hash(workdir, @git_env),
+           :ok <- same_tree(before_tree, after_tree),
+           {:ok, rows, _exit_status} <- result do
+        Validation.base(items, rows, intent.slug)
+      end
+    end
+  end
+
+  defp report(workdir, slug, run_dir) do
+    test_path = Path.join([workdir, "test", "acceptance", "#{slug}_test.exs"])
+
+    with :ok <- prepared_test(test_path),
+         :ok <- prepare_run_files(run_dir),
+         {:ok, exit_status} <- run_tests(workdir, test_path, run_dir),
+         {:ok, rows} <- read_report(Path.join(run_dir, "ledger.jsonl")) do
+      {:ok, rows, exit_status}
+    end
+  end
+
+  defp prepared_test(path) do
+    if File.regular?(path),
+      do: :ok,
+      else:
+        {:error,
+         failure(:environment, :tests_not_prepared, "approved acceptance test is missing")}
+  end
+
+  defp prepare_run_files(run_dir) do
+    if Path.type(run_dir) == :absolute do
+      with :ok <- File.mkdir_p(Path.join(run_dir, "logs")),
+           :ok <- File.write(Path.join(run_dir, "ledger_formatter.ex"), @formatter),
+           :ok <- File.write(Path.join(run_dir, "ledger.jsonl"), "") do
+        :ok
+      else
+        {:error, reason} -> {:error, failure(:environment, :ledger_setup, inspect(reason))}
+      end
+    else
+      {:error, failure(:controller, :invalid_run_dir, "run directory must be absolute")}
+    end
+  end
+
+  defp run_tests(workdir, test_path, run_dir) do
+    report_path = Path.join(run_dir, "ledger.jsonl")
+    log_path = Path.join([run_dir, "logs", "acceptance.log"])
+    options = [cd: workdir, env: %{"KOGEN_LEDGER_REPORT" => report_path}, log_path: log_path]
+
+    workdir
+    |> test_argv(test_path, run_dir)
+    |> Proc.run(options)
+    |> process_result()
+  end
+
+  defp test_argv(workdir, test_path, run_dir) do
+    formatter_path = Path.join(run_dir, "ledger_formatter.ex")
+
+    preload =
+      "Code.require_file(#{inspect(formatter_path)}); Code.ensure_loaded!(KogenLedgerFormatter)"
+
+    [
+      "elixir",
+      "-e",
+      preload,
+      "-S",
+      "mix",
+      "test",
+      "--formatter",
+      "KogenLedgerFormatter",
+      "--formatter",
+      "ExUnit.CLIFormatter",
+      Path.relative_to(test_path, workdir)
+    ]
+  end
+
+  defp process_result(result) do
+    case result do
+      {:ok, %ProcResult{exit_status: status, timed_out: false}}
+      when is_integer(status) ->
+        {:ok, status}
+
+      {:ok, %ProcResult{timed_out: true}} ->
+        {:error, failure(:candidate, :acceptance_timeout, "acceptance tests timed out")}
+
+      {:ok, %ProcResult{exit_status: nil}} ->
+        {:error,
+         failure(:environment, :missing_exit_status, "acceptance runner returned no exit status")}
+
+      {:error, :enoent} ->
+        {:error, failure(:environment, :tool_missing, "Elixir test runner is not available")}
+
+      {:error, reason} ->
+        {:error, failure(:environment, :process_failed, inspect(reason))}
+    end
+  end
+
+  defp read_report(path) do
+    case Report.read(path) do
+      {:ok, rows} -> {:ok, rows}
+      {:error, failure} -> {:error, failure}
+    end
+  end
+
+  defp test_items(%Intent{acceptance: acceptance}) do
+    items = Enum.filter(acceptance, &(&1.verify in [:test, :test_keep]))
+
+    cond do
+      items == [] ->
+        {:error,
+         failure(:environment, :no_test_acceptance, "Intent has no test acceptance items")}
+
+      length(items) != length(acceptance) ->
+        {:error,
+         failure(
+           :environment,
+           :unsupported_acceptance_kind,
+           "only test and test_keep acceptance items are supported"
+         )}
+
+      true ->
+        {:ok, items}
+    end
+  end
+
+  defp same_tree(tree, tree), do: :ok
+
+  defp same_tree(_before, _after),
+    do:
+      {:error, failure(:candidate, :tree_mutated, "acceptance tests changed the candidate tree")}
+
+  defp failure(class, reason, detail), do: %Failure{class: class, reason: reason, detail: detail}
+end
