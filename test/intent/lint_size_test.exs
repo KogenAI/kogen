@@ -1,11 +1,11 @@
 defmodule Kogen.Intent.LintSizeTest do
   use Kogen.Testkit.Case
 
-  alias Kogen.Intent.Fixture
+  alias Kogen.Testkit.IntentFixture
 
   for size <- ["small", "medium", "large"] do
     test "accepts a valid #{size} Intent" do
-      assert Kogen.Intent.lint(Fixture.parsed(%{size: unquote(size)})) == []
+      assert Kogen.Intent.lint(IntentFixture.parsed(%{size: unquote(size)})) == []
     end
   end
 
@@ -71,6 +71,6 @@ defmodule Kogen.Intent.LintSizeTest do
   end
 
   defp rules(attributes) do
-    attributes |> Fixture.parsed() |> Kogen.Intent.lint() |> Enum.map(& &1.rule)
+    attributes |> IntentFixture.parsed() |> Kogen.Intent.lint() |> Enum.map(& &1.rule)
   end
 end

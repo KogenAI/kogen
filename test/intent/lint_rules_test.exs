@@ -1,7 +1,7 @@
 defmodule Kogen.Intent.LintRulesTest do
   use Kogen.Testkit.Case
 
-  alias Kogen.Intent.Fixture
+  alias Kogen.Testkit.IntentFixture
 
   test "flags direct hedges in acceptance items" do
     assert :hedge in rules(items: [{"A1", "The output should be exact."}])
@@ -64,7 +64,9 @@ defmodule Kogen.Intent.LintRulesTest do
 
   test "accepts numeric Mod.fun/arity references and module outlines" do
     assert Kogen.Intent.lint(
-             Fixture.parsed(notes: "Read `Kogen.Intent.parse/2` and the `Kogen.Intent` outline.")
+             IntentFixture.parsed(
+               notes: "Read `Kogen.Intent.parse/2` and the `Kogen.Intent` outline."
+             )
            ) == []
   end
 
@@ -74,7 +76,7 @@ defmodule Kogen.Intent.LintRulesTest do
   end
 
   test "does not treat a Markdown filename as a symbol reference" do
-    assert Kogen.Intent.lint(Fixture.parsed(notes: "Read `README.md` first.")) == []
+    assert Kogen.Intent.lint(IntentFixture.parsed(notes: "Read `README.md` first.")) == []
   end
 
   test "flags unresolved questions carried into the Intent" do
@@ -95,18 +97,18 @@ defmodule Kogen.Intent.LintRulesTest do
 
   @tag intent: "valid-intent/A1"
   test "Acceptance ids compose into the global intent tag" do
-    intent = Fixture.parsed()
+    intent = IntentFixture.parsed()
     item = hd(intent.acceptance)
     assert "#{intent.slug}/#{item.id}" == "valid-intent/A1"
   end
 
   defp rules(attributes) do
-    attributes |> Fixture.parsed() |> Kogen.Intent.lint() |> Enum.map(& &1.rule)
+    attributes |> IntentFixture.parsed() |> Kogen.Intent.lint() |> Enum.map(& &1.rule)
   end
 
   defp unsupported_message(kind) do
     [verify: [{"A1", kind}]]
-    |> Fixture.parsed()
+    |> IntentFixture.parsed()
     |> Kogen.Intent.lint()
     |> Enum.find(&(&1.rule == :unsupported_verify_kind))
     |> Map.fetch!(:message)

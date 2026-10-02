@@ -1,5 +1,5 @@
-defmodule Kogen.Intent.Fixture do
-  @moduledoc false
+defmodule Kogen.Testkit.IntentFixture do
+  @moduledoc "Builds Intent sources and parsed Intents for tests."
 
   def source(attributes \\ %{}) do
     attributes = Map.merge(defaults(), Map.new(attributes))
