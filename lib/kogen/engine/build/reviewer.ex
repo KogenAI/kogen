@@ -12,11 +12,13 @@ defmodule Kogen.Engine.Build.Reviewer do
   @spec run(Session.t()) ::
           {:ok, Session.t(), [term()]} | {:error, Session.t(), Failure.t()}
   def run(%Session{} = session) do
+    started_at = System.monotonic_time(:millisecond)
+
     with {:ok, diff} <- diff(session),
          summary = %{checks: session.receipts, acceptance: session.acceptance},
          {:ok, result} <-
            Harness.review(harness_opts(session), session.intent_text, diff, summary),
-         :ok <- record_model(session, result.usage) do
+         :ok <- record_model(session, result.usage, elapsed(started_at)) do
       reviewed_session(session, result)
     else
       {:error, %ProviderError{} = error} -> fail(session, provider_failure(error))
@@ -41,15 +43,18 @@ defmodule Kogen.Engine.Build.Reviewer do
 
   defp harness_opts(session), do: StageRunner.harness_options(session)
 
-  defp record_model(session, usage) do
+  defp record_model(session, usage, wall_ms) do
     State.record(session.run, %{
       event: :model_stage,
       stage: :review,
       model: session.request.model,
       effort: session.request.effort,
-      tokens: usage
+      tokens: usage,
+      wall_ms: wall_ms
     })
   end
+
+  defp elapsed(started_at), do: max(System.monotonic_time(:millisecond) - started_at, 0)
 
   defp fail(session, %Failure{} = failure) do
     State.record(session.run, %{

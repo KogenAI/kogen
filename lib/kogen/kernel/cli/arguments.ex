@@ -10,6 +10,7 @@ defmodule Kogen.Kernel.CLI.Arguments do
     model: :string,
     effort: :string,
     by: :string,
+    task_file: :string,
     yes: :boolean,
     json: :boolean
   ]
@@ -20,6 +21,7 @@ defmodule Kogen.Kernel.CLI.Arguments do
   def parse(["version" | rest]), do: parse_options(:version, [], rest)
   def parse(["--version" | rest]), do: parse_options(:version, [], rest)
   def parse(["intent", "check", path | rest]), do: parse_options(:intent_check, [path], rest)
+  def parse(["intent", "shape", slug | rest]), do: parse_options(:intent_shape, [slug], rest)
   def parse(["approve", slug | rest]), do: parse_options(:approve, [slug], rest)
   def parse(["build", slug | rest]), do: parse_options(:build, [slug], rest)
   def parse(["status" | rest]), do: parse_options(:status, [], rest)
@@ -44,6 +46,7 @@ defmodule Kogen.Kernel.CLI.Arguments do
          model: Keyword.get(options, :model, "gpt-6-luna"),
          effort: Keyword.get(options, :effort, "max"),
          by: Keyword.get(options, :by),
+         task_file: Keyword.get(options, :task_file),
          yes: Keyword.get(options, :yes, false),
          json: Keyword.get(options, :json, false)
        }}
@@ -69,6 +72,10 @@ defmodule Kogen.Kernel.CLI.Arguments do
   end
 
   defp allowed_flags(:intent_check), do: [:project, :origin, :base]
+
+  defp allowed_flags(:intent_shape),
+    do: [:project, :origin, :base, :model, :effort, :task_file, :json]
+
   defp allowed_flags(:version), do: [:project, :origin, :base]
   defp allowed_flags(:approve), do: [:project, :origin, :base, :by, :yes]
   defp allowed_flags(:build), do: [:project, :origin, :base, :model, :effort]
@@ -82,6 +89,13 @@ defmodule Kogen.Kernel.CLI.Arguments do
 
   defp required_flags(:report, options) do
     if Keyword.get(options, :json, false), do: :ok, else: {:error, "report requires --json"}
+  end
+
+  defp required_flags(:intent_shape, options) do
+    case Keyword.get(options, :task_file) do
+      path when is_binary(path) and path != "" -> :ok
+      _missing -> {:error, "intent shape requires --task-file"}
+    end
   end
 
   defp required_flags(_command, _options), do: :ok

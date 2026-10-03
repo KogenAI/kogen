@@ -11,6 +11,7 @@ defmodule Kogen.Kernel.CLI do
 
   Commands:
     intent check <path>   Parse and lint an Intent
+    intent shape <slug>   Create and validate an Intent (--task-file)
     approve <slug>        Review and record an Intent approval (--by, --yes)
     build <slug>          Build and land an approved Intent (--model, --effort)
     status                Show Intent state (--json for JSON)
@@ -22,6 +23,12 @@ defmodule Kogen.Kernel.CLI do
     --project <checkout>  Project checkout (default: current directory)
     --origin <repo>       Git repository used for approval and landing
     --base <branch>       Target branch (default: main)
+
+  Intent shaping options:
+    --task-file <path>    Task statement text file
+    --model <name>        Provider model (default: gpt-6-luna)
+    --effort <level>      Model effort (default: max)
+    --json                Emit shaping result and call usage as JSON
   """
 
   @spec main([String.t()]) :: no_return()

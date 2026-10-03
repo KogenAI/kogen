@@ -38,6 +38,7 @@ defmodule Kogen.Kernel.CLI.Args do
     :model,
     :effort,
     :by,
+    :task_file,
     positionals: [],
     yes: false,
     json: false
@@ -51,6 +52,7 @@ defmodule Kogen.Kernel.CLI.Args do
           model: String.t() | nil,
           effort: String.t() | nil,
           by: String.t() | nil,
+          task_file: Path.t() | nil,
           positionals: [String.t()],
           yes: boolean(),
           json: boolean()

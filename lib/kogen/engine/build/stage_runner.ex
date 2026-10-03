@@ -37,9 +37,12 @@ defmodule Kogen.Engine.Build.StageRunner do
   end
 
   defp context_after_guard(session) do
+    started_at = System.monotonic_time(:millisecond)
+
     with :ok <- red_on_base(session),
          {:ok, pack} <- Harness.context_pack(harness_opts(session), session.intent_text),
-         :ok <- record_model(session, :context, "gpt-6-luna", "low", pack.usage) do
+         :ok <-
+           record_model(session, :context, "gpt-6-luna", "low", pack.usage, elapsed(started_at)) do
       {:ok, %{session | pack: pack, failure: nil, failure_text: nil},
        [{:stage_ok, :context, %{}}]}
     else
@@ -69,6 +72,8 @@ defmodule Kogen.Engine.Build.StageRunner do
   end
 
   defp plan(%Session{pack: pack} = session) do
+    started_at = System.monotonic_time(:millisecond)
+
     case Harness.plan(harness_opts(session), pack, session.intent_text) do
       {:ok, plan} ->
         case record_model(
@@ -76,7 +81,8 @@ defmodule Kogen.Engine.Build.StageRunner do
                :plan,
                session.request.model,
                session.request.effort,
-               plan.usage
+               plan.usage,
+               elapsed(started_at)
              ) do
           :ok ->
             {:ok, %{session | plan: plan, failure: nil, failure_text: nil},
@@ -96,10 +102,11 @@ defmodule Kogen.Engine.Build.StageRunner do
 
   defp develop(_args, %Session{} = session) do
     resume = resume_data(session)
+    started_at = System.monotonic_time(:millisecond)
 
     case Harness.develop(harness_opts(session), session.intent_text, session.plan, resume, 0) do
       {:ok, %HarnessResult{} = result} ->
-        finish_develop(session, result)
+        finish_develop(session, result, started_at)
 
       {:error, %ProviderError{} = error} ->
         fail(session, :develop, provider_failure(error))
@@ -112,7 +119,7 @@ defmodule Kogen.Engine.Build.StageRunner do
     end
   end
 
-  defp finish_develop(session, result) do
+  defp finish_develop(session, result, started_at) do
     with {:ok, tree} <- Guard.tree_hash(session.workdir, session.git_env),
          :ok <-
            record_model(
@@ -120,7 +127,8 @@ defmodule Kogen.Engine.Build.StageRunner do
              :develop,
              session.request.model,
              session.request.effort,
-             result.usage
+             result.usage,
+             elapsed(started_at)
            ) do
       {failure, detail} = gate_failure(result)
       session = %{session | last_harness: result, failure: failure, failure_text: detail}
@@ -327,15 +335,18 @@ defmodule Kogen.Engine.Build.StageRunner do
     )
   end
 
-  defp record_model(session, stage, model, effort, usage) do
+  defp record_model(session, stage, model, effort, usage, wall_ms) do
     record(session, %{
       event: :model_stage,
       stage: stage,
       model: model,
       effort: effort,
-      tokens: usage
+      tokens: usage,
+      wall_ms: wall_ms
     })
   end
+
+  defp elapsed(started_at), do: max(System.monotonic_time(:millisecond) - started_at, 0)
 
   defp record(session, event), do: State.record(session.run, event)
 

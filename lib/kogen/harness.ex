@@ -1,8 +1,8 @@
 defmodule Kogen.Harness do
-  @moduledoc "Runs Kogen's provider-backed Developer, context, plan, and review stages."
+  @moduledoc "Runs Kogen's provider-backed shaping, Developer, context, plan, and review stages."
   use Boundary,
     deps: [Kogen.Contracts, Kogen.Proc, Kogen.Provider, Kogen.Project],
-    exports: [Opts, Pack, Plan, Review, Result]
+    exports: [Opts, Pack, Plan, Review, Result, ShapePass, ShapeCall]
 
   alias Kogen.Harness.Developer
   alias Kogen.Harness.Error
@@ -11,6 +11,8 @@ defmodule Kogen.Harness do
   alias Kogen.Harness.Plan
   alias Kogen.Harness.Result
   alias Kogen.Harness.Review
+  alias Kogen.Harness.ShapePass
+  alias Kogen.Harness.Shaping
   alias Kogen.Harness.Stages
 
   @spec context_pack(Opts.t(), String.t()) :: {:ok, Pack.t()} | {:error, term()}
@@ -40,4 +42,9 @@ defmodule Kogen.Harness do
           {:ok, Review.t()} | {:error, term()}
   def review(%Opts{} = opts, intent_text, diff, check_summary),
     do: Stages.review(opts, intent_text, diff, check_summary)
+
+  @spec shape(Opts.t(), String.t(), String.t(), [map()], String.t() | nil, non_neg_integer()) ::
+          {:ok, ShapePass.t()} | {:error, term()}
+  def shape(%Opts{} = opts, slug, task, history, failure_text, turn_offset),
+    do: Shaping.run(opts, slug, task, history, failure_text, turn_offset)
 end

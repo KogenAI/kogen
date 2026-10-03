@@ -332,7 +332,8 @@ defmodule Kogen.Kernel.Report do
         {"stage", event.stage},
         {"model", event.model},
         {"effort", event.effort},
-        {"tokens", event.tokens}
+        {"tokens", event.tokens},
+        {"wall_ms", event.wall_ms}
       ])
     end
   end

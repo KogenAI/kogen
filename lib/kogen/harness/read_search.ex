@@ -84,8 +84,11 @@ defmodule Kogen.Harness.ReadSearch do
         result = rg(opts, pattern, relative)
 
         case result do
-          {:error, %Error{reason: :command_missing}} -> grep(opts, pattern, relative)
-          other -> search_result(other)
+          {:error, %Error{reason: :command_missing}} ->
+            opts |> grep(pattern, relative) |> search_result()
+
+          other ->
+            search_result(other)
         end
 
       {:error, %Error{} = error} ->

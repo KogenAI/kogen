@@ -60,6 +60,9 @@ defmodule Kogen.E2e.BuildTest do
     assert Enum.any?(result.events, &(&1.event == "finished" and &1.status == "landed"))
     assert Enum.count(result.events, &(&1.event == "check_result")) == 1
     assert Enum.count(result.events, &(&1.event == "acceptance_result")) == 1
+
+    model_stages = Enum.filter(result.events, &(&1.event == "model_stage"))
+    assert Enum.all?(model_stages, &is_integer(&1.wall_ms))
     :ok
   end
 

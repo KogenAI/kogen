@@ -11,7 +11,8 @@ defmodule Kogen.Kernel do
       Kogen.Workspace,
       Kogen.State,
       Kogen.Checks,
-      Kogen.Harness
+      Kogen.Harness,
+      Kogen.Shaper
     ],
     exports: [
       Approval,
@@ -33,6 +34,9 @@ defmodule Kogen.Kernel do
   alias Kogen.Kernel.Types.IntentStatus
   alias Kogen.Kernel.Workspaces
   alias Kogen.Provider.ChatGPT
+  alias Kogen.Shaper
+  alias Kogen.Shaper.Request, as: ShapeRequest
+  alias Kogen.Shaper.Result, as: ShapeResult
 
   @type toolchain_error ::
           :mise_missing
@@ -104,6 +108,30 @@ defmodule Kogen.Kernel do
       }
 
       Engine.run(request)
+    end
+  end
+
+  @spec shape(String.t(), Path.t(), String.t(), String.t(), String.t()) ::
+          {:ok, ShapeResult.t()} | {:error, term()}
+  def shape(slug, project_root, task, model, effort) do
+    with {:ok, runtime} <- runtime(),
+         {:ok, project} <- Kogen.Project.load(project_root),
+         {:ok, process_env} <- Engine.candidate_environment(project_root, runtime, project),
+         {:ok, provider_config, _source} <- provider_config() do
+      request = %ShapeRequest{
+        workdir: project_root,
+        slug: slug,
+        task: task,
+        model: model,
+        effort: effort,
+        provider_mod: ChatGPT,
+        provider_config: provider_config,
+        env: process_env,
+        git_env: Runtime.git_environment(process_env),
+        run_dir: shape_run_dir(process_env, slug)
+      }
+
+      Shaper.shape(request)
     end
   end
 
@@ -199,5 +227,17 @@ defmodule Kogen.Kernel do
       home when is_binary(home) -> {:ok, home}
       nil -> RuntimeDiscovery.home()
     end
+  end
+
+  defp shape_run_dir(process_env, slug) do
+    run_id =
+      "#{System.monotonic_time(:microsecond)}-#{System.unique_integer([:positive, :monotonic])}"
+
+    Path.join([
+      Runtime.temporary_directory(process_env),
+      "kogen-shaper",
+      slug,
+      run_id
+    ])
   end
 end

@@ -1,13 +1,32 @@
+defmodule Kogen.Checks.ShapeValidation do
+  @moduledoc false
+
+  @enforce_keys [:workdir, :project, :intent, :acceptance_bytes, :run_dir, :env, :git_env]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          workdir: Path.t(),
+          project: Kogen.Contracts.Project.t(),
+          intent: Kogen.Contracts.Intent.t(),
+          acceptance_bytes: binary(),
+          run_dir: Path.t(),
+          env: %{String.t() => String.t()},
+          git_env: %{String.t() => String.t()}
+        }
+end
+
 defmodule Kogen.Checks do
   @moduledoc "Runs deterministic project verification and records its results."
   use Boundary,
     deps: [Kogen.Contracts, Kogen.Proc, Kogen.Workspace, Kogen.Project],
-    exports: [LedgerRow]
+    exports: [LedgerRow, ShapeValidation]
 
   alias Kogen.Checks.Fixer
   alias Kogen.Checks.Ledger
   alias Kogen.Checks.LedgerRow
   alias Kogen.Checks.Runner
+  alias Kogen.Checks.ShapeValidation
+  alias Kogen.Checks.Shaping
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.Intent
   alias Kogen.Contracts.ProcResult
@@ -119,6 +138,9 @@ defmodule Kogen.Checks do
         ) :: :ok | {:error, Failure.t()}
   def red_on_base(workdir, intent, run_dir, env, git_env, sandbox),
     do: Ledger.red_on_base(workdir, intent, run_dir, env, git_env, sandbox)
+
+  @spec validate_shape(ShapeValidation.t()) :: :ok | {:error, Failure.t()}
+  def validate_shape(%ShapeValidation{} = request), do: Shaping.validate(request)
 
   @spec protected_violations(
           Path.t(),

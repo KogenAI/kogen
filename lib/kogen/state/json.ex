@@ -28,7 +28,8 @@ defmodule Kogen.State.Json do
     receipts: "receipts",
     model: "model",
     effort: "effort",
-    tokens: "tokens"
+    tokens: "tokens",
+    wall_ms: "wall_ms"
   ]
 
   @spec encode_approval(Approval.t()) :: {:ok, binary()} | {:error, :invalid_json_value}

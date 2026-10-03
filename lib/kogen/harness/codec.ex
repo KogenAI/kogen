@@ -31,9 +31,10 @@ defmodule Kogen.Harness.Codec do
   def function_output(call_id, output),
     do: %{"type" => "function_call_output", "call_id" => call_id, "output" => output}
 
-  @spec tool_names(:developer | :context) :: [tool_name()]
+  @spec tool_names(:developer | :context | :shaper) :: [tool_name()]
   def tool_names(:developer), do: @tool_order
   def tool_names(:context), do: [:read, :search]
+  def tool_names(:shaper), do: [:read, :search, :write]
 
   @spec decode_tool_call(ToolCall.t()) :: {:ok, ToolArgs.t()} | {:error, :invalid_arguments}
   def decode_tool_call(%ToolCall{name: name, arguments: arguments}) when is_map(arguments) do

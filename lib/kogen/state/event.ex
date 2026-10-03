@@ -16,7 +16,8 @@ defmodule Kogen.State.Event do
     :receipts,
     :model,
     :effort,
-    :tokens
+    :tokens,
+    :wall_ms
   ]
 
   @type t :: %__MODULE__{
@@ -33,6 +34,7 @@ defmodule Kogen.State.Event do
           receipts: term(),
           model: String.t() | nil,
           effort: String.t() | nil,
-          tokens: term()
+          tokens: term(),
+          wall_ms: non_neg_integer() | nil
         }
 end

@@ -13,7 +13,7 @@ defmodule Kogen.E2e.ScriptedProvider.Step do
   @enforce_keys [:stage, :text, :calls]
   defstruct @enforce_keys
 
-  @type stage :: :context | :plan | :develop | :review
+  @type stage :: :context | :plan | :develop | :review | :shape
   @type t :: %__MODULE__{
           stage: stage(),
           text: String.t(),
@@ -34,7 +34,7 @@ defmodule Kogen.E2e.ScriptedProvider.State do
   @moduledoc false
 
   @enforce_keys [:steps]
-  defstruct [:steps, :on_request, hook_done?: false, sequence: 0]
+  defstruct [:steps, :on_request, requests: [], hook_done?: false, sequence: 0]
 end
 
 defmodule Kogen.E2e.ScriptedProvider do
@@ -53,7 +53,7 @@ defmodule Kogen.E2e.ScriptedProvider do
   alias Kogen.E2e.ScriptedProvider.Step
 
   @zero_usage %{input: 0, cached_input: 0, cache_write: 0, output: 0, reasoning: 0}
-  @known_stages [:context, :plan, :develop, :review]
+  @known_stages [:context, :plan, :develop, :review, :shape]
   @call_timeout_ms 5_000
 
   @spec answer(Step.stage(), String.t()) :: Step.t()
@@ -102,9 +102,15 @@ defmodule Kogen.E2e.ScriptedProvider do
   @spec remaining(Config.t()) :: non_neg_integer()
   def remaining(%Config{server: server}), do: GenServer.call(server, :remaining)
 
+  @spec requests(Config.t()) :: [ModelRequest.t()]
+  def requests(%Config{server: server}), do: GenServer.call(server, :requests)
+
   @impl GenServer
   def handle_call(:remaining, _from, %State{steps: steps} = state),
     do: {:reply, length(steps), state}
+
+  def handle_call(:requests, _from, %State{requests: requests} = state),
+    do: {:reply, Enum.reverse(requests), state}
 
   def handle_call({:respond, %ModelRequest{} = request}, _from, %State{} = state) do
     with {:ok, stage} <- request_stage(request),
@@ -114,7 +120,8 @@ defmodule Kogen.E2e.ScriptedProvider do
         state
         | steps: tl(state.steps),
           hook_done?: hooked?,
-          sequence: state.sequence + 1
+          sequence: state.sequence + 1,
+          requests: [request | state.requests]
       }
 
       {:reply, {:ok, response(step, next_state.sequence)}, next_state}
@@ -127,6 +134,9 @@ defmodule Kogen.E2e.ScriptedProvider do
     tool_names = Enum.map(tools, &Map.get(&1, "name"))
 
     cond do
+      String.contains?(instructions, "Kogen Intent shaper") ->
+        {:ok, :shape}
+
       String.contains?(instructions, "read-only Context Pack stage") ->
         {:ok, :context}
 

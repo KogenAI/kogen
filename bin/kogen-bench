@@ -1,0 +1,426 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  echo "usage: kogen-bench <task_dir> <work_dir> <out_dir>" >&2
+  exit 2
+}
+
+[ "$#" -eq 3 ] || usage
+task_dir=$(cd "$1" && pwd -P)
+work_dir=$(cd "$2" && pwd -P)
+mkdir -p "$3"
+out_dir=$(cd "$3" && pwd -P)
+task_json="$task_dir/task.json"
+prompt_file="$task_dir/prompt.md"
+log_file="$out_dir/log.txt"
+
+[ -f "$task_json" ] || { echo "missing task.json" >&2; exit 2; }
+[ -f "$prompt_file" ] || { echo "missing prompt.md" >&2; exit 2; }
+[ -d "$work_dir/.git" ] || [ -f "$work_dir/.git" ] || {
+  echo "work_dir must be a git checkout" >&2
+  exit 2
+}
+
+KOGEN_BIN=${KOGEN_BIN:-$(command -v kogen || true)}
+[ -n "$KOGEN_BIN" ] && [ -x "$KOGEN_BIN" ] || {
+  echo "kogen executable not found; set KOGEN_BIN or add kogen to PATH" >&2
+  exit 3
+}
+
+work_base=$(git -C "$work_dir" rev-parse HEAD)
+work_status=$(git -C "$work_dir" status --porcelain --untracked-files=all)
+[ -z "$work_status" ] || {
+  echo "work_dir must be clean before the benchmark starts" >&2
+  exit 2
+}
+
+scratch=$(mktemp -d "/tmp/kogen-bench.XXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+project_dir="$scratch/project"
+origin="$scratch/origin.git"
+mkdir -p "$out_dir"
+: > "$log_file"
+: > "$out_dir/final.diff"
+cat > "$out_dir/usage.json" <<'JSON'
+{
+  "status": "not_started",
+  "stages": [],
+  "total": {
+    "tokens": {"input": 0, "cached_input": 0, "output": 0, "reasoning": 0},
+    "wall_ms": 0
+  }
+}
+JSON
+
+git clone --quiet "$work_dir" "$project_dir"
+git -C "$project_dir" checkout --quiet -B main "$work_base"
+mkdir -p "$project_dir/.kogen"
+printf '\n/.setup-compile.log\n' >> "$project_dir/.gitignore"
+python3 - "$task_json" "$project_dir/.kogen/project.yaml" "$scratch/project_tmpdir" <<'PY'
+import json
+import os
+import re
+import shutil
+import sys
+
+source_path, target_path, tmpdir_path = sys.argv[1:]
+with open(source_path, encoding="utf-8") as source:
+    document = json.load(source)
+
+raw_env = document.get("env", {})
+if isinstance(raw_env, dict):
+    env = {str(key): str(value) for key, value in raw_env.items()}
+elif isinstance(raw_env, list):
+    env = {}
+    for entry in raw_env:
+        if isinstance(entry, str) and "=" in entry:
+            key, value = entry.split("=", 1)
+            env[key] = value
+else:
+    env = {}
+
+if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) for key in env):
+    raise SystemExit("task.json env keys must be environment variable names")
+
+extra_path = env.get("BENCH_EXTRA_PATH", "")
+if extra_path:
+    env["PATH"] = extra_path + (":" + env["PATH"] if env.get("PATH") else "")
+
+direct_path = bool(env.get("PATH")) and bool(shutil.which("mix", path=env["PATH"]))
+prefix = [] if direct_path else ["mise", "exec", "--"]
+quote = lambda value: json.dumps(str(value), ensure_ascii=False)
+array = lambda values: "[" + ", ".join(quote(value) for value in values) + "]"
+
+lines = [
+    "name: kogen-bench",
+    "checks:",
+    "  - name: tests",
+    "    argv: " + array(prefix + ["mix", "test"]),
+    "    timeout_ms: 900000",
+    "  - name: format",
+    "    argv: " + array(prefix + ["mix", "format", "--check-formatted"]),
+    "    timeout_ms: 300000",
+    "acceptance_checks:",
+    "  - name: compile-acceptance",
+    "    argv: " + array(prefix + ["mix", "test", "--no-run", "{path}"]),
+    "    timeout_ms: 600000",
+    "  - name: format-acceptance",
+    "    argv: " + array(prefix + ["mix", "format", "--check-formatted", "{path}"]),
+    "    timeout_ms: 300000",
+]
+
+raw_setup = document.get("setup")
+if isinstance(raw_setup, str) and raw_setup.strip():
+    setup_argv = prefix + ["sh", "-lc", raw_setup]
+elif isinstance(raw_setup, list) and raw_setup and all(isinstance(part, str) for part in raw_setup):
+    setup_argv = prefix + raw_setup
+elif isinstance(raw_setup, dict) and isinstance(raw_setup.get("argv"), list):
+    setup_argv = prefix + [str(part) for part in raw_setup["argv"]]
+else:
+    setup_argv = []
+
+if setup_argv:
+    lines += [
+        "setup:",
+        "  - name: task-setup",
+        "    argv: " + array(setup_argv),
+        "    timeout_ms: 900000",
+    ]
+
+if env:
+    lines.append("env:")
+    lines.extend("  " + key + ": " + quote(value) for key, value in sorted(env.items()))
+
+lines += ["domains:", "  app: [lib, test]"]
+with open(target_path, "w", encoding="utf-8") as target:
+    target.write("\n".join(lines) + "\n")
+with open(tmpdir_path, "w", encoding="utf-8") as target:
+    target.write(env.get("TMPDIR") or os.environ.get("TMPDIR", "/tmp"))
+PY
+
+git -C "$project_dir" add .kogen/project.yaml
+git -C "$project_dir" -c user.name='Kogen Bench' -c user.email='kogen-bench@invalid' \
+  -c commit.gpgsign=false commit --quiet -m 'Configure Kogen benchmark project'
+git clone --quiet --bare "$project_dir" "$origin"
+git --git-dir="$origin" symbolic-ref HEAD refs/heads/main
+base_sha=$(git --git-dir="$origin" rev-parse refs/heads/main)
+
+export MISE_TRUSTED_CONFIG_PATHS="$project_dir"
+
+run_capture() {
+  name=$1
+  capture=$2
+  shift 2
+  capture_started=$(python3 -c 'import time; print(time.monotonic_ns())')
+  printf '\n--- %s ---\n' "$name" >> "$log_file"
+  if "$@" > "$capture" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  capture_finished=$(python3 -c 'import time; print(time.monotonic_ns())')
+  CAPTURE_WALL_MS=$(((capture_finished - capture_started) / 1000000))
+  cat "$capture" >> "$log_file"
+  if [ "$status" -ne 0 ]; then
+    printf '%s failed with exit %s\n' "$name" "$status" >> "$log_file"
+    return "$status"
+  fi
+}
+
+write_failed_usage() {
+  failed_stage=$1
+  failed_model=$2
+  failed_effort=$3
+  failed_status=$4
+  failed_wall_ms=$5
+  python3 - "$out_dir/shape.json" "$out_dir/report.json" "$out_dir/usage.json" \
+    "$failed_stage" "$failed_model" "$failed_effort" "$failed_status" "$failed_wall_ms" \
+    "$shaper_root" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+shape_path, report_path, output_path, failed_stage, failed_model, failed_effort, status, wall_ms, transcript_root = sys.argv[1:]
+token_names = ("input", "cached_input", "output", "reasoning")
+
+def load(path):
+    try:
+        with open(path, encoding="utf-8") as source:
+            return json.load(source)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def tokens(value):
+    value = value or {}
+    return {name: int(value.get(name, 0) or 0) for name in token_names}
+
+def failed_shape_calls():
+    transcripts = list(Path(transcript_root).glob("*/transcript.jsonl"))
+    if not transcripts:
+        return []
+    transcript = max(transcripts, key=os.path.getmtime)
+    calls = []
+    try:
+        with transcript.open(encoding="utf-8") as source:
+            for line in source:
+                row = json.loads(line)
+                if row.get("event") != "model_usage" or row.get("stage") != "shape":
+                    continue
+                payload = row.get("payload", {})
+                calls.append({
+                    "model": payload.get("model"),
+                    "effort": payload.get("effort"),
+                    "tokens": tokens(payload.get("tokens")),
+                    "wall_ms": int(payload.get("wall_ms", 0) or 0),
+                    "usage_available": True,
+                })
+    except (OSError, json.JSONDecodeError):
+        return []
+    return calls
+
+shape = load(shape_path)
+report = load(report_path)
+stages = []
+shape_calls = [
+    {
+        "model": call.get("model"),
+        "effort": call.get("effort"),
+        "tokens": tokens(call.get("tokens")),
+        "wall_ms": int(call.get("wall_ms", 0) or 0),
+    }
+    for call in shape.get("usage", [])
+]
+if not shape_calls and failed_stage == "shape":
+    shape_calls = failed_shape_calls()
+
+if shape_calls:
+    stages.append({
+        "stage": "shape",
+        "model": shape_calls[0]["model"],
+        "effort": shape_calls[0]["effort"],
+        "calls": shape_calls,
+        "tokens": {name: sum(call["tokens"][name] for call in shape_calls) for name in token_names},
+        "wall_ms": int(wall_ms) if failed_stage == "shape" else sum(call["wall_ms"] for call in shape_calls),
+        "usage_available": all(call.get("usage_available", True) for call in shape_calls),
+        "usage_complete": failed_stage != "shape",
+    })
+elif failed_stage == "shape":
+    stages.append({
+        "stage": "shape",
+        "model": failed_model,
+        "effort": failed_effort,
+        "calls": [{"tokens": tokens(None), "wall_ms": int(wall_ms)}],
+        "tokens": tokens(None),
+        "wall_ms": int(wall_ms),
+        "usage_available": False,
+        "usage_complete": False,
+        "wall_time_source": "CLI stage elapsed time; no model usage response was recorded",
+    })
+
+for stage in report.get("model_stages", []):
+    stage_tokens = tokens(stage.get("tokens"))
+    stages.append({
+        "stage": stage.get("stage"),
+        "model": stage.get("model"),
+        "effort": stage.get("effort"),
+        "calls": [{"tokens": stage_tokens, "wall_ms": int(stage.get("wall_ms", 0) or 0)}],
+        "tokens": stage_tokens,
+        "wall_ms": int(stage.get("wall_ms", 0) or 0),
+        "usage_available": True,
+    })
+
+if failed_model and failed_stage != "shape":
+    stages.append({
+        "stage": failed_stage,
+        "model": failed_model,
+        "effort": failed_effort,
+        "calls": [{"tokens": tokens(None), "wall_ms": int(wall_ms)}],
+        "tokens": tokens(None),
+        "wall_ms": int(wall_ms),
+        "usage_available": False,
+    })
+
+totals = {name: sum(stage["tokens"][name] for stage in stages) for name in token_names}
+result = {
+    "run_status": "failed",
+    "status": "failed",
+    "failed_stage": failed_stage,
+    "exit_code": int(status),
+    "stages": stages,
+    "total": {"tokens": totals, "wall_ms": sum(stage["wall_ms"] for stage in stages)},
+}
+with open(output_path, "w", encoding="utf-8") as output:
+    json.dump(result, output, indent=2)
+    output.write("\n")
+PY
+}
+
+slug=$(basename "$task_dir")
+runtime_tmpdir=$(cat "$scratch/project_tmpdir")
+shaper_root="${runtime_tmpdir%/}/kogen-shaper/$slug"
+if run_capture shape "$out_dir/shape.json" "$KOGEN_BIN" intent shape "$slug" \
+  --task-file "$prompt_file" --project "$project_dir" --origin "$origin" \
+  --base main --model gpt-6-luna --effort max --json; then
+  :
+else
+  stage_status=$?
+  write_failed_usage shape gpt-6-luna max "$stage_status" "$CAPTURE_WALL_MS"
+  exit "$stage_status"
+fi
+
+if run_capture approve "$scratch/approve.txt" "$KOGEN_BIN" approve "$slug" \
+  --project "$project_dir" --origin "$origin" --base main --by kogen-bench --yes; then
+  :
+else
+  stage_status=$?
+  write_failed_usage approve "" "" "$stage_status" "$CAPTURE_WALL_MS"
+  exit "$stage_status"
+fi
+
+if run_capture build "$scratch/build.txt" "$KOGEN_BIN" build "$slug" \
+  --project "$project_dir" --origin "$origin" --base main \
+  --model gpt-6-luna --effort max; then
+  :
+else
+  stage_status=$?
+  write_failed_usage build gpt-6-luna max "$stage_status" "$CAPTURE_WALL_MS"
+  exit "$stage_status"
+fi
+
+if run_capture report "$out_dir/report.json" "$KOGEN_BIN" report "$slug" \
+  --project "$project_dir" --origin "$origin" --base main --json; then
+  :
+else
+  stage_status=$?
+  write_failed_usage report "" "" "$stage_status" "$CAPTURE_WALL_MS"
+  exit "$stage_status"
+fi
+
+git --git-dir="$origin" diff --binary "$base_sha" refs/heads/main > "$out_dir/final.diff"
+git -C "$work_dir" apply --check "$out_dir/final.diff"
+git -C "$work_dir" apply "$out_dir/final.diff"
+[ "$(git -C "$work_dir" rev-parse HEAD)" = "$work_base" ] || {
+  echo "work_dir base moved during benchmark" >&2
+  exit 4
+}
+
+python3 - "$out_dir/shape.json" "$out_dir/report.json" "$out_dir/usage.json" <<'PY'
+import json
+import sys
+
+shape_path, report_path, output_path = sys.argv[1:]
+with open(shape_path, encoding="utf-8") as source:
+    shape = json.load(source)
+with open(report_path, encoding="utf-8") as source:
+    report = json.load(source)
+
+token_names = ("input", "cached_input", "output", "reasoning")
+
+def normalized_tokens(tokens):
+    tokens = tokens or {}
+    return {name: int(tokens.get(name, 0) or 0) for name in token_names}
+
+def sum_tokens(rows):
+    return {name: sum(row["tokens"][name] for row in rows) for name in token_names}
+
+shape_calls = [
+    {
+        "model": call["model"],
+        "effort": call["effort"],
+        "tokens": normalized_tokens(call.get("tokens")),
+        "wall_ms": int(call.get("wall_ms", 0) or 0),
+    }
+    for call in shape.get("usage", [])
+]
+
+stages = []
+if shape_calls:
+    stages.append({
+        "stage": "shape",
+        "model": shape_calls[0]["model"],
+        "effort": shape_calls[0]["effort"],
+        "calls": shape_calls,
+        "tokens": sum_tokens(shape_calls),
+        "wall_ms": sum(call["wall_ms"] for call in shape_calls),
+        "usage_available": True,
+    })
+
+for stage in report.get("model_stages", []):
+    tokens = normalized_tokens(stage.get("tokens"))
+    stages.append({
+        "stage": stage.get("stage"),
+        "model": stage.get("model"),
+        "effort": stage.get("effort"),
+        "calls": [{"tokens": tokens, "wall_ms": int(stage.get("wall_ms", 0) or 0)}],
+        "tokens": tokens,
+        "wall_ms": int(stage.get("wall_ms", 0) or 0),
+        "usage_available": True,
+    })
+
+totals = {name: sum(stage["tokens"][name] for stage in stages) for name in token_names}
+result = {
+    "slug": shape.get("slug"),
+    "run_status": "complete",
+    "status": report.get("status"),
+    "stages": stages,
+    "total": {
+        "tokens": totals,
+        "wall_ms": sum(stage["wall_ms"] for stage in stages),
+    },
+}
+with open(output_path, "w", encoding="utf-8") as output:
+    json.dump(result, output, indent=2)
+    output.write("\n")
+PY
+
+{
+  printf '\n--- landed diff applied to work_dir ---\n'
+  git -C "$work_dir" status --short
+  printf '\nwork_dir base: %s\n' "$work_base"
+  printf 'Kogen landed: %s\n' "$(git --git-dir="$origin" rev-parse refs/heads/main)"
+} >> "$log_file"
+
+printf 'benchmark complete\nwork_dir: %s\nusage: %s\nlog: %s\ndiff: %s\n' \
+  "$work_dir" "$out_dir/usage.json" "$log_file" "$out_dir/final.diff"

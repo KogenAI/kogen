@@ -121,6 +121,35 @@ defmodule Kogen.Harness.Usage do
   def to_map(%__MODULE__{} = usage), do: Map.from_struct(usage)
 end
 
+defmodule Kogen.Harness.ShapeCall do
+  @moduledoc false
+
+  @enforce_keys [:stage, :model, :effort, :tokens, :wall_ms]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          stage: :shape,
+          model: String.t(),
+          effort: String.t(),
+          tokens: %{optional(atom()) => non_neg_integer()},
+          wall_ms: non_neg_integer()
+        }
+end
+
+defmodule Kogen.Harness.ShapePass do
+  @moduledoc false
+
+  @enforce_keys [:items, :text, :calls, :turns]
+  defstruct @enforce_keys
+
+  @type t :: %__MODULE__{
+          items: [map()],
+          text: String.t(),
+          calls: [Kogen.Harness.ShapeCall.t()],
+          turns: non_neg_integer()
+        }
+end
+
 defmodule Kogen.Harness.ToolArgs do
   @moduledoc false
 

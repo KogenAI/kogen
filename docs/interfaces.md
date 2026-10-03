@@ -3,7 +3,7 @@
 This file is the contract between domains. Change it only through the integrator. Types refer to `Kogen.Contracts.*` structs unless stated. Paths are absolute strings. Only `Kogen.Kernel` reads HOME, env or cwd; everyone else receives explicit values.
 
 ## Dependency graph (Boundary, acyclic)
-`contracts` ← every domain. `workspace` → proc. `state` → workspace. `checks` → proc, workspace, project. `harness` → proc, provider, project. `build` is pure (contracts only). `engine` → build, intent, proc, project, provider, workspace, state, checks, harness. `kernel` → proc, project, intent, provider, engine, workspace, state, checks, harness.
+`contracts` ← every domain. `workspace` → proc. `state` → workspace. `checks` → proc, workspace, project. `harness` → proc, provider, project. `build` is pure (contracts only). `shaper` → checks, harness, intent, proc, project. `engine` → build, intent, proc, project, provider, workspace, state, checks, harness. `kernel` → proc, project, intent, provider, engine, workspace, state, checks, harness, shaper.
 
 ## Kogen.Proc
 - `run([String.t()], opts) :: {:ok, ProcResult.t()} | {:error, :enoent | term()}`
@@ -55,6 +55,7 @@ This file is the contract between domains. Change it only through the integrator
 
 ## Kogen.Harness
 - `context_pack(%Kogen.Harness.Opts{}, intent_text) :: {:ok, %Kogen.Harness.Pack{text, refs, usage}} | {:error, term()}`
+- `shape(%Opts{}, slug, task, history, failure_text, turn_offset) :: {:ok, %ShapePass{items, text, calls, turns}} | {:error, term()}`; the stage exposes read/search and writes only the two slug-specific generated files.
 - `plan(%Opts{}, pack, intent_text) :: {:ok, %Kogen.Harness.Plan{text, usage}} | {:error, term()}`
 - `develop(%Opts{}, intent_text, plan | nil, resume :: nil | %{previous_items: list(), failure_text: String.t()}) :: {:ok, %Kogen.Harness.Result{outcome: :done | :gate_red | :gave_up, gate: map() | nil, items: list(), turns, usage, transcript_path}} | {:error, term()}`
 - `review(%Opts{}, intent_text, diff, check_summary) :: {:ok, %Kogen.Harness.Review{verdict: :accept | :revise, findings: [String.t()], usage}} | {:error, term()}`
@@ -67,11 +68,16 @@ This file is the contract between domains. Change it only through the integrator
   - `before_gate` optional zero-arity callback; Kernel uses it to check the approval protected manifest and scope before the done gate runs a fixer or check.
   - `changed?` optional controller callback; Engine supplies it using Workspace's sanitized Candidate tree scan, so Harness never runs Git against the Candidate directly.
 
+## Kogen.Shaper
+- `shape(%Kogen.Shaper.Request{}) :: {:ok, %Kogen.Shaper.Result{}} | {:error, term()}`; the controller runs the Harness shaper, lints the generated Intent, runs the project's `acceptance_checks`, and applies red-on-base validation. Candidate validation failures return to the same model conversation for at most two repair rounds.
+- Each `%Kogen.Harness.ShapeCall{}` records the shape model, effort, per-call token counts, and wall time. The transcript is stored outside the project checkout.
+
 ## Kogen.Checks
 - `fix(workdir, Project.t(), run_dir, env) :: {:ok, [ProcResult]}`: safe formatters only; `env` is the target project's explicit process environment.
 - `run_all(workdir, Project.t(), run_dir, env, git_env, sandbox) :: {:ok, %{tree: sha, receipts: [Receipt.t()], status: :pass | {:fail, [String.t()]}}} | {:error, Failure.t()}`: checks run with `env` under the supplied sandbox; Git tree calls use `git_env`; the tree is hashed before and after, with a change reported as `:candidate`/`:tree_mutated`.
 - `acceptance(workdir, Intent.t(), run_dir, env, git_env, sandbox) :: {:ok, %{status: :pass | {:fail, [id]}, ledger: [LedgerRow.t()]}} | {:error, Failure.t()}`: the formatter source is embedded at compile time and written into run_dir, never into the Candidate. Tests run with `env` under the supplied sandbox; Git tree calls use `git_env`.
 - `red_on_base(base_workdir, Intent.t(), run_dir, env, git_env) :: :ok | {:error, Failure.t()}`
+- `validate_shape(%Kogen.Checks.ShapeValidation{}) :: :ok | {:error, Failure.t()}` stages the candidate test briefly, runs project acceptance checks, verifies that checks leave the tree unchanged, and applies red-on-base validation before restoring the checkout.
 - `protected_violations(workdir, base_sha, manifest :: %{path => sha256}, git_env) :: {:ok, [path]}`
 - `scope_violations(workdir, base_sha, Intent.t(), Project.t(), allowed_extra :: [path], git_env) :: {:ok, [path]}`
 
@@ -124,9 +130,14 @@ This file is the contract between domains. Change it only through the integrator
 - `build(Kogen.Engine.Build.Request.t())` remains available for explicit/test requests and delegates to `Kogen.Engine.run/1`. The request carries explicit `home` and `workspace_root` values; Engine does not discover HOME.
 - `status(project_root, origin, base) :: {:ok, [IntentStatus.t()]} | {:error, term()}` reports one record for each `.kogen/intents/*/intent.md`; landed state is verified by candidate reachability from the selected branch.
 - `report(slug, project_root, origin, base) :: {:ok, json_binary} | {:error, term()}` returns the latest run's approval/base/candidate/landed SHAs, acceptance ledger, check receipts, model stages and failures.
+- Each Build `model_stage` report row includes the model, effort, token counts, and `wall_ms` spent in that stage.
 - `reconcile(run_id, project_root, origin, base) :: {:ok, :landed | :unchanged} | {:error, term()}` closes a run journal after a crash following successful CAS.
 - Every command except `--help` requires `--project <checkout>` and accepts `--origin <repo>` (default project checkout) and `--base <branch>` (default `main`). Build additionally accepts `--model` and `--effort`; approval requires `--by` and supports `--yes` to skip its TTY prompt.
 - Runtime discovery, including HOME, environment, cwd, `mise`, credential paths and escript/ERTS markers, lives in `Kogen.Kernel.RuntimeDiscovery`. The runtime value and explicit `mise env -C <workdir> --json` call live in `Kogen.Engine`. Harness and checks receive the target process environment; Workspace receives its Git-allowlisted projection.
+
+### Shaping an Intent from a task statement
+
+Run `kogen intent shape <slug> --task-file <path> --project <checkout>` to create `.kogen/intents/<slug>/intent.md` and `.kogen/acceptance/<slug>_test.exs`. The command validates both files and never approves the Intent. `--model` and `--effort` default to Build's `gpt-6-luna` and `max`; `--json` emits per-call usage for automation.
 
 ### Writing an acceptance test for a Build-engine Intent
 

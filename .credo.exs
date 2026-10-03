@@ -116,7 +116,8 @@
                Kogen.Provider.ChatGPT.Codec,
                Kogen.Harness.Codec,
                Kogen.Checks.Ledger,
-               Kogen.State.Json
+               Kogen.State.Json,
+               Kogen.Kernel.CLI.ShapeJson
              ]
            ]},
           {KogenChecks.Check.FailOpenWith, [included_paths: ["lib/"]]},
@@ -165,6 +166,16 @@
                  Kogen.State,
                  Kogen.Checks,
                  Kogen.Harness
+               ],
+               Kogen.Shaper => [
+                 Kogen.Contracts,
+                 Kogen.Checks,
+                 Kogen.Harness,
+                 Kogen.Intent,
+                 Kogen.Kernel,
+                 Kogen.E2e,
+                 Kogen.Proc,
+                 Kogen.Project
                ]
              },
              root: Kogen,

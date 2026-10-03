@@ -6,11 +6,13 @@ defmodule Kogen.Kernel.CLI.Runner do
   alias Kogen.Engine.Build.Result
   alias Kogen.Engine.Runtime
   alias Kogen.Kernel.CLI.Args
+  alias Kogen.Kernel.CLI.ShapeJson
   alias Kogen.Kernel.Types.ApprovalPreview
 
   @spec run(Args.t()) :: {non_neg_integer(), String.t()}
   def run(%Args{command: :version} = args), do: version(args)
   def run(%Args{command: :intent_check} = args), do: intent_check(args)
+  def run(%Args{command: :intent_shape} = args), do: intent_shape(args)
   def run(%Args{command: :approve} = args), do: approve(args)
   def run(%Args{command: :build} = args), do: build(args)
   def run(%Args{command: :status} = args), do: status(args)
@@ -36,6 +38,62 @@ defmodule Kogen.Kernel.CLI.Runner do
       {:error, {:lint, issues}} -> {2, format_issues("lint", issues)}
       {:error, reason} -> command_error(reason)
     end
+  end
+
+  defp intent_shape(args) do
+    with :ok <- project_directory(args),
+         {:ok, task} <- read_task_file(args.task_file),
+         {:ok, result} <-
+           Kogen.Kernel.shape(
+             hd(args.positionals),
+             args.project,
+             task,
+             args.model,
+             args.effort
+           ) do
+      render_shape(result, args.json)
+    else
+      {:error, {:task_file_unavailable, path, reason}} ->
+        {2, "task file unavailable #{path}: #{inspect(reason)}\n"}
+
+      {:error, reason} ->
+        command_error(reason)
+    end
+  end
+
+  defp read_task_file(path) do
+    expanded = Path.expand(path)
+
+    case File.read(expanded) do
+      {:ok, task} ->
+        if String.trim(task) == "",
+          do: {:error, {:task_file_unavailable, expanded, :empty}},
+          else: {:ok, task}
+
+      {:error, reason} ->
+        {:error, {:task_file_unavailable, expanded, reason}}
+    end
+  end
+
+  defp render_shape(result, true) do
+    {0, ShapeJson.encode(result) <> "\n"}
+  end
+
+  defp render_shape(result, false) do
+    calls = Enum.map_join(result.calls, "", &shape_call_text/1)
+
+    {0,
+     "Intent: #{result.intent_path}\nAcceptance test: #{result.acceptance_path}\n" <>
+       "Validated after #{result.rounds} round(s).\n" <>
+       calls <>
+       "Transcript: #{result.transcript_path}\n"}
+  end
+
+  defp shape_call_text(call) do
+    tokens = call.tokens
+
+    "shape #{call.model}/#{call.effort} input=#{tokens.input} cached=#{tokens.cached_input} " <>
+      "output=#{tokens.output} reasoning=#{tokens.reasoning} wall_ms=#{call.wall_ms}\n"
   end
 
   defp approve(args) do

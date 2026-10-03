@@ -107,6 +107,7 @@ defmodule Kogen.State.StateTest do
 
   alias Kogen.State
   alias Kogen.State.Approval
+  alias Kogen.State.Event
 
   setup do
     repo = start_supervised!({Agent, &StateFakeWorkspace.initial/0})
@@ -244,8 +245,13 @@ defmodule Kogen.State.StateTest do
   end
 
   test "journal decoding keeps verification result separate from lifecycle status" do
-    assert {:ok, %Kogen.State.Event{event: "check_result", status: nil, result: "pass"}} =
+    assert {:ok, %Event{event: "check_result", status: nil, result: "pass"}} =
              State.decode_event(~s({"event":"check_result","result":"pass"}))
+  end
+
+  test "journal decoding preserves model stage wall time" do
+    assert {:ok, %Event{event: "model_stage", stage: "shape", wall_ms: 37}} =
+             State.decode_event(~s({"event":"model_stage","stage":"shape","wall_ms":37}))
   end
 
   test "reconcile records a landing after CAS and releases only its own claim", context do
