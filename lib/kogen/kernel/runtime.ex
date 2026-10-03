@@ -33,6 +33,12 @@ defmodule Kogen.Kernel.Runtime do
     |> Map.merge(runtime_markers_from(runtime.base_env))
   end
 
+  @doc "Trusts the mise config of one workspace path through the environment only."
+  @spec trust_workspace(t(), Path.t()) :: t()
+  def trust_workspace(%__MODULE__{} = runtime, path) when is_binary(path) do
+    %{runtime | base_env: Map.put(runtime.base_env, "MISE_TRUSTED_CONFIG_PATHS", path)}
+  end
+
   @spec git_environment(map()) :: %{String.t() => String.t()}
   def git_environment(env) when is_map(env) do
     Map.filter(env, fn {key, _value} ->

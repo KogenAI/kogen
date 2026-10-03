@@ -111,6 +111,7 @@
                Kogen.Proc.Request,
                Kogen.Project.Loader,
                Kogen.Workspace.Git,
+               Kogen.Kernel.Runtime,
                Kogen.Provider.ChatGPT.Codec,
                Kogen.Harness.Codec,
                Kogen.Checks.Ledger,

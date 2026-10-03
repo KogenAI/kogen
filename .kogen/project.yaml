@@ -18,13 +18,13 @@ protected_paths:
   - test/support/**
   - test/test_helper.exs
 domains:
-  contracts: [lib/kogen/contracts, test/contracts]
-  intent: [lib/kogen/intent, test/intent]
-  project: [lib/kogen/project, test/project]
-  proc: [lib/kogen/proc, test/proc]
-  workspace: [lib/kogen/workspace, test/workspace]
-  state: [lib/kogen/state, test/state]
-  checks: [lib/kogen/checks, test/checks]
-  harness: [lib/kogen/harness, test/harness]
-  build: [lib/kogen/build, test/build]
-  kernel: [lib/kogen/kernel, test/kernel, test/acceptance]
+  contracts: [lib/kogen/contracts.ex, lib/kogen/contracts, test/contracts]
+  intent: [lib/kogen/intent.ex, lib/kogen/intent, test/intent]
+  project: [lib/kogen/project.ex, lib/kogen/project, test/project]
+  proc: [lib/kogen/proc.ex, lib/kogen/proc, test/proc]
+  workspace: [lib/kogen/workspace.ex, lib/kogen/workspace, test/workspace]
+  state: [lib/kogen/state.ex, lib/kogen/state, test/state]
+  checks: [lib/kogen/checks.ex, lib/kogen/checks, test/checks]
+  harness: [lib/kogen/harness.ex, lib/kogen/harness, test/harness]
+  build: [lib/kogen/build.ex, lib/kogen/build, test/build]
+  kernel: [lib/kogen/kernel.ex, lib/kogen/kernel, test/kernel, test/acceptance]
