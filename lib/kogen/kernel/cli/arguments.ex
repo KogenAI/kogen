@@ -33,7 +33,7 @@ defmodule Kogen.Kernel.CLI.Arguments do
     with :ok <- no_unknown_options(leftovers, invalid),
          :ok <- valid_positionals(command, positionals),
          :ok <- valid_flags(command, options),
-         {:ok, project, origin, base} <- paths(options) do
+         {:ok, project, origin, base} <- paths(command, options) do
       {:ok,
        %Args{
          command: command,
@@ -86,16 +86,23 @@ defmodule Kogen.Kernel.CLI.Arguments do
 
   defp required_flags(_command, _options), do: :ok
 
-  defp paths(options) do
+  defp paths(command, options) do
     case Keyword.fetch(options, :project) do
       {:ok, project} ->
-        project = Path.expand(project)
-        origin = options |> Keyword.get(:origin, project) |> Path.expand()
-        base = Keyword.get(options, :base, "main")
-        {:ok, project, origin, base}
+        project_paths(project, options)
+
+      :error when command == :version ->
+        {:ok, nil, nil, nil}
 
       :error ->
-        {:error, "every command requires --project <checkout>"}
+        project_paths(File.cwd!(), options)
     end
+  end
+
+  defp project_paths(project, options) do
+    project = Path.expand(project)
+    origin = options |> Keyword.get(:origin, project) |> Path.expand()
+    base = Keyword.get(options, :base, "main")
+    {:ok, project, origin, base}
   end
 end

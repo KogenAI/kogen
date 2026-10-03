@@ -7,7 +7,7 @@ defmodule Kogen.Kernel.CLI do
   alias Kogen.Kernel.CLI.Runner
 
   @usage """
-  Usage: kogen <command> [arguments] --project <checkout> [options]
+  Usage: kogen <command> [arguments] [options]
 
   Commands:
     intent check <path>   Parse and lint an Intent
@@ -19,6 +19,7 @@ defmodule Kogen.Kernel.CLI do
     version               Show the Kogen version
 
   Common options:
+    --project <checkout>  Project checkout (default: current directory)
     --origin <repo>       Git repository used for approval and landing
     --base <branch>       Target branch (default: main)
   """

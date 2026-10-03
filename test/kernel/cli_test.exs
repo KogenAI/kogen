@@ -2,16 +2,19 @@ defmodule Kogen.Kernel.CLITest do
   use Kogen.Testkit.Case
 
   alias Kogen.Kernel.CLI
+  alias Kogen.Kernel.CLI.Arguments
 
   @fixture Path.expand("../../fixtures/hello_app", __DIR__)
 
-  test "version accepts the required project path" do
+  test "version works with or without a project path" do
+    assert {0, "kogen 0.0.0\n"} = CLI.execute(["version"])
     assert {0, "kogen 0.0.0\n"} = CLI.execute(["version", "--project", @fixture])
   end
 
-  test "project paths are required for project commands" do
-    assert {2, output} = CLI.execute(["status"])
-    assert output =~ "requires --project"
+  test "project commands default to the current directory" do
+    assert {:ok, args} = Arguments.parse(["status"])
+    assert Path.type(args.project) == :absolute
+    assert args.origin == args.project
   end
 
   test "intent check parses and lints from the named project root" do

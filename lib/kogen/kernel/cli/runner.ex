@@ -16,6 +16,8 @@ defmodule Kogen.Kernel.CLI.Runner do
   def run(%Args{command: :report} = args), do: report(args)
   def run(%Args{command: :reconcile} = args), do: reconcile(args)
 
+  defp version(%Args{project: nil}), do: {0, "kogen #{Kogen.Kernel.version()}\n"}
+
   defp version(args) do
     case project_directory(args) do
       :ok -> {0, "kogen #{Kogen.Kernel.version()}\n"}
