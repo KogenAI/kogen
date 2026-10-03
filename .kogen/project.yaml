@@ -3,6 +3,13 @@ checks:
   - name: full
     argv: [make, check]
     timeout_ms: 900000
+acceptance_checks:
+  - name: compile
+    argv: [env, MIX_ENV=test, mise, exec, --, mix, test, --warnings-as-errors, --exclude, test, "{path}"]
+    timeout_ms: 300000
+  - name: credo
+    argv: [mise, exec, --, mix, credo, --strict, "{path}"]
+    timeout_ms: 120000
 fix:
   - name: format
     argv: [mix, format, --force]
