@@ -171,13 +171,13 @@ defmodule Kogen.Kernel.Reconcile do
 
     with {:ok, run} <- State.load(state_root, run_id) do
       case run.status do
-        :running -> reconcile_unfinished(run, state_root, origin, git_env)
+        :running -> reconcile_unfinished(run, state_root, origin, base, git_env)
         _terminal -> State.reconcile(origin, state_root, run, base, git_env)
       end
     end
   end
 
-  defp reconcile_unfinished(run, state_root, origin, git_env) do
+  defp reconcile_unfinished(run, state_root, origin, base, git_env) do
     case owner_alive?(run.owner_os_pid, run.dir) do
       {:ok, true} ->
         {:ok, :unchanged}
@@ -185,9 +185,18 @@ defmodule Kogen.Kernel.Reconcile do
       {:ok, false} ->
         workspace = Path.join([state_root, "w", run.id])
 
-        with :ok <- State.recover_crashed(origin, state_root, run, git_env),
-             :ok <- Workspace.destroy(workspace) do
-          {:ok, :crashed}
+        case State.reconcile(origin, state_root, run, base, git_env) do
+          {:ok, :landed} ->
+            with :ok <- Workspace.destroy(workspace), do: {:ok, :landed}
+
+          {:ok, :unchanged} ->
+            with :ok <- State.recover_crashed(origin, state_root, run, git_env),
+                 :ok <- Workspace.destroy(workspace) do
+              {:ok, :crashed}
+            end
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       {:error, reason} ->
