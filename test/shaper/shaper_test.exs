@@ -12,8 +12,14 @@ defmodule Kogen.Shaper.Tests do
     tmp_dir: tmp_dir
   } do
     project = seed_project!(Path.join(tmp_dir, "project"))
-    invalid_intent = intent("usually keeps")
-    valid_intent = intent("keeps")
+    invalid_intent = intent("usually keeps", "A1 verifies Tiny.value/0 returns :old.")
+
+    valid_intent =
+      intent(
+        "keeps",
+        "Approach: Keep Tiny.value/0 unchanged and preserve its public result by avoiding unrelated changes."
+      )
+
     test_source = acceptance_test()
 
     {:ok, server} =
@@ -68,11 +74,32 @@ defmodule Kogen.Shaper.Tests do
       assert Enum.map_join(Enum.at(requests, 0).input, &inspect/1) =~
                "Configured project domains: app"
 
+      assert Enum.at(requests, 0).instructions =~ "Use this exact Intent structure"
+
+      assert Enum.at(requests, 0).instructions =~
+               "`size` is exactly `small`, `medium`, or `large`"
+
+      assert Enum.at(requests, 0).instructions =~ "Acceptance criteria alone are not a plan"
+      assert Enum.at(requests, 0).instructions =~ "title: Check acceptance tests at approval"
+
+      assert Enum.at(requests, 0).instructions =~
+               "title: Rebase onto a moved base instead of parking"
+
       assert Enum.map_join(Enum.at(requests, 1).input, &inspect/1) =~
                ".kogen/acceptance/shape-loop_test.exs"
 
       assert Enum.map_join(Enum.at(requests, 4).input, &inspect/1) =~ "intent_lint_failed"
       assert Enum.map_join(Enum.at(requests, 4).input, &inspect/1) =~ "contains a hedge"
+      repair = Enum.map_join(Enum.at(requests, 4).input, &inspect/1)
+      assert repair =~ "Acceptance item A1 text:"
+      assert repair =~ "Tiny.value/0 usually keeps returning :old on the unchanged checkout."
+
+      assert repair =~
+               "Rule: Acceptance items must state a definite, observable result without hedge words."
+
+      assert repair =~ "Notes text:"
+      assert repair =~ "A1 verifies Tiny.value/0 returns :old."
+      assert repair =~ "Notes must begin with `Approach:`"
 
       assert Enum.all?(requests, fn request ->
                Enum.map(request.tools, &Map.get(&1, "name")) == ["read", "search", "write"]
@@ -145,8 +172,10 @@ defmodule Kogen.Shaper.Tests do
     """
   end
 
-  defp intent(acceptance_text) do
-    """
+  defp intent(acceptance_text, notes) do
+    notes_section = if notes, do: "\n\n## Notes\n#{notes}\n", else: ""
+
+    String.trim_leading("""
     ---
     title: Keep Tiny value
     domains: [app]
@@ -159,7 +188,8 @@ defmodule Kogen.Shaper.Tests do
 
     ## Verify
     - A1: test keep domain=app
-    """
+    #{notes_section}
+    """)
   end
 
   defp acceptance_test do

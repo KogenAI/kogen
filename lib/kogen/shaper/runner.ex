@@ -3,17 +3,16 @@ defmodule Kogen.Shaper.Runner do
 
   alias Kogen.Checks.ShapeValidation
   alias Kogen.Contracts.Failure
-  alias Kogen.Contracts.Intent
   alias Kogen.Contracts.Project
   alias Kogen.Harness
   alias Kogen.Harness.Opts
   alias Kogen.Harness.ShapePass
-  alias Kogen.Intent, as: IntentDomain
   alias Kogen.Proc
   alias Kogen.Project, as: ProjectDomain
   alias Kogen.Shaper.Request
   alias Kogen.Shaper.Result
   alias Kogen.Shaper.Runner.State
+  alias Kogen.Shaper.Validation
 
   @max_repairs 2
 
@@ -176,8 +175,7 @@ defmodule Kogen.Shaper.Runner do
     acceptance_path = acceptance_path(request.slug)
 
     with {:ok, intent_bytes} <- read_generated(request.workdir, intent_path),
-         {:ok, intent} <- parse_intent(intent_bytes, intent_path),
-         :ok <- clean_intent(intent),
+         {:ok, intent} <- Validation.intent(intent_bytes, intent_path),
          {:ok, test_bytes} <- read_generated(request.workdir, acceptance_path) do
       Kogen.Checks.validate_shape(%ShapeValidation{
         workdir: request.workdir,
@@ -191,27 +189,18 @@ defmodule Kogen.Shaper.Runner do
     end
   end
 
-  defp parse_intent(bytes, path) do
-    case IntentDomain.parse_binary(bytes, path) do
-      {:ok, %Intent{} = intent} ->
-        {:ok, intent}
-
-      {:error, issues} ->
-        {:error, failure(:candidate, :intent_parse_failed, render_issues("parse", issues))}
-    end
-  end
-
-  defp clean_intent(%Intent{} = intent) do
-    case IntentDomain.lint(intent) do
-      [] -> :ok
-      issues -> {:error, failure(:candidate, :intent_lint_failed, render_issues("lint", issues))}
-    end
-  end
-
   defp read_generated(workdir, relative) do
     case File.read(Path.join(workdir, relative)) do
       {:ok, contents} ->
         {:ok, contents}
+
+      {:error, :enoent} ->
+        {:error,
+         failure(
+           :candidate,
+           :generated_file_missing,
+           "Cannot read #{relative}: :enoent. Write this required file at that exact path before finishing."
+         )}
 
       {:error, reason} ->
         {:error,
@@ -297,13 +286,6 @@ defmodule Kogen.Shaper.Runner do
 
   defp failure_output(%Failure{} = failure),
     do: "#{failure.class}/#{failure.reason}: #{failure.detail}"
-
-  defp render_issues(kind, issues) do
-    Enum.map_join(issues, "", fn issue ->
-      line = if Map.get(issue, :line), do: " at #{issue.line}", else: ""
-      "#{kind}#{line}: #{issue.message}\n"
-    end)
-  end
 
   defp absolute_directory?(path),
     do: is_binary(path) and Path.type(path) == :absolute and File.dir?(path)

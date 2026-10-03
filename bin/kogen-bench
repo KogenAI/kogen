@@ -56,7 +56,6 @@ JSON
 git clone --quiet "$work_dir" "$project_dir"
 git -C "$project_dir" checkout --quiet -B main "$work_base"
 mkdir -p "$project_dir/.kogen"
-printf '\n/.setup-compile.log\n' >> "$project_dir/.gitignore"
 python3 - "$task_json" "$project_dir/.kogen/project.yaml" "$scratch/project_tmpdir" <<'PY'
 import json
 import os
@@ -119,7 +118,7 @@ lines = [
     "    timeout_ms: 300000",
     "acceptance_checks:",
     "  - name: compile-acceptance",
-    "    argv: " + array(prefix + ["mix", "test", "--no-run", "{path}"]),
+    "    argv: " + array(prefix + ["mix", "test", "--dry-run", "{path}"]),
     "    timeout_ms: 600000",
     "  - name: format-acceptance",
     "    argv: " + array(prefix + ["mix", "format", "--check-formatted", "{path}"]),
@@ -134,6 +133,14 @@ if deps_source_override and isinstance(raw_setup, str):
         raise SystemExit("KOGEN_BENCH_DEPS_SOURCE requires setup to begin by copying deps")
     env["BENCH_DEPS_SOURCE"] = deps_source_override
     raw_setup = 'cp -cR "$BENCH_DEPS_SOURCE" deps && ' + copy_step.group(1)
+
+if isinstance(raw_setup, str) and ".setup-compile.log" in raw_setup:
+    task_tmpdir = env.get("TMPDIR") or os.environ.get("TMPDIR", "/tmp")
+    scratch_name = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(target_path))))
+    task_slug = os.path.basename(os.path.dirname(source_path))
+    setup_log_path = os.path.join(task_tmpdir, f"{scratch_name}-{task_slug}-setup.log")
+    env["BENCH_SETUP_LOG"] = setup_log_path
+    raw_setup = raw_setup.replace(".setup-compile.log", '"$BENCH_SETUP_LOG"')
 
 if isinstance(raw_setup, str) and raw_setup.strip():
     setup_argv = prefix + ["sh", "-lc", raw_setup]
@@ -203,6 +210,10 @@ copy_shaper_setup_logs() {
     [ -f "$setup_log" ] || continue
     cp "$setup_log" "$out_dir/$(basename "$setup_log")"
   done
+}
+
+copy_bench_setup_log() {
+  [ ! -f "$setup_log_path" ] || cp "$setup_log_path" "$out_dir/task-setup.log"
 }
 
 write_failed_usage() {
@@ -336,6 +347,7 @@ PY
 
 slug=$(basename "$task_dir")
 runtime_tmpdir=$(cat "$scratch/project_tmpdir")
+setup_log_path="${runtime_tmpdir%/}/$(basename "$scratch")-$slug-setup.log"
 shaper_root="${runtime_tmpdir%/}/kogen-shaper/$slug"
 if run_capture shape "$out_dir/shape.json" "$KOGEN_BIN" intent shape "$slug" \
   --task-file "$prompt_file" --project "$project_dir" --origin "$origin" \
@@ -343,10 +355,12 @@ if run_capture shape "$out_dir/shape.json" "$KOGEN_BIN" intent shape "$slug" \
   :
 else
   stage_status=$?
+  copy_bench_setup_log
   copy_shaper_setup_logs
   write_failed_usage shape gpt-6-luna max "$stage_status" "$CAPTURE_WALL_MS"
   exit "$stage_status"
 fi
+copy_bench_setup_log
 
 if run_capture approve "$scratch/approve.txt" "$KOGEN_BIN" approve "$slug" \
   --project "$project_dir" --origin "$origin" --base main --by kogen-bench --yes; then

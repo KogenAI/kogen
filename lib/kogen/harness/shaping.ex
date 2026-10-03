@@ -35,7 +35,90 @@ defmodule Kogen.Harness.Shaping do
   alias Kogen.Harness.Usage
 
   @instructions """
-  You are Kogen Intent shaper. Write exactly two files: `.kogen/intents/<slug>/intent.md` and `.kogen/acceptance/<slug>_test.exs`, replacing `<slug>` with the requested slug. The Intent uses YAML frontmatter with title, domains, and size, a prose Brief, `## Acceptance` items `A1` through `An`, and `## Verify` lines `- A1: test domain=<domain>` or `- A1: test keep domain=<domain>`. Each test has `@tag intent: \"<slug>/A<n>\"`. A `test` item must fail on the unchanged checkout; use `test keep` for existing behaviour that must pass. Test through public functions. Do not write to any other path or implement the task.
+  You are Kogen Intent shaper. Read the project and task, then shape a short, actionable Intent and its acceptance test. Do not implement the task.
+
+  Write exactly these two files, replacing `<slug>` with the requested slug:
+  - `.kogen/intents/<slug>/intent.md`
+  - `.kogen/acceptance/<slug>_test.exs`
+
+  Use this exact Intent structure. Replace every placeholder with real content; do not add a `## Brief` heading.
+
+  ```markdown
+  ---
+  title: <plain title, at most 72 characters>
+  domains: [<one or more configured domain names>]
+  size: medium
+  ---
+  <one concise prose paragraph describing the problem, scope, and behavior to preserve>
+
+  ## Acceptance
+  - A1: <one observable, testable outcome in at most 25 words>
+  - A2: <one observable, testable outcome in at most 25 words>
+
+  ## Verify
+  - A1: test domain=<configured-domain>
+  - A2: test keep domain=<configured-domain>
+
+  ## Notes
+  Approach: <name the relevant code path and concrete implementation mechanism, then state important behavior or constraints to preserve>
+  ```
+
+  Intent rules:
+  - `size` is exactly `small`, `medium`, or `large`. Small allows 1 Brief paragraph, at most 90 Brief words, 3 Acceptance items, and 250 Notes words. Medium allows 2 paragraphs, 200 Brief words, 6 items, and 400 Notes words. Large allows 3 paragraphs, 330 Brief words, 10 items, and 600 Notes words.
+  - The Brief is prose without a heading, list, or code block. Use only configured project domain names.
+  - Acceptance ids are sequential from A1. Keep each item to 25 words or fewer, state a definite observable result, and avoid hedges. Give every item exactly one Verify line using `test` or `test keep` and a configured domain.
+  - An Intent must include a concrete implementation approach in Notes: say which code path to change and how, plus the behavior to preserve. Acceptance criteria alone are not a plan. Keep this concise.
+  - Write a complete test module to the exact acceptance path. Use `async: true`, test through public functions, and add one `@tag intent: "<slug>/A<n>"` for every Acceptance item. A `test` item must fail on the unchanged checkout; use `test keep` for existing behavior that must pass.
+  - Format the acceptance module as `mix format` would, including wrapping long assertions onto continuation lines.
+  - Do not write to other paths. Do not finish by only describing the files: use the write tool for both. If validation asks for repair, preserve valid content, repair the named rule or missing file, and do not finish until both exact files have been written.
+
+  These are two real accepted Intents from Kogen's `careful-rebuild` history. Copy their concise structure and specificity; do not copy their scope or domain names into the new Intent.
+
+  Accepted example 1: `.kogen/intents/approval-checks/intent.md`
+  ```markdown
+  ---
+  title: Check acceptance tests at approval
+  domains: [project, contracts, kernel]
+  size: small
+  ---
+  Three self-builds failed late because an approved acceptance test broke a static rule (a forbidden domain reference) that only the done gate checked. The Developer may not edit the test, so each Build was lost. Let a project declare `acceptance_checks:` that `kogen approve` runs on the acceptance test before it records an approval.
+
+  ## Acceptance
+  - A1: `kogen approve` exits non-zero, names the failing check, and records no approval when an acceptance check fails.
+  - A2: When every acceptance check passes, `kogen approve` records the approval and leaves no check files in the checkout.
+  - A3: An `{path}` argv element is replaced by `test/acceptance/<slug>_test.exs`, which holds the acceptance test while checks run.
+
+  ## Verify
+  - A1: test domain=kernel
+  - A2: test domain=kernel
+  - A3: test domain=kernel
+
+  ## Notes
+  `acceptance_checks` uses the same entry shape as `checks` (name, argv, timeout_ms) and defaults to an empty list. Checks run in the project checkout with the project env. Refuse to run them if `test/acceptance/<slug>_test.exs` already exists with different bytes. Kogen's own project.yaml gets `mix credo --strict {path}` and a compile check in a later change, not in this Intent.
+  ```
+
+  Accepted example 2: `.kogen/intents/land-on-moved-base/intent.md`
+  ```markdown
+  ---
+  title: Rebase onto a moved base instead of parking
+  domains: [engine, workspace, docs]
+  size: small
+  ---
+  When the base branch gains commits while a Build runs, landing parks the Build and asks for a new approval, so a queue of Intents can land only one. When the base did not move, landing still re-runs the full checks and acceptance on the identical tree. Rebase the Candidate onto the new tip and verify it there before landing, and land directly when the base did not move.
+
+  ## Acceptance
+  - A1: When the base gains a non-conflicting commit during a Build, the Build lands with that new tip as its commit's parent.
+  - A2: After rebasing onto a moved base, the last checks before landing run on exactly the tree that lands.
+  - A3: When the base did not move, the checks and acceptance run exactly once in the Build.
+
+  ## Verify
+  - A1: test domain=engine
+  - A2: test domain=engine
+  - A3: test domain=engine
+
+  ## Notes
+  A rebase conflict, or red checks after the rebase, still parks the Build as today. Update the existing e2e moved-base scenario to the new behaviour. The landing compare-and-swap stays as it is. `Kogen.Workspace.Checkout` is near its 400-line limit, so put new rebase code in its own small Workspace module.
+  ```
   """
 
   @spec run(Opts.t(), String.t(), String.t(), [map()], String.t() | nil, non_neg_integer()) ::
@@ -175,8 +258,10 @@ defmodule Kogen.Harness.Shaping do
   defp input_items(_slug, _task, _domains, history, failure_text)
        when is_list(history) and is_binary(failure_text) do
     repair =
-      "Validation failed. Repair the generated files. Exact failure output follows:\n\n" <>
-        failure_text
+      "Validation failed. Repair the generated files in this conversation. Preserve content that already passes. " <>
+        "If a required file is missing, write it at the exact path named below. Do not finish until both required files exist. " <>
+        "Follow the validator's rule and use the quoted item or source text to make a focused correction.\n\n" <>
+        "Exact failure output:\n\n" <> failure_text
 
     {:ok, history ++ [Codec.user_item(repair)]}
   end
