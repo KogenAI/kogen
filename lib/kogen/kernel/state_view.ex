@@ -322,7 +322,9 @@ defmodule Kogen.Kernel.Report do
          ])},
         {"acceptance_results", event_payload(events, "acceptance_result", :ledger, [])},
         {"check_receipts", event_payload(events, "check_result", :receipts, [])},
+        {"excused_flakes", excused_flakes(events)},
         {"model_stages", model_stages(events)},
+        {"findings", findings(events)},
         {"failures", failures(events)}
       ])
 
@@ -351,6 +353,23 @@ defmodule Kogen.Kernel.Report do
         {"reason", event.reason},
         {"detail", event.detail}
       ])
+    end
+  end
+
+  defp findings(events) do
+    for %Event{event: "scope_warning"} = event <- events do
+      json_object([
+        {"type", "scope_warning"},
+        {"path", event.path},
+        {"declared_domains", event.declared_domains},
+        {"message", event.detail}
+      ])
+    end
+  end
+
+  defp excused_flakes(events) do
+    for %Event{event: "flake_excused"} = event <- events do
+      json_object([{"test_ids", event.test_ids}, {"seed", event.seed}])
     end
   end
 

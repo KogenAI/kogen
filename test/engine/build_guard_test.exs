@@ -50,7 +50,9 @@ defmodule Kogen.Engine.BuildGuardTest do
     assert detail =~ protected_path
   end
 
-  test "rejects an info-excluded untracked file as out of scope", %{tmp_dir: tmp_dir} do
+  test "reports an info-excluded untracked file as an out-of-scope warning", %{
+    tmp_dir: tmp_dir
+  } do
     origin = Git.create!(Path.join(tmp_dir, "origin"))
     base_sha = origin |> git_output!(["rev-parse", "HEAD"]) |> String.trim()
     workspace_root = Path.join([tmp_dir, ".kogen", "workspaces", "guard-fixture"])
@@ -85,10 +87,19 @@ defmodule Kogen.Engine.BuildGuardTest do
       sha256: String.duplicate("a", 64)
     }
 
-    assert {:error, %Failure{class: :candidate, reason: :scope_edit, detail: detail}} =
-             Guard.check(workdir, base_sha, intent, project, %{}, candidate_env)
+    assert :ok = Guard.check(workdir, base_sha, intent, project, %{}, candidate_env)
 
-    assert detail =~ "hidden.txt"
+    assert {:ok,
+            [
+              %{
+                path: "hidden.txt",
+                declared_domains: ["kernel"],
+                finding: finding
+              }
+            ]} = Guard.scope_warnings(workdir, base_sha, intent, project, candidate_env)
+
+    assert finding =~ "hidden.txt"
+    assert finding =~ "kernel"
   end
 
   defp git!(repo, args), do: Proc.cmd!("git", ["-C", repo | args], env: git_env())

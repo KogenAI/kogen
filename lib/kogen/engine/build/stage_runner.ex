@@ -4,6 +4,7 @@ defmodule Kogen.Engine.Build.StageRunner do
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.ProviderError
   alias Kogen.Engine.Build.Commit
+  alias Kogen.Engine.Build.GateSupport
   alias Kogen.Engine.Build.Guard
   alias Kogen.Engine.Build.Reviewer
   alias Kogen.Engine.Build.Session
@@ -11,7 +12,6 @@ defmodule Kogen.Engine.Build.StageRunner do
   alias Kogen.Harness.Opts
   alias Kogen.Harness.Result, as: HarnessResult
   alias Kogen.State
-  alias Kogen.Workspace
 
   @spec run(atom(), map(), Session.t()) ::
           {:ok, Session.t(), [term()]}
@@ -27,7 +27,7 @@ defmodule Kogen.Engine.Build.StageRunner do
   def run(:land, args, session), do: Commit.land(args, session)
 
   @spec harness_options(Session.t()) :: Opts.t()
-  def harness_options(session), do: harness_opts(session)
+  def harness_options(session), do: GateSupport.harness_options(session)
 
   defp context(session) do
     case guard(session) do
@@ -40,7 +40,7 @@ defmodule Kogen.Engine.Build.StageRunner do
     started_at = System.monotonic_time(:millisecond)
 
     with :ok <- red_on_base(session),
-         {:ok, pack} <- Harness.context_pack(harness_opts(session), session.intent_text),
+         {:ok, pack} <- Harness.context_pack(harness_options(session), session.intent_text),
          :ok <-
            record_model(session, :context, "gpt-6-luna", "low", pack.usage, elapsed(started_at)) do
       {:ok, %{session | pack: pack, failure: nil, failure_text: nil},
@@ -74,7 +74,7 @@ defmodule Kogen.Engine.Build.StageRunner do
   defp plan(%Session{pack: pack} = session) do
     started_at = System.monotonic_time(:millisecond)
 
-    case Harness.plan(harness_opts(session), pack, session.intent_text) do
+    case Harness.plan(harness_options(session), pack, session.intent_text) do
       {:ok, plan} ->
         case record_model(
                session,
@@ -104,7 +104,7 @@ defmodule Kogen.Engine.Build.StageRunner do
     resume = resume_data(session)
     started_at = System.monotonic_time(:millisecond)
 
-    case Harness.develop(harness_opts(session), session.intent_text, session.plan, resume, 0) do
+    case Harness.develop(harness_options(session), session.intent_text, session.plan, resume, 0) do
       {:ok, %HarnessResult{} = result} ->
         finish_develop(session, result, started_at)
 
@@ -129,9 +129,17 @@ defmodule Kogen.Engine.Build.StageRunner do
              session.request.effort,
              result.usage,
              elapsed(started_at)
-           ) do
+           ),
+         {:ok, gate_flakes} <- GateSupport.record_gate_flakes(session, result.gate) do
       {failure, detail} = gate_failure(result)
-      session = %{session | last_harness: result, failure: failure, failure_text: detail}
+
+      session = %{
+        session
+        | last_harness: result,
+          flake_excused: session.flake_excused ++ gate_flakes,
+          failure: failure,
+          failure_text: detail
+      }
 
       events = [
         {:stage_ok, :develop, %{tree: tree}},
@@ -140,6 +148,9 @@ defmodule Kogen.Engine.Build.StageRunner do
 
       {:ok, session, events}
     else
+      {:error, %Failure{} = failure} ->
+        fail(session, :develop, failure)
+
       {:error, reason} ->
         fail(session, :develop, controller_failure(:workspace_failed, inspect(reason)))
     end
@@ -229,12 +240,15 @@ defmodule Kogen.Engine.Build.StageRunner do
              session.sandbox
            ),
          :ok <- record_check_results(session, check_result, acceptance),
-         :ok <- check_passed(check_result, acceptance) do
+         :ok <- check_passed(check_result, acceptance),
+         {:ok, scope_warnings} <- GateSupport.scope_warnings(session),
+         :ok <- GateSupport.record_scope_warnings(session, scope_warnings) do
       {:ok,
        %{
          session
          | acceptance: acceptance.ledger,
            receipts: check_result.receipts,
+           scope_warnings: scope_warnings,
            failure: nil,
            failure_text: nil
        }, [{:stage_ok, :check, %{status: :pass}}]}
@@ -273,54 +287,6 @@ defmodule Kogen.Engine.Build.StageRunner do
 
   defp acceptance_status(:pass), do: :pass
   defp acceptance_status({:fail, ids}), do: %{status: :fail, failed_ids: ids}
-
-  defp harness_opts(session) do
-    guard = fn ->
-      Guard.check(
-        session.workdir,
-        session.base_sha,
-        session.intent,
-        session.project,
-        manifest(session),
-        session.git_env
-      )
-    end
-
-    opts =
-      session.harness_opts ||
-        %Opts{
-          workdir: session.workdir,
-          run_dir: session.run_dir,
-          project: session.project,
-          sandbox: session.sandbox,
-          provider_mod: session.request.provider_mod,
-          provider_config: session.request.provider_config,
-          proc_mod: Kogen.Proc,
-          env: session.process_env,
-          before_gate: guard,
-          models: %{
-            builder: {session.request.model, session.request.effort},
-            strong: {session.request.model, session.request.effort}
-          },
-          limits: %{max_turns: 60, wall_ms: 1_800_000},
-          repairs_left: 0
-        }
-
-    protected = Map.keys(manifest(session))
-
-    opts
-    |> Map.put(:changed?, opts.changed? || changed_detector(session))
-    |> Map.put(:protected, Enum.uniq(opts.protected ++ protected))
-  end
-
-  defp changed_detector(session) do
-    fn ->
-      case Workspace.changed_paths(session.workdir, session.base_sha, session.git_env) do
-        {:ok, paths} -> {:ok, paths != []}
-        {:error, reason} -> {:error, reason}
-      end
-    end
-  end
 
   defp manifest(session), do: session.approval.protected_manifest
 

@@ -54,7 +54,7 @@ defmodule Kogen.E2e.Build.Result do
   alias Kogen.E2e.Build.Fixture
 
   @enforce_keys [:build, :events, :fixture, :run_status, :claim_released]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [provider_requests: []]
 
   @doc "A Build refused before it starts has no run; report the refusal as the outcome."
   @spec refused(Fixture.t(), term()) :: t()
@@ -64,7 +64,8 @@ defmodule Kogen.E2e.Build.Result do
       events: [],
       fixture: fixture,
       run_status: nil,
-      claim_released: true
+      claim_released: true,
+      provider_requests: []
     }
   end
 
@@ -73,6 +74,7 @@ defmodule Kogen.E2e.Build.Result do
           events: [Kogen.State.Event.t()],
           fixture: Fixture.t(),
           run_status: Kogen.State.Run.status(),
-          claim_released: boolean()
+          claim_released: boolean(),
+          provider_requests: [Kogen.Contracts.ModelRequest.t()]
         }
 end

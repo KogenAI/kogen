@@ -266,6 +266,24 @@ defmodule Kogen.State.StateTest do
              )
   end
 
+  test "journal decoding preserves scope warnings and excused test seeds" do
+    assert {:ok,
+            %Event{
+              event: "scope_warning",
+              path: "README.md",
+              declared_domains: ["kernel"],
+              detail: "out of scope"
+            }} =
+             State.decode_event(
+               ~s({"event":"scope_warning","path":"README.md","declared_domains":["kernel"],"detail":"out of scope"})
+             )
+
+    assert {:ok, %Event{event: "flake_excused", test_ids: ["test/foo_test.exs:12"], seed: 17}} =
+             State.decode_event(
+               ~s({"event":"flake_excused","test_ids":["test/foo_test.exs:12"],"seed":17})
+             )
+  end
+
   test "reconcile records a landing after CAS and releases only its own claim", context do
     approved = approval()
 

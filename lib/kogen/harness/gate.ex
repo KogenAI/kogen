@@ -16,7 +16,14 @@ defmodule Kogen.Harness.Gate do
       commands = fixes ++ checks
       failures = Enum.flat_map(commands, &failure_text/1)
       status = if failures == [], do: :pass, else: :fail
-      {:ok, %GateResult{status: status, fixes: fixes, checks: checks, failures: failures}}
+      {:ok,
+       %GateResult{
+         status: status,
+         fixes: fixes,
+         checks: checks,
+         failures: failures,
+         flake_excused: []
+       }}
     end
   end
 

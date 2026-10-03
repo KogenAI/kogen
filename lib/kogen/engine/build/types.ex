@@ -114,6 +114,8 @@ defmodule Kogen.Engine.Build.Session do
     :landed_sha,
     :acceptance,
     :receipts,
+    flake_excused: [],
+    scope_warnings: [],
     lines: []
   ]
 
@@ -142,6 +144,8 @@ defmodule Kogen.Engine.Build.Session do
           landed_sha: String.t() | nil,
           acceptance: [Kogen.Checks.LedgerRow.t()] | nil,
           receipts: [Kogen.Contracts.Receipt.t()] | nil,
+          flake_excused: [%{test_ids: [String.t()], seed: non_neg_integer()}],
+          scope_warnings: [map()],
           lines: [String.t()]
         }
 end

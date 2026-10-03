@@ -17,10 +17,11 @@ defmodule Kogen.E2e.Build do
   @slug "build-engine"
 
   @spec prepare_seed!(Path.t()) :: Path.t()
-  def prepare_seed!(parent) do
+  @spec prepare_seed!(Path.t(), keyword()) :: Path.t()
+  def prepare_seed!(parent, options \\ []) do
     seed = Path.join(parent, "compiled-tiny-project")
     origin = Path.join(parent, "approved-origin.git")
-    write_seed!(seed)
+    write_seed!(seed, options)
     write_intent!(seed)
     compile_seed!(seed)
     prepare_approved_seed!(seed, origin)
@@ -36,10 +37,16 @@ defmodule Kogen.E2e.Build do
       ScriptedProvider.start_link(steps, provider_hook(fixture, options.move_base_on))
 
     try do
-      run_build!(fixture, server)
+      result = run_build!(fixture, server)
+      %{result | provider_requests: ScriptedProvider.requests(%Config{server: server})}
     after
       GenServer.stop(server, :normal)
     end
+  end
+
+  @spec report(Result.t()) :: {:ok, binary()} | {:error, term()}
+  def report(%Result{fixture: %Fixture{} = fixture}) do
+    Kogen.Kernel.report(@slug, fixture.project_root, fixture.origin, "main")
   end
 
   defp run_build!(%Fixture{} = fixture, server) do
@@ -165,8 +172,8 @@ defmodule Kogen.E2e.Build do
     workspace_root = Path.join([home, ".kogen", "workspaces", "test-project"])
     git_env = Git.env()
 
-    copy_seed!(seed_project, project)
-    copy_origin!(seed_project, origin)
+    Git.copy_tree!(seed_project, project)
+    Git.copy_tree!(Path.join([Path.dirname(seed_project), "approved-origin.git"]), origin)
     link_external_runs(project, workspace_root)
     _remote = Git.git!(project, ["remote", "set-url", "origin", origin])
 
@@ -182,15 +189,6 @@ defmodule Kogen.E2e.Build do
       approval_commit: approval_commit,
       git_env: git_env
     }
-  end
-
-  defp copy_seed!(seed, project) do
-    Git.copy_tree!(seed, project)
-  end
-
-  defp copy_origin!(seed_project, origin) do
-    source = Path.join([Path.dirname(seed_project), "approved-origin.git"])
-    Git.copy_tree!(source, origin)
   end
 
   defp link_external_runs(project, workspace_root) do
@@ -261,18 +259,20 @@ defmodule Kogen.E2e.Build do
     File.write!(acceptance_path, acceptance)
   end
 
-  defp write_seed!(seed) do
+  defp write_seed!(seed, options) do
     files = %{
       ".mise.toml" => ~s([tools]\nelixir = "1.20.4-otp-29"\nerlang = "29.1.1"\n),
       ".gitignore" => "_build/\ndeps/\n",
       "mix.exs" => mix_project(),
-      ".kogen/project.yaml" => project_config(),
+      ".kogen/project.yaml" => Keyword.get(options, :project_config, project_config()),
       "lib/tiny_app.ex" =>
         "defmodule TinyApp do\n  # revision: base\n  def value, do: :base\nend\n",
       "test/test_helper.exs" => "ExUnit.start()\n"
     }
 
-    Enum.each(files, fn {relative, contents} ->
+    files
+    |> Map.merge(Keyword.get(options, :extra_files, %{}))
+    |> Enum.each(fn {relative, contents} ->
       path = Path.join(seed, relative)
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, contents)

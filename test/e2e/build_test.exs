@@ -126,6 +126,40 @@ defmodule Kogen.E2e.BuildTest do
     :ok
   end
 
+  test "scope warnings reach the reviewer and the final report", context do
+    parent = scenario_parent(context, "scope-warning")
+
+    script = [
+      ScriptedProvider.answer(:context, "TinyApp.value/0 is the implementation target."),
+      ScriptedProvider.answer(:plan, "Update TinyApp.value/0."),
+      ScriptedProvider.write(:develop, "lib/tiny_app.ex", ready_source("candidate", :ready)),
+      ScriptedProvider.write(:develop, "README.md", "Out-of-scope note.\n"),
+      ScriptedProvider.answer(:develop, "Done."),
+      ScriptedProvider.answer(:review, review_text("accept", :accept))
+    ]
+
+    result = Build.run!(parent, script, options(context.seed_project))
+
+    assert %Result{build: %{status: :landed}} = result
+    assert [warning] = Enum.filter(result.events, &(&1.event == "scope_warning"))
+    assert warning.path == "README.md"
+    assert warning.declared_domains == ["kernel"]
+
+    reviewer =
+      Enum.find(
+        result.provider_requests,
+        &String.contains?(&1.instructions, "advisory code reviewer")
+      )
+
+    assert reviewer
+    assert inspect(reviewer.input) =~ warning.detail
+
+    assert {:ok, report} = Build.report(result)
+
+    assert %{"findings" => [%{"type" => "scope_warning", "path" => "README.md"}]} =
+             :json.decode(report)
+  end
+
   defp scenario_parent(context, name) do
     parent = Path.join(context.tmp_dir, name)
     File.mkdir_p!(parent)

@@ -8,9 +8,9 @@ defmodule Kogen.Engine.Build.Guard do
 
   @spec check(Path.t(), String.t(), Intent.t(), Project.t(), map(), map()) ::
           :ok | {:error, Failure.t()}
-  def check(workdir, base_sha, intent, project, manifest, git_env) do
+  def check(workdir, base_sha, _intent, _project, manifest, git_env) do
     case Workspace.changed_paths(workdir, base_sha, git_env) do
-      {:ok, changed} ->
+      {:ok, _changed} ->
         protected =
           manifest
           |> Enum.filter(fn {path, sha} ->
@@ -19,27 +19,52 @@ defmodule Kogen.Engine.Build.Guard do
           |> Enum.map(&elem(&1, 0))
           |> Enum.sort()
 
-        prefixes =
-          Enum.flat_map(intent.domains, &Map.get(project.domains, &1, [])) ++
-            allowed_extra(intent)
-
-        outside = Enum.reject(changed, &under_prefix?(&1, prefixes))
-
-        cond do
-          protected != [] ->
-            failure(:protected_edit, "Protected paths changed: #{Enum.join(protected, ", ")}")
-
-          outside != [] ->
-            failure(:scope_edit, "Out-of-scope paths changed: #{Enum.join(outside, ", ")}")
-
-          true ->
-            :ok
+        if protected == [] do
+          :ok
+        else
+          failure(:protected_edit, "Protected paths changed: #{Enum.join(protected, ", ")}")
         end
 
       {:error, reason} ->
         failure(
           :workspace_failed,
           "Cannot inspect protected paths: #{inspect(reason)}",
+          :controller
+        )
+    end
+  end
+
+  @spec scope_warnings(Path.t(), String.t(), Intent.t(), Project.t(), map()) ::
+          {:ok, [map()]} | {:error, Failure.t()}
+  def scope_warnings(workdir, base_sha, intent, project, git_env) do
+    case Workspace.changed_paths(workdir, base_sha, git_env) do
+      {:ok, changed} ->
+        prefixes =
+          Enum.flat_map(intent.domains, &Map.get(project.domains, &1, [])) ++
+            allowed_extra(intent)
+
+        domains = Enum.sort(intent.domains)
+
+        warnings =
+          changed
+          |> Enum.reject(&under_prefix?(&1, prefixes))
+          |> Enum.sort()
+          |> Enum.map(fn path ->
+            %{
+              path: path,
+              declared_domains: domains,
+              finding:
+                "Scope warning: #{path} is outside the Intent's declared domains " <>
+                  "[#{Enum.join(domains, ", ")}]."
+            }
+          end)
+
+        {:ok, warnings}
+
+      {:error, reason} ->
+        failure(
+          :workspace_failed,
+          "Cannot inspect scope paths: #{inspect(reason)}",
           :controller
         )
     end

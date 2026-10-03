@@ -15,7 +15,11 @@ defmodule Kogen.Engine.Build.Reviewer do
     started_at = System.monotonic_time(:millisecond)
 
     with {:ok, diff} <- diff(session),
-         summary = %{checks: session.receipts, acceptance: session.acceptance},
+         summary = %{
+           checks: session.receipts,
+           acceptance: session.acceptance,
+           findings: Enum.map(session.scope_warnings, & &1.finding)
+         },
          {:ok, result} <-
            Harness.review(harness_opts(session), session.intent_text, diff, summary),
          :ok <- record_model(session, result.usage, elapsed(started_at)) do
