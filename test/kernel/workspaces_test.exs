@@ -7,17 +7,22 @@ defmodule Kogen.Kernel.WorkspacesTest do
     project = Path.join(tmp_dir, "careful-rebuild")
     home = Path.join(tmp_dir, "home")
     root = Workspaces.root(project, home)
-    digest = :sha256 |> :crypto.hash(Path.expand(project)) |> Base.encode16(case: :lower)
 
-    assert root ==
-             Path.join([
-               home,
-               ".kogen",
-               "workspaces",
-               "careful-rebuild-#{binary_part(digest, 0, 10)}"
-             ])
+    assert Path.dirname(root) == Path.join([home, ".kogen", "workspaces"])
+    assert Regex.match?(~r/careful-rebuild-[0-9a-f]{10}\z/, Path.basename(root))
 
     assert Workspaces.root(project, home) == root
     refute Workspaces.root(Path.join(tmp_dir, "other"), home) == root
+  end
+
+  test "workspace key canonicalizes a symlinked project directory", %{tmp_dir: tmp_dir} do
+    project = Path.join(tmp_dir, "project")
+    symlink = Path.join(tmp_dir, "project-link")
+    home = Path.join(tmp_dir, "home")
+
+    File.mkdir_p!(project)
+    File.ln_s!(project, symlink)
+
+    assert Workspaces.root(symlink, home) == Workspaces.root(project, home)
   end
 end
