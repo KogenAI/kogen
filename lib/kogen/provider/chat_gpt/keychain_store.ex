@@ -3,45 +3,186 @@ defmodule Kogen.Provider.ChatGPT.KeychainStore do
 
   alias Kogen.Contracts.ProcResult
   alias Kogen.Proc
+  alias Kogen.Provider.ChatGPT.FileStore
 
   @security "/usr/bin/security"
   @service "kogen"
+  @magic "KOGEN-CHATGPT-1\n"
+  @key_bytes 32
+  @nonce_bytes 12
+  @tag_bytes 16
   @timeout_ms 15_000
 
   @spec available?() :: boolean()
   def available?, do: File.regular?(@security)
 
-  @spec read(Path.t(), String.t()) :: {:ok, binary()} | {:error, term()}
-  def read(root, label) do
+  @spec read(Path.t(), String.t(), Path.t() | nil) :: {:ok, binary()} | {:error, term()}
+  def read(root, label, keychain \\ nil) when is_binary(root) and is_binary(label) do
+    with :ok <- prepare_root(root) do
+      case FileStore.read_encrypted(root, label) do
+        {:ok, encrypted} ->
+          with {:ok, key} <- read_key(root, label, keychain),
+               do: decrypt(encrypted, key, label)
+
+        {:error, :enoent} ->
+          read_legacy(root, label, keychain)
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  @spec write(Path.t(), String.t(), binary(), Path.t() | nil) :: :ok | {:error, term()}
+  def write(root, label, contents, keychain \\ nil)
+      when is_binary(root) and is_binary(label) and is_binary(contents) do
     with :ok <- prepare_root(root),
-         {:ok, output} <-
-           command(root, ["find-generic-password", "-s", @service, "-a", account(label), "-w"]) do
-      decode(output)
+         {:ok, key} <- key_for_write(root, label, keychain),
+         {:ok, encrypted} <- encrypt(contents, key, label),
+         :ok <- FileStore.write_encrypted(root, label, encrypted),
+         :ok <- verify_encrypted(root, label, contents, key, keychain) do
+      delete_item(root, legacy_account(label), keychain)
     end
   end
 
-  @spec write(Path.t(), String.t(), binary()) :: :ok | {:error, term()}
-  def write(root, label, contents) when is_binary(contents) do
-    with :ok <- prepare_root(root) do
-      case run_security(
-             ["add-generic-password", "-U", "-s", @service, "-a", account(label), "-w"],
-             Base.encode64(contents) <> "\n",
-             root
-           ) do
-        {:ok, _output} -> :ok
-        {:error, reason, _output} -> {:error, reason}
+  @spec delete(Path.t(), String.t(), Path.t() | nil) :: :ok | {:error, term()}
+  def delete(root, label, keychain \\ nil) when is_binary(root) and is_binary(label) do
+    with :ok <- prepare_root(root),
+         :ok <- FileStore.delete_encrypted(root, label),
+         :ok <- delete_item(root, key_account(label), keychain) do
+      delete_item(root, legacy_account(label), keychain)
+    end
+  end
+
+  defp key_for_write(root, label, keychain) do
+    case read_key(root, label, keychain) do
+      {:ok, key} ->
+        {:ok, key}
+
+      # The `security` CLI treats a keychain operand after `-w` as the password
+      # argument. A scoped test keychain therefore needs a seeded key; never
+      # risk falling back to the user's default keychain for the test fixture.
+      {:error, :not_found} when is_binary(keychain) ->
+        {:error, :keychain_key_missing}
+
+      {:error, :not_found} ->
+        key = :crypto.strong_rand_bytes(@key_bytes)
+
+        with :ok <- store_key(root, label, key), do: {:ok, key}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp store_key(root, label, key) do
+    encoded = Base.encode64(key)
+    input = encoded <> "\n" <> encoded <> "\n"
+
+    with {:ok, _output} <-
+           run_security(add_args(key_account(label)), input, root),
+         {:ok, ^encoded} <- read_key_encoded(root, label, nil) do
+      :ok
+    else
+      {:ok, _different} -> {:error, :keychain_key_mismatch}
+      {:error, :not_found} -> {:error, :keychain_key_missing}
+      {:error, reason, _output} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp verify_encrypted(root, label, expected, key, keychain) do
+    with {:ok, actual_key} <- read_key(root, label, keychain),
+         true <- actual_key == key,
+         {:ok, encrypted} <- FileStore.read_encrypted(root, label),
+         {:ok, actual} <- decrypt(encrypted, actual_key, label),
+         true <- actual == expected do
+      :ok
+    else
+      false -> {:error, :credential_verification_failed}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp read_key(root, label, keychain) do
+    with {:ok, encoded} <- read_key_encoded(root, label, keychain) do
+      case Base.decode64(encoded) do
+        {:ok, key} when byte_size(key) == @key_bytes -> {:ok, key}
+        _invalid -> {:error, :keychain_key_invalid}
       end
     end
   end
 
-  @spec delete(Path.t(), String.t()) :: :ok | {:error, term()}
-  def delete(root, label) do
-    with :ok <- prepare_root(root) do
-      case command(root, ["delete-generic-password", "-s", @service, "-a", account(label)]) do
-        {:ok, _output} -> :ok
-        {:error, :not_found} -> :ok
-        {:error, reason} -> {:error, reason}
-      end
+  defp read_key_encoded(root, label, keychain) do
+    case command(
+           root,
+           generic_args("find-generic-password", key_account(label), keychain, ["-w"])
+         ) do
+      {:ok, output} -> {:ok, String.trim(output)}
+      error -> error
+    end
+  end
+
+  defp read_legacy(root, label, keychain) do
+    case command(
+           root,
+           generic_args("find-generic-password", legacy_account(label), keychain, ["-w"])
+         ) do
+      {:ok, output} -> decode_legacy(output)
+      error -> error
+    end
+  end
+
+  defp decode_legacy(output) do
+    case Base.decode64(String.trim(output)) do
+      {:ok, value} -> {:ok, value}
+      :error -> {:error, :keychain_legacy_credential_invalid}
+    end
+  end
+
+  defp encrypt(contents, key, label) do
+    nonce = :crypto.strong_rand_bytes(@nonce_bytes)
+
+    {ciphertext, tag} =
+      :crypto.crypto_one_time_aead(
+        :aes_256_gcm,
+        key,
+        nonce,
+        contents,
+        label,
+        @tag_bytes,
+        true
+      )
+
+    {:ok, @magic <> nonce <> tag <> ciphertext}
+  rescue
+    ArgumentError -> {:error, :credential_encryption_failed}
+  end
+
+  defp decrypt(
+         <<@magic::binary, nonce::binary-size(@nonce_bytes), tag::binary-size(@tag_bytes),
+           ciphertext::binary>>,
+         key,
+         label
+       ) do
+    case :crypto.crypto_one_time_aead(:aes_256_gcm, key, nonce, ciphertext, label, tag, false) do
+      plaintext when is_binary(plaintext) -> {:ok, plaintext}
+      :error -> {:error, :credential_decryption_failed}
+    end
+  rescue
+    ArgumentError -> {:error, :credential_decryption_failed}
+  end
+
+  defp decrypt(_encrypted, _key, _label), do: {:error, :credential_file_invalid}
+
+  defp delete_item(root, account, keychain) do
+    case command(
+           root,
+           generic_args("delete-generic-password", account, keychain, [])
+         ) do
+      {:ok, _output} -> :ok
+      {:error, :not_found} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -51,11 +192,20 @@ defmodule Kogen.Provider.ChatGPT.KeychainStore do
         {:ok, output}
 
       {:error, reason, output} ->
-        if String.contains?(output, "could not be found"),
+        if String.contains?(String.downcase(output), "could not be found"),
           do: {:error, :not_found},
           else: {:error, reason}
     end
   end
+
+  defp generic_args(command, account, keychain, args) do
+    [command, "-s", @service, "-a", account] ++ args ++ keychain_operand(keychain)
+  end
+
+  defp add_args(account), do: ["add-generic-password", "-U", "-s", @service, "-a", account, "-w"]
+
+  defp keychain_operand(nil), do: []
+  defp keychain_operand(keychain), do: [keychain]
 
   defp prepare_root(root) do
     with :ok <- File.mkdir_p(root), do: File.chmod(root, 0o700)
@@ -67,14 +217,20 @@ defmodule Kogen.Provider.ChatGPT.KeychainStore do
       opts = if is_binary(input), do: Keyword.put(opts, :stdin, {:binary, input}), else: opts
 
       case Proc.run([@security | args], opts) do
-        {:ok, %ProcResult{exit_status: 0, timed_out: false, output_tail: output}} ->
-          {:ok, output}
+        {:ok, %ProcResult{output_tail: output} = result} ->
+          cond do
+            password_mismatch?(output) ->
+              {:error, :keychain_password_mismatch, output}
 
-        {:ok, %ProcResult{timed_out: true, output_tail: output}} ->
-          {:error, :keychain_timeout, output}
+            result.timed_out ->
+              {:error, :keychain_timeout, output}
 
-        {:ok, %ProcResult{output_tail: output}} ->
-          {:error, :keychain_unavailable, output}
+            result.exit_status == 0 ->
+              {:ok, output}
+
+            true ->
+              {:error, :keychain_unavailable, output}
+          end
 
         {:error, reason} ->
           {:error, reason, ""}
@@ -84,12 +240,8 @@ defmodule Kogen.Provider.ChatGPT.KeychainStore do
     end
   end
 
-  defp decode(output) do
-    case Base.decode64(String.trim(output)) do
-      {:ok, value} -> {:ok, value}
-      :error -> {:error, :keychain_unavailable}
-    end
-  end
+  defp password_mismatch?(output), do: String.contains?(String.downcase(output), "don't match")
 
-  defp account(label), do: "chatgpt:" <> label
+  defp key_account(label), do: "chatgpt:" <> label <> ":key"
+  defp legacy_account(label), do: "chatgpt:" <> label
 end

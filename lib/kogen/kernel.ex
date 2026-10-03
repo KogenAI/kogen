@@ -36,11 +36,11 @@ defmodule Kogen.Kernel do
   alias Kogen.Kernel.Types.IntentStatus
   alias Kogen.Kernel.Workspaces
   alias Kogen.Provider.ChatGPT
+  alias Kogen.Provider.ChatGPT.CredentialStore
+  alias Kogen.Provider.ChatGPT.SIWC
   alias Kogen.Shaper
   alias Kogen.Shaper.Request, as: ShapeRequest
   alias Kogen.Shaper.Result, as: ShapeResult
-  alias Kogen.Provider.ChatGPT.CredentialStore
-  alias Kogen.Provider.ChatGPT.SIWC
 
   @type toolchain_error ::
           :mise_missing
@@ -129,13 +129,17 @@ defmodule Kogen.Kernel do
     end
   end
 
+  @doc false
+  @spec build(Request.t()) :: {:ok, Result.t()} | {:error, term()}
+  def build(%Request{} = request), do: Engine.run(request)
+
   @spec shape(String.t(), Path.t(), String.t(), String.t(), String.t()) ::
           {:ok, ShapeResult.t()} | {:error, term()}
   def shape(slug, project_root, task, model, effort) do
     with {:ok, runtime} <- runtime(),
          {:ok, project} <- Kogen.Project.load(project_root),
          {:ok, process_env} <- Engine.candidate_environment(project_root, runtime, project),
-         {:ok, provider_config, _source} <- provider_config() do
+         {:ok, provider_config, _source, _label} <- provider_config() do
       request = %ShapeRequest{
         workdir: project_root,
         slug: slug,
@@ -152,10 +156,6 @@ defmodule Kogen.Kernel do
       Shaper.shape(request)
     end
   end
-
-  @doc false
-  @spec build(Request.t()) :: {:ok, Result.t()} | {:error, term()}
-  def build(%Request{} = request), do: Engine.run(request)
 
   @spec status(Path.t(), Path.t(), String.t()) :: {:ok, [IntentStatus.t()]} | {:error, term()}
   def status(project_root, origin, base) do

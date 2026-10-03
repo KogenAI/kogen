@@ -14,13 +14,23 @@ defmodule Kogen.Proc.SandboxTest do
     run_dir = Path.join([home, ".kogen", "workspaces", "demo", "runs", "run-1"])
     credential = Path.join([home, ".codex", "auth.json"])
     kogen_credential = Path.join([home, ".kogen", "credentials-test.json"])
+    encrypted_credential = Path.join([home, ".kogen", "credentials", "chatgpt-default.enc"])
 
-    for path <- [home, project, origin, workspace, run_dir, Path.dirname(credential)] do
+    for path <- [
+          home,
+          project,
+          origin,
+          workspace,
+          run_dir,
+          Path.dirname(credential),
+          Path.dirname(encrypted_credential)
+        ] do
       File.mkdir_p!(path)
     end
 
     File.write!(credential, "fake-token")
     File.write!(kogen_credential, "fake-kogen-token")
+    File.write!(encrypted_credential, "fake-encrypted-kogen-token")
 
     sandbox = %Sandbox{
       enabled: true,
@@ -66,6 +76,7 @@ defmodule Kogen.Proc.SandboxTest do
 
       assert_sandbox_denies(["/bin/cat", credential], workspace, env, sandbox)
       assert_sandbox_denies(["/bin/cat", kogen_credential], workspace, env, sandbox)
+      assert_sandbox_denies(["/bin/cat", encrypted_credential], workspace, env, sandbox)
 
       assert_sandbox_denies(
         ["/bin/sh", "-c", "printf escaped > \"$KOGEN_CREDENTIAL\""],
@@ -75,6 +86,15 @@ defmodule Kogen.Proc.SandboxTest do
       )
 
       assert File.read!(kogen_credential) == "fake-kogen-token"
+
+      assert_sandbox_denies(
+        ["/bin/sh", "-c", "printf escaped > \"$ENCRYPTED_CREDENTIAL\""],
+        workspace,
+        Map.put(env, "ENCRYPTED_CREDENTIAL", encrypted_credential),
+        sandbox
+      )
+
+      assert File.read!(encrypted_credential) == "fake-encrypted-kogen-token"
 
       assert {:ok, %ProcResult{exit_status: 0, timed_out: false}} =
                Proc.run(["/bin/sh", "-c", "printf allowed > workspace-write.txt"],

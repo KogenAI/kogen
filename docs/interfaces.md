@@ -50,7 +50,7 @@ This file is the contract between domains. Change it only through the integrator
 ## Kogen.Provider
 - `Kogen.Provider.ChatGPT.config(auth_path) :: {:ok, %Kogen.Provider.ChatGPT.Config{}} | {:error, ProviderError.t()}`
 - `owned_config(root, :file | :keychain, label)` uses Kogen's saved ChatGPT plan credential; `borrowed_codex_config(path)` is only selected by the explicit `--borrow codex` option.
-- Kogen-owned requests use `https://api.openai.com/v1/responses`; refresh tokens are rotated under a cross-process lock. Linux stores credentials in a 0600 file; macOS stores them through `/usr/bin/security`.
+- Kogen-owned requests use `https://api.openai.com/v1/responses`; refresh tokens are rotated under a cross-process lock. Linux stores credentials in a 0600 file. macOS encrypts credentials with AES-256-GCM into `~/.kogen/credentials/chatgpt-<label>.enc` and stores the base64 32-byte key under Keychain service `kogen`, account `chatgpt:<label>:key`; old base64 credentials under `chatgpt:<label>` remain readable and migrate on save.
 - `respond(config, ModelRequest.t()) :: {:ok, ModelResponse.t()} | {:error, ProviderError.t()}` (the ProviderPort behaviour is `respond(term(), ModelRequest.t())`)
 - `Kogen.Provider.Fake.config(fixture_paths)` with the same `respond/2`.
 - `ModelResponse.raw_items` = the full ordered output items. The harness sends them back with `function_call_output` items `{type: "function_call_output", call_id, output}`.

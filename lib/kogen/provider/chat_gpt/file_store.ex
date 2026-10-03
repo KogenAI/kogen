@@ -4,6 +4,26 @@ defmodule Kogen.Provider.ChatGPT.FileStore do
   @spec path(Path.t(), String.t()) :: Path.t()
   def path(root, label), do: Path.join([root, "credentials", "chatgpt-#{label}.json"])
 
+  @spec encrypted_path(Path.t(), String.t()) :: Path.t()
+  def encrypted_path(root, label), do: Path.join([root, "credentials", "chatgpt-#{label}.enc"])
+
+  @spec read_encrypted(Path.t(), String.t()) :: {:ok, binary()} | {:error, term()}
+  def read_encrypted(root, label), do: File.read(encrypted_path(root, label))
+
+  @spec write_encrypted(Path.t(), String.t(), binary()) :: :ok | {:error, term()}
+  def write_encrypted(root, label, contents) when is_binary(contents) do
+    atomic_write(encrypted_path(root, label), contents)
+  end
+
+  @spec delete_encrypted(Path.t(), String.t()) :: :ok | {:error, term()}
+  def delete_encrypted(root, label) do
+    case File.rm(encrypted_path(root, label)) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @spec read(Path.t(), String.t()) :: {:ok, binary()} | {:error, term()}
   def read(root, label), do: File.read(path(root, label))
 

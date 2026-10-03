@@ -77,30 +77,31 @@ defmodule Kogen.Provider.ChatGPT.CredentialStore do
 
   def valid_label?(_label), do: false
 
-  @spec load(Path.t(), :file | :keychain, String.t()) :: {:ok, t()} | {:error, term()}
-  def load(root, backend, label) when backend in [:file, :keychain] do
+  @spec load(Path.t(), :file | :keychain, String.t(), keyword()) ::
+          {:ok, t()} | {:error, term()}
+  def load(root, backend, label, opts \\ []) when backend in [:file, :keychain] do
     with :ok <- valid_label(label),
-         {:ok, contents} <- read(root, backend, label),
+         {:ok, contents} <- read(root, backend, label, opts),
          {:ok, json} <- decode_json(contents) do
       decode_credentials(json)
     end
   end
 
-  @spec save(Path.t(), :file | :keychain, String.t(), t()) :: :ok | {:error, term()}
-  def save(root, backend, label, %__MODULE__{} = credentials)
+  @spec save(Path.t(), :file | :keychain, String.t(), t(), keyword()) :: :ok | {:error, term()}
+  def save(root, backend, label, %__MODULE__{} = credentials, opts \\ [])
       when backend in [:file, :keychain] do
     with :ok <- valid_label(label),
          {:ok, contents} <- encode_credentials(credentials) do
-      write(root, backend, label, contents)
+      write(root, backend, label, contents, opts)
     end
   end
 
-  @spec delete(Path.t(), :file | :keychain, String.t()) :: :ok | {:error, term()}
-  def delete(root, backend, label) when backend in [:file, :keychain] do
+  @spec delete(Path.t(), :file | :keychain, String.t(), keyword()) :: :ok | {:error, term()}
+  def delete(root, backend, label, opts \\ []) when backend in [:file, :keychain] do
     with :ok <- valid_label(label) do
       case backend do
         :file -> FileStore.delete(root, label)
-        :keychain -> KeychainStore.delete(root, label)
+        :keychain -> KeychainStore.delete(root, label, Keyword.get(opts, :keychain))
       end
     end
   end
@@ -145,10 +146,15 @@ defmodule Kogen.Provider.ChatGPT.CredentialStore do
     if valid_label?(label), do: :ok, else: {:error, :invalid_account_label}
   end
 
-  defp read(root, :file, label), do: FileStore.read(root, label)
-  defp read(root, :keychain, label), do: KeychainStore.read(root, label)
-  defp write(root, :file, label, contents), do: FileStore.write(root, label, contents)
-  defp write(root, :keychain, label, contents), do: KeychainStore.write(root, label, contents)
+  defp read(root, :file, label, _opts), do: FileStore.read(root, label)
+
+  defp read(root, :keychain, label, opts),
+    do: KeychainStore.read(root, label, Keyword.get(opts, :keychain))
+
+  defp write(root, :file, label, contents, _opts), do: FileStore.write(root, label, contents)
+
+  defp write(root, :keychain, label, contents, opts),
+    do: KeychainStore.write(root, label, contents, Keyword.get(opts, :keychain))
 
   defp encode_credentials(%__MODULE__{} = credentials) do
     json = %{
