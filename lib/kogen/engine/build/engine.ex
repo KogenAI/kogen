@@ -188,7 +188,7 @@ defmodule Kogen.Engine.Build.Engine do
       project: project,
       run: prepared.run,
       sandbox: %Sandbox{
-        enabled: project.sandbox,
+        enabled: project.sandbox and not Runtime.sandboxed?(process_env),
         home: request.home,
         project_root: request.project_root,
         origin: request.origin,

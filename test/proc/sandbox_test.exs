@@ -5,6 +5,7 @@ defmodule Kogen.Proc.SandboxTest do
   alias Kogen.Proc
   alias Kogen.Proc.Sandbox
 
+  @tag :seatbelt
   test "Seatbelt confines writes and denies credential access", %{tmp_dir: tmp_dir} do
     home = Path.join(tmp_dir, "home")
     project = Path.join(tmp_dir, "project")

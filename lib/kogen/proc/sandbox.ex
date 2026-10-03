@@ -26,7 +26,10 @@ defmodule Kogen.Proc.Sandbox do
     case :os.type() do
       {:unix, :darwin} ->
         with {:ok, generated_profile} <- profile(sandbox) do
-          {:ok, ["/usr/bin/sandbox-exec", "-p", generated_profile | argv]}
+          # Mark children so a nested Kogen skips its own sandbox: macOS forbids nesting.
+          {:ok,
+           ["/usr/bin/sandbox-exec", "-p", generated_profile, "/usr/bin/env", "KOGEN_SANDBOXED=1"] ++
+             argv}
         end
 
       # TODO(linux): implement equivalent confinement with bubblewrap.

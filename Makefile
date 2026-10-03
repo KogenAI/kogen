@@ -9,6 +9,9 @@ TEST_ENV = GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME='Ko
 
 .PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test acceptance e2e integration kogen-checks-test dialyzer install-local demo-fixture
 
+# macOS cannot nest Seatbelt sandboxes; inside Kogen's own sandbox the confinement test can't run.
+SEATBELT_EXCLUDE := $(if $(filter 1,$(KOGEN_SANDBOXED)),--exclude seatbelt,)
+
 check:
 	+$(MAKE) --no-print-directory guard fmt compile-dev compile-test xref credo test acceptance e2e dialyzer
 	@echo "check OK"
@@ -42,7 +45,7 @@ credo: compile-dev
 	$(M) mix credo --strict
 
 test: compile-test kogen-checks-test
-	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile --exclude fixture --exclude acceptance --exclude e2e
+	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile --exclude fixture --exclude acceptance --exclude e2e $(SEATBELT_EXCLUDE)
 
 acceptance: compile-test
 	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile --only acceptance test/acceptance

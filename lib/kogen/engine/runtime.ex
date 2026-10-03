@@ -51,6 +51,10 @@ defmodule Kogen.Engine.Runtime do
   @spec temporary_directory(map()) :: Path.t()
   def temporary_directory(env) when is_map(env), do: Map.get(env, "TMPDIR", "/tmp")
 
+  @doc "True when the environment comes from inside Kogen's own sandbox (macOS cannot nest sandboxes)."
+  @spec sandboxed?(%{String.t() => String.t()}) :: boolean()
+  def sandboxed?(env) when is_map(env), do: Map.get(env, "KOGEN_SANDBOXED") == "1"
+
   @spec home(t()) :: Path.t() | nil
   def home(%__MODULE__{base_env: base_env}) do
     case Map.get(base_env, "HOME") do
