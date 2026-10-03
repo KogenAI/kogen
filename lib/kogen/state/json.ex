@@ -1,6 +1,7 @@
 defmodule Kogen.State.Json do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
   alias Kogen.State.Approval
   alias Kogen.State.Event
   alias Kogen.State.Run
@@ -308,12 +309,10 @@ defmodule Kogen.State.Json do
   defp trailer_name(:run), do: "Kogen-Run"
 
   defp decode_object(binary) do
-    case :json.decode(binary) do
-      value when is_map(value) -> {:ok, value}
+    case JSON.decode(binary) do
+      {:ok, value} when is_map(value) -> {:ok, value}
       _other -> {:error, :invalid_json}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_json}
   end
 
   defp encode(value) do

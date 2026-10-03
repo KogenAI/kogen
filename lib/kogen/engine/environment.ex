@@ -1,6 +1,7 @@
 defmodule Kogen.Engine.Environment do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Contracts.ProcResult
   alias Kogen.Engine.Runtime
   alias Kogen.Proc
@@ -32,8 +33,8 @@ defmodule Kogen.Engine.Environment do
   end
 
   defp decode_environment(output, runtime) do
-    case :json.decode(output) do
-      values when is_map(values) ->
+    case JSON.decode(output) do
+      {:ok, values} when is_map(values) ->
         with {:ok, env} <- string_environment(values) do
           {:ok, Runtime.process_env(runtime, env)}
         end
@@ -41,8 +42,6 @@ defmodule Kogen.Engine.Environment do
       _other ->
         {:error, :invalid_toolchain_environment}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_toolchain_environment}
   end
 
   defp string_environment(values) do

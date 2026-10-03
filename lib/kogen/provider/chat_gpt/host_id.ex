@@ -3,6 +3,7 @@ defmodule Kogen.Provider.ChatGPT.HostId do
 
   import Bitwise
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Provider.ChatGPT.FileStore
   alias Kogen.Provider.ChatGPT.Lock
 
@@ -45,7 +46,8 @@ defmodule Kogen.Provider.ChatGPT.HostId do
   defp read(root) do
     case File.read(Path.join(root, "host.json")) do
       {:ok, contents} ->
-        with %{"ext_agent_host_id" => host_id} when is_binary(host_id) <- :json.decode(contents),
+        with {:ok, %{"ext_agent_host_id" => host_id}} when is_binary(host_id) <-
+               JSON.decode(contents),
              true <- String.starts_with?(host_id, "urn:uuid:") do
           {:ok, host_id}
         else
@@ -55,8 +57,6 @@ defmodule Kogen.Provider.ChatGPT.HostId do
       {:error, reason} ->
         {:error, reason}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_host_id}
   end
 
   defp uuid_uri do

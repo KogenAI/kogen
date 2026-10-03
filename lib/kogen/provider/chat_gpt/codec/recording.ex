@@ -1,6 +1,7 @@
 defmodule Kogen.Provider.ChatGPT.Codec.Recording do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Contracts.ModelRequest
   alias Kogen.Contracts.ProviderError
   alias Kogen.Provider.ChatGPT.Codec.Errors
@@ -105,9 +106,5 @@ defmodule Kogen.Provider.ChatGPT.Codec.Recording do
     ErlangError -> Errors.malformed()
   end
 
-  defp decode_json(data) do
-    {:ok, :json.decode(data)}
-  rescue
-    ErlangError -> {:error, :invalid_json}
-  end
+  defp decode_json(data), do: JSON.decode(data)
 end

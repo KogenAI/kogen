@@ -7,6 +7,7 @@ defmodule Kogen.Contracts do
       CheckSpec,
       Failure,
       Intent,
+      JSON,
       ModelRequest,
       ModelResponse,
       ProcPort,

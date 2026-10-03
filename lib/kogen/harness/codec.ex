@@ -1,6 +1,7 @@
 defmodule Kogen.Harness.Codec do
   @moduledoc "Converts model wire maps and transcript values to typed Harness data."
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Contracts.ModelRequest
   alias Kogen.Contracts.ToolCall
   alias Kogen.Harness.ToolArgs
@@ -254,11 +255,7 @@ defmodule Kogen.Harness.Codec do
     }
   end
 
-  defp decode_json(text) do
-    {:ok, :json.decode(text)}
-  rescue
-    ErlangError -> {:error, :invalid_json}
-  end
+  defp decode_json(text), do: JSON.decode(text)
 
   defp encode_json(value) do
     {:ok, value |> :json.encode() |> IO.iodata_to_binary()}

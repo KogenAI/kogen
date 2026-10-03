@@ -1,6 +1,8 @@
 defmodule Kogen.Provider.ChatGPT.SIWC.TokenResponse do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
+
   @enforce_keys [:access_token, :refresh_token, :id_token, :expires_in, :scopes]
   defstruct @enforce_keys
 
@@ -14,7 +16,8 @@ defmodule Kogen.Provider.ChatGPT.SIWC.TokenResponse do
 
   @spec decode(binary()) :: {:ok, t()} | {:error, :invalid_token_response}
   def decode(body) when is_binary(body) do
-    with response when is_map(response) <- :json.decode(body),
+    with {:ok, response} <- JSON.decode(body),
+         true <- is_map(response),
          access_token when is_binary(access_token) and access_token != "" <-
            response["access_token"],
          refresh_token when is_binary(refresh_token) and refresh_token != "" <-
@@ -34,9 +37,6 @@ defmodule Kogen.Provider.ChatGPT.SIWC.TokenResponse do
     else
       _invalid -> {:error, :invalid_token_response}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_token_response}
-    ErlangError -> {:error, :invalid_token_response}
   end
 
   defp scope_list(scope) when is_binary(scope),

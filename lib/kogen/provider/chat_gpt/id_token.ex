@@ -1,6 +1,7 @@
 defmodule Kogen.Provider.ChatGPT.IDToken do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Provider.ChatGPT.OIDC
   alias Kogen.Provider.ChatGPT.Transport
 
@@ -47,12 +48,10 @@ defmodule Kogen.Provider.ChatGPT.IDToken do
   end
 
   defp decode_object(binary) do
-    case :json.decode(binary) do
-      map when is_map(map) -> {:ok, map}
+    case JSON.decode(binary) do
+      {:ok, map} when is_map(map) -> {:ok, map}
       _invalid -> {:error, :invalid_json}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_json}
   end
 
   defp oidc_options(opts), do: Keyword.take(opts, [:discovery_url])

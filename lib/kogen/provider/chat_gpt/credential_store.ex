@@ -32,6 +32,7 @@ end
 defmodule Kogen.Provider.ChatGPT.CredentialStore do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Provider.ChatGPT.CredentialStore.Profile
   alias Kogen.Provider.ChatGPT.FileStore
   alias Kogen.Provider.ChatGPT.KeychainStore
@@ -300,12 +301,10 @@ defmodule Kogen.Provider.ChatGPT.CredentialStore do
     do: Map.new(attributes, fn {key, value} -> {to_string(key), value} end)
 
   defp decode_json(contents) do
-    case :json.decode(contents) do
-      map when is_map(map) -> {:ok, map}
+    case JSON.decode(contents) do
+      {:ok, map} when is_map(map) -> {:ok, map}
       _invalid -> {:error, :invalid_credentials}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_credentials}
   end
 
   defp encode_json(value) do

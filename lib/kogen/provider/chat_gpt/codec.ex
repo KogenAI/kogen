@@ -1,5 +1,6 @@
 defmodule Kogen.Provider.ChatGPT.Codec do
   @moduledoc "Encodes ChatGPT Responses requests and decodes JSON/SSE streams."
+  alias Kogen.Contracts.JSON
   alias Kogen.Contracts.ModelRequest
   alias Kogen.Contracts.ModelResponse
   alias Kogen.Contracts.ProviderError
@@ -153,11 +154,7 @@ defmodule Kogen.Provider.ChatGPT.Codec do
     end
   end
 
-  defp decode_json(data) do
-    {:ok, :json.decode(data)}
-  rescue
-    ErlangError -> {:error, :invalid_json}
-  end
+  defp decode_json(data), do: JSON.decode(data)
 
   defp put_completion(%Stream{completed: nil} = stream, response),
     do: %{stream | completed: response}

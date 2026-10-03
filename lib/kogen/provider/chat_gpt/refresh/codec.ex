@@ -16,11 +16,13 @@ end
 defmodule Kogen.Provider.ChatGPT.Refresh.Codec do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Provider.ChatGPT.Refresh.TokenResponse
 
   @spec decode(binary()) :: {:ok, TokenResponse.t()} | {:error, :invalid_refresh_response}
   def decode(body) when is_binary(body) do
-    with response when is_map(response) <- :json.decode(body),
+    with {:ok, response} <- JSON.decode(body),
+         true <- is_map(response),
          access_token when is_binary(access_token) and access_token != "" <-
            response["access_token"],
          expires_in when is_integer(expires_in) and expires_in > 0 <- response["expires_in"],
@@ -37,9 +39,6 @@ defmodule Kogen.Provider.ChatGPT.Refresh.Codec do
     else
       _invalid -> {:error, :invalid_refresh_response}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_refresh_response}
-    ErlangError -> {:error, :invalid_refresh_response}
   end
 
   defp optional_token(response, key) do

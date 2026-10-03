@@ -14,6 +14,7 @@ end
 defmodule Kogen.Provider.ChatGPT.OIDC do
   @moduledoc false
 
+  alias Kogen.Contracts.JSON
   alias Kogen.Provider.ChatGPT.OIDC.Discovery
   alias Kogen.Provider.ChatGPT.Transport
 
@@ -45,11 +46,9 @@ defmodule Kogen.Provider.ChatGPT.OIDC do
   end
 
   defp decode_object(body) do
-    case :json.decode(body) do
-      map when is_map(map) -> {:ok, map}
+    case JSON.decode(body) do
+      {:ok, map} when is_map(map) -> {:ok, map}
       _invalid -> {:error, :invalid_json}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_json}
   end
 end
