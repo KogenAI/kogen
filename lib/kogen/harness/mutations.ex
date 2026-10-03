@@ -24,6 +24,7 @@ defmodule Kogen.Harness.Mutations do
 
   defp edit(opts, arguments) do
     with {:ok, absolute, relative} <- Paths.safe(opts, arguments.path),
+         :ok <- refuse_protected(opts, relative),
          {:ok, contents} <- File.read(absolute),
          {:ok, updated} <- replace_once(contents, arguments.old_text, arguments.new_text),
          :ok <- File.write(absolute, updated) do
@@ -58,6 +59,7 @@ defmodule Kogen.Harness.Mutations do
 
   defp write(opts, arguments) do
     with {:ok, absolute, relative} <- Paths.safe(opts, arguments.path),
+         :ok <- refuse_protected(opts, relative),
          :ok <- writable_size(absolute),
          :ok <- File.mkdir_p(Path.dirname(absolute)),
          :ok <- File.write(absolute, arguments.content) do
@@ -65,6 +67,18 @@ defmodule Kogen.Harness.Mutations do
     else
       {:error, %Error{} = error} -> result("ERROR: " <> error.detail, true, [])
       {:error, reason} -> result("ERROR: Write failed: #{inspect(reason)}", true, [])
+    end
+  end
+
+  defp refuse_protected(%Opts{protected: protected}, relative) do
+    if relative in protected do
+      {:error,
+       %Error{
+         reason: :protected_path,
+         detail: "#{relative} is approved and protected; change the implementation instead."
+       }}
+    else
+      :ok
     end
   end
 

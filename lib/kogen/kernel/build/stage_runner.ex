@@ -275,23 +275,27 @@ defmodule Kogen.Kernel.Build.StageRunner do
       )
     end
 
-    session.harness_opts ||
-      %Opts{
-        workdir: session.workdir,
-        run_dir: session.run_dir,
-        project: session.project,
-        provider_mod: ChatGPT,
-        provider_config: session.request.provider_config,
-        proc_mod: Kogen.Proc,
-        env: session.process_env,
-        before_gate: guard,
-        models: %{
-          builder: {session.request.model, session.request.effort},
-          strong: {session.request.model, session.request.effort}
-        },
-        limits: %{max_turns: 60, wall_ms: 1_800_000},
-        repairs_left: 0
-      }
+    opts =
+      session.harness_opts ||
+        %Opts{
+          workdir: session.workdir,
+          run_dir: session.run_dir,
+          project: session.project,
+          provider_mod: ChatGPT,
+          provider_config: session.request.provider_config,
+          proc_mod: Kogen.Proc,
+          env: session.process_env,
+          before_gate: guard,
+          models: %{
+            builder: {session.request.model, session.request.effort},
+            strong: {session.request.model, session.request.effort}
+          },
+          limits: %{max_turns: 60, wall_ms: 1_800_000},
+          repairs_left: 0
+        }
+
+    protected = Map.keys(manifest(session))
+    %{opts | protected: Enum.uniq(opts.protected ++ protected)}
   end
 
   defp manifest(session), do: session.approval.protected_manifest
