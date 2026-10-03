@@ -16,7 +16,7 @@ defmodule Kogen.Build.Cycle do
       :pending_land,
       :result
     ]
-    defstruct @enforce_keys ++ [:last_failure]
+    defstruct @enforce_keys ++ [:last_failure, :last_scope_detail]
 
     @type t :: %__MODULE__{
             approval: term(),
@@ -27,7 +27,8 @@ defmodule Kogen.Build.Cycle do
             repair_tree: String.t() | nil,
             pending_land: boolean(),
             result: {atom(), term()} | nil,
-            last_failure: atom() | nil
+            last_failure: atom() | nil,
+            last_scope_detail: String.t() | nil
           }
   end
 
@@ -52,7 +53,8 @@ defmodule Kogen.Build.Cycle do
       repair_tree: nil,
       pending_land: false,
       result: nil,
-      last_failure: nil
+      last_failure: nil,
+      last_scope_detail: nil
     }
   end
 
@@ -194,6 +196,18 @@ defmodule Kogen.Build.Cycle do
       {:ok, Map.new(keys, &{&1, Map.fetch!(data, &1)})}
     else
       :error
+    end
+  end
+
+  defp handle_failure(state, stage, %Failure{
+         class: :candidate,
+         reason: :scope_edit,
+         detail: detail
+       }) do
+    if state.last_scope_detail == detail do
+      finish(state, :failed, {:scope_needs_widening, detail})
+    else
+      repair(%{state | last_scope_detail: detail}, :scope_edit, %{failed_stage: stage})
     end
   end
 
