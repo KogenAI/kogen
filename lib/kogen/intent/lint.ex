@@ -46,7 +46,7 @@ defmodule Kogen.Intent.Lint do
   @hedges ~w(should may might could ideally possibly probably generally typically usually)
   @hedge_phrases ["try to", "where possible", "as much as possible"]
 
-  @spec lint(Intent.t()) :: [%{rule: atom(), message: String.t(), line: nil}]
+  @spec lint(Intent.t()) :: [%{rule: atom(), message: String.t(), line: pos_integer() | nil}]
   def lint(%Intent{} = intent) do
     Enum.flat_map(
       [
@@ -164,7 +164,10 @@ defmodule Kogen.Intent.Lint do
     Enum.reject(
       [
         if(word_count(item.text) > 25, do: issue(:item_too_long, "#{item.id} exceeds 25 words")),
-        if(item.verify in [:test, :test_keep], do: nil, else: verify_issue(item.verify)),
+        if(item.invalid_verify,
+          do: invalid_verify_issue(item),
+          else: if(item.verify in [:test, :test_keep], do: nil, else: verify_issue(item.verify))
+        ),
         if(
           Enum.any?(@hedges, &contains_phrase?(item.text, &1)) or
             Enum.any?(@hedge_phrases, &contains_phrase?(item.text, &1)),
@@ -184,6 +187,10 @@ defmodule Kogen.Intent.Lint do
 
   defp verify_issue(kind),
     do: issue(:unsupported_verify_kind, "#{inspect(kind)} is not supported in P0")
+
+  defp invalid_verify_issue(%AcceptanceItem{invalid_verify: word, verify_line: line}) do
+    %{issue(:invalid_verify, "unknown Verify word #{inspect(word)}") | line: line}
+  end
 
   defp prose_issues(intent) do
     card = [{"Brief", intent.brief || ""} | Enum.map(intent.acceptance, &{&1.id, &1.text})]

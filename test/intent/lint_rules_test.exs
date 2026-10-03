@@ -47,9 +47,9 @@ defmodule Kogen.Intent.LintRulesTest do
     assert :sequential_ids in rules(items: items, verify: verify)
   end
 
-  test "requires a Verify kind for every item" do
+  test "requires a Verify kind and rejects unknown modifiers" do
     assert :missing_verify in rules(verify: [])
-    assert :missing_verify in rules(verify: [{"A1", "test maybe"}])
+    assert :invalid_verify in rules(verify: [{"A1", "test maybe"}])
   end
 
   test "requires a title and at least one Acceptance item" do

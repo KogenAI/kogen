@@ -10,7 +10,7 @@ end
 
 defmodule Kogen.Intent.Parser.VerifyLine do
   @moduledoc false
-  defstruct id: "", kind: nil, domain: nil, line: 1
+  defstruct id: "", kind: nil, domain: nil, invalid_word: nil, line: 1
 end
 
 defmodule Kogen.Intent.Parser do
@@ -288,32 +288,40 @@ defmodule Kogen.Intent.Parser do
 
   defp verify_record(id, body, line) do
     words = String.split(body, ~r/\s+/, trim: true)
-    {kind, modifiers} = verify_kind(words)
-    {valid, domain} = verify_modifiers(modifiers)
-    %VerifyLine{id: id, kind: if(valid, do: kind), domain: domain, line: line}
+    {kind, modifiers, invalid_kind} = verify_kind(words)
+    {domain, invalid_modifier} = verify_modifiers(modifiers)
+
+    %VerifyLine{
+      id: id,
+      kind: kind,
+      domain: domain,
+      invalid_word: invalid_kind || invalid_modifier,
+      line: line
+    }
   end
 
-  defp verify_kind(["test"]), do: {:test, []}
-  defp verify_kind(["test", "keep" | modifiers]), do: {:test_keep, modifiers}
-  defp verify_kind(["test" | modifiers]), do: {:test, modifiers}
-  defp verify_kind(["example" | _rest]), do: {:example, []}
-  defp verify_kind(["check" | _rest]), do: {:check, []}
-  defp verify_kind(_words), do: {nil, [:invalid]}
+  defp verify_kind(["test"]), do: {:test, [], nil}
+  defp verify_kind(["test", "keep" | modifiers]), do: {:test_keep, modifiers, nil}
+  defp verify_kind(["test" | modifiers]), do: {:test, modifiers, nil}
+  defp verify_kind(["example" | _rest]), do: {:example, [], nil}
+  defp verify_kind(["check" | _rest]), do: {:check, [], nil}
+  defp verify_kind([word | _rest]), do: {nil, [], word}
+  defp verify_kind([]), do: {nil, [], nil}
 
   defp verify_modifiers(modifiers) do
-    Enum.reduce_while(modifiers, {true, nil}, fn modifier, {true, domain} ->
+    Enum.reduce_while(modifiers, {nil, nil}, fn modifier, {domain, _invalid} ->
       cond do
         modifier == "integration" ->
-          {:cont, {true, domain}}
+          {:cont, {domain, nil}}
 
         String.starts_with?(modifier, "domain=") and byte_size(modifier) > 7 ->
-          {:cont, {true, String.replace_prefix(modifier, "domain=", "")}}
+          {:cont, {String.replace_prefix(modifier, "domain=", ""), nil}}
 
         String.starts_with?(modifier, "after=") ->
-          {:cont, {true, domain}}
+          {:cont, {domain, nil}}
 
         true ->
-          {:halt, {false, domain}}
+          {:halt, {domain, modifier}}
       end
     end)
   end
@@ -349,8 +357,17 @@ defmodule Kogen.Intent.Parser do
 
   defp attach_verify(%AcceptanceItem{} = item, verifies) do
     case Enum.find(verifies, &(&1.id == item.id)) do
-      nil -> item
-      verify -> %{item | verify: verify.kind, domain: verify.domain}
+      nil ->
+        item
+
+      verify ->
+        %{
+          item
+          | verify: verify.kind,
+            domain: verify.domain,
+            invalid_verify: verify.invalid_word,
+            verify_line: if(verify.invalid_word, do: verify.line)
+        }
     end
   end
 
