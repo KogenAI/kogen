@@ -32,6 +32,45 @@ defmodule Kogen.Project.YamlTest do
     assert {:ok, %{"value" => ["one", "two"]}} = Yaml.parse("value: [one,\n  two]\n")
   end
 
+  test "parses quoted block and flow keys containing colons" do
+    assert {:ok, %{"a:b" => "block", "nested:key" => %{"flow:key" => "value"}}} =
+             Yaml.parse(~s("a:b": block\n"nested:key":\n  'flow:key': value\n))
+
+    assert {:ok, %{"a:b" => "flow"}} = Yaml.parse("{\"a:b\": flow}\n")
+  end
+
+  test "rejects a leading BOM, Unicode escapes, merge keys, excess depth, and oversized documents" do
+    assert {:error, [%{line: 1, message: message}]} =
+             Yaml.parse(<<0xEF, 0xBB, 0xBF>> <> "value: one\n")
+
+    assert message =~ "BOM"
+
+    assert {:error, [%{line: 1, message: message}]} = Yaml.parse(~S(value: "\u0041"))
+    assert message =~ "Unicode escape \\u"
+
+    for source <- ["<<: {base: shared}\n", "{<<: {base: shared}}\n"] do
+      assert {:error, [%{line: 1, message: message}]} = Yaml.parse(source)
+      assert message =~ "merge key"
+    end
+
+    too_deep = String.duplicate("[", 65) <> "value" <> String.duplicate("]", 65)
+    assert {:error, [%{line: 1, message: message}]} = Yaml.parse(too_deep)
+    assert message =~ "maximum nesting depth"
+
+    too_deep_block =
+      Enum.map_join(0..64, "\n", fn depth ->
+        String.duplicate(" ", depth * 2) <> "key#{depth}:"
+      end) <>
+        "\n" <> String.duplicate(" ", 130) <> "value"
+
+    assert {:error, [%{line: 65, message: message}]} = Yaml.parse(too_deep_block)
+    assert message =~ "maximum nesting depth"
+
+    too_large = String.duplicate("x", 1_048_577)
+    assert {:error, [%{line: 1, message: message}]} = Yaml.parse(too_large)
+    assert message =~ "maximum size"
+  end
+
   @bad_documents [
     {"tabs", "value: ok\n\tbad: value\n", 2, "tab"},
     {"duplicate block keys", "value: first\nvalue: second\n", 2, "duplicate"},
