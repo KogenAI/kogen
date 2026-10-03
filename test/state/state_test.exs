@@ -109,8 +109,7 @@ defmodule Kogen.State.StateTest do
   alias Kogen.State.Approval
 
   setup do
-    {:ok, repo} = Agent.start_link(&StateFakeWorkspace.initial/0)
-    on_exit(fn -> if Process.alive?(repo), do: Agent.stop(repo) end)
+    repo = start_supervised!({Agent, &StateFakeWorkspace.initial/0})
     {:ok, repo: repo, workspace: StateFakeWorkspace}
   end
 
