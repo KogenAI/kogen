@@ -125,6 +125,17 @@
           {KogenChecks.Check.DomainReach,
            [
              dependencies: %{
+               Kogen.Acceptance => [
+                 Kogen.Proc,
+                 Kogen.Project,
+                 Kogen.Intent,
+                 Kogen.Provider,
+                 Kogen.Build,
+                 Kogen.Workspace,
+                 Kogen.State,
+                 Kogen.Checks,
+                 Kogen.Harness
+               ],
                Kogen.Workspace => [Kogen.Proc],
                Kogen.State => [Kogen.Workspace],
                Kogen.Checks => [Kogen.Proc, Kogen.Workspace, Kogen.Project],
