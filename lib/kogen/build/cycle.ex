@@ -16,7 +16,7 @@ defmodule Kogen.Build.Cycle do
       :pending_land,
       :result
     ]
-    defstruct @enforce_keys ++ [:last_failure, :last_scope_detail]
+    defstruct @enforce_keys
 
     @type t :: %__MODULE__{
             approval: term(),
@@ -26,9 +26,7 @@ defmodule Kogen.Build.Cycle do
             last_tree: String.t() | nil,
             repair_tree: String.t() | nil,
             pending_land: boolean(),
-            result: {atom(), term()} | nil,
-            last_failure: atom() | nil,
-            last_scope_detail: String.t() | nil
+            result: {atom(), term()} | nil
           }
   end
 
@@ -52,9 +50,7 @@ defmodule Kogen.Build.Cycle do
       last_tree: nil,
       repair_tree: nil,
       pending_land: false,
-      result: nil,
-      last_failure: nil,
-      last_scope_detail: nil
+      result: nil
     }
   end
 
@@ -108,7 +104,7 @@ defmodule Kogen.Build.Cycle do
   defp stage_succeeded(state, :develop, data) do
     tree = tree_from(data)
 
-    if same_repaired_tree?(state, tree) and state.last_failure != :done_gate_red do
+    if same_repaired_tree?(state, tree) do
       fail_candidate(state, :unchanged)
     else
       next = %{state | stage: :done_gate, last_tree: tree, repair_tree: nil}
@@ -199,18 +195,6 @@ defmodule Kogen.Build.Cycle do
     end
   end
 
-  defp handle_failure(state, stage, %Failure{
-         class: :candidate,
-         reason: :scope_edit,
-         detail: detail
-       }) do
-    if state.last_scope_detail == detail do
-      finish(state, :failed, {:scope_needs_widening, detail})
-    else
-      repair(%{state | last_scope_detail: detail}, :scope_edit, %{failed_stage: stage})
-    end
-  end
-
   defp handle_failure(state, stage, %Failure{class: :candidate, reason: reason}) do
     repair(state, reason, %{failed_stage: stage})
   end
@@ -250,8 +234,7 @@ defmodule Kogen.Build.Cycle do
         | stage: :develop,
           repairs_left: state.repairs_left - 1,
           repair_tree: state.last_tree,
-          pending_land: false,
-          last_failure: reason
+          pending_land: false
       }
 
       {next,

@@ -2,27 +2,34 @@ defmodule Kogen.Harness.Gate do
   @moduledoc false
 
   alias Kogen.Contracts.CheckSpec
+  alias Kogen.Contracts.ProcResult
   alias Kogen.Harness.Command
   alias Kogen.Harness.Error
   alias Kogen.Harness.GateCommand
   alias Kogen.Harness.GateResult
   alias Kogen.Harness.Opts
 
+  @max_excused_tests 2
+  @failed_test_location ~r/\n\s*\d+\)\s+test\b[^\n]*\n\s*([^\s]+\.exs:\d+)/
+  @module_reference ~r/\b[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)*\b/
+  @environment_paths ["mix.exs", "mix.lock", ".mise.toml", ".kogen/project.yaml"]
+
   @spec run(Opts.t(), integer()) :: {:ok, GateResult.t()} | {:error, term()}
   def run(%Opts{} = opts, deadline) do
     with :ok <- before_gate(opts.before_gate),
-         {:ok, fixes} <- run_specs(opts, opts.project.fix, deadline, :fix),
-         {:ok, checks} <- run_specs(opts, opts.project.checks, deadline, :check) do
+         {:ok, fixes, _fix_flakes} <- run_specs(opts, opts.project.fix, deadline, :fix),
+         {:ok, checks, flake_excused} <- run_specs(opts, opts.project.checks, deadline, :check) do
       commands = fixes ++ checks
       failures = Enum.flat_map(commands, &failure_text/1)
       status = if failures == [], do: :pass, else: :fail
+
       {:ok,
        %GateResult{
          status: status,
          fixes: fixes,
          checks: checks,
          failures: failures,
-         flake_excused: []
+         flake_excused: flake_excused
        }}
     end
   end
@@ -32,17 +39,278 @@ defmodule Kogen.Harness.Gate do
 
   defp run_specs(opts, specs, deadline, kind) do
     specs
-    |> Enum.reduce_while({:ok, []}, fn %CheckSpec{} = spec, {:ok, results} ->
-      result = run_spec(opts, spec, deadline, kind)
-      {:cont, {:ok, [result | results]}}
+    |> Enum.reduce_while({:ok, [], []}, fn %CheckSpec{} = spec, {:ok, results, flakes} ->
+      current_flakes =
+        Enum.uniq(opts.flake_excused_test_ids ++ Enum.flat_map(flakes, & &1.test_ids))
+
+      {result, excused} =
+        run_spec(%{opts | flake_excused_test_ids: current_flakes}, spec, deadline, kind)
+
+      {:cont, {:ok, [result | results], excused ++ flakes}}
     end)
     |> case do
-      {:ok, results} -> {:ok, Enum.reverse(results)}
+      {:ok, results, flakes} -> {:ok, Enum.reverse(results), Enum.reverse(flakes)}
       error -> error
     end
   end
 
-  defp run_spec(opts, %CheckSpec{} = spec, deadline, kind) do
+  defp run_spec(opts, %CheckSpec{} = spec, deadline, :check) do
+    if mix_test?(spec.argv) do
+      {argv, seed} = seeded_argv(spec.argv)
+      command = run_command(opts, spec, argv, deadline, :check, "")
+
+      case {seed, failed_test_ids(command.output, opts.workdir), command} do
+        {seed, test_ids, %GateCommand{exit_status: status, timed_out: false}}
+        when is_integer(seed) and status != 0 and test_ids != [] ->
+          classify_test_failure(opts, spec, %{
+            command: command,
+            argv: spec.argv,
+            deadline: deadline,
+            seed: seed,
+            test_ids: test_ids
+          })
+
+        _other ->
+          {command, []}
+      end
+    else
+      {run_command(opts, spec, spec.argv, deadline, :check, ""), []}
+    end
+  end
+
+  defp run_spec(opts, %CheckSpec{} = spec, deadline, kind),
+    do: {run_command(opts, spec, spec.argv, deadline, kind, ""), []}
+
+  defp classify_test_failure(opts, spec, classification) do
+    %{command: original, argv: argv, deadline: deadline, seed: seed, test_ids: test_ids} =
+      classification
+
+    retry_argv = retry_argv(argv, test_ids, seed)
+    retry = run_command(opts, spec, retry_argv, deadline, :check, "-retry")
+
+    if command_passed?(retry) do
+      classify_on_base(
+        opts,
+        spec,
+        Map.merge(classification, %{retry: retry, retry_argv: retry_argv})
+      )
+    else
+      detail =
+        "\nSame-seed rerun still failed: #{inspect(test_ids)} (seed #{seed}).\n#{retry.output}"
+
+      {%{original | output: original.output <> detail}, []}
+    end
+  end
+
+  defp classify_on_base(opts, spec, classification) do
+    %{
+      command: original,
+      deadline: deadline,
+      seed: seed,
+      test_ids: test_ids,
+      retry: retry,
+      retry_argv: retry_argv
+    } = classification
+
+    base_result = run_base_test(opts, retry_argv, deadline, spec.timeout_ms)
+    base_failed_ids = base_failure_ids(base_result, opts.workdir)
+    changed_paths = changed_paths(opts)
+
+    eligible =
+      Enum.filter(test_ids, fn test_id ->
+        test_id in base_failed_ids or not candidate_reaches_test?(opts, test_id, changed_paths)
+      end)
+
+    excused = fit_excusal_cap(eligible, opts.flake_excused_test_ids)
+    real_failures = test_ids -- excused
+    event = if excused == [], do: [], else: [%{test_ids: excused, seed: seed}]
+
+    if real_failures == [] do
+      detail =
+        "\nSame-seed rerun passed for #{inspect(test_ids)}; base/unreached tests excused " <>
+          "with seed #{seed}.\n#{retry.output}"
+
+      {%{original | exit_status: 0, timed_out: false, output: original.output <> detail}, event}
+    else
+      detail =
+        "\nSame-seed rerun passed, but these tests remain Candidate failures: " <>
+          "#{inspect(real_failures)} (seed #{seed}).\n#{retry.output}"
+
+      {%{original | output: original.output <> detail}, event}
+    end
+  end
+
+  defp run_base_test(%Opts{base_test: base_test}, argv, deadline, timeout_ms)
+       when is_function(base_test, 2) do
+    remaining_ms = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    if remaining_ms == 0 do
+      {:error, :deadline_reached}
+    else
+      base_test.(argv, min(timeout_ms, remaining_ms))
+    end
+  end
+
+  defp run_base_test(_opts, _argv, _deadline, _timeout_ms), do: {:error, :base_test_unavailable}
+
+  defp base_failure_ids(
+         {:ok, %ProcResult{output_tail: output, exit_status: status, timed_out: timed_out}},
+         workdir
+       )
+       when timed_out or status != 0, do: failed_test_ids(output, workdir)
+
+  defp base_failure_ids(_result, _workdir), do: []
+
+  defp changed_paths(%Opts{changed_paths: changed_paths}) when is_function(changed_paths, 0) do
+    case changed_paths.() do
+      {:ok, paths} when is_list(paths) -> paths
+      _error -> :unknown
+    end
+  end
+
+  defp changed_paths(_opts), do: :unknown
+
+  defp candidate_reaches_test?(_opts, _test_id, :unknown), do: true
+
+  defp candidate_reaches_test?(opts, test_id, changed_paths) do
+    case test_path(test_id, opts.workdir) do
+      {:ok, test_path} ->
+        case File.read(Path.join(opts.workdir, test_path)) do
+          {:ok, source} ->
+            module_paths = referenced_module_paths(source)
+
+            Enum.any?(changed_paths, fn path ->
+              path == test_path or
+                path in module_paths or
+                environment_path?(path) or
+                test_support_path?(path)
+            end)
+
+          {:error, _reason} ->
+            true
+        end
+
+      :error ->
+        true
+    end
+  end
+
+  # Reach is a direct-source heuristic: a changed test file, test support/config file, or
+  # `lib/<Macro.underscore(Module.Name)>.ex` named in the test source counts as touched.
+  # If the test source or changed-path list cannot be read, the result fails closed as reached.
+  defp referenced_module_paths(source) do
+    @module_reference
+    |> Regex.scan(source)
+    |> List.flatten()
+    |> Enum.uniq()
+    |> Enum.map(&Macro.underscore/1)
+    |> Enum.map(&"lib/#{&1}.ex")
+  end
+
+  defp environment_path?(path),
+    do: path in @environment_paths or String.starts_with?(path, "config/")
+
+  defp test_support_path?(path), do: String.starts_with?(path, "test/")
+
+  defp test_path(test_id, workdir) do
+    case String.split(test_id, ":", parts: 2) do
+      [path, _line] ->
+        expanded = Path.expand(path, workdir)
+        relative = Path.relative_to(expanded, Path.expand(workdir))
+
+        if ".." in Path.split(relative) or Path.type(relative) == :absolute,
+          do: :error,
+          else: {:ok, relative}
+
+      _other ->
+        :error
+    end
+  end
+
+  defp fit_excusal_cap(eligible, previously_excused) do
+    previous = MapSet.new(previously_excused)
+    repeat = Enum.filter(eligible, &MapSet.member?(previous, &1))
+    new = Enum.reject(eligible, &MapSet.member?(previous, &1))
+    available = max(@max_excused_tests - MapSet.size(previous), 0)
+    repeat ++ Enum.take(new, available)
+  end
+
+  defp failed_test_ids(output, workdir) do
+    @failed_test_location
+    |> Regex.scan(output, capture: :all_but_first)
+    |> Enum.map(fn [location] -> normalize_test_id(location, workdir) end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  defp normalize_test_id(location, workdir) do
+    case String.split(location, ":", parts: 2) do
+      [path, line] ->
+        case Integer.parse(line) do
+          {line_number, ""} when line_number > 0 ->
+            case test_path("#{path}:#{line_number}", workdir) do
+              {:ok, relative} -> "#{relative}:#{line_number}"
+              :error -> nil
+            end
+
+          _error ->
+            nil
+        end
+
+      _other ->
+        nil
+    end
+  end
+
+  defp mix_test?([executable, "test" | _args]), do: Path.basename(executable) == "mix"
+  defp mix_test?(_argv), do: false
+
+  defp seeded_argv(argv) do
+    case seed_in_args(Enum.drop(argv, 2)) do
+      {:ok, seed} ->
+        {argv, seed}
+
+      :missing ->
+        seed = System.unique_integer([:positive, :monotonic])
+        {argv ++ ["--seed", Integer.to_string(seed)], seed}
+
+      :invalid ->
+        {argv, nil}
+    end
+  end
+
+  defp seed_in_args(["--seed", value | _rest]), do: parse_seed(value)
+  defp seed_in_args(["--seed=" <> value | _rest]), do: parse_seed(value)
+  defp seed_in_args([_arg | rest]), do: seed_in_args(rest)
+  defp seed_in_args([]), do: :missing
+
+  defp parse_seed(value) do
+    case Integer.parse(value) do
+      {seed, ""} when seed >= 0 -> {:ok, seed}
+      _other -> :invalid
+    end
+  end
+
+  defp retry_argv(argv, test_ids, seed) do
+    [executable, "test" | args] = argv
+
+    options =
+      args
+      |> drop_seed_option()
+      |> Enum.reject(&test_selector?/1)
+
+    [executable, "test" | test_ids ++ options ++ ["--seed", Integer.to_string(seed)]]
+  end
+
+  defp drop_seed_option(["--seed", _value | rest]), do: drop_seed_option(rest)
+  defp drop_seed_option(["--seed=" <> _value | rest]), do: drop_seed_option(rest)
+  defp drop_seed_option([arg | rest]), do: [arg | drop_seed_option(rest)]
+  defp drop_seed_option([]), do: []
+
+  defp test_selector?(arg),
+    do: String.ends_with?(arg, ".exs") or Regex.match?(~r/\.exs:\d+\z/, arg)
+
+  defp run_command(opts, spec, argv, deadline, kind, suffix) do
     remaining_ms = max(deadline - System.monotonic_time(:millisecond), 0)
 
     if remaining_ms == 0 do
@@ -53,12 +321,12 @@ defmodule Kogen.Harness.Gate do
         output: "Harness wall deadline reached before this command ran."
       }
     else
-      run_command(opts, spec, min(spec.timeout_ms, remaining_ms), kind)
+      run_argv(opts, spec, argv, min(spec.timeout_ms, remaining_ms), kind, suffix)
     end
   end
 
-  defp run_command(opts, spec, timeout_ms, kind) do
-    case Command.run(opts, spec.argv, timeout_ms, "gate-#{kind}-#{spec.name}") do
+  defp run_argv(opts, spec, argv, timeout_ms, kind, suffix) do
+    case Command.run(opts, argv, timeout_ms, "gate-#{kind}-#{spec.name}#{suffix}") do
       {:ok, result} ->
         %GateCommand{
           name: spec.name,
@@ -71,6 +339,9 @@ defmodule Kogen.Harness.Gate do
         %GateCommand{name: spec.name, exit_status: nil, timed_out: false, output: error.detail}
     end
   end
+
+  defp command_passed?(%GateCommand{exit_status: 0, timed_out: false}), do: true
+  defp command_passed?(_command), do: false
 
   defp failure_text(%GateCommand{timed_out: true} = command),
     do: ["#{command.name} timed out.\n#{command.output}"]
