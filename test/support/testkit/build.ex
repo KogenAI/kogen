@@ -30,6 +30,7 @@ defmodule Kogen.E2e.Build do
   @spec run!(Path.t(), [ScriptedProvider.Step.t()], Options.t()) :: Result.t()
   def run!(parent, steps, %Options{} = options) do
     fixture = create_fixture!(parent, options.seed_project)
+    before_build!(fixture, options.move_base_on)
 
     {:ok, server} =
       ScriptedProvider.start_link(steps, provider_hook(fixture, options.move_base_on))
@@ -334,6 +335,8 @@ defmodule Kogen.E2e.Build do
   end
 
   defp provider_hook(_fixture, nil), do: nil
+  defp provider_hook(_fixture, :before_build), do: nil
+  defp provider_hook(_fixture, :before_build_protected), do: nil
 
   defp provider_hook(%Fixture{} = fixture, stage) do
     fn
@@ -341,6 +344,23 @@ defmodule Kogen.E2e.Build do
       _other -> :skip
     end
   end
+
+  # Moves the origin base after approval but before the Build starts.
+  defp before_build!(%Fixture{} = fixture, :before_build), do: move_origin_base(fixture)
+
+  defp before_build!(%Fixture{} = fixture, :before_build_protected) do
+    path = Path.join([fixture.project_root, ".kogen", "acceptance", "#{@slug}_test.exs"])
+    File.write!(path, File.read!(path) <> "\n# edited on the base after approval\n")
+    _add = Git.git!(fixture.project_root, ["add", "--all"])
+
+    _commit =
+      Git.git!(fixture.project_root, ["commit", "--quiet", "-m", "Edit approved test on base"])
+
+    _push = Git.git!(fixture.project_root, ["push", "--quiet", "origin", "main"])
+    :ok
+  end
+
+  defp before_build!(_fixture, _move_base_on), do: :ok
 
   defp move_origin_base(%Fixture{} = fixture) do
     _commit =
