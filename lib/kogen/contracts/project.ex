@@ -3,7 +3,7 @@ defmodule Kogen.Contracts.Project do
 
   alias Kogen.Contracts.CheckSpec
 
-  @enforce_keys [:root, :name, :checks, :fix, :diagnose, :protected_paths, :domains]
+  @enforce_keys [:root, :name, :checks, :setup, :fix, :diagnose, :protected_paths, :domains]
   defstruct @enforce_keys
 
   @type diagnostic :: %{required(:glob) => String.t(), required(:argv) => [String.t()]}
@@ -11,6 +11,7 @@ defmodule Kogen.Contracts.Project do
           root: Path.t(),
           name: String.t(),
           checks: [CheckSpec.t()],
+          setup: [CheckSpec.t()],
           fix: [CheckSpec.t()],
           diagnose: [diagnostic()],
           protected_paths: [String.t()],

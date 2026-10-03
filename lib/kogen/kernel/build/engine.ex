@@ -7,6 +7,7 @@ defmodule Kogen.Kernel.Build.Engine do
   alias Kogen.Kernel.Build.Prepared
   alias Kogen.Kernel.Build.Request
   alias Kogen.Kernel.Build.Session
+  alias Kogen.Kernel.Build.Setup
   alias Kogen.Kernel.Build.StageRunner
   alias Kogen.Kernel.Runtime
   alias Kogen.Kernel.Types.BuildResult
@@ -144,31 +145,50 @@ defmodule Kogen.Kernel.Build.Engine do
     with :ok <- Workspace.insert_files(path, approved_files(prepared.approval)),
          {:ok, candidate_project} <- Project.load(path),
          {:ok, process_env} <- workspace_environment(path, request.runtime) do
-      session =
-        %Session{
-          request: request,
-          approval: prepared.approval,
-          approval_commit: prepared.approval_commit,
-          intent: prepared.intent,
-          intent_text: prepared.intent_text,
-          project: candidate_project,
-          run: prepared.run,
-          cycle: Cycle.new(%{approval: prepared.approval, repairs: 2}),
-          state_root: state_root(request),
-          run_dir: prepared.run.dir,
-          base_sha: prepared.base_sha,
-          workdir: path,
-          process_env: process_env,
-          git_env: Runtime.git_environment(process_env),
-          receipts: [],
-          acceptance: []
-        }
-
-      run_stage(session, :context, %{})
+      start_candidate(prepared, path, candidate_project, process_env)
     else
+      {:error, {:toolchain_failed, detail}} ->
+        failure = %Failure{class: :environment, reason: :toolchain_failed, detail: detail}
+        fail_candidate_setup(request, prepared.run, path, failure)
+
       {:error, reason} ->
         fail_candidate_setup(request, prepared.run, path, reason)
     end
+  end
+
+  defp start_candidate(prepared, path, project, process_env) do
+    session = candidate_session(prepared, path, project, process_env)
+
+    case Setup.run(project.setup, path, prepared.run.dir, process_env, Kogen.Proc) do
+      :ok ->
+        run_stage(session, :context, %{})
+
+      {:error, %Failure{} = failure} ->
+        fail_candidate_setup(prepared.request, prepared.run, path, failure)
+    end
+  end
+
+  defp candidate_session(prepared, path, project, process_env) do
+    request = prepared.request
+
+    %Session{
+      request: request,
+      approval: prepared.approval,
+      approval_commit: prepared.approval_commit,
+      intent: prepared.intent,
+      intent_text: prepared.intent_text,
+      project: project,
+      run: prepared.run,
+      cycle: Cycle.new(%{approval: prepared.approval, repairs: 2}),
+      state_root: state_root(request),
+      run_dir: prepared.run.dir,
+      base_sha: prepared.base_sha,
+      workdir: path,
+      process_env: process_env,
+      git_env: Runtime.git_environment(process_env),
+      receipts: [],
+      acceptance: []
+    }
   end
 
   defp fail_candidate_setup(request, run, path, reason) do

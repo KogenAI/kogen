@@ -111,9 +111,11 @@ defmodule Kogen.Kernel.Environment do
   alias Kogen.Kernel.Runtime
   alias Kogen.Proc
 
+  @output_tail_bytes 2_048
+
   @spec project(Path.t(), Runtime.t()) ::
           {:ok, %{String.t() => String.t()}}
-          | {:error, :toolchain_failed | :invalid_toolchain_environment}
+          | {:error, :invalid_toolchain_environment | {:toolchain_failed, String.t()}}
   def project(workdir, %Runtime{} = runtime) do
     case Proc.run(
            [runtime.mise, "env", "-C", workdir, "--json"],
@@ -124,12 +126,25 @@ defmodule Kogen.Kernel.Environment do
       {:ok, %ProcResult{exit_status: 0, timed_out: false, output_tail: output}} ->
         decode_environment(output, runtime)
 
-      {:ok, %ProcResult{}} ->
-        {:error, :toolchain_failed}
+      {:ok, %ProcResult{output_tail: output}} ->
+        {:error, {:toolchain_failed, toolchain_failure_detail(output)}}
 
-      {:error, _reason} ->
-        {:error, :toolchain_failed}
+      {:error, reason} ->
+        {:error, {:toolchain_failed, "mise env failed: #{inspect(reason)}"}}
     end
+  end
+
+  defp toolchain_failure_detail(output) do
+    output = output_tail(output)
+    if output == "", do: "mise env failed", else: "mise env failed:\n" <> output
+  end
+
+  defp output_tail(output) when byte_size(output) <= @output_tail_bytes,
+    do: String.replace_invalid(output)
+
+  defp output_tail(output) do
+    offset = byte_size(output) - @output_tail_bytes
+    output |> binary_part(offset, @output_tail_bytes) |> String.replace_invalid()
   end
 
   defp decode_environment(output, runtime) do

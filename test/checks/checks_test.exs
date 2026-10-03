@@ -260,6 +260,7 @@ defmodule Kogen.Checks.ChecksTest do
       root: "/tmp/project",
       name: "test-project",
       checks: checks,
+      setup: [],
       fix: [],
       diagnose: [],
       protected_paths: [],

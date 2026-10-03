@@ -15,6 +15,10 @@ defmodule Kogen.Project.ProjectTest do
       - name: format
         argv: [mix, format, --force]
         timeout_ms: 12000
+    setup:
+      - name: assets
+        argv: [npm, ci]
+        timeout_ms: 120000
     diagnose:
       - glob: "lib/**/*.ex"
         argv: [mix, compile]
@@ -27,6 +31,10 @@ defmodule Kogen.Project.ProjectTest do
     assert project.root == root
     assert project.name == "tiny-app"
     assert project.checks == [%CheckSpec{name: "test", argv: ["mix", "test"], timeout_ms: 60_000}]
+
+    assert project.setup == [
+             %CheckSpec{name: "assets", argv: ["npm", "ci"], timeout_ms: 120_000}
+           ]
 
     assert project.fix == [
              %CheckSpec{name: "format", argv: ["mix", "format", "--force"], timeout_ms: 12_000}
@@ -41,6 +49,7 @@ defmodule Kogen.Project.ProjectTest do
     write_config(root, "name: tiny-app\nchecks: []\n")
     assert {:ok, project} = Kogen.Project.load(root)
     assert project.fix == []
+    assert project.setup == []
     assert project.diagnose == []
     assert project.protected_paths == []
     assert project.domains == %{}
@@ -96,6 +105,33 @@ defmodule Kogen.Project.ProjectTest do
 
     assert {:error, errors} = Kogen.Project.load(root)
     assert Enum.any?(errors, &(&1.message =~ "fix[1] is missing required key `timeout_ms`"))
+  end
+
+  test "setup entries use the CheckSpec format and reject unknown keys", %{tmp_dir: root} do
+    write_config(root, """
+    name: tiny-app
+    checks: []
+    setup:
+      - name: assets
+        argv: [npm, ci]
+        timeout_ms: 1000
+        shell: true
+    """)
+
+    assert {:error, [%{message: message}]} = Kogen.Project.load(root)
+    assert message =~ "setup[1] has unknown key \"shell\""
+
+    write_config(root, """
+    name: tiny-app
+    checks: []
+    setup:
+      - name: assets
+        argv: []
+        timeout_ms: 1000
+    """)
+
+    assert {:error, [%{message: message}]} = Kogen.Project.load(root)
+    assert message =~ "setup[1].argv must not be empty"
   end
 
   test "validates argv, timeout, protected paths, diagnoses, and domain roots", %{tmp_dir: root} do

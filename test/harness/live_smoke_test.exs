@@ -80,6 +80,7 @@ defmodule Kogen.Harness.LiveSmokeTest do
       root: workdir,
       name: "mini",
       checks: [check],
+      setup: [],
       fix: [],
       diagnose: [],
       protected_paths: [],

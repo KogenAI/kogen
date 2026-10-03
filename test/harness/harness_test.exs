@@ -278,6 +278,7 @@ defmodule Kogen.Harness.Tests do
       root: workdir,
       name: "fixture",
       checks: checks,
+      setup: [],
       fix: [],
       diagnose: [],
       protected_paths: [],

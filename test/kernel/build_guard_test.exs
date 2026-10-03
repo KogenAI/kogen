@@ -21,6 +21,7 @@ defmodule Kogen.Kernel.BuildGuardTest do
       root: repo,
       name: "guard-fixture",
       checks: [],
+      setup: [],
       fix: [],
       diagnose: [],
       protected_paths: [protected_path],

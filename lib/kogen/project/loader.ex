@@ -5,7 +5,7 @@ defmodule Kogen.Project.Loader do
   alias Kogen.Contracts.Project
   alias Kogen.Contracts.Yaml
 
-  @project_keys ~w(name checks fix diagnose protected_paths domains)
+  @project_keys ~w(name checks setup fix diagnose protected_paths domains)
 
   @type error :: %{line: pos_integer() | nil, message: String.t()}
 
@@ -30,6 +30,7 @@ defmodule Kogen.Project.Loader do
   defp validate_document(document, checkout_root) do
     {name, name_errors} = name(document)
     {checks, check_errors} = check_specs(document, "checks", true)
+    {setup, setup_errors} = check_specs(document, "setup", false)
     {fix, fix_errors} = check_specs(document, "fix", false)
     {diagnose, diagnose_errors} = diagnostics(document)
     {protected_paths, protected_errors} = protected_paths(document)
@@ -38,7 +39,12 @@ defmodule Kogen.Project.Loader do
     errors =
       unknown_keys(document, @project_keys, "project") ++
         name_errors ++
-        check_errors ++ fix_errors ++ diagnose_errors ++ protected_errors ++ domain_errors
+        check_errors ++
+        setup_errors ++
+        fix_errors ++
+        diagnose_errors ++
+        protected_errors ++
+        domain_errors
 
     if errors == [] do
       {:ok,
@@ -46,6 +52,7 @@ defmodule Kogen.Project.Loader do
          root: checkout_root,
          name: name,
          checks: checks,
+         setup: setup,
          fix: fix,
          diagnose: diagnose,
          protected_paths: protected_paths,

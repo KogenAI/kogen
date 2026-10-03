@@ -1,0 +1,67 @@
+defmodule Kogen.Kernel.Build.Setup do
+  @moduledoc false
+
+  alias Kogen.Contracts.CheckSpec
+  alias Kogen.Contracts.Failure
+  alias Kogen.Contracts.ProcResult
+
+  @spec run([CheckSpec.t()], Path.t(), Path.t(), %{String.t() => String.t()}, module()) ::
+          :ok | {:error, Failure.t()}
+  def run([], _workdir, _run_dir, _env, _proc_mod), do: :ok
+
+  def run(specs, workdir, run_dir, env, proc_mod) do
+    case File.mkdir_p(Path.join(run_dir, "logs")) do
+      :ok ->
+        run_specs(specs, workdir, run_dir, env, proc_mod)
+
+      {:error, reason} ->
+        {:error, failure(:setup_failed, "cannot prepare setup logs: #{inspect(reason)}")}
+    end
+  end
+
+  defp run_specs([], _workdir, _run_dir, _env, _proc_mod), do: :ok
+
+  defp run_specs([%CheckSpec{} = spec | rest], workdir, run_dir, env, proc_mod) do
+    log_path = Path.join([run_dir, "logs", "setup-#{safe_name(spec.name)}.log"])
+
+    result =
+      proc_mod.run(spec.argv,
+        cd: workdir,
+        env: env,
+        timeout_ms: spec.timeout_ms,
+        log_path: log_path
+      )
+
+    case result do
+      {:ok, %ProcResult{exit_status: 0, timed_out: false}} ->
+        run_specs(rest, workdir, run_dir, env, proc_mod)
+
+      {:ok, %ProcResult{} = proc_result} ->
+        {:error, command_failure(spec.name, proc_result)}
+
+      {:error, reason} ->
+        {:error, failure(:setup_failed, "setup command #{spec.name} failed: #{inspect(reason)}")}
+    end
+  end
+
+  defp command_failure(name, %ProcResult{} = result) do
+    status =
+      if result.timed_out, do: "timed out", else: "exit status #{inspect(result.exit_status)}"
+
+    output = output_tail(result.output_tail)
+    detail = "setup command #{name} failed (#{status})"
+    detail = if output == "", do: detail, else: detail <> "\n" <> output
+    failure(:setup_failed, detail)
+  end
+
+  defp output_tail(output) when byte_size(output) <= 2_048, do: String.replace_invalid(output)
+
+  defp output_tail(output) do
+    offset = byte_size(output) - 2_048
+    output |> binary_part(offset, 2_048) |> String.replace_invalid()
+  end
+
+  defp safe_name(name), do: Regex.replace(~r/[^A-Za-z0-9_.-]/, name, "_")
+
+  defp failure(reason, detail), do: %Failure{class: :environment, reason: reason, detail: detail}
+end

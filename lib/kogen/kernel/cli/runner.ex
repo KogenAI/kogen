@@ -226,8 +226,8 @@ defmodule Kogen.Kernel.CLI.Runner do
 
   defp command_error(:mise_missing), do: {3, "environment/mise_missing: mise was not found\n"}
 
-  defp command_error(:toolchain_failed),
-    do: {3, "environment/toolchain_failed: mise env failed\n"}
+  defp command_error({:toolchain_failed, detail}),
+    do: {3, "environment/toolchain_failed: #{detail}\n"}
 
   defp command_error(:invalid_toolchain_environment),
     do: {3, "environment/invalid_toolchain_environment: mise returned invalid JSON\n"}

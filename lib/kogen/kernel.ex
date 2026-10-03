@@ -30,7 +30,7 @@ defmodule Kogen.Kernel do
 
   @type toolchain_error ::
           :mise_missing
-          | :toolchain_failed
+          | {:toolchain_failed, String.t()}
           | :invalid_toolchain_environment
           | :too_many_script_symlinks
           | {:script_path_unavailable, term()}
