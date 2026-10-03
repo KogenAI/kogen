@@ -63,7 +63,7 @@ defmodule Kogen.Proc.ProcTest do
     marker = Path.join(tmp_dir, "grandchild-killed")
 
     script =
-      "sh -c 'trap \"printf killed > $MARKER; exit 0\" TERM; printf ready > $READY; sleep 2' & " <>
+      "sh -c 'trap \"printf killed > $MARKER; exit 0\" TERM; sleep 2 & printf ready > $READY; wait' & " <>
         "while [ ! -f $READY ]; do sleep 0.01; done; exit 0"
 
     assert {:ok, %ProcResult{exit_status: 0}} =
@@ -72,7 +72,7 @@ defmodule Kogen.Proc.ProcTest do
                timeout_ms: 2_000
              )
 
-    assert File.read!(marker) == "killed"
+    assert wait_for_content(marker, "killed")
   end
 
   test "only explicit environment values reach the child", %{tmp_dir: tmp_dir} do
@@ -128,7 +128,12 @@ defmodule Kogen.Proc.ProcTest do
     caller = self()
     ready = Path.join(tmp_dir, "caller-ready")
     marker = Path.join(tmp_dir, "caller-killed")
-    script = ~s(trap 'printf killed > "$MARKER"; exit 0' TERM; printf ready > "$READY"; sleep 30)
+
+    # `sleep` runs in the background and the shell blocks in `wait`, which TERM interrupts at once.
+    # In the foreground, a TERM that lands between fork and exec of `sleep` is lost: the shell
+    # waits for `sleep 30`, the wrapper escalates to KILL and the trap never runs.
+    script =
+      ~s(trap 'printf killed > "$MARKER"; exit 0' TERM; sleep 30 & printf ready > "$READY"; wait)
 
     run_pid =
       spawn(fn ->
@@ -145,8 +150,7 @@ defmodule Kogen.Proc.ProcTest do
     assert wait_for_file(ready)
     Process.exit(run_pid, :kill)
     assert_receive {:DOWN, ^run_monitor, :process, ^run_pid, :killed}
-    assert wait_for_file(marker)
-    assert File.read!(marker) == "killed"
+    assert wait_for_content(marker, "killed")
   end
 
   @tag :process
@@ -183,8 +187,7 @@ defmodule Kogen.Proc.ProcTest do
     assert wait_for_file(child_ready)
     beam_pid = File.read!(beam_pid_path)
     assert {:ok, %ProcResult{exit_status: 0}} = run(["kill", "-9", beam_pid], tmp_dir)
-    assert wait_for_file(marker)
-    assert File.read!(marker) == "killed"
+    assert wait_for_content(marker, "killed")
     assert_receive {:nested_done, {:ok, %ProcResult{exit_status: 137}}}, 5_000
     assert_receive {:DOWN, ^run_monitor, :process, ^run_pid, :normal}, 5_000
   end
@@ -194,7 +197,7 @@ defmodule Kogen.Proc.ProcTest do
     File.write!(#{inspect(beam_pid_path)}, System.pid())
     File.write!(#{inspect(ready)}, "ready")
     Kogen.Proc.run(
-      ["sh", "-c", "trap 'printf killed > \\\"$MARKER\\\"; exit 0' TERM; printf ready > \\\"$READY\\\"; sleep 30"],
+      ["sh", "-c", "trap 'printf killed > \\\"$MARKER\\\"; exit 0' TERM; sleep 30 & printf ready > \\\"$READY\\\"; wait"],
       cd: #{inspect(tmp_dir)},
       env: %{"PATH" => "/usr/bin:/bin", "MARKER" => #{inspect(marker)}, "READY" => #{inspect(child_ready)}},
       timeout_ms: 10_000
@@ -204,6 +207,21 @@ defmodule Kogen.Proc.ProcTest do
 
   defp run(argv, cd, opts \\ []) do
     Proc.run(argv, Keyword.merge([cd: cd], opts))
+  end
+
+  # Existence is not enough: the trap's redirect creates the file before printf writes to it.
+  defp wait_for_content(path, expected, attempts \\ 500)
+  defp wait_for_content(path, expected, 0), do: File.read(path) == {:ok, expected}
+
+  defp wait_for_content(path, expected, attempts) do
+    if File.read(path) == {:ok, expected} do
+      true
+    else
+      receive do
+      after
+        10 -> wait_for_content(path, expected, attempts - 1)
+      end
+    end
   end
 
   defp wait_for_file(path, attempts \\ 500)
