@@ -106,7 +106,7 @@ defmodule Kogen.Build.Cycle do
   defp stage_succeeded(state, :develop, data) do
     tree = tree_from(data)
 
-    if same_repaired_tree?(state, tree) do
+    if same_repaired_tree?(state, tree) and state.last_failure != :done_gate_red do
       fail_candidate(state, :unchanged)
     else
       next = %{state | stage: :done_gate, last_tree: tree, repair_tree: nil}
