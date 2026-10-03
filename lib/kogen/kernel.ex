@@ -118,7 +118,7 @@ defmodule Kogen.Kernel do
   end
 
   @spec reconcile(String.t(), Path.t(), Path.t(), String.t()) ::
-          {:ok, :landed | :unchanged} | {:error, term()}
+          {:ok, :crashed | :landed | :unchanged} | {:error, term()}
   def reconcile(run_id, project_root, origin, base) do
     with {:ok, runtime} <- runtime(),
          {:ok, process_env} <- project_environment(project_root, runtime) do

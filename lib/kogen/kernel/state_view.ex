@@ -151,6 +151,7 @@ defmodule Kogen.Kernel.Reconcile do
 
   alias Kogen.Proc
   alias Kogen.State
+  alias Kogen.Workspace
 
   @pid_liveness_script """
   use Errno qw(ESRCH EPERM);
@@ -164,7 +165,7 @@ defmodule Kogen.Kernel.Reconcile do
   """
 
   @spec run(String.t(), Path.t(), Path.t(), String.t(), map()) ::
-          {:ok, :landed | :unchanged} | {:error, term()}
+          {:ok, :crashed | :landed | :unchanged} | {:error, term()}
   def run(run_id, project_root, origin, base, git_env) do
     state_root = Path.join(project_root, ".kogen")
 
@@ -182,8 +183,11 @@ defmodule Kogen.Kernel.Reconcile do
         {:ok, :unchanged}
 
       {:ok, false} ->
-        with :ok <- State.recover_crashed(origin, state_root, run, git_env) do
-          {:ok, :unchanged}
+        workspace = Path.join([state_root, "w", run.id])
+
+        with :ok <- State.recover_crashed(origin, state_root, run, git_env),
+             :ok <- Workspace.destroy(workspace) do
+          {:ok, :crashed}
         end
 
       {:error, reason} ->
