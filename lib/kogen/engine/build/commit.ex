@@ -77,15 +77,10 @@ defmodule Kogen.Engine.Build.Commit do
     end
   end
 
-  defp commit_tree(session, tree) do
-    trailers = [
-      {"Kogen-Intent", session.intent.slug},
-      {"Kogen-Run", session.run.id},
-      {"Kogen-Approval", session.approval_commit},
-      {"Kogen-Receipt", tree}
-    ]
+  defp commit_tree(session, _tree) do
+    trailers = [{"Kogen-Intent", session.intent.slug}]
 
-    Workspace.commit(session.workdir, "Build #{session.intent.slug}", trailers, session.git_env)
+    Workspace.commit(session.workdir, session.intent.title, trailers, session.git_env)
   end
 
   defp rebase(session), do: Workspace.rebase(session.workdir, session.base_sha, session.git_env)

@@ -10,6 +10,7 @@ defmodule Kogen.E2e.BuildTest do
   @moduletag :e2e
   @tag timeout: 120_000
   @intent_slug "build-engine"
+  @intent_title "Expose a ready value"
 
   setup_all do
     shared_root = Kogen.Testkit.Temp.create!()
@@ -45,10 +46,9 @@ defmodule Kogen.E2e.BuildTest do
     assert result.claim_released
 
     message = Git.git!(result.fixture.origin, ["show", "-s", "--format=%B", sha])
-    assert message =~ "Kogen-Intent: #{@intent_slug}"
-    assert message =~ "Kogen-Run: #{result.build.run_id}"
-    assert message =~ "Kogen-Approval: #{result.fixture.approval_commit}"
-    assert message =~ ~r/Kogen-Receipt: [0-9a-f]{40}/
+
+    assert String.trim_trailing(message, "\n") ==
+             "#{@intent_title}\n\nKogen-Intent: #{@intent_slug}"
 
     parents = Git.git!(result.fixture.origin, ["rev-list", "--parents", "-n", "1", sha])
     assert String.split(String.trim(parents)) == [sha, result.fixture.approved_base]
