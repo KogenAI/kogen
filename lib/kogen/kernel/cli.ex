@@ -39,8 +39,14 @@ defmodule Kogen.Kernel.CLI do
 
   @spec main([String.t()]) :: no_return()
   def main(argv) do
+    main(argv, &execute/1)
+  end
+
+  @doc false
+  @spec main([String.t()], ([String.t()] -> {non_neg_integer(), String.t()})) :: no_return()
+  def main(argv, executor) do
     preload_modules()
-    {status, output} = execute(argv)
+    {status, output} = Kogen.Kernel.CLI.Signal.run(argv, executor)
     IO.write(output)
     System.halt(status)
   end

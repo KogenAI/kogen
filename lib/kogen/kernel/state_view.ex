@@ -12,6 +12,22 @@ defmodule Kogen.Kernel.StateView do
     end
   end
 
+  @spec interrupt(Path.t(), String.t(), pos_integer()) :: :ok | {:error, term()}
+  def interrupt(state_root, slug, owner_os_pid) do
+    with {:ok, matching_runs} <- runs(state_root, slug),
+         active_runs =
+           Enum.filter(
+             matching_runs,
+             &(&1.status == :running and &1.owner_os_pid == owner_os_pid)
+           ),
+         {:ok, latest} <- latest(active_runs) do
+      case latest do
+        %Run{} = run -> State.record(run, %{event: :interrupted, reason: :sigterm})
+        nil -> :ok
+      end
+    end
+  end
+
   @spec preferred_root(Path.t(), Path.t(), String.t()) :: {:ok, Path.t()} | {:error, term()}
   def preferred_root(current_root, legacy_root, slug) do
     with {:ok, current_runs} <- runs(current_root, slug),

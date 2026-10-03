@@ -11,7 +11,15 @@ defmodule Kogen.E2e do
       Kogen.Workspace,
       ExUnit
     ],
-    exports: [Build, Build.Fixture, Build.Options, Build.Result, ScriptedProvider]
+    exports: [
+      Build,
+      Build.Environment,
+      Build.Fixture,
+      Build.Options,
+      Build.Result,
+      Build.Signal,
+      ScriptedProvider
+    ]
 end
 
 defmodule Kogen.E2e.Build.Options do

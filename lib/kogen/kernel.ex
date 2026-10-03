@@ -31,6 +31,7 @@ defmodule Kogen.Kernel do
   alias Kogen.Engine.Runtime
   alias Kogen.Kernel.Approval
   alias Kogen.Kernel.RuntimeDiscovery
+  alias Kogen.Kernel.StateView
   alias Kogen.Kernel.Types.ApprovalPreview
   alias Kogen.Kernel.Types.BuildOptions
   alias Kogen.Kernel.Types.IntentStatus
@@ -192,7 +193,7 @@ defmodule Kogen.Kernel do
       git_env = Runtime.git_environment(process_env)
 
       with {:ok, root} <-
-             Kogen.Kernel.StateView.preferred_root(
+             StateView.preferred_root(
                Workspaces.root(project_root, home),
                legacy_state_root(project_root),
                slug
@@ -217,6 +218,22 @@ defmodule Kogen.Kernel do
         origin,
         base,
         git_env
+      )
+    end
+  end
+
+  @doc false
+  @spec workspace_root(Path.t(), Path.t()) :: Path.t()
+  def workspace_root(project_root, home), do: Workspaces.root(project_root, home)
+
+  @doc false
+  @spec interrupt_build(Path.t(), String.t()) :: :ok | {:error, term()}
+  def interrupt_build(project_root, slug) do
+    with {:ok, home} <- RuntimeDiscovery.home() do
+      StateView.interrupt(
+        Workspaces.root(project_root, home),
+        slug,
+        String.to_integer(System.pid())
       )
     end
   end

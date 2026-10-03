@@ -2,13 +2,13 @@ defmodule Kogen.E2e.Build do
   @moduledoc "Creates and runs a tiny approved project through the real Build engine."
 
   alias Kogen.Contracts.ProcResult
+  alias Kogen.E2e.Build.Environment
   alias Kogen.E2e.Build.Fixture
   alias Kogen.E2e.Build.Options
   alias Kogen.E2e.Build.Result
   alias Kogen.E2e.ScriptedProvider
   alias Kogen.E2e.ScriptedProvider.Config
   alias Kogen.Engine.Build.Request
-  alias Kogen.Engine.Runtime
   alias Kogen.Kernel.Types.ApprovalPreview
   alias Kogen.Proc
   alias Kogen.Testkit.Git
@@ -49,10 +49,36 @@ defmodule Kogen.E2e.Build do
     Kogen.Kernel.report(@slug, fixture.project_root, fixture.origin, "main")
   end
 
-  defp run_build!(%Fixture{} = fixture, server) do
-    runtime = runtime!(fixture.project_root, fixture.home)
+  @doc false
+  def run_blocked_cli!(parent, seed_project, pid_path),
+    do: Kogen.E2e.Build.Signal.run(parent, seed_project, pid_path)
 
-    request = %Request{
+  @doc false
+  def prepare!(parent, seed_project, server) do
+    fixture = create_fixture!(parent, seed_project)
+    {fixture, build_request!(fixture, server)}
+  end
+
+  @doc false
+  def workspace_root(project_root, home), do: Kogen.Kernel.workspace_root(project_root, home)
+
+  defp run_build!(%Fixture{} = fixture, server) do
+    request = build_request!(fixture, server)
+
+    case Kogen.Kernel.build(request) do
+      {:ok, build} -> started_result(fixture, build)
+      {:error, reason} -> Result.refused(fixture, reason)
+    end
+  end
+
+  defp build_request!(%Fixture{} = fixture, server) do
+    runtime = Environment.runtime!(fixture.project_root, fixture.home)
+
+    build_request!(fixture, server, runtime)
+  end
+
+  defp build_request!(%Fixture{} = fixture, server, runtime) do
+    %Request{
       slug: @slug,
       home: fixture.home,
       project_root: fixture.project_root,
@@ -67,11 +93,6 @@ defmodule Kogen.E2e.Build do
       credential_source: :custom,
       credential_label: "test"
     }
-
-    case Kogen.Kernel.build(request) do
-      {:ok, build} -> started_result(fixture, build)
-      {:error, reason} -> Result.refused(fixture, reason)
-    end
   end
 
   defp started_result(fixture, build) do
@@ -85,70 +106,6 @@ defmodule Kogen.E2e.Build do
       claim_released: claim_released?(fixture, build.run_id)
     }
   end
-
-  defp runtime!(project_root, home) do
-    {:ok, discovered} = Kogen.Kernel.runtime()
-    toolchain_home = Map.get(discovered.base_env, "HOME", home)
-
-    mise_data =
-      Map.get(
-        discovered.base_env,
-        "MISE_DATA_DIR",
-        Path.join([toolchain_home, ".local", "share", "mise"])
-      )
-
-    base_env =
-      discovered.base_env
-      |> test_runtime_environment()
-      |> Map.merge(%{
-        "HOME" => home,
-        "MIX_HOME" => Path.join(home, ".mix"),
-        "HEX_HOME" => Path.join(home, ".hex"),
-        "MISE_CACHE_DIR" => Path.join([home, ".cache", "mise"]),
-        "MISE_DATA_DIR" => mise_data
-      })
-
-    fake_mise = write_fake_mise!(project_root, Map.fetch!(base_env, "PATH"))
-    runtime = %{discovered | base_env: base_env, git_env: Git.env(), mise: fake_mise}
-
-    case Kogen.Kernel.project_environment(project_root, runtime) do
-      {:ok, env} -> Runtime.for_project(runtime, env)
-      {:error, reason} -> raise "test fake mise failed: #{inspect(reason)}"
-    end
-  end
-
-  defp test_runtime_environment(base_env) do
-    allowed = ~w(PATH HOME LANG LC_ALL TERM TMPDIR USER SHELL MIX_HOME HEX_HOME)
-    markers = ~w(KOGEN_ERTS_DIR KOGEN_ERTS_BIN KOGEN_ESCRIPT_DIR KOGEN_BIN_DIR)
-
-    base_env
-    |> Map.take(allowed ++ markers)
-    |> Map.merge(Git.env())
-  end
-
-  defp write_fake_mise!(project_root, path_value) do
-    path = Path.join([project_root, ".test-bin", "mise"])
-    env = %{"PATH" => path_value, "MIX_ENV" => "test", "ERL_FLAGS" => "+S 1:1 +A 1"}
-    json = env |> :json.encode() |> IO.iodata_to_binary()
-    quoted_json = shell_quote(json)
-
-    script = """
-    #!/bin/sh
-    if [ "$1" = "env" ]; then
-      printf '%s\\n' #{quoted_json}
-    else
-      echo "test fake mise only supports env" >&2
-      exit 64
-    fi
-    """
-
-    File.mkdir_p!(Path.dirname(path))
-    File.write!(path, script)
-    File.chmod!(path, 0o755)
-    path
-  end
-
-  defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
 
   defp load_run!(workspace_root, run_id) do
     case Kogen.State.load(workspace_root, run_id) do
@@ -169,7 +126,7 @@ defmodule Kogen.E2e.Build do
     project = Path.join(parent, "project")
     home = Path.join(parent, "test-home")
     origin = Path.join(parent, "origin.git")
-    workspace_root = Path.join([home, ".kogen", "workspaces", "test-project"])
+    workspace_root = workspace_root(project, home)
     git_env = Git.env()
 
     Git.copy_tree!(seed_project, project)
