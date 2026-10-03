@@ -8,6 +8,7 @@ defmodule Kogen.Checks.Ledger do
   alias Kogen.Contracts.Intent
   alias Kogen.Contracts.ProcResult
   alias Kogen.Proc
+  alias Kogen.Proc.Sandbox
   alias Kogen.Workspace
 
   @formatter_source Path.expand("../../../priv/ledger/kogen_ledger_formatter.ex", __DIR__)
@@ -29,9 +30,23 @@ defmodule Kogen.Checks.Ledger do
           {:ok, %{status: :pass | {:fail, [String.t()]}, ledger: [LedgerRow.t()]}}
           | {:error, Failure.t()}
   def acceptance(workdir, %Intent{} = intent, run_dir, env, git_env) do
+    acceptance(workdir, intent, run_dir, env, git_env, nil)
+  end
+
+  @spec acceptance(
+          Path.t(),
+          Intent.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()},
+          Sandbox.t() | nil
+        ) ::
+          {:ok, %{status: :pass | {:fail, [String.t()]}, ledger: [LedgerRow.t()]}}
+          | {:error, Failure.t()}
+  def acceptance(workdir, %Intent{} = intent, run_dir, env, git_env, sandbox) do
     with {:ok, items} <- test_items(intent),
          {:ok, before_tree} <- Workspace.tree_hash(workdir, git_env) do
-      result = report(workdir, intent.slug, run_dir, env)
+      result = report(workdir, intent.slug, run_dir, env, sandbox)
 
       with {:ok, after_tree} <- Workspace.tree_hash(workdir, git_env),
            :ok <- same_tree(before_tree, after_tree),
@@ -57,9 +72,21 @@ defmodule Kogen.Checks.Ledger do
           %{String.t() => String.t()}
         ) :: :ok | {:error, Failure.t()}
   def red_on_base(workdir, %Intent{} = intent, run_dir, env, git_env) do
+    red_on_base(workdir, intent, run_dir, env, git_env, nil)
+  end
+
+  @spec red_on_base(
+          Path.t(),
+          Intent.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()},
+          Sandbox.t() | nil
+        ) :: :ok | {:error, Failure.t()}
+  def red_on_base(workdir, %Intent{} = intent, run_dir, env, git_env, sandbox) do
     with {:ok, items} <- test_items(intent),
          {:ok, before_tree} <- Workspace.tree_hash(workdir, git_env) do
-      result = report(workdir, intent.slug, run_dir, env)
+      result = report(workdir, intent.slug, run_dir, env, sandbox)
 
       with {:ok, after_tree} <- Workspace.tree_hash(workdir, git_env),
            :ok <- same_tree(before_tree, after_tree),
@@ -69,12 +96,12 @@ defmodule Kogen.Checks.Ledger do
     end
   end
 
-  defp report(workdir, slug, run_dir, env) do
+  defp report(workdir, slug, run_dir, env, sandbox) do
     test_path = Path.join([workdir, "test", "acceptance", "#{slug}_test.exs"])
 
     with :ok <- prepared_test(test_path),
          :ok <- prepare_run_files(run_dir),
-         {:ok, exit_status} <- run_tests(workdir, test_path, run_dir, env),
+         {:ok, exit_status} <- run_tests(workdir, test_path, run_dir, env, sandbox),
          {:ok, rows} <- read_report(Path.join(run_dir, "ledger.jsonl")) do
       {:ok, rows, exit_status}
     end
@@ -102,14 +129,15 @@ defmodule Kogen.Checks.Ledger do
     end
   end
 
-  defp run_tests(workdir, test_path, run_dir, env) do
+  defp run_tests(workdir, test_path, run_dir, env, sandbox) do
     report_path = Path.join(run_dir, "ledger.jsonl")
     log_path = Path.join([run_dir, "logs", "acceptance.log"])
 
     options = [
       cd: workdir,
       env: Map.put(env, "KOGEN_LEDGER_REPORT", report_path),
-      log_path: log_path
+      log_path: log_path,
+      sandbox: sandbox
     ]
 
     workdir

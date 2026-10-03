@@ -17,7 +17,8 @@ defmodule Kogen.Harness.Command do
              cd: opts.workdir,
              env: opts.env,
              timeout_ms: timeout_ms,
-             log_path: log_path
+             log_path: log_path,
+             sandbox: opts.sandbox
            ) do
         {:ok, %ProcResult{} = result} ->
           {:ok, result}

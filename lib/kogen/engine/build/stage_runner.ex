@@ -11,6 +11,7 @@ defmodule Kogen.Engine.Build.StageRunner do
   alias Kogen.Harness.Opts
   alias Kogen.Harness.Result, as: HarnessResult
   alias Kogen.State
+  alias Kogen.Workspace
 
   @spec run(atom(), map(), Session.t()) ::
           {:ok, Session.t(), [term()]}
@@ -59,7 +60,8 @@ defmodule Kogen.Engine.Build.StageRunner do
            session.intent,
            session.run_dir,
            session.process_env,
-           session.git_env
+           session.git_env,
+           session.sandbox
          ) do
       :ok -> :ok
       {:error, %Failure{} = failure} -> {:error, failure}
@@ -171,7 +173,8 @@ defmodule Kogen.Engine.Build.StageRunner do
              session.workdir,
              session.project,
              session.run_dir,
-             session.process_env
+             session.process_env,
+             session.sandbox
            ),
          :ok <- record(session, %{event: :fix_result, result: :pass}) do
       {:ok, %{session | failure: nil, failure_text: nil}, [{:stage_ok, :fix, %{}}]}
@@ -197,7 +200,8 @@ defmodule Kogen.Engine.Build.StageRunner do
              session.project,
              session.run_dir,
              session.process_env,
-             session.git_env
+             session.git_env,
+             session.sandbox
            ) do
       finish_checks(session, check_result)
     else
@@ -213,7 +217,8 @@ defmodule Kogen.Engine.Build.StageRunner do
              session.intent,
              session.run_dir,
              session.process_env,
-             session.git_env
+             session.git_env,
+             session.sandbox
            ),
          :ok <- record_check_results(session, check_result, acceptance),
          :ok <- check_passed(check_result, acceptance) do
@@ -279,6 +284,7 @@ defmodule Kogen.Engine.Build.StageRunner do
           workdir: session.workdir,
           run_dir: session.run_dir,
           project: session.project,
+          sandbox: session.sandbox,
           provider_mod: session.request.provider_mod,
           provider_config: session.request.provider_config,
           proc_mod: Kogen.Proc,
@@ -293,7 +299,19 @@ defmodule Kogen.Engine.Build.StageRunner do
         }
 
     protected = Map.keys(manifest(session))
-    %{opts | protected: Enum.uniq(opts.protected ++ protected)}
+
+    opts
+    |> Map.put(:changed?, opts.changed? || changed_detector(session))
+    |> Map.put(:protected, Enum.uniq(opts.protected ++ protected))
+  end
+
+  defp changed_detector(session) do
+    fn ->
+      case Workspace.changed_paths(session.workdir, session.base_sha, session.git_env) do
+        {:ok, paths} -> {:ok, paths != []}
+        {:error, reason} -> {:error, reason}
+      end
+    end
   end
 
   defp manifest(session), do: session.approval.protected_manifest

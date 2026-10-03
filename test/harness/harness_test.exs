@@ -172,6 +172,7 @@ defmodule Kogen.Harness.Tests do
       ])
 
     opts = options(tmp_dir, provider)
+    opts = %{opts | changed?: fn -> {:ok, false} end}
 
     assert {:ok, result} = Harness.develop(opts, @intent, nil, nil)
     assert result.outcome == :done
@@ -316,6 +317,7 @@ defmodule Kogen.Harness.Tests do
       provider_mod: ScriptedProvider,
       provider_config: provider,
       proc_mod: Kogen.Proc,
+      changed?: fn -> {:ok, true} end,
       env: %{},
       models: %{builder: {"gpt-6-luna", "low"}, strong: {"gpt-6.1-sol", "high"}},
       limits: %{max_turns: 12, wall_ms: 60_000},

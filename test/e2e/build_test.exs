@@ -45,6 +45,11 @@ defmodule Kogen.E2e.BuildTest do
     assert %Result{build: %{status: :landed, landed_sha: sha}, run_status: :landed} = result
     assert result.claim_released
 
+    assert result.build.run_dir ==
+             Path.join([result.fixture.workspace_root, "runs", result.build.run_id])
+
+    assert File.regular?(Path.join(result.build.run_dir, "run.json"))
+
     message = Git.git!(result.fixture.origin, ["show", "-s", "--format=%B", sha])
 
     assert String.trim_trailing(message, "\n") ==

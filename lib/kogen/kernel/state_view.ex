@@ -12,6 +12,18 @@ defmodule Kogen.Kernel.StateView do
     end
   end
 
+  @spec preferred_root(Path.t(), Path.t(), String.t()) :: {:ok, Path.t()} | {:error, term()}
+  def preferred_root(current_root, legacy_root, slug) do
+    with {:ok, current_runs} <- runs(current_root, slug),
+         {:ok, legacy_runs} <- runs(legacy_root, slug) do
+      cond do
+        current_runs != [] -> {:ok, current_root}
+        legacy_runs != [] -> {:ok, legacy_root}
+        true -> {:ok, current_root}
+      end
+    end
+  end
+
   @spec latest([Run.t()]) :: {:ok, Run.t() | nil} | {:error, term()}
   def latest([]), do: {:ok, nil}
 
@@ -73,17 +85,15 @@ defmodule Kogen.Kernel.Status do
   alias Kogen.State.Run
   alias Kogen.Workspace
 
-  @spec list(Path.t(), Path.t(), String.t(), map()) ::
+  @spec list(Path.t(), Path.t(), Path.t(), String.t(), map()) ::
           {:ok, [IntentStatus.t()]} | {:error, term()}
-  def list(project_root, origin, base, git_env) do
-    root = Path.join(project_root, ".kogen")
-
+  def list(project_root, state_root, origin, base, git_env) do
     project_root
     |> intent_paths()
     |> Enum.reduce_while({:ok, []}, fn path, {:ok, statuses} ->
       slug = path |> Path.dirname() |> Path.basename()
 
-      case intent_status(origin, root, slug, base, git_env) do
+      case intent_status(project_root, origin, state_root, slug, base, git_env) do
         {:ok, status} -> {:cont, {:ok, [status | statuses]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -104,7 +114,15 @@ defmodule Kogen.Kernel.Status do
     |> Enum.sort()
   end
 
-  defp intent_status(origin, state_root, slug, base, git_env) do
+  defp intent_status(project_root, origin, state_root, slug, base, git_env) do
+    legacy_root = Path.join(project_root, ".kogen")
+
+    with {:ok, selected_root} <- StateView.preferred_root(state_root, legacy_root, slug) do
+      load_intent_status(origin, selected_root, slug, base, git_env)
+    end
+  end
+
+  defp load_intent_status(origin, state_root, slug, base, git_env) do
     status = State.status(origin, state_root, slug, base, git_env)
 
     with {:ok, runs} <- StateView.runs(state_root, slug),
@@ -164,27 +182,50 @@ defmodule Kogen.Kernel.Reconcile do
   exit 2;
   """
 
-  @spec run(String.t(), Path.t(), Path.t(), String.t(), map()) ::
+  @spec run(String.t(), Path.t(), Path.t(), Path.t(), String.t(), map()) ::
           {:ok, :crashed | :landed | :unchanged} | {:error, term()}
-  def run(run_id, project_root, origin, base, git_env) do
-    state_root = Path.join(project_root, ".kogen")
+  def run(run_id, project_root, workspace_root, origin, base, git_env) do
+    legacy_root = Path.join(project_root, ".kogen")
 
-    with {:ok, run} <- State.load(state_root, run_id) do
+    with {:ok, run, state_root} <- load_run(workspace_root, legacy_root, run_id) do
       case run.status do
-        :running -> reconcile_unfinished(run, state_root, origin, base, git_env)
-        _terminal -> State.reconcile(origin, state_root, run, base, git_env)
+        :running ->
+          reconcile_unfinished(
+            run,
+            state_root,
+            existing_workspace(legacy_root, workspace_root, run.id),
+            origin,
+            base,
+            git_env
+          )
+
+        _terminal ->
+          State.reconcile(origin, state_root, run, base, git_env)
       end
     end
   end
 
-  defp reconcile_unfinished(run, state_root, origin, base, git_env) do
+  defp load_run(current_root, legacy_root, run_id) do
+    case State.load(current_root, run_id) do
+      {:ok, run} -> {:ok, run, current_root}
+      {:error, :enoent} -> load_legacy_run(legacy_root, run_id)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp load_legacy_run(legacy_root, run_id) do
+    case State.load(legacy_root, run_id) do
+      {:ok, run} -> {:ok, run, legacy_root}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp reconcile_unfinished(run, state_root, workspace, origin, base, git_env) do
     case owner_alive?(run.owner_os_pid, run.dir) do
       {:ok, true} ->
         {:ok, :unchanged}
 
       {:ok, false} ->
-        workspace = Path.join([state_root, "w", run.id])
-
         case State.reconcile(origin, state_root, run, base, git_env) do
           {:ok, :landed} ->
             with :ok <- Workspace.destroy(workspace), do: {:ok, :landed}
@@ -202,6 +243,12 @@ defmodule Kogen.Kernel.Reconcile do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp existing_workspace(legacy_root, workspace_root, run_id) do
+    current = Path.join(workspace_root, run_id)
+    legacy = Path.join([legacy_root, "w", run_id])
+    if File.dir?(current), do: current, else: legacy
   end
 
   defp owner_alive?(pid, directory) when is_integer(pid) and pid > 0 do
@@ -236,8 +283,8 @@ defmodule Kogen.Kernel.Report do
 
   @spec read(String.t(), Path.t(), Path.t(), String.t(), map()) ::
           {:ok, binary()} | {:error, term()}
-  def read(slug, project_root, origin, base, git_env) do
-    with {:ok, runs} <- StateView.runs(Path.join(project_root, ".kogen"), slug),
+  def read(slug, state_root, origin, base, git_env) do
+    with {:ok, runs} <- StateView.runs(state_root, slug),
          {:ok, %Run{} = run} <- StateView.latest(runs),
          {:ok, events} <- StateView.events(run),
          {:ok, landed_sha} <- landed_sha(run, origin, base, git_env) do

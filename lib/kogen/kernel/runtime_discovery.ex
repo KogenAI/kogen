@@ -21,6 +21,20 @@ defmodule Kogen.Kernel.RuntimeDiscovery do
     end
   end
 
+  @spec home() :: {:ok, Path.t()} | {:error, :home_unavailable}
+  def home do
+    case System.get_env("HOME") do
+      home when is_binary(home) and home != "" ->
+        {:ok, Path.expand(home)}
+
+      _missing ->
+        case System.user_home() do
+          home when is_binary(home) and home != "" -> {:ok, Path.expand(home)}
+          _missing -> {:error, :home_unavailable}
+        end
+    end
+  end
+
   @spec resolve_script_path(Path.t() | nil) :: {:ok, Path.t() | nil} | {:error, term()}
   def resolve_script_path(nil), do: {:ok, nil}
 

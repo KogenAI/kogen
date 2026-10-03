@@ -51,6 +51,14 @@ defmodule Kogen.Engine.Runtime do
   @spec temporary_directory(map()) :: Path.t()
   def temporary_directory(env) when is_map(env), do: Map.get(env, "TMPDIR", "/tmp")
 
+  @spec home(t()) :: Path.t() | nil
+  def home(%__MODULE__{base_env: base_env}) do
+    case Map.get(base_env, "HOME") do
+      home when is_binary(home) and home != "" -> Path.expand(home)
+      _missing -> nil
+    end
+  end
+
   @spec for_project(t(), map()) :: t()
   def for_project(%__MODULE__{} = runtime, process_env) when is_map(process_env) do
     %{runtime | git_env: git_environment(process_env)}

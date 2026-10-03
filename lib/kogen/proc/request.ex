@@ -1,8 +1,10 @@
 defmodule Kogen.Proc.Request do
   @moduledoc false
 
-  @enforce_keys [:argv, :cd, :env, :timeout_ms, :log_path, :stdin]
-  defstruct [:argv, :cd, :env, :timeout_ms, :log_path, :stdin]
+  alias Kogen.Proc.Sandbox
+
+  @enforce_keys [:argv, :cd, :env, :timeout_ms, :log_path, :stdin, :sandbox]
+  defstruct [:argv, :cd, :env, :timeout_ms, :log_path, :stdin, :sandbox]
 
   @type stdin :: :null | {:binary, binary()} | {:file, Path.t()}
   @type t :: %__MODULE__{
@@ -11,10 +13,11 @@ defmodule Kogen.Proc.Request do
           env: %{String.t() => String.t()},
           timeout_ms: non_neg_integer(),
           log_path: Path.t() | nil,
-          stdin: stdin()
+          stdin: stdin(),
+          sandbox: Sandbox.t() | nil
         }
 
-  @known_options [:cd, :env, :timeout_ms, :log_path, :stdin]
+  @known_options [:cd, :env, :timeout_ms, :log_path, :stdin, :sandbox]
   @runtime_keys [
     "ROOTDIR",
     "BINDIR",
@@ -38,7 +41,8 @@ defmodule Kogen.Proc.Request do
          {:ok, env} <- validate_env(Keyword.get(opts, :env, %{}), cd),
          {:ok, timeout_ms} <- validate_timeout(Keyword.get(opts, :timeout_ms, 120_000)),
          {:ok, log_path} <- validate_log_path(Keyword.get(opts, :log_path), cd),
-         {:ok, stdin} <- validate_stdin(Keyword.get(opts, :stdin)) do
+         {:ok, stdin} <- validate_stdin(Keyword.get(opts, :stdin)),
+         {:ok, sandbox} <- validate_sandbox(Keyword.get(opts, :sandbox)) do
       {:ok,
        %__MODULE__{
          argv: argv,
@@ -46,7 +50,8 @@ defmodule Kogen.Proc.Request do
          env: env,
          timeout_ms: timeout_ms,
          log_path: log_path,
-         stdin: stdin
+         stdin: stdin,
+         sandbox: sandbox
        }}
     end
   end
@@ -184,4 +189,9 @@ defmodule Kogen.Proc.Request do
   end
 
   defp validate_stdin(_stdin), do: {:error, :invalid_stdin}
+
+  @spec validate_sandbox(term()) :: {:ok, Sandbox.t() | nil} | {:error, :invalid_sandbox}
+  defp validate_sandbox(nil), do: {:ok, nil}
+  defp validate_sandbox(%Sandbox{} = sandbox), do: {:ok, sandbox}
+  defp validate_sandbox(_sandbox), do: {:error, :invalid_sandbox}
 end

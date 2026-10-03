@@ -93,7 +93,8 @@ defmodule Kogen.Engine.Build.Commit do
              session.project,
              session.run_dir,
              session.process_env,
-             session.git_env
+             session.git_env,
+             session.sandbox
            ),
          {:ok, acceptance} <-
            Kogen.Checks.acceptance(
@@ -101,7 +102,8 @@ defmodule Kogen.Engine.Build.Commit do
              session.intent,
              session.run_dir,
              session.process_env,
-             session.git_env
+             session.git_env,
+             session.sandbox
            ),
          :ok <- record_check_results(session, checks, acceptance),
          :ok <- check_passed(checks, acceptance),

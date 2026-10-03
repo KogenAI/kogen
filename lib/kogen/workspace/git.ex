@@ -3,6 +3,15 @@ defmodule Kogen.Workspace.Git do
 
   alias Kogen.Contracts.ProcResult
 
+  @candidate_git_config [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.excludesFile=/dev/null"
+  ]
+
   @spec run(Path.t(), [String.t()], %{String.t() => String.t()}) ::
           {:ok, integer(), binary()} | {:error, term()}
   def run(repo, argv, git_env), do: run(repo, argv, git_env, nil)
@@ -10,6 +19,16 @@ defmodule Kogen.Workspace.Git do
   @spec run(Path.t(), [String.t()], %{String.t() => String.t()}, nil | {:binary, iodata()}) ::
           {:ok, integer(), binary()} | {:error, term()}
   def run(repo, argv, git_env, stdin) do
+    if valid_worktree_path?(repo) do
+      run_candidate(repo, argv, git_env, stdin)
+    else
+      run_raw(repo, argv, git_env, stdin)
+    end
+  end
+
+  @spec run_raw(Path.t(), [String.t()], %{String.t() => String.t()}, nil | {:binary, iodata()}) ::
+          {:ok, integer(), binary()} | {:error, term()}
+  defp run_raw(repo, argv, git_env, stdin) do
     log_path = Path.join(git_dir(repo), log_name())
 
     with :ok <- prepare_log(log_path) do
@@ -53,8 +72,15 @@ defmodule Kogen.Workspace.Git do
 
   @spec valid_worktree_path?(Path.t()) :: boolean()
   def valid_worktree_path?(path) when is_binary(path) do
-    Path.type(path) == :absolute and Path.basename(Path.dirname(path)) == "w" and
-      Path.basename(path) not in ["", ".", "..", "w"]
+    normalized = Path.expand(path)
+    parts = Path.split(normalized)
+
+    Path.type(path) == :absolute and normalized == path and
+      match?(
+        [".kogen", "workspaces", key, build_id] when key != "" and build_id != "",
+        Enum.take(parts, -4)
+      ) and
+      safe_build_id?(Path.basename(path)) and safe_build_id?(Path.basename(Path.dirname(path)))
   end
 
   def valid_worktree_path?(_path), do: false
@@ -154,4 +180,139 @@ defmodule Kogen.Workspace.Git do
   defp log_name do
     "kogen-git-#{System.pid()}-#{System.unique_integer([:positive])}.log"
   end
+
+  @spec run_candidate(
+          Path.t(),
+          [String.t()],
+          %{String.t() => String.t()},
+          nil | {:binary, iodata()}
+        ) ::
+          {:ok, integer(), binary()} | {:error, term()}
+  defp run_candidate(repo, argv, git_env, stdin) do
+    with {:ok, config_backup, exclude_backup} <- isolate_candidate_metadata(repo) do
+      result = run_raw(repo, @candidate_git_config ++ argv, git_env, stdin)
+      restore = restore_candidate_metadata(repo, config_backup, exclude_backup)
+      combine_candidate_result(result, restore)
+    end
+  end
+
+  @spec isolate_candidate_metadata(Path.t()) :: {:ok, Path.t(), Path.t() | nil} | {:error, term()}
+  defp isolate_candidate_metadata(repo) do
+    directory = git_dir(repo)
+    info = Path.join(directory, "info")
+    config = Path.join(directory, "config")
+    exclude = Path.join(info, "exclude")
+    suffix = "kogen-disabled-#{System.pid()}-#{System.unique_integer([:positive])}"
+    config_backup = Path.join(directory, "config." <> suffix)
+    exclude_backup = Path.join(info, "exclude." <> suffix)
+
+    with :ok <- candidate_metadata_directory(repo, directory, info),
+         :ok <- regular_metadata_file(config),
+         :ok <- optional_exclude_file(exclude),
+         :ok <- rename_metadata(config, config_backup) do
+      case File.lstat(exclude) do
+        {:ok, _stat} ->
+          move_exclude_or_restore_config(config, config_backup, exclude, exclude_backup)
+
+        {:error, :enoent} ->
+          {:ok, config_backup, nil}
+
+        {:error, reason} ->
+          restore_after_error(config, config_backup, reason)
+      end
+    end
+  end
+
+  @spec candidate_metadata_directory(Path.t(), Path.t(), Path.t()) :: :ok | {:error, term()}
+  defp candidate_metadata_directory(repo, directory, info) do
+    with {:ok, %{type: :directory}} <- File.lstat(Path.join(repo, ".git")),
+         {:ok, %{type: :directory}} <- File.lstat(directory),
+         :ok <- ensure_info_directory(info) do
+      :ok
+    else
+      _other -> {:error, :invalid_candidate_git_metadata}
+    end
+  end
+
+  @spec ensure_info_directory(Path.t()) :: :ok | {:error, term()}
+  defp ensure_info_directory(info) do
+    case File.lstat(info) do
+      {:ok, %{type: :directory}} -> :ok
+      {:error, :enoent} -> File.mkdir(info)
+      _other -> {:error, :invalid_candidate_git_info}
+    end
+  end
+
+  @spec regular_metadata_file(Path.t()) :: :ok | {:error, term()}
+  defp regular_metadata_file(path) do
+    case File.lstat(path) do
+      {:ok, %{type: :regular}} -> :ok
+      _other -> {:error, :invalid_candidate_git_config}
+    end
+  end
+
+  @spec optional_exclude_file(Path.t()) :: :ok | {:error, term()}
+  defp optional_exclude_file(path) do
+    case File.lstat(path) do
+      {:ok, %{type: type}} when type in [:regular, :symlink] -> :ok
+      {:error, :enoent} -> :ok
+      _other -> {:error, :invalid_candidate_git_exclude}
+    end
+  end
+
+  @spec rename_metadata(Path.t(), Path.t()) :: :ok | {:error, term()}
+  defp rename_metadata(source, backup) do
+    case File.rename(source, backup) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:candidate_git_metadata_isolation, reason}}
+    end
+  end
+
+  @spec move_exclude_or_restore_config(Path.t(), Path.t(), Path.t(), Path.t()) ::
+          {:ok, Path.t(), Path.t()} | {:error, term()}
+  defp move_exclude_or_restore_config(config, config_backup, exclude, exclude_backup) do
+    case rename_metadata(exclude, exclude_backup) do
+      :ok -> {:ok, config_backup, exclude_backup}
+      {:error, reason} -> restore_after_error(config, config_backup, reason)
+    end
+  end
+
+  @spec restore_after_error(Path.t(), Path.t(), term()) :: {:error, term()}
+  defp restore_after_error(config, config_backup, reason) do
+    case File.rename(config_backup, config) do
+      :ok ->
+        {:error, reason}
+
+      {:error, restore_reason} ->
+        {:error, {:candidate_git_metadata_restore, reason, restore_reason}}
+    end
+  end
+
+  @spec restore_candidate_metadata(Path.t(), Path.t(), Path.t() | nil) :: :ok | {:error, term()}
+  defp restore_candidate_metadata(repo, config_backup, exclude_backup) do
+    directory = git_dir(repo)
+    config = Path.join(directory, "config")
+    exclude = Path.join([directory, "info", "exclude"])
+
+    with :ok <- restore_file(exclude_backup, exclude) do
+      restore_file(config_backup, config)
+    end
+  end
+
+  @spec restore_file(Path.t() | nil, Path.t()) :: :ok | {:error, term()}
+  defp restore_file(nil, _destination), do: :ok
+
+  defp restore_file(source, destination) do
+    case File.rename(source, destination) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:candidate_git_metadata_restore, reason}}
+    end
+  end
+
+  @spec combine_candidate_result(
+          {:ok, integer(), binary()} | {:error, term()},
+          :ok | {:error, term()}
+        ) :: {:ok, integer(), binary()} | {:error, term()}
+  defp combine_candidate_result(result, :ok), do: result
+  defp combine_candidate_result(_result, {:error, reason}), do: {:error, reason}
 end

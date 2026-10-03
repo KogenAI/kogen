@@ -166,20 +166,15 @@ defmodule Kogen.Harness.Developer do
   end
 
   defp changed_files?(opts) do
-    case Kogen.Harness.Command.run(
-           opts,
-           ["git", "status", "--porcelain", "--untracked-files=all"],
-           10_000,
-           "candidate-status"
-         ) do
-      {:ok, result} when result.exit_status == 0 and not result.timed_out ->
-        {:ok, String.trim(result.output_tail) != ""}
+    case opts.changed? do
+      changed? when is_function(changed?, 0) ->
+        changed?.()
 
-      {:ok, _result} ->
-        error(:candidate_status_failed, "Could not determine whether the worktree changed.")
-
-      {:error, reason} ->
-        {:error, reason}
+      nil ->
+        error(
+          :change_detector_missing,
+          "The controller did not supply a worktree change detector."
+        )
     end
   end
 

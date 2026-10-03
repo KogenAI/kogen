@@ -31,6 +31,7 @@ defmodule Kogen.Kernel do
   alias Kogen.Kernel.RuntimeDiscovery
   alias Kogen.Kernel.Types.ApprovalPreview
   alias Kogen.Kernel.Types.IntentStatus
+  alias Kogen.Kernel.Workspaces
   alias Kogen.Provider.ChatGPT
 
   @type toolchain_error ::
@@ -83,12 +84,15 @@ defmodule Kogen.Kernel do
   def build(slug, project_root, origin, base, model, effort) do
     with {:ok, runtime} <- runtime(),
          {:ok, process_env} <- project_environment(project_root, runtime),
-         {:ok, provider_config, source} <- provider_config() do
+         {:ok, provider_config, source} <- provider_config(),
+         {:ok, home} <- runtime_home(runtime) do
       runtime = Runtime.for_project(runtime, process_env)
 
       request = %Request{
         slug: slug,
+        home: home,
         project_root: project_root,
+        workspace_root: Workspaces.root(project_root, home),
         origin: origin,
         base: base,
         model: model,
@@ -110,18 +114,29 @@ defmodule Kogen.Kernel do
   @spec status(Path.t(), Path.t(), String.t()) :: {:ok, [IntentStatus.t()]} | {:error, term()}
   def status(project_root, origin, base) do
     with {:ok, runtime} <- runtime(),
-         {:ok, process_env} <- project_environment(project_root, runtime) do
+         {:ok, process_env} <- project_environment(project_root, runtime),
+         {:ok, home} <- runtime_home(runtime) do
       git_env = Runtime.git_environment(process_env)
-      Kogen.Kernel.Status.list(project_root, origin, base, git_env)
+      root = Workspaces.root(project_root, home)
+      Kogen.Kernel.Status.list(project_root, root, origin, base, git_env)
     end
   end
 
   @spec report(String.t(), Path.t(), Path.t(), String.t()) :: {:ok, binary()} | {:error, term()}
   def report(slug, project_root, origin, base) do
     with {:ok, runtime} <- runtime(),
-         {:ok, process_env} <- project_environment(project_root, runtime) do
+         {:ok, process_env} <- project_environment(project_root, runtime),
+         {:ok, home} <- runtime_home(runtime) do
       git_env = Runtime.git_environment(process_env)
-      Kogen.Kernel.Report.read(slug, project_root, origin, base, git_env)
+
+      with {:ok, root} <-
+             Kogen.Kernel.StateView.preferred_root(
+               Workspaces.root(project_root, home),
+               legacy_state_root(project_root),
+               slug
+             ) do
+        Kogen.Kernel.Report.read(slug, root, origin, base, git_env)
+      end
     end
   end
 
@@ -129,9 +144,18 @@ defmodule Kogen.Kernel do
           {:ok, :crashed | :landed | :unchanged} | {:error, term()}
   def reconcile(run_id, project_root, origin, base) do
     with {:ok, runtime} <- runtime(),
-         {:ok, process_env} <- project_environment(project_root, runtime) do
+         {:ok, process_env} <- project_environment(project_root, runtime),
+         {:ok, home} <- runtime_home(runtime) do
       git_env = Runtime.git_environment(process_env)
-      Kogen.Kernel.Reconcile.run(run_id, project_root, origin, base, git_env)
+
+      Kogen.Kernel.Reconcile.run(
+        run_id,
+        project_root,
+        Workspaces.root(project_root, home),
+        origin,
+        base,
+        git_env
+      )
     end
   end
 
@@ -166,5 +190,14 @@ defmodule Kogen.Kernel do
             }
   def provider_config do
     RuntimeDiscovery.provider_config()
+  end
+
+  defp legacy_state_root(project_root), do: Path.join(project_root, ".kogen")
+
+  defp runtime_home(%Runtime{} = runtime) do
+    case Runtime.home(runtime) do
+      home when is_binary(home) -> {:ok, home}
+      nil -> RuntimeDiscovery.home()
+    end
   end
 end

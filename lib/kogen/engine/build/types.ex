@@ -20,7 +20,9 @@ defmodule Kogen.Engine.Build.Request do
 
   @enforce_keys [
     :slug,
+    :home,
     :project_root,
+    :workspace_root,
     :origin,
     :base,
     :model,
@@ -34,7 +36,9 @@ defmodule Kogen.Engine.Build.Request do
 
   @type t :: %__MODULE__{
           slug: String.t(),
+          home: Path.t(),
           project_root: Path.t(),
+          workspace_root: Path.t(),
           origin: Path.t(),
           base: String.t(),
           model: String.t(),
@@ -74,6 +78,7 @@ defmodule Kogen.Engine.Build.Session do
     :intent_text,
     :project,
     :run,
+    :sandbox,
     :cycle,
     :state_root,
     :run_dir,
@@ -90,6 +95,7 @@ defmodule Kogen.Engine.Build.Session do
     :intent_text,
     :project,
     :run,
+    :sandbox,
     :cycle,
     :state_root,
     :run_dir,
@@ -117,6 +123,7 @@ defmodule Kogen.Engine.Build.Session do
           intent_text: String.t(),
           project: Kogen.Contracts.Project.t(),
           run: Kogen.State.Run.t(),
+          sandbox: Kogen.Proc.Sandbox.t(),
           cycle: struct(),
           state_root: Path.t(),
           run_dir: Path.t(),

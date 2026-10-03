@@ -7,6 +7,7 @@ defmodule Kogen.Checks.Runner do
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.ProcResult
   alias Kogen.Contracts.Project
+  alias Kogen.Contracts.Receipt
   alias Kogen.Proc
   alias Kogen.Workspace
 
@@ -20,17 +21,56 @@ defmodule Kogen.Checks.Runner do
           {:ok,
            %{
              tree: String.t(),
-             receipts: [Kogen.Contracts.Receipt.t()],
+             receipts: [Receipt.t()],
              status: :pass | {:fail, [String.t()]}
            }}
           | {:error, Failure.t()}
   def run_all(workdir, project, run_dir, env, git_env),
-    do: run_all_with_project(workdir, project, run_dir, env, git_env)
+    do: run_all(workdir, project, run_dir, env, git_env, nil)
 
-  defp run_all_with_project(workdir, %Project{} = project, run_dir, env, git_env) do
+  @spec run_all(
+          Path.t(),
+          Project.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()}
+        ) ::
+          {:ok,
+           %{
+             tree: String.t(),
+             receipts: [Receipt.t()],
+             status: :pass | {:fail, [String.t()]}
+           }}
+          | {:error, Failure.t()}
+  @spec run_all(
+          Path.t(),
+          Project.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()},
+          Kogen.Proc.Sandbox.t() | nil
+        ) ::
+          {:ok,
+           %{
+             tree: String.t(),
+             receipts: [Receipt.t()],
+             status: :pass | {:fail, [String.t()]}
+           }}
+          | {:error, Failure.t()}
+  def run_all(workdir, %Project{} = project, run_dir, env, git_env, sandbox),
+    do: run_all_with_project(workdir, project, run_dir, env, git_env, sandbox)
+
+  defp run_all_with_project(workdir, %Project{} = project, run_dir, env, git_env, sandbox) do
     with :ok <- prepare_logs(run_dir),
          {:ok, before_tree} <- Workspace.tree_hash(workdir, git_env) do
-      state = %RunState{workdir: workdir, run_dir: run_dir, env: env, tree: before_tree}
+      state = %RunState{
+        workdir: workdir,
+        run_dir: run_dir,
+        env: env,
+        tree: before_tree,
+        sandbox: sandbox
+      }
+
       results = run_specs(project.checks, state)
 
       with {:ok, after_tree} <- Workspace.tree_hash(workdir, git_env),
@@ -98,6 +138,7 @@ defmodule Kogen.Checks.Runner do
   defp run_spec(%CheckSpec{} = spec, %RunState{} = state) do
     log_path = check_log(state.run_dir, state.index, spec.name)
     options = [cd: state.workdir, env: state.env, timeout_ms: spec.timeout_ms, log_path: log_path]
+    options = Keyword.put(options, :sandbox, state.sandbox)
     update_from_process(Proc.run(spec.argv, options), spec, log_path, state)
   end
 

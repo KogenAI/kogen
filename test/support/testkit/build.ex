@@ -1,58 +1,3 @@
-defmodule Kogen.E2e do
-  @moduledoc false
-  use Boundary,
-    deps: [
-      Kogen.Contracts,
-      Kogen.Engine,
-      Kogen.Kernel,
-      Kogen.Proc,
-      Kogen.State,
-      Kogen.Testkit,
-      Kogen.Workspace,
-      ExUnit
-    ],
-    exports: [Build, Build.Fixture, Build.Options, Build.Result, ScriptedProvider]
-end
-
-defmodule Kogen.E2e.Build.Options do
-  @moduledoc false
-
-  @enforce_keys [:seed_project]
-  defstruct [:seed_project, :move_base_on]
-
-  @type t :: %__MODULE__{seed_project: Path.t(), move_base_on: atom() | nil}
-end
-
-defmodule Kogen.E2e.Build.Fixture do
-  @moduledoc false
-
-  @enforce_keys [:project_root, :origin, :approved_base, :approval_commit, :git_env]
-  defstruct @enforce_keys
-
-  @type t :: %__MODULE__{
-          project_root: Path.t(),
-          origin: Path.t(),
-          approved_base: String.t(),
-          approval_commit: String.t(),
-          git_env: %{String.t() => String.t()}
-        }
-end
-
-defmodule Kogen.E2e.Build.Result do
-  @moduledoc false
-
-  @enforce_keys [:build, :events, :fixture, :run_status, :claim_released]
-  defstruct @enforce_keys
-
-  @type t :: %__MODULE__{
-          build: Kogen.Engine.Build.Result.t(),
-          events: [Kogen.State.Event.t()],
-          fixture: Kogen.E2e.Build.Fixture.t(),
-          run_status: Kogen.State.Run.status(),
-          claim_released: boolean()
-        }
-end
-
 defmodule Kogen.E2e.Build do
   @moduledoc "Creates and runs a tiny approved project through the real Build engine."
 
@@ -97,11 +42,13 @@ defmodule Kogen.E2e.Build do
   end
 
   defp run_build!(%Fixture{} = fixture, server) do
-    runtime = runtime!(fixture.project_root)
+    runtime = runtime!(fixture.project_root, fixture.home)
 
     request = %Request{
       slug: @slug,
+      home: fixture.home,
       project_root: fixture.project_root,
+      workspace_root: fixture.workspace_root,
       origin: fixture.origin,
       base: "main",
       model: "scripted-model",
@@ -113,7 +60,7 @@ defmodule Kogen.E2e.Build do
     }
 
     {:ok, build} = Kogen.Kernel.build(request)
-    run = load_run!(fixture.project_root, build.run_id)
+    run = load_run!(fixture.workspace_root, build.run_id)
 
     %Result{
       build: build,
@@ -124,9 +71,28 @@ defmodule Kogen.E2e.Build do
     }
   end
 
-  defp runtime!(project_root) do
+  defp runtime!(project_root, home) do
     {:ok, discovered} = Kogen.Kernel.runtime()
-    base_env = test_runtime_environment(discovered.base_env)
+    toolchain_home = Map.get(discovered.base_env, "HOME", home)
+
+    mise_data =
+      Map.get(
+        discovered.base_env,
+        "MISE_DATA_DIR",
+        Path.join([toolchain_home, ".local", "share", "mise"])
+      )
+
+    base_env =
+      discovered.base_env
+      |> test_runtime_environment()
+      |> Map.merge(%{
+        "HOME" => home,
+        "MIX_HOME" => Path.join(home, ".mix"),
+        "HEX_HOME" => Path.join(home, ".hex"),
+        "MISE_CACHE_DIR" => Path.join([home, ".cache", "mise"]),
+        "MISE_DATA_DIR" => mise_data
+      })
+
     fake_mise = write_fake_mise!(project_root, Map.fetch!(base_env, "PATH"))
     runtime = %{discovered | base_env: base_env, git_env: Git.env(), mise: fake_mise}
 
@@ -169,8 +135,8 @@ defmodule Kogen.E2e.Build do
 
   defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
 
-  defp load_run!(project_root, run_id) do
-    case Kogen.State.load(Path.join(project_root, ".kogen"), run_id) do
+  defp load_run!(workspace_root, run_id) do
+    case Kogen.State.load(workspace_root, run_id) do
       {:ok, run} -> run
       {:error, reason} -> raise "test Build run is missing: #{inspect(reason)}"
     end
@@ -186,11 +152,14 @@ defmodule Kogen.E2e.Build do
 
   defp create_fixture!(parent, seed_project) do
     project = Path.join(parent, "project")
+    home = Path.join(parent, "test-home")
     origin = Path.join(parent, "origin.git")
+    workspace_root = Path.join([home, ".kogen", "workspaces", "test-project"])
     git_env = Git.env()
 
     copy_seed!(seed_project, project)
     copy_origin!(seed_project, origin)
+    link_external_runs(project, workspace_root)
     _remote = Git.git!(project, ["remote", "set-url", "origin", origin])
 
     {:ok, base_sha} = Workspace.ref_read(origin, "refs/heads/main", git_env)
@@ -198,6 +167,8 @@ defmodule Kogen.E2e.Build do
 
     %Fixture{
       project_root: project,
+      workspace_root: workspace_root,
+      home: home,
       origin: origin,
       approved_base: base_sha,
       approval_commit: approval_commit,
@@ -212,6 +183,12 @@ defmodule Kogen.E2e.Build do
   defp copy_origin!(seed_project, origin) do
     source = Path.join([Path.dirname(seed_project), "approved-origin.git"])
     Git.copy_tree!(source, origin)
+  end
+
+  defp link_external_runs(project, workspace_root) do
+    run_view = Path.join([project, ".kogen", "runs"])
+    external_runs = Path.join(workspace_root, "runs")
+    File.ln_s!(external_runs, run_view)
   end
 
   defp prepare_approved_seed!(project, origin) do
@@ -278,6 +255,7 @@ defmodule Kogen.E2e.Build do
 
   defp write_seed!(seed) do
     files = %{
+      ".mise.toml" => ~s([tools]\nelixir = "1.20.4-otp-29"\nerlang = "29.1.1"\n),
       ".gitignore" => "_build/\ndeps/\n",
       "mix.exs" => mix_project(),
       ".kogen/project.yaml" => project_config(),

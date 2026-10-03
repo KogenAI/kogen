@@ -12,15 +12,16 @@ This file is the contract between domains. Change it only through the integrator
   - `timeout_ms:` default 120_000
   - `log_path:` optional
   - `stdin:` `nil` | `{:binary, iodata}` | `{:file, path}`
+  - `sandbox:` optional `%Kogen.Proc.Sandbox{}` for commands that execute Candidate code
 - A non-zero exit is `{:ok, %ProcResult{exit_status: n}}`, not an error. A timeout is `{:ok, %ProcResult{timed_out: true, exit_status: nil}}`.
 
 ## Kogen.Workspace (git through Kogen.Proc; every function takes explicit repo paths and a `git_env` map)
-- `create(origin, base_sha, root, build_id, git_env, options \\ []) :: {:ok, %{path: String.t(), base_sha: String.t()}} | {:error, term()}`: clone --local from origin into `<root>/w/<build_id>` and check out `base_sha` detached. `options` may contain `seed_from:`; deps/_build are copied from that checkout (or origin by default) with `cp -c -R`.
+- `create(origin, base_sha, workspace_root, build_id, git_env, options \\ []) :: {:ok, %{path: String.t(), base_sha: String.t()}} | {:error, term()}`: clone without hardlinks into `<workspace_root>/<build_id>` and check out `base_sha` detached. Kernel derives `<workspace_root>` as `~/.kogen/workspaces/<project-key>` from the absolute project path; the key is its readable basename plus a short SHA-256 suffix. `options` may contain `seed_from:`; deps/_build are copied from that checkout (or origin by default) with `cp -c -R`.
 - `insert_files(path, %{dest_rel_path => binary}) :: :ok`
 - `tree_hash(path, git_env) :: {:ok, sha}`: includes untracked, non-ignored files; private index.
 - `diff(path, base_sha, git_env) :: {:ok, binary()}`: full diff of the Candidate's working tree against `base_sha`, including untracked, non-ignored files; materializes through a private index and does not modify the real index.
 - `changed_paths(path, base_sha, git_env) :: {:ok, [rel_path]}`
-- `commit(path, message, trailers :: [{key, value}], git_env) :: {:ok, sha}`: `git add -A` + `git commit`. Signing follows the user's config; tests disable it via git_env.
+- `commit(path, message, trailers :: [{key, value}], git_env) :: {:ok, sha}`: `git add -A` + `git commit`. Candidate Git calls temporarily remove `.git/config` and `.git/info/exclude`, apply `core.hooksPath=/dev/null`, `core.fsmonitor=false`, and `core.excludesFile=/dev/null` with `-c`, then restore metadata. This prevents local hooks, filters, fsmonitor, excludes, and signing overrides from steering the judge. Global signing config remains in effect; tests disable signing via git_env.
 - `reset_soft(path, base_sha, git_env) :: :ok | {:error, term()}`: move Candidate HEAD to the approved base while preserving staged changes.
 - `rebase(path, base_sha, git_env) :: :ok | {:error, term()}`: rebase the Candidate onto the approved base.
 - `land(path, origin, branch, expected_old_sha, run_id, git_env) :: :ok | {:error, :base_moved | :ref_locked | :not_fast_forward | term()}`: push HEAD to `refs/kogen/incoming/<run_id>`, CAS `refs/heads/<branch>`, delete the temp ref. Requires HEAD's sole parent == expected_old_sha.
@@ -58,17 +59,18 @@ This file is the contract between domains. Change it only through the integrator
 - `develop(%Opts{}, intent_text, plan | nil, resume :: nil | %{previous_items: list(), failure_text: String.t()}) :: {:ok, %Kogen.Harness.Result{outcome: :done | :gate_red | :gave_up, gate: map() | nil, items: list(), turns, usage, transcript_path}} | {:error, term()}`
 - `review(%Opts{}, intent_text, diff, check_summary) :: {:ok, %Kogen.Harness.Review{verdict: :accept | :revise, findings: [String.t()], usage}} | {:error, term()}`
 - `%Kogen.Harness.Opts{}` fields:
-  - `workdir`, `run_dir`, `project`
+  - `workdir`, `run_dir`, `project`, `sandbox`
   - `provider_mod`, `provider_config`
   - `proc_mod`
   - `models` (`%{builder: {"gpt-6-luna", "max"}, strong: {"gpt-6.1-sol", "high"}}`)
   - `limits` (`%{max_turns: 60, wall_ms: 1_800_000}`)
   - `before_gate` optional zero-arity callback; Kernel uses it to check the approval protected manifest and scope before the done gate runs a fixer or check.
+  - `changed?` optional controller callback; Engine supplies it using Workspace's sanitized Candidate tree scan, so Harness never runs Git against the Candidate directly.
 
 ## Kogen.Checks
 - `fix(workdir, Project.t(), run_dir, env) :: {:ok, [ProcResult]}`: safe formatters only; `env` is the target project's explicit process environment.
-- `run_all(workdir, Project.t(), run_dir, env, git_env) :: {:ok, %{tree: sha, receipts: [Receipt.t()], status: :pass | {:fail, [String.t()]}}} | {:error, Failure.t()}`: checks run with `env`, Git tree calls use `git_env`; the tree is hashed before and after, with a change reported as `:candidate`/`:tree_mutated`.
-- `acceptance(workdir, Intent.t(), run_dir, env, git_env) :: {:ok, %{status: :pass | {:fail, [id]}, ledger: [LedgerRow.t()]}} | {:error, Failure.t()}`: the formatter source is embedded at compile time and written into run_dir, never into the Candidate. Tests run with `env`; Git tree calls use `git_env`.
+- `run_all(workdir, Project.t(), run_dir, env, git_env, sandbox) :: {:ok, %{tree: sha, receipts: [Receipt.t()], status: :pass | {:fail, [String.t()]}}} | {:error, Failure.t()}`: checks run with `env` under the supplied sandbox; Git tree calls use `git_env`; the tree is hashed before and after, with a change reported as `:candidate`/`:tree_mutated`.
+- `acceptance(workdir, Intent.t(), run_dir, env, git_env, sandbox) :: {:ok, %{status: :pass | {:fail, [id]}, ledger: [LedgerRow.t()]}} | {:error, Failure.t()}`: the formatter source is embedded at compile time and written into run_dir, never into the Candidate. Tests run with `env` under the supplied sandbox; Git tree calls use `git_env`.
 - `red_on_base(base_workdir, Intent.t(), run_dir, env, git_env) :: :ok | {:error, Failure.t()}`
 - `protected_violations(workdir, base_sha, manifest :: %{path => sha256}, git_env) :: {:ok, [path]}`
 - `scope_violations(workdir, base_sha, Intent.t(), Project.t(), allowed_extra :: [path], git_env) :: {:ok, [path]}`
@@ -78,6 +80,7 @@ This file is the contract between domains. Change it only through the integrator
 - `project_environment(workdir, Runtime.t())` runs `mise env -C <workdir> --json` using the supplied runtime.
 - `candidate_environment(workdir, Runtime.t(), Project.t())` adds the project's explicit environment, with project values taking precedence.
 - `Kogen.Engine.Runtime` is the runtime value and pure environment helpers (`git_environment/1`, `process_env/2`, `trust_workspace/2`, `for_project/2`, `temporary_directory/1`, `output_tail/1`). It contains no ambient discovery.
+- `%Kogen.Proc.Sandbox{}` is passed to Developer shell, done-gate checks, final checks, acceptance, and setup commands. On macOS it generates a Seatbelt profile that allows reads broadly and writes only to the Candidate workspace, run dir, TMPDIR, `~/.cache/mise`, `~/.hex`, `~/.cache/rebar3`, and `~/.npm`. It denies reads/writes to `~/.codex`, `~/.kogen/credentials*`, `~/.ssh`, `~/.gnupg`, and `~/Library/Keychains`, and denies writes to the origin and project checkout. `sandbox: false` in `.kogen/project.yaml` disables it for debugging. Linux currently runs without confinement; bubblewrap remains TODO. Network remains allowed.
 - `Kogen.Engine.Environment` resolves an explicit workdir using the supplied runtime and `Kogen.Proc`.
 
 ## Kogen.Build.Cycle (pure)
@@ -105,7 +108,7 @@ This file is the contract between domains. Change it only through the integrator
   - `list(root)`
   - `status(repo, root, slug, branch, git_env) :: :draft | :approved | :building | :landed | :failed | :parked`
   - `reconcile(repo, root, Run, branch, git_env)`
-- Run dir layout: `<root>/runs/<run_id>/run.json`, `events.jsonl`, `transcripts/`, `logs/`.
+- Run dir layout: `<state_root>/runs/<run_id>/run.json`, `events.jsonl`, `transcripts/`, `logs/`. Kernel sets `<state_root>` to `~/.kogen/workspaces/<project-key>`, alongside the Candidate checkouts. Run records move there because the sandbox must deny writes to the entire project checkout and origin. Status, report, and reconcile can read legacy runs under `<project>/.kogen/runs` during transition.
 
 ## Commit trailers (landing commit)
 - `Kogen-Intent: <slug>`
@@ -118,7 +121,7 @@ This file is the contract between domains. Change it only through the integrator
 - `approval_preview(slug, project_root, origin, base, by) :: {:ok, ApprovalPreview.t()} | {:error, term()}` reads the project Intent and acceptance file, captures the current base SHA, and prepares the protected-file manifest.
 - `approve(ApprovalPreview.t()) :: {:ok, approval_commit_sha} | {:error, term()}` writes the immutable approval ref.
 - `build(slug, project_root, origin, base, model, effort) :: {:ok, Kogen.Engine.Build.Result.t()} | {:error, term()}` discovers runtime and provider configuration, then delegates execution to `Kogen.Engine`. Candidate/environment/provider/controller failures map to CLI exit codes 1/3/4/70. Candidate repair resumes Developer with the failure output, up to two repairs.
-- `build(Kogen.Engine.Build.Request.t())` remains available for explicit/test requests and delegates to `Kogen.Engine.run/1`.
+- `build(Kogen.Engine.Build.Request.t())` remains available for explicit/test requests and delegates to `Kogen.Engine.run/1`. The request carries explicit `home` and `workspace_root` values; Engine does not discover HOME.
 - `status(project_root, origin, base) :: {:ok, [IntentStatus.t()]} | {:error, term()}` reports one record for each `.kogen/intents/*/intent.md`; landed state is verified by candidate reachability from the selected branch.
 - `report(slug, project_root, origin, base) :: {:ok, json_binary} | {:error, term()}` returns the latest run's approval/base/candidate/landed SHAs, acceptance ledger, check receipts, model stages and failures.
 - `reconcile(run_id, project_root, origin, base) :: {:ok, :landed | :unchanged} | {:error, term()}` closes a run journal after a crash following successful CAS.

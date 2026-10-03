@@ -19,10 +19,10 @@ defmodule Kogen.Workspace.Checkout do
   def create(origin, base_sha, root, build_id, git_env, options \\ []) do
     with {:ok, seed_from} <- seed_source(origin, options),
          :ok <- validate_create(origin, root, build_id),
-         :ok <- File.mkdir_p(Path.join(root, "w")),
-         :ok <- ensure_destination_absent(Path.join([root, "w", build_id])),
+         :ok <- File.mkdir_p(root),
+         :ok <- ensure_destination_absent(Path.join(root, build_id)),
          :ok <- clone(origin, root, build_id, git_env) do
-      finish_create(Path.join([root, "w", build_id]), seed_from, base_sha, git_env)
+      finish_create(Path.join(root, build_id), seed_from, base_sha, git_env)
     end
   end
 
@@ -56,27 +56,6 @@ defmodule Kogen.Workspace.Checkout do
     end)
   end
 
-  @spec diff(Path.t(), String.t(), %{String.t() => String.t()}) ::
-          {:ok, binary()} | {:error, term()}
-  def diff(path, base_sha, git_env) do
-    with_private_index(path, git_env, fn index_env ->
-      with {:ok, _output} <- git_ok(path, ["read-tree", "HEAD"], index_env),
-           {:ok, _output} <- git_ok(path, ["add", "-A", "--", "."], index_env),
-           {:ok, tree} <- git_ok(path, ["write-tree"], index_env) do
-        # Git.run reads the full log; keep the patch out of the bounded Proc output tail.
-        case Git.run(
-               path,
-               ["diff", "--no-ext-diff", "--no-color", base_sha, Git.trim_line(tree)],
-               index_env
-             ) do
-          {:ok, 0, complete_diff} -> {:ok, complete_diff}
-          {:ok, _status, _output} -> {:error, :git_failed}
-          {:error, reason} -> {:error, reason}
-        end
-      end
-    end)
-  end
-
   @spec changed_paths(Path.t(), String.t(), %{String.t() => String.t()}) ::
           {:ok, [String.t()]} | {:error, term()}
   def changed_paths(path, base_sha, git_env) do
@@ -95,7 +74,7 @@ defmodule Kogen.Workspace.Checkout do
          {:ok, _output} <-
            git_stdin(
              path,
-             ["commit", "--file=-"],
+             ["commit", "--no-verify", "--file=-"],
              message_with_trailers(message, trailers),
              git_env
            ),
@@ -130,7 +109,7 @@ defmodule Kogen.Workspace.Checkout do
 
   @spec destroy(Path.t()) :: :ok | {:error, term()}
   def destroy(path) do
-    if Git.valid_worktree_path?(path) do
+    if destroyable_path?(path) do
       case File.rm_rf(path) do
         {:ok, _removed} -> :ok
         {:error, reason, _path} -> {:error, reason}
@@ -140,9 +119,26 @@ defmodule Kogen.Workspace.Checkout do
     end
   end
 
+  @spec destroyable_path?(Path.t()) :: boolean()
+  defp destroyable_path?(path) do
+    Git.valid_worktree_path?(path) or legacy_worktree_path?(path)
+  end
+
+  @spec legacy_worktree_path?(Path.t()) :: boolean()
+  defp legacy_worktree_path?(path) when is_binary(path) do
+    parts = Path.split(Path.expand(path))
+
+    Path.type(path) == :absolute and Path.expand(path) == path and
+      match?([".kogen", "w", build_id] when build_id != "", Enum.take(parts, -3)) and
+      Git.safe_build_id?(Path.basename(path))
+  end
+
+  defp legacy_worktree_path?(_path), do: false
+
   @spec validate_create(Path.t(), Path.t(), String.t()) :: :ok | {:error, atom()}
   defp validate_create(origin, root, build_id) do
-    if absolute_directory?(origin) and absolute_path?(root) and Git.safe_build_id?(build_id) do
+    if absolute_directory?(origin) and valid_workspace_root?(root) and
+         Git.safe_build_id?(build_id) do
       :ok
     else
       {:error, :invalid_path}
@@ -153,8 +149,15 @@ defmodule Kogen.Workspace.Checkout do
   defp absolute_directory?(path),
     do: is_binary(path) and Path.type(path) == :absolute and File.dir?(path)
 
-  @spec absolute_path?(Path.t()) :: boolean()
-  defp absolute_path?(path), do: is_binary(path) and Path.type(path) == :absolute
+  @spec valid_workspace_root?(Path.t()) :: boolean()
+  defp valid_workspace_root?(path) when is_binary(path) do
+    parts = Path.split(Path.expand(path))
+
+    Path.type(path) == :absolute and
+      match?([".kogen", "workspaces", key] when key != "", Enum.take(parts, -3))
+  end
+
+  defp valid_workspace_root?(_path), do: false
 
   @spec ensure_destination_absent(Path.t()) :: :ok | {:error, :exists}
   defp ensure_destination_absent(path) do
@@ -164,12 +167,19 @@ defmodule Kogen.Workspace.Checkout do
   @spec clone(Path.t(), Path.t(), String.t(), %{String.t() => String.t()}) ::
           :ok | {:error, term()}
   defp clone(origin, root, build_id, git_env) do
-    parent = Path.join(root, "w")
-    destination = Path.join(parent, build_id)
+    destination = Path.join(root, build_id)
 
     case Git.run(
-           parent,
-           ["clone", "--local", "--no-checkout", "--template=", origin, destination],
+           root,
+           [
+             "clone",
+             "--local",
+             "--no-hardlinks",
+             "--no-checkout",
+             "--template=",
+             origin,
+             destination
+           ],
            git_env
          ) do
       {:ok, 0, _output} -> :ok
@@ -322,7 +332,9 @@ defmodule Kogen.Workspace.Checkout do
   defp validate_commit(_message, _trailers), do: {:error, :invalid_commit_message}
 
   @spec valid_sha?(String.t()) :: boolean()
-  defp valid_sha?(sha), do: Regex.match?(~r/\A(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\z/, sha)
+  @doc false
+  @spec valid_sha?(String.t()) :: boolean()
+  def valid_sha?(sha), do: Regex.match?(~r/\A(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\z/, sha)
 
   @spec message_with_trailers(String.t(), [{String.t(), String.t()}]) :: binary()
   defp message_with_trailers(message, []), do: String.trim_trailing(message, "\n") <> "\n"
@@ -350,8 +362,9 @@ defmodule Kogen.Workspace.Checkout do
     end
   end
 
+  @doc false
   @spec with_private_index(Path.t(), %{String.t() => String.t()}, (map() -> term())) :: term()
-  defp with_private_index(path, git_env, fun) do
+  def with_private_index(path, git_env, fun) do
     index_path = Git.private_index(path)
     result = fun.(Git.private_environment(git_env, index_path))
     cleanup = Git.cleanup_index(index_path)

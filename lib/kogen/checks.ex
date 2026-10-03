@@ -12,6 +12,7 @@ defmodule Kogen.Checks do
   alias Kogen.Contracts.Intent
   alias Kogen.Contracts.ProcResult
   alias Kogen.Contracts.Project
+  alias Kogen.Proc.Sandbox
 
   @type run_result ::
           {:ok,
@@ -29,6 +30,17 @@ defmodule Kogen.Checks do
           {:ok, [ProcResult.t()]} | {:error, Failure.t()}
   def fix(workdir, project, run_dir, env), do: Fixer.run(workdir, project, run_dir, env)
 
+  @spec fix(
+          Path.t(),
+          Project.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          Sandbox.t() | nil
+        ) ::
+          {:ok, [ProcResult.t()]} | {:error, Failure.t()}
+  def fix(workdir, project, run_dir, env, sandbox),
+    do: Fixer.run(workdir, project, run_dir, env, sandbox)
+
   @spec run_all(Path.t(), Project.t(), Path.t(), %{String.t() => String.t()}) :: run_result()
   def run_all(workdir, project, run_dir, git_env),
     do: run_all(workdir, project, run_dir, git_env, git_env)
@@ -42,6 +54,17 @@ defmodule Kogen.Checks do
         ) :: run_result()
   def run_all(workdir, project, run_dir, env, git_env),
     do: Runner.run_all(workdir, project, run_dir, env, git_env)
+
+  @spec run_all(
+          Path.t(),
+          Project.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()},
+          Sandbox.t() | nil
+        ) :: run_result()
+  def run_all(workdir, project, run_dir, env, git_env, sandbox),
+    do: Runner.run_all(workdir, project, run_dir, env, git_env, sandbox)
 
   @spec acceptance(Path.t(), Intent.t(), Path.t()) ::
           {:ok, %{status: :pass | {:fail, [String.t()]}, ledger: [LedgerRow.t()]}}
@@ -60,6 +83,19 @@ defmodule Kogen.Checks do
   def acceptance(workdir, intent, run_dir, env, git_env),
     do: Ledger.acceptance(workdir, intent, run_dir, env, git_env)
 
+  @spec acceptance(
+          Path.t(),
+          Intent.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()},
+          Sandbox.t() | nil
+        ) ::
+          {:ok, %{status: :pass | {:fail, [String.t()]}, ledger: [LedgerRow.t()]}}
+          | {:error, Failure.t()}
+  def acceptance(workdir, intent, run_dir, env, git_env, sandbox),
+    do: Ledger.acceptance(workdir, intent, run_dir, env, git_env, sandbox)
+
   @spec red_on_base(Path.t(), Intent.t(), Path.t()) :: :ok | {:error, Failure.t()}
   def red_on_base(workdir, intent, run_dir), do: red_on_base(workdir, intent, run_dir, %{}, %{})
 
@@ -72,6 +108,17 @@ defmodule Kogen.Checks do
         ) :: :ok | {:error, Failure.t()}
   def red_on_base(workdir, intent, run_dir, env, git_env),
     do: Ledger.red_on_base(workdir, intent, run_dir, env, git_env)
+
+  @spec red_on_base(
+          Path.t(),
+          Intent.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          %{String.t() => String.t()},
+          Sandbox.t() | nil
+        ) :: :ok | {:error, Failure.t()}
+  def red_on_base(workdir, intent, run_dir, env, git_env, sandbox),
+    do: Ledger.red_on_base(workdir, intent, run_dir, env, git_env, sandbox)
 
   @spec protected_violations(
           Path.t(),

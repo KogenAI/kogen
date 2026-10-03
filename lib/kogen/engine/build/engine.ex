@@ -11,6 +11,7 @@ defmodule Kogen.Engine.Build.Engine do
   alias Kogen.Engine.Build.Setup
   alias Kogen.Engine.Build.StageRunner
   alias Kogen.Engine.Runtime
+  alias Kogen.Proc.Sandbox
   alias Kogen.Project
   alias Kogen.State
   alias Kogen.State.Approval
@@ -119,7 +120,7 @@ defmodule Kogen.Engine.Build.Engine do
     case Workspace.create(
            request.origin,
            prepared.base_sha,
-           state_root(request),
+           request.workspace_root,
            prepared.run.id,
            request.runtime.git_env,
            seed_from: request.project_root
@@ -159,7 +160,14 @@ defmodule Kogen.Engine.Build.Engine do
   defp start_candidate(prepared, path, project, process_env) do
     session = candidate_session(prepared, path, project, process_env)
 
-    case Setup.run(project.setup, path, prepared.run.dir, process_env, Kogen.Proc) do
+    case Setup.run(
+           project.setup,
+           path,
+           prepared.run.dir,
+           process_env,
+           Kogen.Proc,
+           session.sandbox
+         ) do
       :ok ->
         run_stage(session, :context, %{})
 
@@ -179,6 +187,15 @@ defmodule Kogen.Engine.Build.Engine do
       intent_text: prepared.intent_text,
       project: project,
       run: prepared.run,
+      sandbox: %Sandbox{
+        enabled: project.sandbox,
+        home: request.home,
+        project_root: request.project_root,
+        origin: request.origin,
+        workspace: path,
+        run_dir: prepared.run.dir,
+        tmp_dir: Runtime.temporary_directory(process_env)
+      },
       cycle: Cycle.new(%{approval: prepared.approval, repairs: 2}),
       state_root: state_root(request),
       run_dir: prepared.run.dir,
@@ -353,5 +370,5 @@ defmodule Kogen.Engine.Build.Engine do
 
   defp failed_setup(request, run, reason), do: Finish.setup_failure(request, run, reason)
 
-  defp state_root(request), do: Path.join(request.project_root, ".kogen")
+  defp state_root(request), do: request.workspace_root
 end

@@ -32,6 +32,7 @@ defmodule Kogen.Proc.Runner do
   alias Kogen.Proc.Request
   alias Kogen.Proc.Runner.Artifacts
   alias Kogen.Proc.Runner.WireResult
+  alias Kogen.Proc.Sandbox
   alias Kogen.Proc.Wrapper
 
   @tail_bytes 16 * 1024
@@ -91,28 +92,30 @@ defmodule Kogen.Proc.Runner do
 
   @spec do_open_port(Request.t(), Artifacts.t()) :: {:ok, port()} | {:error, term()}
   defp do_open_port(request, artifacts) do
-    args =
-      Wrapper.arguments(
-        artifacts.log_path,
-        artifacts.stdin_path,
-        request.timeout_ms,
-        artifacts.remove_log,
-        artifacts.remove_stdin,
-        request.argv
-      )
+    with {:ok, command} <- Sandbox.command(request.argv, request.sandbox) do
+      args =
+        Wrapper.arguments(
+          artifacts.log_path,
+          artifacts.stdin_path,
+          request.timeout_ms,
+          artifacts.remove_log,
+          artifacts.remove_stdin,
+          command
+        )
 
-    port =
-      Port.open({:spawn_executable, Wrapper.executable()}, [
-        :binary,
-        :exit_status,
-        :use_stdio,
-        :hide,
-        :stderr_to_stdout,
-        {:args, args},
-        {:cd, request.cd}
-      ])
+      port =
+        Port.open({:spawn_executable, Wrapper.executable()}, [
+          :binary,
+          :exit_status,
+          :use_stdio,
+          :hide,
+          :stderr_to_stdout,
+          {:args, args},
+          {:cd, request.cd}
+        ])
 
-    {:ok, port}
+      {:ok, port}
+    end
   rescue
     ArgumentError -> {:error, :spawn_failed}
   end

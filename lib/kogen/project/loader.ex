@@ -5,7 +5,7 @@ defmodule Kogen.Project.Loader do
   alias Kogen.Contracts.Project
   alias Kogen.Contracts.Yaml
 
-  @project_keys ~w(name checks acceptance_checks setup fix diagnose protected_paths domains env)
+  @project_keys ~w(name checks acceptance_checks setup fix diagnose protected_paths domains env sandbox)
   @env_name ~r/\A[A-Za-z_][A-Za-z0-9_]*\z/
 
   @type error :: %{line: pos_integer() | nil, message: String.t()}
@@ -29,7 +29,21 @@ defmodule Kogen.Project.Loader do
   end
 
   defp validate_document(document, checkout_root) do
+    {attributes, field_errors} = project_fields(document, checkout_root)
+    errors = unknown_keys(document, @project_keys, "project") ++ field_errors
+    project_result(errors, attributes)
+  end
+
+  defp project_fields(document, checkout_root) do
     {name, name_errors} = name(document)
+    {collections, collection_errors} = project_collections(document)
+    {settings, setting_errors} = project_settings(document)
+
+    attributes = [root: checkout_root, name: name] ++ collections ++ settings
+    {attributes, name_errors ++ collection_errors ++ setting_errors}
+  end
+
+  defp project_collections(document) do
     {checks, check_errors} = check_specs(document, "checks", true)
 
     {acceptance_checks, acceptance_check_errors} =
@@ -40,41 +54,38 @@ defmodule Kogen.Project.Loader do
     {diagnose, diagnose_errors} = diagnostics(document)
     {protected_paths, protected_errors} = protected_paths(document)
     {domains, domain_errors} = domains(document)
-    {env, env_errors} = env(document)
 
-    errors =
-      document_errors(document, [
-        name_errors,
-        check_errors,
-        acceptance_check_errors,
-        setup_errors,
-        fix_errors,
-        diagnose_errors,
-        protected_errors,
-        domain_errors,
-        env_errors
-      ])
-
-    project_result(errors,
-      root: checkout_root,
-      name: name,
+    fields = [
       checks: checks,
       acceptance_checks: acceptance_checks,
       setup: setup,
       fix: fix,
       diagnose: diagnose,
       protected_paths: protected_paths,
-      domains: domains,
-      env: env
-    )
+      domains: domains
+    ]
+
+    errors = [
+      check_errors,
+      acceptance_check_errors,
+      setup_errors,
+      fix_errors,
+      diagnose_errors,
+      protected_errors,
+      domain_errors
+    ]
+
+    {fields, List.flatten(errors)}
+  end
+
+  defp project_settings(document) do
+    {env, env_errors} = env(document)
+    {sandbox, sandbox_errors} = sandbox(document)
+    {[env: env, sandbox: sandbox], env_errors ++ sandbox_errors}
   end
 
   defp project_result([], attributes), do: {:ok, struct(Project, attributes)}
   defp project_result(errors, _attributes), do: {:error, errors}
-
-  defp document_errors(document, groups) do
-    unknown_keys(document, @project_keys, "project") ++ List.flatten(groups)
-  end
 
   defp name(document) do
     case Map.fetch(document, "name") do
@@ -218,6 +229,15 @@ defmodule Kogen.Project.Loader do
       {:ok, values} when is_map(values) -> validate_env(values)
       {:ok, _values} -> {%{}, [issue("`env` must be a map of variable names to strings")]}
       :error -> {%{}, []}
+    end
+  end
+
+  defp sandbox(document) do
+    case Map.fetch(document, "sandbox") do
+      {:ok, "true"} -> {true, []}
+      {:ok, "false"} -> {false, []}
+      {:ok, _value} -> {true, [issue("`sandbox` must be a boolean")]}
+      :error -> {true, []}
     end
   end
 

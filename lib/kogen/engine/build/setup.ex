@@ -9,19 +9,32 @@ defmodule Kogen.Engine.Build.Setup do
           :ok | {:error, Failure.t()}
   def run([], _workdir, _run_dir, _env, _proc_mod), do: :ok
 
-  def run(specs, workdir, run_dir, env, proc_mod) do
+  def run(specs, workdir, run_dir, env, proc_mod),
+    do: run(specs, workdir, run_dir, env, proc_mod, nil)
+
+  @spec run(
+          [CheckSpec.t()],
+          Path.t(),
+          Path.t(),
+          %{String.t() => String.t()},
+          module(),
+          Kogen.Proc.Sandbox.t() | nil
+        ) :: :ok | {:error, Failure.t()}
+  def run([], _workdir, _run_dir, _env, _proc_mod, _sandbox), do: :ok
+
+  def run(specs, workdir, run_dir, env, proc_mod, sandbox) do
     case File.mkdir_p(Path.join(run_dir, "logs")) do
       :ok ->
-        run_specs(specs, workdir, run_dir, env, proc_mod)
+        run_specs(specs, workdir, run_dir, env, proc_mod, sandbox)
 
       {:error, reason} ->
         {:error, failure(:setup_failed, "cannot prepare setup logs: #{inspect(reason)}")}
     end
   end
 
-  defp run_specs([], _workdir, _run_dir, _env, _proc_mod), do: :ok
+  defp run_specs([], _workdir, _run_dir, _env, _proc_mod, _sandbox), do: :ok
 
-  defp run_specs([%CheckSpec{} = spec | rest], workdir, run_dir, env, proc_mod) do
+  defp run_specs([%CheckSpec{} = spec | rest], workdir, run_dir, env, proc_mod, sandbox) do
     log_path = Path.join([run_dir, "logs", "setup-#{safe_name(spec.name)}.log"])
 
     result =
@@ -29,12 +42,13 @@ defmodule Kogen.Engine.Build.Setup do
         cd: workdir,
         env: env,
         timeout_ms: spec.timeout_ms,
-        log_path: log_path
+        log_path: log_path,
+        sandbox: sandbox
       )
 
     case result do
       {:ok, %ProcResult{exit_status: 0, timed_out: false}} ->
-        run_specs(rest, workdir, run_dir, env, proc_mod)
+        run_specs(rest, workdir, run_dir, env, proc_mod, sandbox)
 
       {:ok, %ProcResult{} = proc_result} ->
         {:error, command_failure(spec.name, proc_result)}

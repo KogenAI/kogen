@@ -28,7 +28,7 @@ defmodule Kogen.Workspace.WorkspaceTest do
     File.write!(Path.join([source, "_build", "seed.txt"]), "build seed")
 
     assert {:ok, %{path: candidate, base_sha: ^base_sha}} =
-             Workspace.create(source, base_sha, tmp_dir, "clone-seed", @git_env)
+             Workspace.create(source, base_sha, workspace_root(tmp_dir), "clone-seed", @git_env)
 
     assert File.read!(Path.join([candidate, "deps", "seed.txt"])) == "deps seed"
     assert File.read!(Path.join([candidate, "_build", "seed.txt"])) == "build seed"
@@ -123,13 +123,60 @@ defmodule Kogen.Workspace.WorkspaceTest do
     %{source: source, base_sha: base_sha} = fixture(tmp_dir)
 
     assert {:ok, %{path: candidate}} =
-             Workspace.create(source, base_sha, tmp_dir, "reset-soft", @git_env)
+             Workspace.create(source, base_sha, workspace_root(tmp_dir), "reset-soft", @git_env)
 
     File.write!(Path.join(candidate, "README.md"), "candidate\n")
     assert {:ok, _commit_sha} = Workspace.commit(candidate, "candidate", [], @git_env)
     assert :ok = Workspace.reset_soft(candidate, base_sha, @git_env)
     assert {:ok, ^base_sha} = Workspace.rev_parse(candidate, "HEAD", @git_env)
     assert {:ok, ["README.md"]} = Workspace.changed_paths(candidate, base_sha, @git_env)
+  end
+
+  test "candidate git config cannot hide, transform, sign, or hook the guarded tree", %{
+    tmp_dir: tmp_dir
+  } do
+    %{source: source, base_sha: base_sha} = fixture(tmp_dir)
+
+    assert {:ok, %{path: candidate}} =
+             Workspace.create(
+               source,
+               base_sha,
+               workspace_root(tmp_dir),
+               "git-isolation",
+               @git_env
+             )
+
+    hook_dir = Path.join(tmp_dir, "candidate-hooks")
+    File.mkdir_p!(hook_dir)
+    hook = Path.join(hook_dir, "pre-commit")
+    File.write!(hook, "#!/bin/sh\nprintf ran > #{Path.join(candidate, "hook-ran")}\n")
+    File.chmod!(hook, 0o755)
+    git!(candidate, ["config", "core.hooksPath", hook_dir])
+    git!(candidate, ["config", "core.fsmonitor", "true"])
+    git!(candidate, ["config", "core.excludesFile", Path.join(tmp_dir, "candidate-excludes")])
+    git!(candidate, ["config", "commit.gpgsign", "true"])
+    git!(candidate, ["config", "gpg.program", "/missing-test-gpg"])
+    git!(candidate, ["config", "filter.evil.clean", "touch clean-filter-ran; cat"])
+    git!(candidate, ["config", "filter.evil.smudge", "touch smudge-filter-ran; cat"])
+    File.write!(Path.join(candidate, ".gitattributes"), "*.filtered filter=evil\n")
+    File.write!(Path.join(candidate, "value.filtered"), "original filter content\n")
+    File.write!(Path.join(candidate, "hidden.txt"), "excluded content\n")
+    File.write!(Path.join([candidate, ".git", "info", "exclude"]), "hidden.txt\n")
+
+    assert {:ok, tree} = Workspace.tree_hash(candidate, @git_env)
+    assert {:ok, paths} = Workspace.changed_paths(candidate, base_sha, @git_env)
+    assert paths == [".gitattributes", "hidden.txt", "value.filtered"]
+    assert File.read!(Path.join([candidate, ".git", "info", "exclude"])) == "hidden.txt\n"
+
+    assert {:ok, commit} = Workspace.commit(candidate, "candidate tree", [], @git_env)
+    assert {:ok, ^tree} = Workspace.rev_parse(candidate, "HEAD^{tree}", @git_env)
+
+    assert {:ok, "original filter content\n"} =
+             Workspace.read_file_at(candidate, commit, "value.filtered", @git_env)
+
+    refute File.exists?(Path.join(candidate, "hook-ran"))
+    refute File.exists?(Path.join(candidate, "clean-filter-ran"))
+    refute File.exists?(Path.join(candidate, "smudge-filter-ran"))
   end
 
   test "lands a single-parent commit through a temporary ref and removes the temporary ref", %{
@@ -139,7 +186,7 @@ defmodule Kogen.Workspace.WorkspaceTest do
     origin = bare_origin!(source, tmp_dir)
 
     assert {:ok, %{path: candidate}} =
-             Workspace.create(origin, base_sha, tmp_dir, "land-success", @git_env)
+             Workspace.create(origin, base_sha, workspace_root(tmp_dir), "land-success", @git_env)
 
     File.write!(Path.join(candidate, "README.md"), "landed\n")
     assert {:ok, commit_sha} = Workspace.commit(candidate, "land me", [], @git_env)
@@ -171,7 +218,14 @@ defmodule Kogen.Workspace.WorkspaceTest do
     origin = bare_origin!(source, tmp_dir)
 
     assert {:ok, %{path: candidate}} =
-             Workspace.create(origin, base_sha, tmp_dir, "bare-seed", @git_env, seed_from: source)
+             Workspace.create(
+               origin,
+               base_sha,
+               workspace_root(tmp_dir),
+               "bare-seed",
+               @git_env,
+               seed_from: source
+             )
 
     assert File.read!(Path.join([candidate, "deps", "seed.txt"])) == "deps seed"
     assert File.read!(Path.join([candidate, "_build", "seed.txt"])) == "build seed"
@@ -182,7 +236,7 @@ defmodule Kogen.Workspace.WorkspaceTest do
     origin = bare_origin!(source, tmp_dir)
 
     assert {:ok, %{path: candidate}} =
-             Workspace.create(origin, base_sha, tmp_dir, "land-moved", @git_env)
+             Workspace.create(origin, base_sha, workspace_root(tmp_dir), "land-moved", @git_env)
 
     File.write!(Path.join(candidate, "README.md"), "candidate\n")
     assert {:ok, candidate_sha} = Workspace.commit(candidate, "candidate", [], @git_env)
@@ -236,6 +290,8 @@ defmodule Kogen.Workspace.WorkspaceTest do
     git!(source, ["branch", "-M", "main"])
     %{source: source, base_sha: source |> git_output!(["rev-parse", "HEAD"]) |> String.trim()}
   end
+
+  defp workspace_root(tmp_dir), do: Path.join([tmp_dir, ".kogen", "workspaces", "workspace-test"])
 
   defp bare_origin!(source, tmp_dir) do
     origin = Path.join(tmp_dir, "origin.git")

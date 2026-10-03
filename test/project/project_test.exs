@@ -29,6 +29,7 @@ defmodule Kogen.Project.ProjectTest do
     protected_paths: [mix.exs, .kogen/project.yaml]
     domains:
       intent: [lib/kogen/intent, test/intent]
+    sandbox: false
     """)
 
     assert {:ok, %Project{} = project} = Kogen.Project.load(root)
@@ -55,6 +56,7 @@ defmodule Kogen.Project.ProjectTest do
     assert project.diagnose == [%{glob: "lib/**/*.ex", argv: ["mix", "compile"]}]
     assert project.protected_paths == ["mix.exs", ".kogen/project.yaml"]
     assert project.domains == %{"intent" => ["lib/kogen/intent", "test/intent"]}
+    refute project.sandbox
   end
 
   test "omitted optional collections are empty and checks is required", %{tmp_dir: root} do
@@ -66,6 +68,7 @@ defmodule Kogen.Project.ProjectTest do
     assert project.diagnose == []
     assert project.protected_paths == []
     assert project.domains == %{}
+    assert project.sandbox
 
     write_config(root, "name: tiny-app\n")
     assert {:error, [%{message: message}]} = Kogen.Project.load(root)
@@ -75,6 +78,13 @@ defmodule Kogen.Project.ProjectTest do
   test "reports a missing project file", %{tmp_dir: root} do
     assert {:error, [%{message: message}]} = Kogen.Project.load(root)
     assert message =~ ".kogen/project.yaml"
+  end
+
+  test "sandbox accepts only a boolean project setting", %{tmp_dir: root} do
+    write_config(root, "name: tiny-app\nchecks: []\nsandbox: maybe\n")
+
+    assert {:error, [%{message: message}]} = Kogen.Project.load(root)
+    assert message == "`sandbox` must be a boolean"
   end
 
   test "rejects unknown top-level and nested keys", %{tmp_dir: root} do

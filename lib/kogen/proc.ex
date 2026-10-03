@@ -9,7 +9,7 @@ defmodule Kogen.Proc do
   """
   @behaviour Kogen.Contracts.ProcPort
 
-  use Boundary, deps: [Kogen.Contracts], exports: []
+  use Boundary, deps: [Kogen.Contracts], exports: [Sandbox]
 
   alias Kogen.Contracts.ProcResult
   alias Kogen.Proc.Request
