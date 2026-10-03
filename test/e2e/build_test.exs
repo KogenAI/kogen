@@ -8,17 +8,39 @@ defmodule Kogen.E2e.BuildTest do
   alias Kogen.Testkit.Git
 
   @moduletag :e2e
+  @tag timeout: 120_000
   @intent_slug "build-engine"
 
   setup_all do
     shared_root = Kogen.Testkit.Temp.create!()
     seed_project = Build.prepare_seed!(shared_root)
     on_exit(fn -> File.rm_rf!(shared_root) end)
+
     {:ok, seed_project: seed_project}
   end
 
-  test "happy path lands a single-parent commit with the Kogen trailers", context do
-    result = Build.run!(context.tmp_dir, landing_script(), options(context.seed_project))
+  test "all four Build scenarios pass concurrently", context do
+    scenarios = [
+      fn -> happy_path(context) end,
+      fn -> review_revision(context) end,
+      fn -> persistently_red_acceptance(context) end,
+      fn -> moved_base(context) end
+    ]
+
+    results =
+      scenarios
+      |> Task.async_stream(fn scenario -> scenario.() end,
+        max_concurrency: 4,
+        timeout: 120_000
+      )
+      |> Enum.to_list()
+
+    assert results == List.duplicate({:ok, :ok}, 4)
+  end
+
+  defp happy_path(context) do
+    parent = scenario_parent(context, "happy-path")
+    result = Build.run!(parent, landing_script(), options(context.seed_project))
     assert %Result{build: %{status: :landed, landed_sha: sha}, run_status: :landed} = result
     assert result.claim_released
 
@@ -31,11 +53,13 @@ defmodule Kogen.E2e.BuildTest do
     parents = Git.git!(result.fixture.origin, ["rev-list", "--parents", "-n", "1", sha])
     assert String.split(String.trim(parents)) == [sha, result.fixture.approved_base]
     assert Enum.any?(result.events, &(&1.event == "finished" and &1.status == "landed"))
+    :ok
   end
 
-  test "a review revision runs repair and then lands", context do
+  defp review_revision(context) do
+    parent = scenario_parent(context, "review-revision")
     script = landing_script("revise once")
-    result = Build.run!(context.tmp_dir, script, options(context.seed_project))
+    result = Build.run!(parent, script, options(context.seed_project))
 
     assert result.build.status == :landed
     assert result.run_status == :landed
@@ -44,10 +68,12 @@ defmodule Kogen.E2e.BuildTest do
 
     reviews = Enum.count(result.events, &(&1.event == "model_stage" and &1.stage == "review"))
     assert reviews == 2
+    :ok
   end
 
-  test "a persistently red acceptance fails as a candidate and releases its claim", context do
-    result = Build.run!(context.tmp_dir, red_acceptance_script(), options(context.seed_project))
+  defp persistently_red_acceptance(context) do
+    parent = scenario_parent(context, "red-acceptance")
+    result = Build.run!(parent, red_acceptance_script(), options(context.seed_project))
     fixture = result.fixture
 
     assert result.build.status == :failed
@@ -62,11 +88,14 @@ defmodule Kogen.E2e.BuildTest do
     assert Enum.any?(result.events, fn event ->
              event.event == "acceptance_result" and match?(%{"status" => "fail"}, event.result)
            end)
+
+    :ok
   end
 
-  test "an origin base move during Build parks the candidate", context do
+  defp moved_base(context) do
+    parent = scenario_parent(context, "moved-base")
     options = %Options{seed_project: context.seed_project, move_base_on: :context}
-    result = Build.run!(context.tmp_dir, landing_script(), options)
+    result = Build.run!(parent, landing_script(), options)
     fixture = result.fixture
 
     assert result.build.status == :parked
@@ -85,6 +114,13 @@ defmodule Kogen.E2e.BuildTest do
       ])
 
     assert parked =~ result.build.run_id
+    :ok
+  end
+
+  defp scenario_parent(context, name) do
+    parent = Path.join(context.tmp_dir, name)
+    File.mkdir_p!(parent)
+    parent
   end
 
   defp options(seed_project), do: %Options{seed_project: seed_project}

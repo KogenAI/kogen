@@ -11,7 +11,6 @@ defmodule Kogen.Kernel.Build.StageRunner do
   alias Kogen.Kernel.Build.Reviewer
   alias Kogen.Kernel.Build.Session
   alias Kogen.State
-  alias Kogen.Workspace
 
   @spec run(atom(), map(), Session.t()) ::
           {:ok, Session.t(), [term()]}
@@ -112,7 +111,7 @@ defmodule Kogen.Kernel.Build.StageRunner do
   end
 
   defp finish_develop(session, result) do
-    with {:ok, tree} <- Workspace.tree_hash(session.workdir, session.git_env),
+    with {:ok, tree} <- Guard.tree_hash(session.workdir, session.git_env),
          :ok <-
            record_model(
              session,

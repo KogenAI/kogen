@@ -3,23 +3,47 @@ defmodule Kogen.Kernel.Build.Guard do
 
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.Intent
+  alias Kogen.Contracts.ProcResult
   alias Kogen.Contracts.Project
+  alias Kogen.Proc
+
+  @snapshot_script """
+  set -eu
+  index=$1; trap 'rm -f "$index" "$index.lock"' EXIT
+  export GIT_INDEX_FILE="$index"; git read-tree HEAD; git add -A -- .; tree=$(git write-tree)
+  if [ -n "$2" ]; then git diff --no-renames --name-only -z "$2" "$tree" > "$3"
+  else printf '%s\n' "$tree" > "$3"; fi
+  """
 
   @spec check(Path.t(), String.t(), Intent.t(), Project.t(), map(), map()) ::
           :ok | {:error, Failure.t()}
   def check(workdir, base_sha, intent, project, manifest, git_env) do
-    with :ok <- protected(workdir, base_sha, manifest, git_env) do
-      scoped(workdir, base_sha, intent, project, git_env)
-    end
-  end
+    case changed_paths(workdir, base_sha, git_env) do
+      {:ok, changed} ->
+        protected =
+          manifest
+          |> Enum.filter(fn {path, sha} ->
+            not safe_manifest_path?(path) or file_sha(workdir, path) != sha
+          end)
+          |> Enum.map(&elem(&1, 0))
+          |> Enum.sort()
 
-  defp protected(workdir, base_sha, manifest, git_env) do
-    case Kogen.Checks.protected_violations(workdir, base_sha, manifest, git_env) do
-      {:ok, []} ->
-        :ok
+        prefixes =
+          Enum.flat_map(intent.domains, &Map.get(project.domains, &1, [])) ++
+            allowed_extra(intent)
 
-      {:ok, paths} ->
-        failure(:protected_edit, "Protected paths changed: #{Enum.join(paths, ", ")}")
+        outside = Enum.reject(changed, &under_prefix?(&1, prefixes))
+
+        cond do
+          protected != [] ->
+            failure(:protected_edit, "Protected paths changed: #{Enum.join(protected, ", ")}")
+
+          outside != [] ->
+            failure(:scope_edit, "Out-of-scope paths changed: #{Enum.join(outside, ", ")}")
+
+          true ->
+            :ok
+        end
 
       {:error, reason} ->
         failure(
@@ -30,37 +54,78 @@ defmodule Kogen.Kernel.Build.Guard do
     end
   end
 
-  defp scoped(workdir, base_sha, intent, project, git_env) do
-    case Kogen.Checks.scope_violations(
-           workdir,
-           base_sha,
-           intent,
-           project,
-           allowed_extra(intent),
-           git_env
-         ) do
-      {:ok, []} ->
-        :ok
+  @spec tree_hash(Path.t(), map()) :: {:ok, String.t()} | {:error, term()}
+  def tree_hash(workdir, git_env), do: snapshot(workdir, "", git_env, :tree)
 
-      {:ok, paths} ->
-        failure(:scope_edit, "Out-of-scope paths changed: #{Enum.join(paths, ", ")}")
+  defp changed_paths(workdir, base_sha, git_env), do: snapshot(workdir, base_sha, git_env, :paths)
 
-      {:error, reason} ->
-        failure(
-          :workspace_failed,
-          "Cannot inspect changed paths: #{inspect(reason)}",
-          :controller
-        )
+  defp snapshot(workdir, base_sha, git_env, mode) do
+    suffix = "#{System.pid()}-#{System.unique_integer([:positive])}"
+
+    [index, output, log] =
+      Enum.map(["index", "output", "log"], &Path.join(System.tmp_dir!(), "kogen-#{&1}-#{suffix}"))
+
+    result =
+      ["/bin/sh", "-c", @snapshot_script, "kogen-snapshot", index, base_sha, output]
+      |> Proc.run(cd: workdir, env: git_env, timeout_ms: 120_000, log_path: log)
+      |> snapshot_result(output, mode)
+
+    case cleanup_temp_files([index, output, log, index <> ".lock"]) do
+      :ok -> result
+      {:error, reason} -> {:error, {:temporary_file_cleanup, reason}}
     end
   end
 
-  defp allowed_extra(intent) do
-    [
-      ".kogen/intents/#{intent.slug}",
-      ".kogen/acceptance/#{intent.slug}_test.exs",
-      "test/acceptance/#{intent.slug}_test.exs"
-    ]
+  defp snapshot_result({:ok, %ProcResult{exit_status: 0, timed_out: false}}, path, mode),
+    do: read_snapshot(path, if(mode == :tree, do: &String.trim/1, else: &decode_paths/1))
+
+  defp snapshot_result({:ok, %ProcResult{timed_out: true}}, _path, _mode), do: {:error, :timeout}
+
+  defp snapshot_result({:ok, %ProcResult{exit_status: nil}}, _path, _mode),
+    do: {:error, :missing_exit_status}
+
+  defp snapshot_result({:ok, %ProcResult{exit_status: status}}, _path, _mode),
+    do: {:error, {:git_failed, status}}
+
+  defp snapshot_result({:error, reason}, _path, _mode), do: {:error, reason}
+
+  defp read_snapshot(path, transform) do
+    with {:ok, output} <- File.read(path), do: {:ok, transform.(output)}
   end
+
+  defp decode_paths(output),
+    do: output |> :binary.split(<<0>>, [:global]) |> Enum.reject(&(&1 == ""))
+
+  defp safe_manifest_path?(path),
+    do: Path.type(path) == :relative and ".." not in Path.split(path) and path not in ["", "."]
+
+  defp file_sha(root, path) do
+    case File.read(Path.join(root, path)) do
+      {:ok, contents} -> :sha256 |> :crypto.hash(contents) |> Base.encode16(case: :lower)
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp under_prefix?(path, prefixes),
+    do:
+      Enum.any?(prefixes, fn prefix ->
+        path == prefix or String.starts_with?(path, String.trim_trailing(prefix, "/") <> "/")
+      end)
+
+  defp allowed_extra(%Intent{slug: slug}),
+    do: [
+      ".kogen/intents/#{slug}"
+      | Enum.map([".kogen/acceptance/", "test/acceptance/"], &(&1 <> slug <> "_test.exs"))
+    ]
+
+  defp cleanup_temp_files(paths),
+    do:
+      Enum.reduce_while(paths, :ok, fn path, :ok ->
+        case File.rm(path) do
+          {:error, reason} when reason != :enoent -> {:halt, {:error, reason}}
+          _result -> {:cont, :ok}
+        end
+      end)
 
   defp failure(reason, detail, class \\ :candidate),
     do: {:error, %Failure{class: class, reason: reason, detail: detail}}

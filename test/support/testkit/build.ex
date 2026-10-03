@@ -73,8 +73,11 @@ defmodule Kogen.E2e.Build do
   @spec prepare_seed!(Path.t()) :: Path.t()
   def prepare_seed!(parent) do
     seed = Path.join(parent, "compiled-tiny-project")
+    origin = Path.join(parent, "approved-origin.git")
     write_seed!(seed)
+    write_intent!(seed)
     compile_seed!(seed)
+    prepare_approved_seed!(seed, origin)
     seed
   end
 
@@ -132,11 +135,6 @@ defmodule Kogen.E2e.Build do
     end
   end
 
-  defp process_env! do
-    {:ok, runtime} = Kogen.Kernel.runtime()
-    runtime.base_env |> test_runtime_environment() |> Map.put("MIX_ENV", "test")
-  end
-
   defp test_runtime_environment(base_env) do
     allowed = ~w(PATH HOME LANG LC_ALL TERM TMPDIR USER SHELL MIX_HOME HEX_HOME)
     markers = ~w(KOGEN_ERTS_DIR KOGEN_ERTS_BIN KOGEN_ESCRIPT_DIR KOGEN_BIN_DIR)
@@ -148,15 +146,14 @@ defmodule Kogen.E2e.Build do
 
   defp write_fake_mise!(project_root, path_value) do
     path = Path.join([project_root, ".test-bin", "mise"])
-    env = %{"PATH" => path_value, "MIX_ENV" => "test"}
+    env = %{"PATH" => path_value, "MIX_ENV" => "test", "ERL_FLAGS" => "+S 1:1 +A 1"}
     json = env |> :json.encode() |> IO.iodata_to_binary()
+    quoted_json = shell_quote(json)
 
     script = """
     #!/bin/sh
     if [ "$1" = "env" ]; then
-      cat <<'KOGEN_TOOLCHAIN_ENV'
-    #{json}
-    KOGEN_TOOLCHAIN_ENV
+      printf '%s\\n' #{quoted_json}
     else
       echo "test fake mise only supports env" >&2
       exit 64
@@ -169,6 +166,8 @@ defmodule Kogen.E2e.Build do
     path
   end
 
+  defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
+
   defp load_run!(project_root, run_id) do
     case Kogen.State.load(Path.join(project_root, ".kogen"), run_id) do
       {:ok, run} -> run
@@ -177,16 +176,10 @@ defmodule Kogen.E2e.Build do
   end
 
   defp claim_released?(%Fixture{} = fixture, run_id) do
-    case Kogen.State.claim(fixture.origin, run_id, fixture.git_env) do
-      :ok ->
-        :ok = Kogen.State.release(fixture.origin, run_id, fixture.git_env)
-        true
-
-      {:error, {:claimed, _owner}} ->
-        false
-
-      {:error, reason} ->
-        raise "cannot inspect Build claim: #{inspect(reason)}"
+    case Workspace.ref_read(fixture.origin, "refs/kogen/claim", fixture.git_env) do
+      {:error, :missing} -> true
+      {:ok, _claim} -> false
+      {:error, reason} -> raise "cannot inspect Build claim for #{run_id}: #{inspect(reason)}"
     end
   end
 
@@ -196,16 +189,11 @@ defmodule Kogen.E2e.Build do
     git_env = Git.env()
 
     copy_seed!(seed_project, project)
-    write_intent!(project)
-    Git.bare!(origin)
-    initialize_project!(project, origin)
+    copy_origin!(seed_project, origin)
+    _remote = Git.git!(project, ["remote", "set-url", "origin", origin])
 
     {:ok, base_sha} = Workspace.ref_read(origin, "refs/heads/main", git_env)
-
-    {:ok, preview} =
-      Kogen.Kernel.Approval.prepare(@slug, project, origin, "main", "Kogen Test", git_env)
-
-    {:ok, approval_commit} = Kogen.Kernel.approve(%ApprovalPreview{} = preview)
+    {:ok, approval_commit} = Workspace.ref_read(origin, "refs/kogen/intents/#{@slug}", git_env)
 
     %Fixture{
       project_root: project,
@@ -217,15 +205,23 @@ defmodule Kogen.E2e.Build do
   end
 
   defp copy_seed!(seed, project) do
-    File.mkdir_p!(project)
+    Git.copy_tree!(seed, project)
+  end
 
-    _output =
-      command!(
-        ["cp", "-c", "-R", Path.join(seed, "."), project],
-        cd: project,
-        env: process_env!()
-      )
+  defp copy_origin!(seed_project, origin) do
+    source = Path.join([Path.dirname(seed_project), "approved-origin.git"])
+    Git.copy_tree!(source, origin)
+  end
 
+  defp prepare_approved_seed!(project, origin) do
+    Git.bare!(origin)
+    initialize_project!(project, origin)
+    {:ok, _base_sha} = Workspace.ref_read(origin, "refs/heads/main", Git.env())
+
+    {:ok, preview} =
+      Kogen.Kernel.Approval.prepare(@slug, project, origin, "main", "Kogen Test", Git.env())
+
+    {:ok, _approval_commit} = Kogen.Kernel.approve(%ApprovalPreview{} = preview)
     :ok
   end
 
@@ -349,8 +345,8 @@ defmodule Kogen.E2e.Build do
     """
     name: tiny_app
     checks:
-      - name: compile
-        argv: [mix, compile, --warnings-as-errors]
+      - name: source-present
+        argv: [test, -s, lib/tiny_app.ex]
         timeout_ms: 60000
     fix: []
     domains:

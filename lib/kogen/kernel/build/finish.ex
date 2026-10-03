@@ -2,6 +2,7 @@ defmodule Kogen.Kernel.Build.Finish do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
+  alias Kogen.Kernel.Build.Guard
   alias Kogen.Kernel.Build.Request
   alias Kogen.Kernel.Build.Session
   alias Kogen.Kernel.Types.BuildResult
@@ -102,7 +103,7 @@ defmodule Kogen.Kernel.Build.Finish do
   end
 
   defp commit_uncommitted(session) do
-    with {:ok, working_tree} <- Workspace.tree_hash(session.workdir, session.git_env),
+    with {:ok, working_tree} <- Guard.tree_hash(session.workdir, session.git_env),
          {:ok, head_tree} <- Workspace.rev_parse(session.workdir, "HEAD^{tree}", session.git_env) do
       if working_tree == head_tree do
         :ok

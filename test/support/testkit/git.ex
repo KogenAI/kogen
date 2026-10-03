@@ -20,6 +20,19 @@ defmodule Kogen.Testkit.Git do
   @spec env() :: %{String.t() => String.t()}
   def env, do: @git_env
 
+  @spec copy_tree!(Path.t(), Path.t()) :: :ok
+  def copy_tree!(source, destination) do
+    File.mkdir_p!(destination)
+
+    _output =
+      Proc.cmd!("/bin/cp", ["-c", "-R", Path.join(source, "."), destination],
+        cd: destination,
+        env: Map.to_list(@git_env)
+      )
+
+    :ok
+  end
+
   @spec bare!(Path.t()) :: Path.t()
   def bare!(repo) do
     File.mkdir_p!(Path.dirname(repo))

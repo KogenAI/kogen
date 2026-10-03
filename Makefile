@@ -10,7 +10,7 @@ TEST_ENV = GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME='Ko
 .PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test e2e integration kogen-checks-test dialyzer install-local demo-fixture
 
 check:
-	+$(MAKE) --no-print-directory guard fmt compile-dev compile-test xref credo test dialyzer
+	+$(MAKE) --no-print-directory guard fmt compile-dev compile-test xref credo test e2e dialyzer
 	@echo "check OK"
 
 guard:

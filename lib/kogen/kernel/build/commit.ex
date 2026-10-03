@@ -12,7 +12,7 @@ defmodule Kogen.Kernel.Build.Commit do
           | {:error, Session.t(), Failure.t()}
           | {:base_moved, Session.t()}
   def run(%Session{} = session) do
-    with {:ok, tree} <- tag(:tree_hash, Workspace.tree_hash(session.workdir, session.git_env)),
+    with {:ok, tree} <- tag(:tree_hash, Guard.tree_hash(session.workdir, session.git_env)),
          :ok <- tag(:squash, squash_to_base(session)),
          {:ok, commit} <- tag(:candidate_commit, commit_tree(session, tree)),
          :ok <- tag(:rebase, rebase(session)),
@@ -110,7 +110,7 @@ defmodule Kogen.Kernel.Build.Commit do
            ),
          :ok <- record_check_results(session, checks, acceptance),
          :ok <- check_passed(checks, acceptance),
-         {:ok, tree} <- Workspace.tree_hash(session.workdir, session.git_env),
+         {:ok, tree} <- Guard.tree_hash(session.workdir, session.git_env),
          :ok <- same_tree(expected_tree, tree) do
       {:ok, checks.receipts, acceptance.ledger}
     end
