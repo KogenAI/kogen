@@ -65,7 +65,8 @@ defmodule Kogen.State.Json do
       target_branch: run.target_branch,
       approval_commit: run.approval_commit,
       status: run.status,
-      landing: landing_fields(run.landing)
+      landing: landing_fields(run.landing),
+      owner_os_pid: run.owner_os_pid
     })
   end
 
@@ -172,7 +173,8 @@ defmodule Kogen.State.Json do
          branch when is_binary(branch) <- Map.get(json, "target_branch"),
          {:ok, status} <- run_status(Map.get(json, "status")),
          {:ok, approval_commit} <- nullable_string(Map.get(json, "approval_commit")),
-         {:ok, landing} <- landing_from_json(Map.get(json, "landing"), id) do
+         {:ok, landing} <- landing_from_json(Map.get(json, "landing"), id),
+         {:ok, owner_os_pid} <- nullable_pid(Map.get(json, "owner_os_pid")) do
       {:ok,
        %Run{
          id: id,
@@ -182,7 +184,8 @@ defmodule Kogen.State.Json do
          target_branch: branch,
          approval_commit: approval_commit,
          status: status,
-         landing: landing
+         landing: landing,
+         owner_os_pid: owner_os_pid
        }}
     else
       _invalid -> {:error, :invalid_run}
@@ -238,6 +241,11 @@ defmodule Kogen.State.Json do
   defp nullable_string(:null), do: {:ok, nil}
   defp nullable_string(value) when is_binary(value), do: {:ok, value}
   defp nullable_string(_value), do: {:error, :invalid_run}
+
+  defp nullable_pid(nil), do: {:ok, nil}
+  defp nullable_pid(:null), do: {:ok, nil}
+  defp nullable_pid(pid) when is_integer(pid) and pid > 0, do: {:ok, pid}
+  defp nullable_pid(_pid), do: {:error, :invalid_run}
 
   defp valid_run_id(id) do
     if Regex.match?(~r/\A[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\z/, id),

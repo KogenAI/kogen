@@ -26,7 +26,7 @@ defmodule Kogen.State.Run do
     :status,
     :landing
   ]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [owner_os_pid: nil]
 
   @type status :: :running | :landed | :failed | :parked
   @type t :: %__MODULE__{
@@ -37,6 +37,7 @@ defmodule Kogen.State.Run do
           target_branch: String.t(),
           approval_commit: String.t() | nil,
           status: status(),
-          landing: Landing.t() | nil
+          landing: Landing.t() | nil,
+          owner_os_pid: pos_integer() | nil
         }
 end

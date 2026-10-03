@@ -23,7 +23,8 @@ defmodule Kogen.State.RunStore do
         target_branch: approval.target_branch,
         approval_commit: nil,
         status: :running,
-        landing: nil
+        landing: nil,
+        owner_os_pid: String.to_integer(System.pid())
       }
 
       with :ok <- File.mkdir_p(Path.join(dir, "transcripts")),

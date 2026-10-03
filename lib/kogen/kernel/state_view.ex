@@ -149,7 +149,19 @@ end
 defmodule Kogen.Kernel.Reconcile do
   @moduledoc false
 
+  alias Kogen.Proc
   alias Kogen.State
+
+  @pid_liveness_script """
+  use Errno qw(ESRCH EPERM);
+  my $pid = shift @ARGV;
+  local $! = 0;
+  my $found = kill(0, $pid);
+  exit 0 if $found;
+  exit 1 if $! == ESRCH;
+  exit 0 if $! == EPERM;
+  exit 2;
+  """
 
   @spec run(String.t(), Path.t(), Path.t(), String.t(), map()) ::
           {:ok, :landed | :unchanged} | {:error, term()}
@@ -157,9 +169,48 @@ defmodule Kogen.Kernel.Reconcile do
     state_root = Path.join(project_root, ".kogen")
 
     with {:ok, run} <- State.load(state_root, run_id) do
-      State.reconcile(origin, state_root, run, base, git_env)
+      case run.status do
+        :running -> reconcile_unfinished(run, state_root, origin, git_env)
+        _terminal -> State.reconcile(origin, state_root, run, base, git_env)
+      end
     end
   end
+
+  defp reconcile_unfinished(run, state_root, origin, git_env) do
+    case owner_alive?(run.owner_os_pid, run.dir) do
+      {:ok, true} ->
+        {:ok, :unchanged}
+
+      {:ok, false} ->
+        with :ok <- State.recover_crashed(origin, state_root, run, git_env) do
+          {:ok, :unchanged}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp owner_alive?(pid, directory) when is_integer(pid) and pid > 0 do
+    case Proc.run(
+           ["/usr/bin/perl", "-e", @pid_liveness_script, Integer.to_string(pid)],
+           cd: directory
+         ) do
+      {:ok, %{exit_status: 0}} ->
+        {:ok, true}
+
+      {:ok, %{exit_status: 1}} ->
+        {:ok, false}
+
+      {:ok, %{exit_status: status, output_tail: output}} ->
+        {:error, {:owner_liveness_check_failed, status, output}}
+
+      {:error, reason} ->
+        {:error, {:owner_liveness_check_failed, reason}}
+    end
+  end
+
+  defp owner_alive?(_pid, _directory), do: {:ok, false}
 end
 
 defmodule Kogen.Kernel.Report do

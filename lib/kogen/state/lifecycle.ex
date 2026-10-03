@@ -68,6 +68,22 @@ defmodule Kogen.State.Lifecycle do
     end
   end
 
+  @spec recover_crashed(term(), Path.t(), Run.t(), map(), module()) :: :ok | {:error, term()}
+  def recover_crashed(repo, root, %Run{} = run, git_env, workspace) do
+    with {:ok, current} <- RunStore.load(root, run.id) do
+      case current.status do
+        :running ->
+          with :ok <-
+                 RunStore.record(current, %{event: :finished, status: :failed, reason: :crashed}) do
+            release(repo, current.id, git_env, workspace)
+          end
+
+        _terminal ->
+          :ok
+      end
+    end
+  end
+
   defp claim_commit(repo, run_id, git_env, workspace) do
     message = Json.claim_message(run_id)
     files = Map.new([{@claim_path, run_id}])

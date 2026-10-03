@@ -76,4 +76,15 @@ defmodule Kogen.State do
           keyword()
         ) :: {:ok, :landed | :unchanged} | {:error, term()}
   defdelegate reconcile(repo, root, run, branch, git_env, options \\ []), to: Operations
+
+  @spec recover_crashed(Path.t(), Path.t(), Run.t(), %{String.t() => String.t()}) ::
+          :ok | {:error, term()}
+  @spec recover_crashed(
+          Path.t(),
+          Path.t(),
+          Run.t(),
+          %{String.t() => String.t()},
+          keyword()
+        ) :: :ok | {:error, term()}
+  defdelegate recover_crashed(repo, root, run, git_env, options \\ []), to: Operations
 end

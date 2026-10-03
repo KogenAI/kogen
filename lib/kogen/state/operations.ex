@@ -73,6 +73,13 @@ defmodule Kogen.State.Operations do
     end
   end
 
+  @spec recover_crashed(term(), Path.t(), Run.t(), map(), keyword()) :: :ok | {:error, term()}
+  def recover_crashed(repo, root, run, git_env, options \\ []) do
+    with {:ok, workspace} <- workspace(options) do
+      Lifecycle.recover_crashed(repo, root, run, git_env, workspace)
+    end
+  end
+
   defp workspace(options) when is_list(options) do
     case Keyword.keyword?(options) and Keyword.get(options, :workspace, @workspace_module) do
       true ->
