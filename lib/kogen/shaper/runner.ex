@@ -1,6 +1,7 @@
 defmodule Kogen.Shaper.Runner do
   @moduledoc false
 
+  alias Kogen.Checks.ShapeFormatRequest
   alias Kogen.Checks.ShapeValidation
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.Project
@@ -133,18 +134,7 @@ defmodule Kogen.Shaper.Runner do
   end
 
   defp validate_pass(%State{} = state, %ShapePass{} = pass, attempt_number) do
-    validation =
-      with :ok <-
-             Kogen.Checks.format_shape_files(
-               state.request.workdir,
-               state.request.slug,
-               pass.written_paths,
-               state.opts.run_dir,
-               state.opts.env,
-               state.request.sandbox
-             ) do
-        validate_files(state.request, state.project, state.opts)
-      end
+    validation = validate_formatted_pass(state, pass, attempt_number)
 
     case validation do
       :ok ->
@@ -168,6 +158,30 @@ defmodule Kogen.Shaper.Runner do
         )
 
         validation_exhausted(failure, state.repairs)
+    end
+  end
+
+  defp validate_formatted_pass(%State{} = state, %ShapePass{} = pass, attempt_number) do
+    format_request = %ShapeFormatRequest{
+      workdir: state.request.workdir,
+      slug: state.request.slug,
+      written_paths: pass.written_paths,
+      project: state.project,
+      run_dir: state.opts.run_dir,
+      env: state.opts.env,
+      sandbox: state.request.sandbox
+    }
+
+    case Kogen.Checks.format_shape_files(format_request) do
+      :ok ->
+        validate_files(state.request, state.project, state.opts)
+
+      {:warning, %Failure{class: :environment, reason: reason}} ->
+        progress(state.request, attempt_number, "warning formatter_skipped reason=#{reason}")
+        validate_files(state.request, state.project, state.opts)
+
+      {:error, %Failure{} = failure} ->
+        {:error, failure}
     end
   end
 

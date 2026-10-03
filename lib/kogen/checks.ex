@@ -16,16 +16,34 @@ defmodule Kogen.Checks.ShapeValidation do
         }
 end
 
+defmodule Kogen.Checks.ShapeFormatRequest do
+  @moduledoc false
+
+  @enforce_keys [:workdir, :slug, :written_paths, :project, :run_dir, :env]
+  defstruct @enforce_keys ++ [sandbox: nil]
+
+  @type t :: %__MODULE__{
+          workdir: Path.t(),
+          slug: String.t(),
+          written_paths: [Path.t()],
+          project: Kogen.Contracts.Project.t(),
+          run_dir: Path.t(),
+          env: %{String.t() => String.t()},
+          sandbox: Kogen.Proc.Sandbox.t() | nil
+        }
+end
+
 defmodule Kogen.Checks do
   @moduledoc "Runs deterministic project verification and records its results."
   use Boundary,
     deps: [Kogen.Contracts, Kogen.Proc, Kogen.Workspace, Kogen.Project],
-    exports: [LedgerRow, ShapeValidation]
+    exports: [LedgerRow, ShapeValidation, ShapeFormatRequest]
 
   alias Kogen.Checks.Fixer
   alias Kogen.Checks.Ledger
   alias Kogen.Checks.LedgerRow
   alias Kogen.Checks.Runner
+  alias Kogen.Checks.ShapeFormatRequest
   alias Kogen.Checks.ShapeFormatter
   alias Kogen.Checks.ShapeValidation
   alias Kogen.Checks.Shaping
@@ -144,16 +162,10 @@ defmodule Kogen.Checks do
   @spec validate_shape(ShapeValidation.t()) :: :ok | {:error, Failure.t()}
   def validate_shape(%ShapeValidation{} = request), do: Shaping.validate(request)
 
-  @spec format_shape_files(
-          Path.t(),
-          String.t(),
-          [Path.t()],
-          Path.t(),
-          %{String.t() => String.t()},
-          Sandbox.t() | nil
-        ) :: :ok | {:error, Failure.t()}
-  def format_shape_files(workdir, slug, written_paths, run_dir, env, sandbox),
-    do: ShapeFormatter.format_files(workdir, slug, written_paths, run_dir, env, sandbox)
+  @spec format_shape_files(ShapeFormatRequest.t()) ::
+          :ok | {:warning, Failure.t()} | {:error, Failure.t()}
+  def format_shape_files(%ShapeFormatRequest{} = request),
+    do: ShapeFormatter.format_files(request)
 
   @spec protected_violations(
           Path.t(),

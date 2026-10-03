@@ -46,6 +46,7 @@ This file is the contract between domains. Change it only through the integrator
 - `Kogen.Project.load(checkout_root) :: {:ok, Project.t()} | {:error, [%{line, message}]}`, reading `.kogen/project.yaml`
 - Intent files live at `.kogen/intents/<slug>/intent.md`; `parse/1` derives `<slug>` from the parent directory.
 - Acceptance test files live at `.kogen/acceptance/<slug>_test.exs` in the checkout, and are installed into the Candidate at `test/acceptance/<slug>_test.exs`.
+- `.kogen/project.yaml` may declare `format: [argv...]` beside `checks:` and `setup:`. Shaping appends the generated source paths to this argv. If omitted, it derives the formatter from the first `checks:` argv containing both `format` and `--check-formatted`, removing the latter flag; otherwise it uses `mix format`. If the formatter is missing (`:enoent` or exit 127), shaping records a warning and continues to the acceptance checks; those checks still run normally.
 
 ## Kogen.Provider
 - `Kogen.Provider.ChatGPT.config(auth_path) :: {:ok, %Kogen.Provider.ChatGPT.Config{}} | {:error, ProviderError.t()}`

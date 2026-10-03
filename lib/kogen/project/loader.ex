@@ -5,7 +5,7 @@ defmodule Kogen.Project.Loader do
   alias Kogen.Contracts.Project
   alias Kogen.Contracts.Yaml
 
-  @project_keys ~w(name checks acceptance_checks setup fix diagnose protected_paths domains env sandbox)
+  @project_keys ~w(name checks format acceptance_checks setup fix diagnose protected_paths domains env sandbox)
   @env_name ~r/\A[A-Za-z_][A-Za-z0-9_]*\z/
 
   @type error :: %{line: pos_integer() | nil, message: String.t()}
@@ -45,6 +45,7 @@ defmodule Kogen.Project.Loader do
 
   defp project_collections(document) do
     {checks, check_errors} = check_specs(document, "checks", true)
+    {format, format_errors} = format(document)
 
     {acceptance_checks, acceptance_check_errors} =
       check_specs(document, "acceptance_checks", false)
@@ -57,6 +58,7 @@ defmodule Kogen.Project.Loader do
 
     fields = [
       checks: checks,
+      format: format,
       acceptance_checks: acceptance_checks,
       setup: setup,
       fix: fix,
@@ -67,6 +69,7 @@ defmodule Kogen.Project.Loader do
 
     errors = [
       check_errors,
+      format_errors,
       acceptance_check_errors,
       setup_errors,
       fix_errors,
@@ -76,6 +79,19 @@ defmodule Kogen.Project.Loader do
     ]
 
     {fields, List.flatten(errors)}
+  end
+
+  defp format(document) do
+    case Map.fetch(document, "format") do
+      {:ok, values} when is_list(values) ->
+        validate_string_list(values, "format", "project", true)
+
+      {:ok, _value} ->
+        {nil, [issue("`format` must be a list of strings")]}
+
+      :error ->
+        {nil, []}
+    end
   end
 
   defp project_settings(document) do

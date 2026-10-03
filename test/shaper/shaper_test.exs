@@ -163,6 +163,100 @@ defmodule Kogen.Shaper.Tests do
     end
   end
 
+  test "uses the project format argv before validating the generated files", %{tmp_dir: tmp_dir} do
+    project = seed_project!(Path.join(tmp_dir, "project"))
+    formatter_script = Path.join(tmp_dir, "formatter.sh")
+    calls_path = Path.join(tmp_dir, "formatter-calls.txt")
+
+    File.write!(formatter_script, ~s(printf '%s\\n' "$@" >> "$KOGEN_FORMAT_CALLS"\n))
+
+    File.write!(
+      Path.join([project, ".kogen", "project.yaml"]),
+      project_config(["/bin/sh", formatter_script])
+    )
+
+    valid_intent =
+      intent(
+        "keeps",
+        "Approach: Keep Tiny.value/0 unchanged and preserve its public result by avoiding unrelated changes."
+      )
+
+    {:ok, server} =
+      ScriptedProvider.start_link([
+        ScriptedProvider.write_many(:shape, [
+          {intent_path(), valid_intent},
+          {acceptance_path(), acceptance_test()}
+        ])
+      ])
+
+    config = %Config{server: server}
+
+    try do
+      shape_request = request(project, tmp_dir, config)
+
+      shape_request = %{
+        shape_request
+        | env: Map.put(shape_request.env, "KOGEN_FORMAT_CALLS", calls_path)
+      }
+
+      assert {:ok, result} = Shaper.shape(shape_request)
+      assert result.rounds == 1
+      assert File.read!(calls_path) == acceptance_path() <> "\n"
+
+      assert File.exists?(
+               Path.join([tmp_dir, "shape-run", "logs", "shape-acceptance-1-format.log"])
+             )
+    after
+      GenServer.stop(server, :normal)
+    end
+  end
+
+  test "skips a missing formatter with a warning and still runs format acceptance", %{
+    tmp_dir: tmp_dir
+  } do
+    project = seed_project!(Path.join(tmp_dir, "project"))
+
+    File.write!(
+      Path.join([project, ".kogen", "project.yaml"]),
+      project_config([Path.join(tmp_dir, "missing-formatter")])
+    )
+
+    valid_intent =
+      intent(
+        "keeps",
+        "Approach: Keep Tiny.value/0 unchanged and preserve its public result by avoiding unrelated changes."
+      )
+
+    {:ok, server} =
+      ScriptedProvider.start_link([
+        ScriptedProvider.write_many(:shape, [
+          {intent_path(), valid_intent},
+          {acceptance_path(), acceptance_test()}
+        ])
+      ])
+
+    config = %Config{server: server}
+
+    try do
+      assert {:ok, result} = Shaper.shape(request(project, tmp_dir, config))
+      assert result.rounds == 1
+      assert length(ScriptedProvider.requests(config)) == 1
+
+      format_log = File.read!(Path.join([tmp_dir, "shape-run", "logs", "shape-format.log"]))
+      assert format_log =~ "WARNING: environment/tool_missing"
+      assert format_log =~ "Skipping controller formatting"
+
+      assert File.exists?(
+               Path.join([tmp_dir, "shape-run", "logs", "shape-acceptance-1-format.log"])
+             )
+
+      shaper_log = File.read!(Path.join([tmp_dir, "shape-run", "logs", "shaper.log"]))
+      assert shaper_log =~ "warning formatter_skipped reason=tool_missing"
+    after
+      GenServer.stop(server, :normal)
+    end
+  end
+
   defp request(project, tmp_dir, %Config{} = config) do
     {:ok, runtime} = Kogen.Kernel.runtime()
     {:ok, project_config} = Kogen.Project.load(project)
@@ -223,10 +317,17 @@ defmodule Kogen.Shaper.Tests do
     """
   end
 
-  defp project_config do
+  defp project_config(format_argv \\ nil) do
+    format_config =
+      if format_argv do
+        "format: [" <> Enum.map_join(format_argv, ", ", &inspect/1) <> "]\n"
+      else
+        ""
+      end
+
     """
     name: tiny
-    checks:
+    #{format_config}checks:
       - name: tests
         argv: [mix, test]
         timeout_ms: 120000

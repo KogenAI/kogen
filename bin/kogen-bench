@@ -109,6 +109,7 @@ array = lambda values: "[" + ", ".join(quote(value) for value in values) + "]"
 
 lines = [
     "name: kogen-bench",
+    "format: " + array(prefix + ["mix", "format"]),
     "checks:",
     "  - name: tests",
     "    argv: " + array(prefix + ["mix", "test"]),

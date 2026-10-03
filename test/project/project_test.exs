@@ -7,6 +7,7 @@ defmodule Kogen.Project.ProjectTest do
   test "loads all declared project data and converts timeout strings", %{tmp_dir: root} do
     write_config(root, """
     name: tiny-app
+    format: [mise, exec, --, mix, format]
     checks:
       - name: test
         argv: [mix, test]
@@ -36,6 +37,7 @@ defmodule Kogen.Project.ProjectTest do
     assert project.root == root
     assert project.name == "tiny-app"
     assert project.checks == [%CheckSpec{name: "test", argv: ["mix", "test"], timeout_ms: 60_000}]
+    assert project.format == ["mise", "exec", "--", "mix", "format"]
 
     assert project.acceptance_checks == [
              %CheckSpec{
@@ -63,6 +65,7 @@ defmodule Kogen.Project.ProjectTest do
     write_config(root, "name: tiny-app\nchecks: []\n")
     assert {:ok, project} = Kogen.Project.load(root)
     assert project.acceptance_checks == []
+    assert project.format == nil
     assert project.fix == []
     assert project.setup == []
     assert project.diagnose == []
@@ -85,6 +88,18 @@ defmodule Kogen.Project.ProjectTest do
 
     assert {:error, [%{message: message}]} = Kogen.Project.load(root)
     assert message == "`sandbox` must be a boolean"
+  end
+
+  test "format must be a non-empty argv list", %{tmp_dir: root} do
+    write_config(root, "name: tiny-app\nchecks: []\nformat: []\n")
+
+    assert {:error, [%{message: message}]} = Kogen.Project.load(root)
+    assert message == "project.format must not be empty"
+
+    write_config(root, "name: tiny-app\nchecks: []\nformat: mix format\n")
+
+    assert {:error, [%{message: message}]} = Kogen.Project.load(root)
+    assert message == "`format` must be a list of strings"
   end
 
   test "rejects unknown top-level and nested keys", %{tmp_dir: root} do
