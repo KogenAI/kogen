@@ -6,7 +6,7 @@ defmodule Kogen.Proc.Sandbox do
   """
 
   @enforce_keys [:enabled, :home, :project_root, :origin, :workspace, :run_dir, :tmp_dir]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [workspace_is_project: false]
 
   @type t :: %__MODULE__{
           enabled: boolean(),
@@ -15,7 +15,8 @@ defmodule Kogen.Proc.Sandbox do
           origin: Path.t(),
           workspace: Path.t(),
           run_dir: Path.t(),
-          tmp_dir: Path.t()
+          tmp_dir: Path.t(),
+          workspace_is_project: boolean()
         }
 
   @spec command([String.t()], t() | nil) ::
@@ -46,7 +47,13 @@ defmodule Kogen.Proc.Sandbox do
          {:ok, writable} <- writable_paths(sandbox, home),
          {:ok, protected} <- canonical_paths(credential_paths(home)),
          {:ok, project} <- canonical_path(sandbox.project_root),
-         {:ok, origin} <- canonical_path(sandbox.origin) do
+         {:ok, origin} <- canonical_path(sandbox.origin),
+         {:ok, workspace} <- canonical_path(sandbox.workspace) do
+      protected_roots =
+        [project, origin]
+        |> Enum.uniq()
+        |> Enum.reject(&(sandbox.workspace_is_project and &1 == workspace))
+
       rules =
         [
           "(version 1)",
@@ -61,7 +68,7 @@ defmodule Kogen.Proc.Sandbox do
             deny_credential_pattern(:file_write, home)
           ] ++
           Enum.map(protected, &deny_subpath(:file_write, &1)) ++
-          [deny_subpath(:file_write, project), deny_subpath(:file_write, origin)]
+          Enum.map(protected_roots, &deny_subpath(:file_write, &1))
 
       {:ok, Enum.join(rules, "\n")}
     end

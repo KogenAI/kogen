@@ -65,6 +65,16 @@ defmodule Kogen.E2e.ScriptedProvider do
     tool_step(stage, "write", %{"path" => path, "content" => contents})
   end
 
+  @spec write_many(Step.stage(), [{Path.t(), String.t()}]) :: Step.t()
+  def write_many(stage, files) when stage in @known_stages and is_list(files) do
+    calls =
+      Enum.map(files, fn {path, contents} ->
+        %Call{name: "write", arguments: %{"path" => path, "content" => contents}}
+      end)
+
+    %Step{stage: stage, text: "", calls: calls}
+  end
+
   @spec edit(Step.stage(), Path.t(), String.t(), String.t()) :: Step.t()
   def edit(stage, path, old_text, new_text) when stage in @known_stages do
     tool_step(stage, "edit", %{"path" => path, "old_text" => old_text, "new_text" => new_text})
@@ -189,7 +199,10 @@ defmodule Kogen.E2e.ScriptedProvider do
   end
 
   defp response(%Step{} = step, sequence) do
-    calls = Enum.map(step.calls, &tool_call(&1, sequence))
+    calls =
+      step.calls
+      |> Enum.with_index(1)
+      |> Enum.map(fn {call, index} -> tool_call(call, sequence, index) end)
 
     %ModelResponse{
       id: "scripted-response-#{sequence}",
@@ -200,9 +213,9 @@ defmodule Kogen.E2e.ScriptedProvider do
     }
   end
 
-  defp tool_call(%Call{} = call, sequence) do
+  defp tool_call(%Call{} = call, sequence, index) do
     %ToolCall{
-      id: "scripted-call-#{sequence}",
+      id: "scripted-call-#{sequence}-#{index}",
       name: call.name,
       arguments: call.arguments
     }

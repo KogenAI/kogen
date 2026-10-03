@@ -2,7 +2,7 @@ defmodule Kogen.Checks.ShapeValidation do
   @moduledoc false
 
   @enforce_keys [:workdir, :project, :intent, :acceptance_bytes, :run_dir, :env, :git_env]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [sandbox: nil]
 
   @type t :: %__MODULE__{
           workdir: Path.t(),
@@ -11,7 +11,8 @@ defmodule Kogen.Checks.ShapeValidation do
           acceptance_bytes: binary(),
           run_dir: Path.t(),
           env: %{String.t() => String.t()},
-          git_env: %{String.t() => String.t()}
+          git_env: %{String.t() => String.t()},
+          sandbox: Kogen.Proc.Sandbox.t() | nil
         }
 end
 
@@ -25,6 +26,7 @@ defmodule Kogen.Checks do
   alias Kogen.Checks.Ledger
   alias Kogen.Checks.LedgerRow
   alias Kogen.Checks.Runner
+  alias Kogen.Checks.ShapeFormatter
   alias Kogen.Checks.ShapeValidation
   alias Kogen.Checks.Shaping
   alias Kogen.Contracts.Failure
@@ -141,6 +143,17 @@ defmodule Kogen.Checks do
 
   @spec validate_shape(ShapeValidation.t()) :: :ok | {:error, Failure.t()}
   def validate_shape(%ShapeValidation{} = request), do: Shaping.validate(request)
+
+  @spec format_shape_files(
+          Path.t(),
+          String.t(),
+          [Path.t()],
+          Path.t(),
+          %{String.t() => String.t()},
+          Sandbox.t() | nil
+        ) :: :ok | {:error, Failure.t()}
+  def format_shape_files(workdir, slug, written_paths, run_dir, env, sandbox),
+    do: ShapeFormatter.format_files(workdir, slug, written_paths, run_dir, env, sandbox)
 
   @spec protected_violations(
           Path.t(),

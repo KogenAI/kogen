@@ -35,30 +35,25 @@ defmodule Kogen.Checks.Shaping do
   end
 
   defp verify(%ShapeValidation{} = request) do
-    with :ok <-
-           acceptance_checks(
-             request.workdir,
-             request.project,
-             request.intent.slug,
-             request.run_dir,
-             Map.merge(request.env, request.project.env),
-             request.git_env
-           ) do
-      red_on_base(
+    env = Map.merge(request.env, request.project.env)
+
+    with :ok <- acceptance_checks(request, env) do
+      Ledger.red_on_base(
         request.workdir,
         request.intent,
         request.run_dir,
-        request.env,
-        request.git_env
+        env,
+        request.git_env,
+        request.sandbox
       )
     end
   end
 
-  defp acceptance_checks(workdir, project, slug, run_dir, env, git_env) do
-    with :ok <- prepare_logs(run_dir),
-         {:ok, before_tree} <- Workspace.tree_hash(workdir, git_env),
-         result = run_specs(project.acceptance_checks, workdir, slug, run_dir, env),
-         {:ok, after_tree} <- Workspace.tree_hash(workdir, git_env),
+  defp acceptance_checks(request, env) do
+    with :ok <- prepare_logs(request.run_dir),
+         {:ok, before_tree} <- Workspace.tree_hash(request.workdir, request.git_env),
+         result = run_specs(request, env),
+         {:ok, after_tree} <- Workspace.tree_hash(request.workdir, request.git_env),
          :ok <- unchanged_tree(before_tree, after_tree),
          :ok <- result do
       :ok
@@ -68,22 +63,30 @@ defmodule Kogen.Checks.Shaping do
     end
   end
 
-  defp run_specs(specs, workdir, slug, run_dir, env) do
-    relative = "test/acceptance/#{slug}_test.exs"
-
-    Enum.reduce_while(Enum.with_index(specs, 1), :ok, fn {spec, index}, :ok ->
-      case run_spec(spec, workdir, relative, run_dir, env, index) do
-        :ok -> {:cont, :ok}
-        {:error, %Failure{} = failure} -> {:halt, {:error, failure}}
-      end
+  defp run_specs(request, env) do
+    Enum.reduce_while(Enum.with_index(request.project.acceptance_checks, 1), :ok, fn
+      {spec, index}, :ok ->
+        case run_spec(spec, request, env, index) do
+          :ok -> {:cont, :ok}
+          {:error, %Failure{} = failure} -> {:halt, {:error, failure}}
+        end
     end)
   end
 
-  defp run_spec(spec, workdir, relative, run_dir, env, index) do
+  defp run_spec(spec, request, env, index) do
+    relative = "test/acceptance/#{request.intent.slug}_test.exs"
     argv = Enum.map(spec.argv, &String.replace(&1, "{path}", relative))
-    log_path = Path.join([run_dir, "logs", "shape-acceptance-#{index}-#{spec.name}.log"])
 
-    case Proc.run(argv, cd: workdir, env: env, timeout_ms: spec.timeout_ms, log_path: log_path) do
+    log_path =
+      Path.join([request.run_dir, "logs", "shape-acceptance-#{index}-#{spec.name}.log"])
+
+    case Proc.run(argv,
+           cd: request.workdir,
+           env: env,
+           timeout_ms: spec.timeout_ms,
+           log_path: log_path,
+           sandbox: request.sandbox
+         ) do
       {:ok, %ProcResult{exit_status: 0, timed_out: false}} ->
         :ok
 
@@ -112,13 +115,6 @@ defmodule Kogen.Checks.Shaping do
     status = if result.timed_out, do: "timed out", else: "exited #{result.exit_status}"
     detail = "Acceptance check #{name} #{status}.\n" <> result.output_tail
     failure(:candidate, :acceptance_check_failed, detail)
-  end
-
-  defp red_on_base(workdir, intent, run_dir, env, git_env) do
-    case Ledger.red_on_base(workdir, intent, run_dir, env, git_env) do
-      :ok -> :ok
-      {:error, %Failure{} = failure} -> {:error, failure}
-    end
   end
 
   defp stage_test(workdir, slug, contents) do

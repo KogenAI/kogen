@@ -55,6 +55,31 @@ defmodule Kogen.Proc.SandboxTest do
     assert profile =~ ".codex"
     assert profile =~ "(deny file-write*"
 
+    in_place_sandbox = %{
+      sandbox
+      | project_root: project,
+        origin: project,
+        workspace: project,
+        workspace_is_project: true
+    }
+
+    assert {:ok, in_place_profile} = Sandbox.profile(in_place_sandbox)
+    assert in_place_profile =~ "(allow file-write* (subpath "
+
+    assert {:ok, protected_in_place_profile} =
+             Sandbox.profile(%{in_place_sandbox | workspace_is_project: false})
+
+    project_deny =
+      protected_in_place_profile
+      |> String.split("\n")
+      |> Enum.find(fn line ->
+        String.starts_with?(line, "(deny file-write* (subpath ") and
+          String.ends_with?(line, "/project\"))")
+      end)
+
+    assert is_binary(project_deny)
+    refute project_deny in String.split(in_place_profile, "\n")
+
     if :os.type() == {:unix, :darwin} do
       assert_sandbox_denies(
         ["/bin/sh", "-c", "printf escaped > \"$PROJECT_ROOT/outside.txt\""],

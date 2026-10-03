@@ -15,7 +15,7 @@ defmodule Kogen.Shaper.Request do
     :git_env,
     :run_dir
   ]
-  defstruct @enforce_keys ++ [limits: @default_limits]
+  defstruct @enforce_keys ++ [sandbox: nil, limits: @default_limits]
 
   @type limits :: %{max_turns: pos_integer(), wall_ms: pos_integer()}
 
@@ -30,6 +30,7 @@ defmodule Kogen.Shaper.Request do
           env: %{String.t() => String.t()},
           git_env: %{String.t() => String.t()},
           run_dir: Path.t(),
+          sandbox: Kogen.Proc.Sandbox.t() | nil,
           limits: limits()
         }
 end

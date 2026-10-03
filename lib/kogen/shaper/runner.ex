@@ -133,7 +133,20 @@ defmodule Kogen.Shaper.Runner do
   end
 
   defp validate_pass(%State{} = state, %ShapePass{} = pass, attempt_number) do
-    case validate_files(state.request, state.project, state.opts) do
+    validation =
+      with :ok <-
+             Kogen.Checks.format_shape_files(
+               state.request.workdir,
+               state.request.slug,
+               pass.written_paths,
+               state.opts.run_dir,
+               state.opts.env,
+               state.request.sandbox
+             ) do
+        validate_files(state.request, state.project, state.opts)
+      end
+
+    case validation do
       :ok ->
         progress(state.request, attempt_number, "validation_passed")
         {:ok, result(state.request, state.calls, state.repairs + 1, state.opts)}
@@ -184,7 +197,8 @@ defmodule Kogen.Shaper.Runner do
         acceptance_bytes: test_bytes,
         run_dir: opts.run_dir,
         env: opts.env,
-        git_env: request.git_env
+        git_env: request.git_env,
+        sandbox: request.sandbox
       })
     end
   end
@@ -220,6 +234,7 @@ defmodule Kogen.Shaper.Runner do
       provider_mod: request.provider_mod,
       provider_config: request.provider_config,
       proc_mod: Proc,
+      sandbox: request.sandbox,
       env: Map.merge(request.env, project.env),
       models: %{builder: {request.model, request.effort}, strong: {request.model, request.effort}},
       limits: request.limits

@@ -4,6 +4,7 @@ defmodule Kogen.Shaper.Tests do
 
   alias Kogen.E2e.ScriptedProvider
   alias Kogen.E2e.ScriptedProvider.Config
+  alias Kogen.Proc.Sandbox
   alias Kogen.Shaper
   alias Kogen.Shaper.Request
   alias Kogen.Testkit.Git
@@ -26,10 +27,11 @@ defmodule Kogen.Shaper.Tests do
       ScriptedProvider.start_link([
         ScriptedProvider.write(:shape, "README.md", "unauthorized\n"),
         ScriptedProvider.write(:shape, intent_path(), invalid_intent),
-        ScriptedProvider.write(:shape, acceptance_path(), test_source),
-        ScriptedProvider.answer(:shape, "Files written."),
-        ScriptedProvider.write(:shape, intent_path(), valid_intent),
-        ScriptedProvider.answer(:shape, "Validation repaired.")
+        ScriptedProvider.write(:shape, acceptance_path(), malformed_acceptance_test()),
+        ScriptedProvider.write_many(:shape, [
+          {intent_path(), valid_intent},
+          {acceptance_path(), test_source}
+        ])
       ])
 
     config = %Config{server: server}
@@ -38,8 +40,8 @@ defmodule Kogen.Shaper.Tests do
       shape_request = request(project, tmp_dir, config)
       assert shape_request.limits == %{max_turns: 60, wall_ms: 1_800_000}
       assert {:ok, result} = Shaper.shape(shape_request)
-      assert result.rounds == 2
-      assert length(result.calls) == 6
+      assert result.rounds == 3
+      assert length(result.calls) == 4
       assert Enum.all?(result.calls, &(&1.model == "scripted-model" and is_integer(&1.wall_ms)))
       transcript = File.read!(result.transcript_path)
       assert transcript =~ "model_usage"
@@ -52,15 +54,17 @@ defmodule Kogen.Shaper.Tests do
       assert run_log =~ "attempt=1 started turns_used=0/60"
       assert run_log =~ "attempt=1 model_pass_complete"
       assert run_log =~ "attempt=1 validation_failed"
-      assert run_log =~ "attempt=2 started turns_used=4/60"
-      assert run_log =~ "attempt=2 validation_passed"
+      assert run_log =~ "attempt=2 started turns_used=2/60"
+      assert run_log =~ "attempt=2 validation_failed"
+      assert run_log =~ "attempt=3 started turns_used=3/60"
+      assert run_log =~ "attempt=3 validation_passed"
       assert File.read!(result.intent_path) == valid_intent
       assert File.read!(result.acceptance_path) == test_source
       refute File.exists?(Path.join(project, "README.md"))
       refute File.exists?(Path.join(project, "test/acceptance/shape-loop_test.exs"))
 
       requests = ScriptedProvider.requests(config)
-      assert length(requests) == 6
+      assert length(requests) == 4
 
       assert Enum.map_join(Enum.at(requests, 1).input, &inspect/1) =~
                "outside the shaper's two-file scope"
@@ -88,9 +92,9 @@ defmodule Kogen.Shaper.Tests do
       assert Enum.map_join(Enum.at(requests, 1).input, &inspect/1) =~
                ".kogen/acceptance/shape-loop_test.exs"
 
-      assert Enum.map_join(Enum.at(requests, 4).input, &inspect/1) =~ "intent_lint_failed"
-      assert Enum.map_join(Enum.at(requests, 4).input, &inspect/1) =~ "contains a hedge"
-      repair = Enum.map_join(Enum.at(requests, 4).input, &inspect/1)
+      assert Enum.map_join(Enum.at(requests, 2).input, &inspect/1) =~ "intent_lint_failed"
+      assert Enum.map_join(Enum.at(requests, 2).input, &inspect/1) =~ "contains a hedge"
+      repair = Enum.map_join(Enum.at(requests, 2).input, &inspect/1)
       assert repair =~ "Acceptance item A1 text:"
       assert repair =~ "Tiny.value/0 usually keeps returning :old on the unchanged checkout."
 
@@ -101,6 +105,10 @@ defmodule Kogen.Shaper.Tests do
       assert repair =~ "A1 verifies Tiny.value/0 returns :old."
       assert repair =~ "Notes must begin with `Approach:`"
 
+      format_repair = Enum.map_join(Enum.at(requests, 3).input, &inspect/1)
+      assert format_repair =~ "format_failed"
+      assert format_repair =~ "TokenMissingError"
+
       assert Enum.all?(requests, fn request ->
                Enum.map(request.tools, &Map.get(&1, "name")) == ["read", "search", "write"]
              end)
@@ -109,8 +117,57 @@ defmodule Kogen.Shaper.Tests do
     end
   end
 
+  test "formats an unformatted acceptance test and stops on the validating write turn", %{
+    tmp_dir: tmp_dir
+  } do
+    project = seed_project!(Path.join(tmp_dir, "project"))
+
+    valid_intent =
+      intent(
+        "keeps",
+        "Approach: Keep Tiny.value/0 unchanged and preserve its public result by avoiding unrelated changes."
+      )
+
+    unformatted_test = """
+    defmodule Tiny.Acceptance.ShapeLoopTest do
+    use ExUnit.Case,async: true
+    @tag intent: "shape-loop/A1"
+    test "the existing public value remains available" do
+    assert(Tiny.value()==:old)
+    end
+    end
+    """
+
+    {:ok, server} =
+      ScriptedProvider.start_link([
+        ScriptedProvider.write(:shape, acceptance_path(), unformatted_test),
+        ScriptedProvider.write(:shape, intent_path(), valid_intent)
+      ])
+
+    config = %Config{server: server}
+
+    try do
+      assert {:ok, result} = Shaper.shape(request(project, tmp_dir, config))
+      requests = ScriptedProvider.requests(config)
+
+      assert result.rounds == 2
+      assert length(result.calls) == 2
+      assert length(requests) == 2
+      assert ScriptedProvider.remaining(config) == 0
+      assert File.read!(result.acceptance_path) == acceptance_test()
+
+      assert Enum.map_join(Enum.at(requests, 1).input, &inspect/1) =~
+               "Cannot read .kogen/intents/shape-loop/intent.md"
+    after
+      GenServer.stop(server, :normal)
+    end
+  end
+
   defp request(project, tmp_dir, %Config{} = config) do
     {:ok, runtime} = Kogen.Kernel.runtime()
+    {:ok, project_config} = Kogen.Project.load(project)
+    {:ok, env} = Kogen.Kernel.candidate_environment(project, runtime, project_config)
+    run_dir = Path.join(tmp_dir, "shape-run")
 
     %Request{
       workdir: project,
@@ -120,9 +177,19 @@ defmodule Kogen.Shaper.Tests do
       effort: "low",
       provider_mod: ScriptedProvider,
       provider_config: config,
-      env: Map.merge(runtime.base_env, %{"MIX_ENV" => "test", "ERL_FLAGS" => "+S 1:1 +A 1"}),
+      env: Map.merge(env, %{"MIX_ENV" => "test", "ERL_FLAGS" => "+S 1:1 +A 1"}),
       git_env: Git.env(),
-      run_dir: Path.join(tmp_dir, "shape-run")
+      run_dir: run_dir,
+      sandbox: %Sandbox{
+        enabled: project_config.sandbox and not Map.get(runtime, :sandboxed, false),
+        home: runtime.base_env["HOME"],
+        project_root: project,
+        origin: project,
+        workspace: project,
+        run_dir: run_dir,
+        tmp_dir: Map.get(env, "TMPDIR", "/tmp"),
+        workspace_is_project: true
+      }
     }
   end
 
@@ -196,12 +263,19 @@ defmodule Kogen.Shaper.Tests do
     """
     defmodule Tiny.Acceptance.ShapeLoopTest do
       use ExUnit.Case, async: true
-
       @tag intent: "shape-loop/A1"
       test "the existing public value remains available" do
-        assert Tiny.value() == :old
+        assert(Tiny.value() == :old)
       end
     end
+    """
+  end
+
+  defp malformed_acceptance_test do
+    """
+    defmodule Tiny.Acceptance.ShapeLoopTest do
+      use ExUnit.Case, async: true
+      test "broken syntax" do
     """
   end
 

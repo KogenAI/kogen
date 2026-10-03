@@ -35,6 +35,7 @@ defmodule Kogen.Kernel do
   alias Kogen.Kernel.Types.BuildOptions
   alias Kogen.Kernel.Types.IntentStatus
   alias Kogen.Kernel.Workspaces
+  alias Kogen.Proc.Sandbox
   alias Kogen.Provider.ChatGPT
   alias Kogen.Provider.ChatGPT.CredentialStore
   alias Kogen.Provider.ChatGPT.SIWC
@@ -139,7 +140,10 @@ defmodule Kogen.Kernel do
     with {:ok, runtime} <- runtime(),
          {:ok, project} <- Kogen.Project.load(project_root),
          {:ok, process_env} <- Engine.candidate_environment(project_root, runtime, project),
-         {:ok, provider_config, _source, _label} <- provider_config() do
+         {:ok, provider_config, _source, _label} <- provider_config(),
+         {:ok, home} <- runtime_home(runtime) do
+      run_dir = shape_run_dir(process_env, slug)
+
       request = %ShapeRequest{
         workdir: project_root,
         slug: slug,
@@ -150,7 +154,19 @@ defmodule Kogen.Kernel do
         provider_config: provider_config,
         env: process_env,
         git_env: Runtime.git_environment(process_env),
-        run_dir: shape_run_dir(process_env, slug)
+        run_dir: run_dir,
+        sandbox: %Sandbox{
+          enabled:
+            project.sandbox and not Runtime.sandboxed?(process_env) and
+              not Runtime.sandboxed?(runtime),
+          home: home,
+          project_root: project_root,
+          origin: project_root,
+          workspace: project_root,
+          run_dir: run_dir,
+          tmp_dir: Runtime.temporary_directory(process_env),
+          workspace_is_project: true
+        }
       }
 
       Shaper.shape(request)

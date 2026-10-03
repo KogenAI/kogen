@@ -69,7 +69,6 @@ defmodule Kogen.Harness.Shaping do
   - Acceptance ids are sequential from A1. Keep each item to 25 words or fewer, state a definite observable result, and avoid hedges. Give every item exactly one Verify line using `test` or `test keep` and a configured domain.
   - An Intent must include a concrete implementation approach in Notes: say which code path to change and how, plus the behavior to preserve. Acceptance criteria alone are not a plan. Keep this concise.
   - Write a complete test module to the exact acceptance path. Use `async: true`, test through public functions, and add one `@tag intent: "<slug>/A<n>"` for every Acceptance item. A `test` item must fail on the unchanged checkout; use `test keep` for existing behavior that must pass.
-  - Format the acceptance module as `mix format` would, including wrapping long assertions onto continuation lines.
   - Do not write to other paths. Do not finish by only describing the files: use the write tool for both. If validation asks for repair, preserve valid content, repair the named rule or missing file, and do not finish until both exact files have been written.
 
   These are two real accepted Intents from Kogen's `careful-rebuild` history. Copy their concise structure and specificity; do not copy their scope or domain names into the new Intent.
@@ -205,33 +204,34 @@ defmodule Kogen.Harness.Shaping do
         }
 
         if response.tool_calls == [],
-          do: complete(state, response),
-          else: run_tools(state, response.tool_calls)
+          do: complete(state, response, []),
+          else: run_tools(state, response.tool_calls, response)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp complete(%State{} = state, %ModelResponse{text: text}) do
+  defp complete(%State{} = state, %ModelResponse{text: text}, written_paths) do
     {:ok,
      %ShapePass{
        items: state.items,
        text: text,
        calls: Enum.reverse(state.calls),
-       turns: state.turns - state.turn_offset
+       turns: state.turns - state.turn_offset,
+       written_paths: Enum.uniq(written_paths)
      }}
   end
 
-  defp run_tools(%State{} = state, calls) do
+  defp run_tools(%State{} = state, calls, %ModelResponse{} = response) do
     calls
-    |> Enum.reduce_while({:ok, state}, fn %ToolCall{} = call, {:ok, current} ->
+    |> Enum.reduce_while({:ok, state, []}, fn %ToolCall{} = call, {:ok, current, written_paths} ->
       case run_tool(current, call) do
-        {:ok, updated} -> {:cont, {:ok, updated}}
+        {:ok, updated, paths} -> {:cont, {:ok, updated, written_paths ++ paths}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
-    |> continue_loop()
+    |> continue_loop(response)
   end
 
   defp run_tool(%State{} = state, %ToolCall{} = call) do
@@ -239,12 +239,20 @@ defmodule Kogen.Harness.Shaping do
          %ToolResult{} = result <- ShaperTools.run(state.opts, call, output_paths(state.slug)),
          :ok <- record(state, :tool_result, %{call: call, result: result}) do
       output = Codec.function_output(call.id, result.output)
-      {:ok, %{state | items: state.items ++ [output]}}
+      written_paths = if call.name == "write" and not result.is_error, do: result.paths, else: []
+      {:ok, %{state | items: state.items ++ [output]}, written_paths}
     end
   end
 
-  defp continue_loop({:ok, %State{} = state}), do: shape_loop(state)
-  defp continue_loop({:error, reason}), do: {:error, reason}
+  defp continue_loop({:ok, %State{} = state, written_paths}, %ModelResponse{} = response) do
+    if Enum.any?(written_paths, &(&1 in output_paths(state.slug))) do
+      complete(state, response, written_paths)
+    else
+      shape_loop(state)
+    end
+  end
+
+  defp continue_loop({:error, reason}, _response), do: {:error, reason}
 
   defp input_items(slug, task, domains, [], nil) do
     configured_domains = domains |> Enum.sort() |> Enum.join(", ")

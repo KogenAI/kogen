@@ -145,14 +145,15 @@ end
 defmodule Kogen.Harness.ShapePass do
   @moduledoc false
 
-  @enforce_keys [:items, :text, :calls, :turns]
+  @enforce_keys [:items, :text, :calls, :turns, :written_paths]
   defstruct @enforce_keys
 
   @type t :: %__MODULE__{
           items: [map()],
           text: String.t(),
           calls: [Kogen.Harness.ShapeCall.t()],
-          turns: non_neg_integer()
+          turns: non_neg_integer(),
+          written_paths: [Path.t()]
         }
 end
 
