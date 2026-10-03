@@ -17,7 +17,7 @@ defmodule KogenLedgerFormatter do
     tags = intent_tags(test.tags)
 
     Enum.each(tags, fn tag ->
-      row = ledger_row(tag, test.description, status)
+      row = ledger_row(tag, test_title(test), status)
       :ok = File.write!(path, row <> "\n", [:append, :binary])
     end)
 
@@ -25,6 +25,10 @@ defmodule KogenLedgerFormatter do
   end
 
   def handle_cast(_event, path), do: {:noreply, path}
+
+  # ExUnit.Test gained :description in newer Elixir; target projects may run older versions.
+  defp test_title(%{description: description}) when is_binary(description), do: description
+  defp test_title(%{name: name}), do: name |> Atom.to_string() |> String.replace_prefix("test ", "")
 
   defp intent_tags(%{intent: tag}) when is_binary(tag), do: [tag]
   defp intent_tags(%{intent: tags}) when is_list(tags), do: Enum.map(tags, &to_string/1)
