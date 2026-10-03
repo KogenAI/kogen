@@ -135,8 +135,8 @@ defmodule Kogen.Kernel.Build.Engine do
   # A fresh workspace path has never been trusted by mise. The project checkout's
   # toolchain already resolved for this Build, so the workspace (an exact clone)
   # inherits that trust through the environment, never through global mise state.
-  defp workspace_environment(path, runtime) do
-    Kogen.Kernel.project_environment(path, Runtime.trust_workspace(runtime, path))
+  defp workspace_environment(path, runtime, project) do
+    Kogen.Kernel.candidate_environment(path, Runtime.trust_workspace(runtime, path), project)
   end
 
   defp setup_candidate(%Prepared{} = prepared, path) do
@@ -144,7 +144,7 @@ defmodule Kogen.Kernel.Build.Engine do
 
     with :ok <- Workspace.insert_files(path, approved_files(prepared.approval)),
          {:ok, candidate_project} <- Project.load(path),
-         {:ok, process_env} <- workspace_environment(path, request.runtime) do
+         {:ok, process_env} <- workspace_environment(path, request.runtime, candidate_project) do
       start_candidate(prepared, path, candidate_project, process_env)
     else
       {:error, {:toolchain_failed, detail}} ->

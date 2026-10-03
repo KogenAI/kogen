@@ -4,7 +4,7 @@ defmodule Kogen.Contracts.Project do
   alias Kogen.Contracts.CheckSpec
 
   @enforce_keys [:root, :name, :checks, :setup, :fix, :diagnose, :protected_paths, :domains]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [env: %{}]
 
   @type diagnostic :: %{required(:glob) => String.t(), required(:argv) => [String.t()]}
   @type t :: %__MODULE__{
@@ -15,6 +15,7 @@ defmodule Kogen.Contracts.Project do
           fix: [CheckSpec.t()],
           diagnose: [diagnostic()],
           protected_paths: [String.t()],
-          domains: %{optional(String.t()) => [String.t()]}
+          domains: %{optional(String.t()) => [String.t()]},
+          env: %{optional(String.t()) => String.t()}
         }
 end

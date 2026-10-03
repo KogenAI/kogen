@@ -5,7 +5,8 @@ defmodule Kogen.Project.Loader do
   alias Kogen.Contracts.Project
   alias Kogen.Contracts.Yaml
 
-  @project_keys ~w(name checks setup fix diagnose protected_paths domains)
+  @project_keys ~w(name checks setup fix diagnose protected_paths domains env)
+  @env_name ~r/\A[A-Za-z_][A-Za-z0-9_]*\z/
 
   @type error :: %{line: pos_integer() | nil, message: String.t()}
 
@@ -35,6 +36,7 @@ defmodule Kogen.Project.Loader do
     {diagnose, diagnose_errors} = diagnostics(document)
     {protected_paths, protected_errors} = protected_paths(document)
     {domains, domain_errors} = domains(document)
+    {env, env_errors} = env(document)
 
     errors =
       unknown_keys(document, @project_keys, "project") ++
@@ -44,7 +46,8 @@ defmodule Kogen.Project.Loader do
         fix_errors ++
         diagnose_errors ++
         protected_errors ++
-        domain_errors
+        domain_errors ++
+        env_errors
 
     if errors == [] do
       {:ok,
@@ -56,7 +59,8 @@ defmodule Kogen.Project.Loader do
          fix: fix,
          diagnose: diagnose,
          protected_paths: protected_paths,
-         domains: domains
+         domains: domains,
+         env: env
        }}
     else
       {:error, errors}
@@ -198,6 +202,29 @@ defmodule Kogen.Project.Loader do
       {:ok, _values} -> {%{}, [issue("`domains` must be a map of domain names to path lists")]}
       :error -> {%{}, []}
     end
+  end
+
+  defp env(document) do
+    case Map.fetch(document, "env") do
+      {:ok, values} when is_map(values) -> validate_env(values)
+      {:ok, _values} -> {%{}, [issue("`env` must be a map of variable names to strings")]}
+      :error -> {%{}, []}
+    end
+  end
+
+  defp validate_env(values) do
+    Enum.reduce(values, {%{}, []}, fn {key, value}, {env, errors} ->
+      cond do
+        not (is_binary(key) and Regex.match?(@env_name, key)) ->
+          {env, errors ++ [issue("`env` has invalid variable name #{inspect(key)}")]}
+
+        not is_binary(value) ->
+          {env, errors ++ [issue("`env` value for #{inspect(key)} must be a string")]}
+
+        true ->
+          {Map.put(env, key, value), errors}
+      end
+    end)
   end
 
   defp validate_domains(values) do

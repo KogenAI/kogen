@@ -16,6 +16,7 @@ defmodule Kogen.Kernel do
     exports: [CLI, Types.ApprovalPreview, Types.BuildResult, Types.IntentStatus]
 
   alias Kogen.Contracts.Intent
+  alias Kogen.Contracts.Project
   alias Kogen.Contracts.ProviderError
   alias Kogen.Kernel.Approval
   alias Kogen.Kernel.Build.Engine
@@ -135,6 +136,15 @@ defmodule Kogen.Kernel do
             }
   def project_environment(workdir, %Runtime{} = runtime),
     do: Environment.project(workdir, runtime)
+
+  @doc false
+  @spec candidate_environment(Path.t(), Runtime.t(), Project.t()) ::
+          {:ok, %{String.t() => String.t()}} | {:error, toolchain_error()}
+  def candidate_environment(workdir, %Runtime{} = runtime, %Project{env: project_env}) do
+    with {:ok, environment} <- project_environment(workdir, runtime) do
+      {:ok, Map.merge(environment, project_env)}
+    end
+  end
 
   @doc false
   @spec runtime() :: {:ok, Runtime.t()} | {:error, toolchain_error()}
