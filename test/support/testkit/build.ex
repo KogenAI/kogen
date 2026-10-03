@@ -60,7 +60,13 @@ defmodule Kogen.E2e.Build do
       credential_source: :custom
     }
 
-    {:ok, build} = Kogen.Kernel.build(request)
+    case Kogen.Kernel.build(request) do
+      {:ok, build} -> started_result(fixture, build)
+      {:error, reason} -> Result.refused(fixture, reason)
+    end
+  end
+
+  defp started_result(fixture, build) do
     run = load_run!(fixture.workspace_root, build.run_id)
 
     %Result{

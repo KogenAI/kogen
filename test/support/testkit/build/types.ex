@@ -51,13 +51,27 @@ end
 defmodule Kogen.E2e.Build.Result do
   @moduledoc false
 
+  alias Kogen.E2e.Build.Fixture
+
   @enforce_keys [:build, :events, :fixture, :run_status, :claim_released]
   defstruct @enforce_keys
+
+  @doc "A Build refused before it starts has no run; report the refusal as the outcome."
+  @spec refused(Fixture.t(), term()) :: t()
+  def refused(fixture, reason) do
+    %__MODULE__{
+      build: %{status: :refused, reason: reason},
+      events: [],
+      fixture: fixture,
+      run_status: nil,
+      claim_released: true
+    }
+  end
 
   @type t :: %__MODULE__{
           build: Kogen.Engine.Build.Result.t(),
           events: [Kogen.State.Event.t()],
-          fixture: Kogen.E2e.Build.Fixture.t(),
+          fixture: Fixture.t(),
           run_status: Kogen.State.Run.status(),
           claim_released: boolean()
         }
