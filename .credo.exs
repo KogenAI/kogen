@@ -137,7 +137,8 @@
                  Kogen.State,
                  Kogen.Checks,
                  Kogen.Harness,
-                 Kogen.Kernel
+                 Kogen.Kernel,
+                 Kogen.E2e
                ],
                Kogen.Workspace => [Kogen.Proc],
                Kogen.State => [Kogen.Workspace],
