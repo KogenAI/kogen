@@ -130,7 +130,7 @@ defmodule Kogen.Kernel.Approval do
 
       case Proc.run(argv, cd: root, env: env, timeout_ms: spec.timeout_ms) do
         {:ok, %ProcResult{exit_status: 0, timed_out: false}} -> {:cont, :ok}
-        _failure -> {:halt, {:error, {:acceptance_check_failed, spec.name}}}
+        result -> {:halt, {:error, {:acceptance_check_failed, spec.name, result}}}
       end
     end)
   end

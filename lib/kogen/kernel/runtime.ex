@@ -1,6 +1,8 @@
 defmodule Kogen.Kernel.Runtime do
   @moduledoc false
 
+  @output_tail_bytes 2_048
+
   @enforce_keys [:base_env, :git_env, :mise]
   defstruct [:base_env, :git_env, :mise]
 
@@ -102,6 +104,12 @@ defmodule Kogen.Kernel.Runtime do
   defp runtime_markers_from(env) do
     Map.take(env, ["KOGEN_ERTS_DIR", "KOGEN_ERTS_BIN", "KOGEN_ESCRIPT_DIR", "KOGEN_BIN_DIR"])
   end
+
+  @spec output_tail(binary()) :: String.t()
+  def output_tail(output) do
+    offset = max(byte_size(output) - @output_tail_bytes, 0)
+    output |> binary_part(offset, byte_size(output) - offset) |> String.replace_invalid()
+  end
 end
 
 defmodule Kogen.Kernel.Environment do
@@ -110,8 +118,6 @@ defmodule Kogen.Kernel.Environment do
   alias Kogen.Contracts.ProcResult
   alias Kogen.Kernel.Runtime
   alias Kogen.Proc
-
-  @output_tail_bytes 2_048
 
   @spec project(Path.t(), Runtime.t()) ::
           {:ok, %{String.t() => String.t()}}
@@ -135,16 +141,8 @@ defmodule Kogen.Kernel.Environment do
   end
 
   defp toolchain_failure_detail(output) do
-    output = output_tail(output)
+    output = Runtime.output_tail(output)
     if output == "", do: "mise env failed", else: "mise env failed:\n" <> output
-  end
-
-  defp output_tail(output) when byte_size(output) <= @output_tail_bytes,
-    do: String.replace_invalid(output)
-
-  defp output_tail(output) do
-    offset = byte_size(output) - @output_tail_bytes
-    output |> binary_part(offset, @output_tail_bytes) |> String.replace_invalid()
   end
 
   defp decode_environment(output, runtime) do

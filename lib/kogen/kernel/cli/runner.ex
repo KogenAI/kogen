@@ -247,7 +247,13 @@ defmodule Kogen.Kernel.CLI.Runner do
   defp command_error({:project_unavailable, project}),
     do: {3, "environment/project_unavailable: #{project}\n"}
 
-  defp command_error({:acceptance_check_failed, name}),
+  defp command_error({:acceptance_check_failed, name, {:ok, result}}) do
+    status = if result.timed_out, do: "timed out", else: "failed"
+    detail = "check/acceptance_check_failed: acceptance check #{name} #{status}\n"
+    {1, detail <> Kogen.Kernel.Runtime.output_tail(result.output_tail)}
+  end
+
+  defp command_error({:acceptance_check_failed, name, _}),
     do: {1, "check/acceptance_check_failed: acceptance check #{name} failed\n"}
 
   defp command_error({:base_moved, expected, current}) do
