@@ -3,7 +3,14 @@ defmodule StateFakeWorkspace do
 
   @spec initial() :: map()
   def initial do
-    %{refs: %{}, objects: %{}, counter: 0, branch_head: "main-0", ancestors: MapSet.new()}
+    %{
+      refs: %{},
+      objects: %{},
+      counter: 0,
+      branch_head: "main-0",
+      ancestors: MapSet.new(),
+      intent_commits: %{}
+    }
   end
 
   @spec ref_read(Agent.agent(), String.t(), map()) :: {:ok, String.t()} | {:error, :missing}
@@ -87,6 +94,16 @@ defmodule StateFakeWorkspace do
   @spec rev_parse(Agent.agent(), String.t(), map()) :: {:ok, String.t()} | {:error, :missing}
   def rev_parse(repo, "refs/heads/main", _git_env) do
     Agent.get(repo, &{:ok, &1.branch_head})
+  end
+
+  @spec intent_commit(Agent.agent(), String.t(), String.t(), map()) :: {:ok, String.t() | nil}
+  def intent_commit(repo, "main", slug, _git_env) do
+    Agent.get(repo, &{:ok, Map.get(&1.intent_commits, slug)})
+  end
+
+  @spec land_intent(Agent.agent(), String.t(), String.t()) :: :ok
+  def land_intent(repo, slug, sha) do
+    Agent.update(repo, &put_in(&1.intent_commits[slug], sha))
   end
 
   @spec ancestor?(Agent.agent(), String.t(), String.t(), map()) :: boolean()
@@ -210,7 +227,7 @@ defmodule Kogen.State.StateTest do
     assert :ok = State.claim(context.repo, "run-b", %{}, workspace: context.workspace)
   end
 
-  test "status is derived from approval, claim, terminal run and exact reachable candidate",
+  test "status is derived from approval, claim, terminal run and base trailer",
        context do
     approved = approval()
     assert_status(context, approved.slug, :draft)
@@ -241,6 +258,7 @@ defmodule Kogen.State.StateTest do
     assert :ok = State.record(landed_run, %{approval_commit: approval_commit})
     assert :ok = State.put_landing(landed_run, Map.delete(landing_identity(landed_run), :run_id))
     assert :ok = StateFakeWorkspace.allow_ancestor(context.repo, "candidate-sha", "main-0")
+    assert :ok = StateFakeWorkspace.land_intent(context.repo, approved.slug, "candidate-sha")
     assert_status(context, approved.slug, :landed)
   end
 
@@ -301,6 +319,8 @@ defmodule Kogen.State.StateTest do
              State.reconcile(context.repo, context.tmp_dir, run, "main", %{},
                workspace: context.workspace
              )
+
+    assert :ok = StateFakeWorkspace.land_intent(context.repo, approved.slug, "candidate-sha")
 
     assert State.status(context.repo, context.tmp_dir, approved.slug, "main", %{},
              workspace: context.workspace

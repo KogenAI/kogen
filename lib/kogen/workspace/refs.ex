@@ -120,6 +120,37 @@ defmodule Kogen.Workspace.Refs do
     end
   end
 
+  @spec intent_commit(Path.t(), String.t(), String.t(), %{String.t() => String.t()}) ::
+          {:ok, String.t() | nil} | {:error, term()}
+  def intent_commit(repo, revision, slug, git_env) do
+    if valid_sha?(revision) and valid_intent_slug?(slug) do
+      format = "%H%x00%(trailers:key=Kogen-Intent,valueonly)"
+      grep = "^Kogen-Intent: #{slug}$"
+
+      case Git.run(repo, ["log", "--grep=#{grep}", "--format=#{format}", revision], git_env) do
+        {:ok, 0, output} -> intent_commit_from_log(output, slug)
+        {:ok, _status, _output} -> {:error, :git_failed}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, :invalid_intent_revision}
+    end
+  end
+
+  defp intent_commit_from_log(output, slug) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.reduce_while({:ok, nil}, fn line, _result ->
+      case String.split(line, <<0>>, parts: 2) do
+        [sha, ^slug] when byte_size(sha) in [40, 64] ->
+          if valid_sha?(sha), do: {:halt, {:ok, sha}}, else: {:cont, {:ok, nil}}
+
+        _other ->
+          {:cont, {:ok, nil}}
+      end
+    end)
+  end
+
   @spec ancestor?(Path.t(), String.t(), String.t(), %{String.t() => String.t()}) :: boolean()
   def ancestor?(repo, a, b, git_env) do
     case Git.run(repo, ["merge-base", "--is-ancestor", a, b], git_env) do
@@ -275,6 +306,11 @@ defmodule Kogen.Workspace.Refs do
     do: Regex.match?(~r/\A(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\z/, sha)
 
   defp valid_sha?(_sha), do: false
+
+  defp valid_intent_slug?(slug) when is_binary(slug),
+    do: Regex.match?(~r/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/, slug)
+
+  defp valid_intent_slug?(_slug), do: false
 
   @spec valid_revision?(term()) :: boolean()
   defp valid_revision?(rev) when is_binary(rev),

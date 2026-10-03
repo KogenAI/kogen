@@ -49,7 +49,7 @@ defmodule Kogen.State.Lifecycle do
   def status(repo, root, slug, branch, git_env, workspace) do
     runs = root |> RunStore.list() |> state!() |> Enum.filter(&(&1.slug == slug))
 
-    if landed?(repo, runs, branch, git_env, workspace),
+    if landed?(repo, slug, branch, git_env, workspace),
       do: :landed,
       else: unlanded_status(repo, slug, runs, git_env, workspace)
   end
@@ -148,24 +148,10 @@ defmodule Kogen.State.Lifecycle do
     end
   end
 
-  defp landed?(repo, runs, branch, git_env, workspace) do
-    case workspace_call(workspace, :rev_parse, [repo, branch_ref(branch), git_env]) do
-      {:ok, branch_sha} ->
-        Enum.any?(runs, fn run ->
-          match?(%Run.Landing{}, run.landing) and
-            workspace_call(workspace, :ancestor?, [
-              repo,
-              run.landing.candidate_commit,
-              branch_sha,
-              git_env
-            ])
-        end)
-
-      {:error, :missing} ->
-        false
-
-      {:error, reason} ->
-        raise ArgumentError, "cannot inspect target branch: #{inspect(reason)}"
+  defp landed?(repo, slug, branch, git_env, workspace) do
+    case workspace_call(workspace, :intent_commit, [repo, branch, slug, git_env]) do
+      {:ok, sha} -> is_binary(sha)
+      {:error, reason} -> raise ArgumentError, "cannot inspect target branch: #{inspect(reason)}"
     end
   end
 

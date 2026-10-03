@@ -127,7 +127,7 @@ defmodule Kogen.Kernel.Status do
 
     with {:ok, runs} <- StateView.runs(state_root, slug),
          {:ok, latest} <- StateView.latest(runs),
-         {:ok, landed_sha} <- landed_sha(status, origin, base, runs, git_env) do
+         {:ok, landed_sha} <- landed_sha(status, origin, base, slug, runs, git_env) do
       {:ok,
        %IntentStatus{
          slug: slug,
@@ -138,28 +138,10 @@ defmodule Kogen.Kernel.Status do
     end
   end
 
-  defp landed_sha(:landed, origin, base, runs, git_env) do
-    with {:ok, branch_sha} <- Workspace.rev_parse(origin, "refs/heads/#{base}", git_env) do
-      reachable = Enum.filter(runs, &reachable_run?(origin, &1, branch_sha, git_env))
+  defp landed_sha(:landed, origin, base, slug, _runs, git_env),
+    do: Workspace.intent_commit(origin, base, slug, git_env)
 
-      with {:ok, latest} <- StateView.latest(reachable) do
-        {:ok, landing_sha(latest)}
-      end
-    end
-  end
-
-  defp landed_sha(_status, _origin, _base, _runs, _git_env), do: {:ok, nil}
-
-  defp reachable_run?(origin, %Run{landing: landing}, branch_sha, git_env) when is_map(landing) do
-    Workspace.ancestor?(origin, Map.get(landing, :candidate_commit), branch_sha, git_env)
-  end
-
-  defp reachable_run?(_origin, _run, _branch_sha, _git_env), do: false
-
-  defp landing_sha(%Run{landing: landing}) when is_map(landing),
-    do: Map.get(landing, :candidate_commit)
-
-  defp landing_sha(nil), do: nil
+  defp landed_sha(_status, _origin, _base, _slug, _runs, _git_env), do: {:ok, nil}
 
   defp valid_slug?(slug), do: Regex.match?(~r/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/, slug)
 end

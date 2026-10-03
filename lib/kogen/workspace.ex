@@ -90,6 +90,18 @@ defmodule Kogen.Workspace do
           {:ok, String.t()} | {:error, :missing | term()}
   def rev_parse(repo, rev, git_env), do: Refs.rev_parse(repo, rev, git_env)
 
+  @spec intent_commit(Path.t(), String.t(), String.t(), git_env()) ::
+          {:ok, String.t() | nil} | {:error, term()}
+  def intent_commit(repo, branch, slug, git_env) do
+    ref = if String.starts_with?(branch, "refs/heads/"), do: branch, else: "refs/heads/" <> branch
+
+    case Refs.rev_parse(repo, ref, git_env) do
+      {:ok, branch_sha} -> Refs.intent_commit(repo, branch_sha, slug, git_env)
+      {:error, :missing} -> {:ok, nil}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @spec ancestor?(Path.t(), String.t(), String.t(), git_env()) :: boolean()
   def ancestor?(repo, a, b, git_env), do: Refs.ancestor?(repo, a, b, git_env)
 end
