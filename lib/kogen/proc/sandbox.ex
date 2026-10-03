@@ -54,8 +54,8 @@ defmodule Kogen.Proc.Sandbox do
           Enum.map(writable, &allow_subpath(:file_write, &1)) ++
           Enum.map(protected, &deny_subpath(:file_read, &1)) ++
           [
-            deny_credential_pattern(:file_read),
-            deny_credential_pattern(:file_write)
+            deny_credential_pattern(:file_read, home),
+            deny_credential_pattern(:file_write, home)
           ] ++
           Enum.map(protected, &deny_subpath(:file_write, &1)) ++
           [deny_subpath(:file_write, project), deny_subpath(:file_write, origin)]
@@ -104,9 +104,18 @@ defmodule Kogen.Proc.Sandbox do
     ]
   end
 
-  defp deny_credential_pattern(operation) do
-    pattern = ".*[.]kogen/credentials[^/]*(/.*)?$"
+  defp deny_credential_pattern(operation, home) do
+    pattern = "^" <> sbpl_regex_literal(home) <> "/[.]kogen/credentials[^/]*(/.*)?$"
     "(deny #{operation_name(operation)} (regex ##{sbpl_string(pattern)}))"
+  end
+
+  # SBPL regexes are POSIX-style; bracket each metacharacter instead of backslash-escaping it.
+  defp sbpl_regex_literal(path) do
+    path
+    |> String.graphemes()
+    |> Enum.map_join(fn char ->
+      if String.contains?(".*+?()[]{}|$^", char), do: "[" <> char <> "]", else: char
+    end)
   end
 
   defp allow_subpath(operation, path),
