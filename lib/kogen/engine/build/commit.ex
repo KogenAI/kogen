@@ -15,20 +15,17 @@ defmodule Kogen.Engine.Build.Commit do
     with {:ok, tree} <- tag(:tree_hash, Guard.tree_hash(session.workdir, session.git_env)),
          :ok <- tag(:squash, squash_to_base(session)),
          {:ok, commit} <- tag(:candidate_commit, commit_tree(session, tree)),
-         :ok <- tag(:rebase, rebase(session)),
-         {:ok, receipts, ledger} <- tag(:recheck, recheck(session, tree)),
-         :ok <- tag(:base_check, branch_unchanged(session)),
+         {:ok, base_sha} <- tag(:base_tip, current_base(session)),
+         {:ok, session, commit, tree} <- prepare_candidate(session, base_sha, commit, tree),
+         {:ok, committed_tree} <-
+           tag(
+             :candidate_tree,
+             Workspace.rev_parse(session.workdir, "#{commit}^{tree}", session.git_env)
+           ),
+         :ok <- tag(:tree_match, same_tree(tree, committed_tree)),
          :ok <- tag(:commit_receipt, record_commit(session, commit, tree)) do
       identity = landing_identity(session, tree, commit)
-
-      session = %{
-        session
-        | receipts: receipts,
-          acceptance: ledger,
-          failure: nil,
-          failure_text: nil
-      }
-
+      session = %{session | failure: nil, failure_text: nil}
       {:ok, session, [{:stage_ok, :commit, identity}]}
     else
       {:error, :base_moved} ->
@@ -83,7 +80,51 @@ defmodule Kogen.Engine.Build.Commit do
     Workspace.commit(session.workdir, session.intent.title, trailers, session.git_env)
   end
 
-  defp rebase(session), do: Workspace.rebase(session.workdir, session.base_sha, session.git_env)
+  defp current_base(session) do
+    session.request.origin
+    |> Workspace.ref_read(
+      "refs/heads/#{session.request.base}",
+      session.git_env
+    )
+    |> case do
+      {:ok, base_sha} -> {:ok, base_sha}
+      {:error, :missing} -> {:error, :base_moved}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The :check stage already verified this unchanged base/tree pair.
+  defp prepare_candidate(session, base_sha, commit, tree) when base_sha == session.base_sha do
+    {:ok, session, commit, tree}
+  end
+
+  defp prepare_candidate(session, base_sha, _commit, _tree) do
+    case Workspace.rebase(session.workdir, session.request.origin, base_sha, session.git_env) do
+      :ok ->
+        session = %{session | base_sha: base_sha}
+
+        with {:ok, commit} <-
+               tag(
+                 :candidate_commit,
+                 Workspace.rev_parse(session.workdir, "HEAD", session.git_env)
+               ),
+             {:ok, tree} <- tag(:tree_hash, Guard.tree_hash(session.workdir, session.git_env)),
+             {:ok, receipts, ledger} <- verify_rebased(session, tree) do
+          session = %{session | receipts: receipts, acceptance: ledger}
+          {:ok, session, commit, tree}
+        end
+
+      {:error, _reason} ->
+        {:error, :base_moved}
+    end
+  end
+
+  defp verify_rebased(session, tree) do
+    case recheck(session, tree) do
+      {:error, %Failure{reason: :verification_failed}} -> {:error, :base_moved}
+      result -> tag(:recheck, result)
+    end
+  end
 
   defp recheck(session, expected_tree) do
     with :ok <- guard(session),
@@ -154,19 +195,6 @@ defmodule Kogen.Engine.Build.Commit do
 
   defp same_tree(tree, tree), do: :ok
   defp same_tree(_expected, _actual), do: {:error, :tree_mutated}
-
-  defp branch_unchanged(session) do
-    case Workspace.ref_read(
-           session.request.origin,
-           "refs/heads/#{session.request.base}",
-           session.git_env
-         ) do
-      {:ok, sha} when sha == session.base_sha -> :ok
-      {:ok, _sha} -> {:error, :base_moved}
-      {:error, :missing} -> {:error, :base_moved}
-      {:error, reason} -> {:error, reason}
-    end
-  end
 
   defp landing_identity(session, tree, commit) do
     %{

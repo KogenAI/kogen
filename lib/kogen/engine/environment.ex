@@ -10,7 +10,7 @@ defmodule Kogen.Engine.Environment do
           | {:error, :invalid_toolchain_environment | {:toolchain_failed, String.t()}}
   def project(workdir, %Runtime{} = runtime) do
     case Proc.run(
-           [runtime.mise, "env", "-C", workdir, "--json"],
+           [runtime.mise, "env", "-C", workdir, "--json", "--quiet"],
            cd: workdir,
            env: runtime.base_env,
            timeout_ms: 30_000

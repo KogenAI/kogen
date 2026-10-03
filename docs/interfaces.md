@@ -23,7 +23,7 @@ This file is the contract between domains. Change it only through the integrator
 - `changed_paths(path, base_sha, git_env) :: {:ok, [rel_path]}`
 - `commit(path, message, trailers :: [{key, value}], git_env) :: {:ok, sha}`: `git add -A` + `git commit`. Candidate Git calls temporarily remove `.git/config` and `.git/info/exclude`, apply `core.hooksPath=/dev/null`, `core.fsmonitor=false`, and `core.excludesFile=/dev/null` with `-c`, then restore metadata. This prevents local hooks, filters, fsmonitor, excludes, and signing overrides from steering the judge. Global signing config remains in effect; tests disable signing via git_env.
 - `reset_soft(path, base_sha, git_env) :: :ok | {:error, term()}`: move Candidate HEAD to the approved base while preserving staged changes.
-- `rebase(path, base_sha, git_env) :: :ok | {:error, term()}`: rebase the Candidate onto the approved base.
+- `rebase(path, origin, base_sha, git_env) :: :ok | {:error, term()}`: fetch the specified base commit from `origin` and rebase the Candidate onto it.
 - `land(path, origin, branch, expected_old_sha, run_id, git_env) :: :ok | {:error, :base_moved | :ref_locked | :not_fast_forward | term()}`: push HEAD to `refs/kogen/incoming/<run_id>`, CAS `refs/heads/<branch>`, delete the temp ref. Requires HEAD's sole parent == expected_old_sha.
 - `park(path, origin, run_id, git_env) :: :ok`: pushes HEAD to `refs/kogen/parked/<run_id>`.
 - `destroy(path) :: :ok`
@@ -79,7 +79,7 @@ This file is the contract between domains. Change it only through the integrator
 - `run(Kogen.Engine.Build.Request.t()) :: {:ok, Kogen.Engine.Build.Result.t()} | {:error, term()}` interprets Cycle effects and owns Build setup, stages, review, guard, commit, landing, and cleanup.
 - `project_environment(workdir, Runtime.t())` runs `mise env -C <workdir> --json` using the supplied runtime.
 - `candidate_environment(workdir, Runtime.t(), Project.t())` adds the project's explicit environment, with project values taking precedence.
-- `Kogen.Engine.Runtime` is the runtime value and pure environment helpers (`git_environment/1`, `process_env/2`, `trust_workspace/2`, `for_project/2`, `temporary_directory/1`, `output_tail/1`). It contains no ambient discovery.
+- `Kogen.Engine.Runtime` is the runtime value and pure environment helpers (`git_environment/1`, `process_env/2`, `trust_workspace/2`, `for_project/2`, `temporary_directory/1`, `output_tail/1`). It contains no ambient discovery. The explicit `KOGEN_SANDBOXED` marker is retained as runtime metadata so a Build inside Kogen's own sandbox does not attempt to nest Seatbelt.
 - `%Kogen.Proc.Sandbox{}` is passed to Developer shell, done-gate checks, final checks, acceptance, and setup commands. On macOS it generates a Seatbelt profile that allows reads broadly and writes only to the Candidate workspace, run dir, TMPDIR, `~/.cache/mise`, `~/.hex`, `~/.cache/rebar3`, and `~/.npm`. It denies reads/writes to `~/.codex`, `~/.kogen/credentials*`, `~/.ssh`, `~/.gnupg`, and `~/Library/Keychains`, and denies writes to the origin and project checkout. `sandbox: false` in `.kogen/project.yaml` disables it for debugging. Linux currently runs without confinement; bubblewrap remains TODO. Network remains allowed.
 - `Kogen.Engine.Environment` resolves an explicit workdir using the supplied runtime and `Kogen.Proc`.
 

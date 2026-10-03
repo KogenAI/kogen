@@ -64,7 +64,7 @@ defmodule Kogen.Workspace.WorkspaceTest do
                @git_env
              )
 
-    assert :ok = Workspace.rebase(candidate, base_sha, @git_env)
+    assert :ok = Workspace.rebase(candidate, source, base_sha, @git_env)
 
     assert {:ok, message} = Workspace.commit_message(candidate, commit_sha, @git_env)
     assert message =~ "Kogen-Intent: feature"
@@ -130,6 +130,34 @@ defmodule Kogen.Workspace.WorkspaceTest do
     assert :ok = Workspace.reset_soft(candidate, base_sha, @git_env)
     assert {:ok, ^base_sha} = Workspace.rev_parse(candidate, "HEAD", @git_env)
     assert {:ok, ["README.md"]} = Workspace.changed_paths(candidate, base_sha, @git_env)
+  end
+
+  test "rebases a candidate onto a moved base from its origin", %{tmp_dir: tmp_dir} do
+    %{source: source, base_sha: base_sha} = fixture(tmp_dir)
+    origin = bare_origin!(source, tmp_dir)
+
+    assert {:ok, %{path: candidate}} =
+             Workspace.create(origin, base_sha, workspace_root(tmp_dir), "rebase-moved", @git_env)
+
+    File.write!(Path.join(candidate, "candidate.txt"), "candidate\n")
+    assert {:ok, _candidate_sha} = Workspace.commit(candidate, "candidate", [], @git_env)
+
+    assert {:ok, moved_sha} =
+             Workspace.commit_tree_with_files(
+               origin,
+               %{"base.txt" => "new base\n"},
+               [base_sha],
+               "advance base",
+               @git_env
+             )
+
+    assert :ok = Workspace.ref_update(origin, "refs/heads/main", moved_sha, base_sha, @git_env)
+    assert :ok = Workspace.rebase(candidate, origin, moved_sha, @git_env)
+    assert {:ok, ^moved_sha} = Workspace.rev_parse(candidate, "HEAD^", @git_env)
+    assert {:ok, "new base\n"} = Workspace.read_file_at(candidate, "HEAD", "base.txt", @git_env)
+
+    assert {:ok, "candidate\n"} =
+             Workspace.read_file_at(candidate, "HEAD", "candidate.txt", @git_env)
   end
 
   test "candidate git config cannot hide, transform, sign, or hook the guarded tree", %{

@@ -4,6 +4,7 @@ defmodule Kogen.Workspace do
 
   alias Kogen.Workspace.Checkout
   alias Kogen.Workspace.Landing
+  alias Kogen.Workspace.Rebase
   alias Kogen.Workspace.Refs
 
   @type git_env :: %{String.t() => String.t()}
@@ -37,8 +38,8 @@ defmodule Kogen.Workspace do
   @spec reset_soft(Path.t(), String.t(), git_env()) :: :ok | {:error, term()}
   def reset_soft(path, base_sha, git_env), do: Checkout.reset_soft(path, base_sha, git_env)
 
-  @spec rebase(Path.t(), String.t(), git_env()) :: :ok | {:error, term()}
-  def rebase(path, base_sha, git_env), do: Checkout.rebase(path, base_sha, git_env)
+  @spec rebase(Path.t(), Path.t(), String.t(), git_env()) :: :ok | {:error, term()}
+  def rebase(path, origin, base_sha, git_env), do: Rebase.run(path, origin, base_sha, git_env)
 
   @spec land(Path.t(), Path.t(), String.t(), String.t(), String.t(), git_env()) ::
           :ok | {:error, term()}

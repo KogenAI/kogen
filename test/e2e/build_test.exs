@@ -58,6 +58,8 @@ defmodule Kogen.E2e.BuildTest do
     parents = Git.git!(result.fixture.origin, ["rev-list", "--parents", "-n", "1", sha])
     assert String.split(String.trim(parents)) == [sha, result.fixture.approved_base]
     assert Enum.any?(result.events, &(&1.event == "finished" and &1.status == "landed"))
+    assert Enum.count(result.events, &(&1.event == "check_result")) == 1
+    assert Enum.count(result.events, &(&1.event == "acceptance_result")) == 1
     :ok
   end
 
@@ -65,7 +67,6 @@ defmodule Kogen.E2e.BuildTest do
     parent = scenario_parent(context, "review-revision")
     script = landing_script("revise once")
     result = Build.run!(parent, script, options(context.seed_project))
-
     assert result.build.status == :landed
     assert result.run_status == :landed
     assert result.claim_released
@@ -103,22 +104,22 @@ defmodule Kogen.E2e.BuildTest do
     result = Build.run!(parent, landing_script(), options)
     fixture = result.fixture
 
-    assert result.build.status == :parked
-    assert result.build.landed_sha == nil
-    assert result.run_status == :parked
+    assert %Result{build: %{status: :landed, landed_sha: landed_sha}, run_status: :landed} =
+             result
+
     assert result.claim_released
 
     moved_base = fixture.origin |> Git.git!(["rev-parse", "refs/heads/main"]) |> String.trim()
-    assert moved_base != fixture.approved_base
+    assert moved_base == landed_sha
 
-    parked =
-      Git.git!(fixture.origin, [
-        "show-ref",
-        "--verify",
-        "refs/kogen/parked/#{result.build.run_id}"
-      ])
+    commit_parent =
+      fixture.origin |> Git.git!(["rev-parse", "#{landed_sha}^"]) |> String.trim()
 
-    assert parked =~ result.build.run_id
+    assert commit_parent != fixture.approved_base
+
+    assert Git.git!(fixture.origin, ["log", "-1", "--format=%s", commit_parent]) =~
+             "Advance base"
+
     :ok
   end
 

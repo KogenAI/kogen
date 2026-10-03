@@ -88,11 +88,6 @@ defmodule Kogen.Workspace.Checkout do
     run_base_command(path, base_sha, ["reset", "--soft", base_sha], git_env)
   end
 
-  @spec rebase(Path.t(), String.t(), %{String.t() => String.t()}) :: :ok | {:error, term()}
-  def rebase(path, base_sha, git_env) do
-    run_base_command(path, base_sha, ["rebase", base_sha], git_env)
-  end
-
   @spec run_base_command(Path.t(), String.t(), [String.t()], %{String.t() => String.t()}) ::
           :ok | {:error, term()}
   defp run_base_command(path, base_sha, argv, git_env) do
