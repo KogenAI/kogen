@@ -27,4 +27,4 @@ domains:
   checks: [lib/kogen/checks.ex, lib/kogen/checks, test/checks]
   harness: [lib/kogen/harness.ex, lib/kogen/harness, test/harness]
   build: [lib/kogen/build.ex, lib/kogen/build, test/build]
-  kernel: [lib/kogen/kernel.ex, lib/kogen/kernel, test/kernel, test/acceptance]
+  kernel: [lib/kogen/kernel.ex, lib/kogen/kernel, test/kernel, test/acceptance, test/e2e]

@@ -85,6 +85,7 @@ defmodule Kogen.Kernel.Build.Request do
     :model,
     :effort,
     :runtime,
+    :provider_mod,
     :provider_config,
     :credential_source
   ]
@@ -98,7 +99,8 @@ defmodule Kogen.Kernel.Build.Request do
           model: String.t(),
           effort: String.t(),
           runtime: Kogen.Kernel.Runtime.t(),
-          provider_config: Kogen.Provider.ChatGPT.Config.t(),
+          provider_mod: module(),
+          provider_config: term(),
           credential_source: :kogen_owned | :codex_borrowed | :custom
         }
 end

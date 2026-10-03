@@ -13,7 +13,15 @@ defmodule Kogen.Kernel do
       Kogen.Checks,
       Kogen.Harness
     ],
-    exports: [CLI, Types.ApprovalPreview, Types.BuildResult, Types.IntentStatus]
+    exports: [
+      Approval,
+      Build.Request,
+      CLI,
+      Runtime,
+      Types.ApprovalPreview,
+      Types.BuildResult,
+      Types.IntentStatus
+    ]
 
   alias Kogen.Contracts.Intent
   alias Kogen.Contracts.Project
@@ -91,6 +99,7 @@ defmodule Kogen.Kernel do
         model: model,
         effort: effort,
         runtime: runtime,
+        provider_mod: ChatGPT,
         provider_config: provider_config,
         credential_source: source
       }
@@ -98,6 +107,10 @@ defmodule Kogen.Kernel do
       Engine.run(request)
     end
   end
+
+  @doc false
+  @spec build(Request.t()) :: {:ok, BuildResult.t()} | {:error, term()}
+  def build(%Request{} = request), do: Engine.run(request)
 
   @spec status(Path.t(), Path.t(), String.t()) :: {:ok, [IntentStatus.t()]} | {:error, term()}
   def status(project_root, origin, base) do

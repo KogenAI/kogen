@@ -115,3 +115,28 @@ This file is the contract between domains. Change it only through the integrator
 - `reconcile(run_id, project_root, origin, base) :: {:ok, :landed | :unchanged} | {:error, term()}` closes a run journal after a crash following successful CAS.
 - Every command except `--help` requires `--project <checkout>` and accepts `--origin <repo>` (default project checkout) and `--base <branch>` (default `main`). Build additionally accepts `--model` and `--effort`; approval requires `--by` and supports `--yes` to skip its TTY prompt.
 - Runtime discovery, including HOME, environment, cwd, `mise`, credential paths and escript/ERTS markers, lives in the Kernel. Per-build toolchain variables come from `mise env -C <workdir> --json` through Proc. Harness and checks receive the target process environment; Workspace receives its Git-allowlisted projection.
+
+### Writing an acceptance test for a Build-engine Intent
+
+Use `Kogen.E2e.Build.prepare_seed!/1` once in `setup_all/1`, then pass its compiled tiny Mix project to `run!/3`. The helper creates a bare origin and checkout, writes and approves the Intent through Kernel approval code, uses a fake `mise`, and returns the `BuildResult` with decoded run events and fixture paths. Script provider responses by stage; the response queue must cover each provider request.
+
+```elixir
+seed = Kogen.E2e.Build.prepare_seed!(shared_dir)
+
+script = [
+  Kogen.E2e.ScriptedProvider.answer(:context, "TinyApp.value/0 is relevant."),
+  Kogen.E2e.ScriptedProvider.answer(:plan, "Set the ready value."),
+  Kogen.E2e.ScriptedProvider.write(
+    :develop,
+    "lib/tiny_app.ex",
+    "defmodule TinyApp do\n  def value, do: :ready\nend\n"
+  ),
+  Kogen.E2e.ScriptedProvider.answer(:develop, "Done."),
+  Kogen.E2e.ScriptedProvider.answer(:review, ~s({"verdict":"accept","findings":[]}))
+]
+
+%Kogen.E2e.Build.Result{build: build, events: events, fixture: fixture} =
+  Kogen.E2e.Build.run!(tmp_dir, script, %Kogen.E2e.Build.Options{seed_project: seed})
+```
+
+`fixture` exposes `project_root`, `origin`, `approved_base`, `approval_commit`, and `git_env` for Git and lifecycle assertions. The result also has the persisted `run_status` and whether the Build claim could be reacquired. Use `Kogen.E2e.ScriptedProvider.edit/4` to make repair turns; a response step tagged `:review` can revise once and a later `:review` step can accept.

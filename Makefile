@@ -7,10 +7,10 @@ export KOGEN_PLT_DIR
 
 TEST_ENV = GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME='Kogen Test' GIT_AUTHOR_EMAIL=test@kogen.invalid GIT_COMMITTER_NAME='Kogen Test' GIT_COMMITTER_EMAIL=test@kogen.invalid TZ=Europe/Sarajevo LC_ALL=C
 
-.PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test integration kogen-checks-test dialyzer install-local demo-fixture
+.PHONY: check check-fast fix guard fmt compile-dev compile-test xref credo test e2e integration kogen-checks-test dialyzer install-local demo-fixture
 
 check:
-	+$(MAKE) --no-print-directory guard fmt compile-dev compile-test xref credo test dialyzer
+	+$(MAKE) --no-print-directory guard fmt compile-dev compile-test xref credo test e2e dialyzer
 	@echo "check OK"
 
 guard:
@@ -42,7 +42,10 @@ credo: compile-dev
 	$(M) mix credo --strict
 
 test: compile-test kogen-checks-test
-	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile --exclude fixture --exclude acceptance
+	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile --exclude fixture --exclude acceptance --exclude e2e
+
+e2e: compile-test
+	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --no-compile --only e2e test/e2e
 
 integration:
 	$(TEST_ENV) MIX_ENV=test $(M) mix test --warnings-as-errors --include fixture test/fixtures_test.exs

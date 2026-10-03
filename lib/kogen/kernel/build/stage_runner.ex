@@ -10,7 +10,6 @@ defmodule Kogen.Kernel.Build.StageRunner do
   alias Kogen.Kernel.Build.Guard
   alias Kogen.Kernel.Build.Reviewer
   alias Kogen.Kernel.Build.Session
-  alias Kogen.Provider.ChatGPT
   alias Kogen.State
   alias Kogen.Workspace
 
@@ -281,7 +280,7 @@ defmodule Kogen.Kernel.Build.StageRunner do
           workdir: session.workdir,
           run_dir: session.run_dir,
           project: session.project,
-          provider_mod: ChatGPT,
+          provider_mod: session.request.provider_mod,
           provider_config: session.request.provider_config,
           proc_mod: Kogen.Proc,
           env: session.process_env,
