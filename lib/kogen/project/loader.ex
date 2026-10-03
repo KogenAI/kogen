@@ -5,7 +5,7 @@ defmodule Kogen.Project.Loader do
   alias Kogen.Contracts.Project
   alias Kogen.Contracts.Yaml
 
-  @project_keys ~w(name checks setup fix diagnose protected_paths domains env)
+  @project_keys ~w(name checks acceptance_checks setup fix diagnose protected_paths domains env)
   @env_name ~r/\A[A-Za-z_][A-Za-z0-9_]*\z/
 
   @type error :: %{line: pos_integer() | nil, message: String.t()}
@@ -31,6 +31,10 @@ defmodule Kogen.Project.Loader do
   defp validate_document(document, checkout_root) do
     {name, name_errors} = name(document)
     {checks, check_errors} = check_specs(document, "checks", true)
+
+    {acceptance_checks, acceptance_check_errors} =
+      check_specs(document, "acceptance_checks", false)
+
     {setup, setup_errors} = check_specs(document, "setup", false)
     {fix, fix_errors} = check_specs(document, "fix", false)
     {diagnose, diagnose_errors} = diagnostics(document)
@@ -39,32 +43,37 @@ defmodule Kogen.Project.Loader do
     {env, env_errors} = env(document)
 
     errors =
-      unknown_keys(document, @project_keys, "project") ++
-        name_errors ++
-        check_errors ++
-        setup_errors ++
-        fix_errors ++
-        diagnose_errors ++
-        protected_errors ++
-        domain_errors ++
+      document_errors(document, [
+        name_errors,
+        check_errors,
+        acceptance_check_errors,
+        setup_errors,
+        fix_errors,
+        diagnose_errors,
+        protected_errors,
+        domain_errors,
         env_errors
+      ])
 
-    if errors == [] do
-      {:ok,
-       %Project{
-         root: checkout_root,
-         name: name,
-         checks: checks,
-         setup: setup,
-         fix: fix,
-         diagnose: diagnose,
-         protected_paths: protected_paths,
-         domains: domains,
-         env: env
-       }}
-    else
-      {:error, errors}
-    end
+    project_result(errors,
+      root: checkout_root,
+      name: name,
+      checks: checks,
+      acceptance_checks: acceptance_checks,
+      setup: setup,
+      fix: fix,
+      diagnose: diagnose,
+      protected_paths: protected_paths,
+      domains: domains,
+      env: env
+    )
+  end
+
+  defp project_result([], attributes), do: {:ok, struct(Project, attributes)}
+  defp project_result(errors, _attributes), do: {:error, errors}
+
+  defp document_errors(document, groups) do
+    unknown_keys(document, @project_keys, "project") ++ List.flatten(groups)
   end
 
   defp name(document) do

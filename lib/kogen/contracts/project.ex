@@ -1,16 +1,17 @@
 defmodule Kogen.Contracts.Project do
-  @moduledoc "A project's root, checks, protected paths, and domain map."
+  @moduledoc "A project's root, checks, acceptance checks, protected paths, and domain map."
 
   alias Kogen.Contracts.CheckSpec
 
   @enforce_keys [:root, :name, :checks, :setup, :fix, :diagnose, :protected_paths, :domains]
-  defstruct @enforce_keys ++ [env: %{}]
+  defstruct @enforce_keys ++ [acceptance_checks: [], env: %{}]
 
   @type diagnostic :: %{required(:glob) => String.t(), required(:argv) => [String.t()]}
   @type t :: %__MODULE__{
           root: Path.t(),
           name: String.t(),
           checks: [CheckSpec.t()],
+          acceptance_checks: [CheckSpec.t()],
           setup: [CheckSpec.t()],
           fix: [CheckSpec.t()],
           diagnose: [diagnostic()],

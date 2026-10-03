@@ -11,6 +11,10 @@ defmodule Kogen.Project.ProjectTest do
       - name: test
         argv: [mix, test]
         timeout_ms: 60000
+    acceptance_checks:
+      - name: lint-acceptance
+        argv: [mix, credo, "{path}"]
+        timeout_ms: 30000
     fix:
       - name: format
         argv: [mix, format, --force]
@@ -32,6 +36,14 @@ defmodule Kogen.Project.ProjectTest do
     assert project.name == "tiny-app"
     assert project.checks == [%CheckSpec{name: "test", argv: ["mix", "test"], timeout_ms: 60_000}]
 
+    assert project.acceptance_checks == [
+             %CheckSpec{
+               name: "lint-acceptance",
+               argv: ["mix", "credo", "{path}"],
+               timeout_ms: 30_000
+             }
+           ]
+
     assert project.setup == [
              %CheckSpec{name: "assets", argv: ["npm", "ci"], timeout_ms: 120_000}
            ]
@@ -48,6 +60,7 @@ defmodule Kogen.Project.ProjectTest do
   test "omitted optional collections are empty and checks is required", %{tmp_dir: root} do
     write_config(root, "name: tiny-app\nchecks: []\n")
     assert {:ok, project} = Kogen.Project.load(root)
+    assert project.acceptance_checks == []
     assert project.fix == []
     assert project.setup == []
     assert project.diagnose == []

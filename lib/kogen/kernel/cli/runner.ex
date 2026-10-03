@@ -247,6 +247,9 @@ defmodule Kogen.Kernel.CLI.Runner do
   defp command_error({:project_unavailable, project}),
     do: {3, "environment/project_unavailable: #{project}\n"}
 
+  defp command_error({:acceptance_check_failed, name}),
+    do: {1, "check/acceptance_check_failed: acceptance check #{name} failed\n"}
+
   defp command_error({:base_moved, expected, current}) do
     {3, "environment/base_moved: expected #{expected}, found #{inspect(current)}\n"}
   end

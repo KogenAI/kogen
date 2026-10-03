@@ -75,8 +75,7 @@ defmodule Kogen.Kernel do
   def approval_preview(slug, project_root, origin, base, by) do
     with {:ok, runtime} <- runtime(),
          {:ok, process_env} <- project_environment(project_root, runtime) do
-      git_env = Runtime.git_environment(process_env)
-      Approval.prepare(slug, project_root, origin, base, by, git_env)
+      Approval.prepare(slug, project_root, origin, base, by, process_env)
     end
   end
 
