@@ -38,6 +38,7 @@ defmodule Kogen.Build.Cycle do
           | {:finish, terminal(), term()}
 
   @provider_retries 2
+  @stage_success_events [:context, :plan, :develop, :done_gate, :fix, :check]
 
   @spec new(%{required(:approval) => term(), required(:repairs) => non_neg_integer()}) ::
           State.t()
@@ -61,9 +62,14 @@ defmodule Kogen.Build.Cycle do
 
   def step(state, {:stage_ok, stage, data}) when is_map(data) do
     cond do
-      stage == state.stage -> stage_succeeded(state, stage, data)
-      stage == :commit and state.stage == :land -> commit_succeeded(state, data)
-      true -> fail_controller(state, :unexpected_stage_event)
+      stage == state.stage and stage in @stage_success_events ->
+        stage_succeeded(state, stage, data)
+
+      stage == :commit and state.stage == :land ->
+        commit_succeeded(state, data)
+
+      true ->
+        fail_controller(state, :unexpected_stage_event)
     end
   end
 
@@ -82,7 +88,8 @@ defmodule Kogen.Build.Cycle do
   end
 
   def step(state, {:stage_failed, stage, %Failure{} = failure}) do
-    if stage == state.stage or (stage == :commit and state.stage == :land) do
+    if (stage == state.stage and stage != :done_gate) or
+         (stage == :commit and state.stage == :land) do
       handle_failure(state, stage, failure)
     else
       fail_controller(state, :unexpected_stage_event)
@@ -139,22 +146,6 @@ defmodule Kogen.Build.Cycle do
     {next, [record(:stage_ok), run(:review, stage_args(next))]}
   end
 
-  defp stage_succeeded(state, :review, data) do
-    case Map.get(data, :verdict) do
-      :accept -> review_result(state, :accept, Map.get(data, :findings, []))
-      :revise -> review_result(state, :revise, Map.get(data, :findings, []))
-      _other -> fail_controller(state, :invalid_review)
-    end
-  end
-
-  defp stage_succeeded(state, :land, data) do
-    case {state.pending_land, Map.fetch(data, :sha)} do
-      {true, {:ok, sha}} when is_binary(sha) -> finish(state, :landed, sha)
-      {false, _result} -> fail_controller(state, :landing_identity_missing)
-      _missing -> fail_controller(state, :invalid_landing_result)
-    end
-  end
-
   defp review_result(state, :accept, findings) do
     next = %{state | stage: :land, pending_land: false}
 
@@ -205,13 +196,20 @@ defmodule Kogen.Build.Cycle do
 
   defp handle_failure(state, stage, %Failure{class: :provider, reason: reason}) do
     if state.provider_retries < @provider_retries do
-      retry_stage = retry_stage(stage)
-      next = %{state | stage: retry_stage, provider_retries: state.provider_retries + 1}
+      {retry_state_stage, retry_run_stage} = provider_retry_target(stage)
+      provider_retries = state.provider_retries + 1
+
+      next = %{
+        state
+        | stage: retry_state_stage,
+          provider_retries: provider_retries,
+          pending_land: false
+      }
 
       {next,
        [
          record(:provider_retry, %{stage: stage, reason: reason}),
-         run(retry_stage, stage_args(next, %{provider_retry: state.provider_retries + 1}))
+         run(retry_run_stage, stage_args(next, %{provider_retry: provider_retries}))
        ]}
     else
       finish(state, :failed, {:provider_retries_exhausted, reason})
@@ -222,8 +220,11 @@ defmodule Kogen.Build.Cycle do
     finish(state, :failed, {:controller, reason})
   end
 
-  defp retry_stage(:done_gate), do: :develop
-  defp retry_stage(stage), do: stage
+  defp handle_failure(state, _stage, %Failure{}),
+    do: finish(state, :failed, {:controller, :unknown_failure_class})
+
+  defp provider_retry_target(stage) when stage in [:commit, :land], do: {:land, :commit}
+  defp provider_retry_target(stage), do: {stage, stage}
 
   defp repair(state, reason, detail) do
     if state.repairs_left == 0 do

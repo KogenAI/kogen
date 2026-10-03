@@ -31,6 +31,29 @@ defmodule Kogen.Build.CycleTest do
     assert identity.candidate_commit == "candidate"
   end
 
+  test "provider failures during commit and land retry commit in the land phase" do
+    for {stage, pending_land} <- [{:commit, false}, {:land, true}] do
+      state = state_at(:land, pending_land: pending_land)
+
+      {retry, effects} =
+        Cycle.step(state, {:stage_failed, stage, failure(:provider, :overload)})
+
+      assert retry.stage == :land
+      refute retry.pending_land
+      assert retry.provider_retries == 1
+      assert [{:record, %{event: :provider_retry}}, {:run, :commit, args}] = effects
+      assert args.provider_retry == 1
+
+      {prepared, effects} = Cycle.step(retry, {:stage_ok, :commit, landing_data()})
+
+      assert prepared.stage == :land
+      assert prepared.pending_land
+      assert [{:record, %{event: :landing_prepared}}, {:run, :land, landing}] = effects
+      assert landing.expected_parent == "parent"
+      assert landing.candidate_commit == "candidate"
+    end
+  end
+
   test "the cycle stays pure across a complete successful path" do
     state = Cycle.new(%{approval: %{slug: "sample"}, repairs: 2})
 
@@ -118,8 +141,8 @@ defmodule Kogen.Build.CycleTest do
        :finish_failed},
       {"land stage cannot skip identity", state_at(:land),
        {:stage_ok, :land, %{sha: "candidate"}}, :failed, 2, :finish_failed},
-      {"land stage succeeds after receipt", state_at(:land, pending_land: true),
-       {:stage_ok, :land, %{sha: "candidate"}}, :landed, 2, :finish_landed},
+      {"land stage_ok event is rejected after receipt", state_at(:land, pending_land: true),
+       {:stage_ok, :land, %{sha: "candidate"}}, :failed, 2, :finish_failed},
       {"base moved parks", state_at(:land, pending_land: true), {:base_moved}, :parked, 2,
        :finish_parked},
       {"environment failure stops", state_at(:check),
@@ -132,6 +155,10 @@ defmodule Kogen.Build.CycleTest do
        {:stage_failed, :check, failure(:provider, :overload)}, :failed, 2, :finish_failed},
       {"controller failure stops", state_at(:develop),
        {:stage_failed, :develop, failure(:controller, :bug)}, :failed, 2, :finish_failed},
+      {"unknown failure class fails closed", state_at(:check),
+       {:stage_failed, :check, failure(:unknown, :bug)}, :failed, 2, :finish_failed},
+      {"review stage_ok event is rejected", state_at(:review),
+       {:stage_ok, :review, %{verdict: :accept}}, :failed, 2, :finish_failed},
       {"wrong stage event fails", state_at(:check), {:stage_ok, :develop, %{}}, :failed, 2,
        :finish_failed},
       {"unknown event fails", state_at(:context), :unknown, :failed, 2, :finish_failed},
