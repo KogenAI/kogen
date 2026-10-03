@@ -60,7 +60,9 @@ defmodule Kogen.Harness.ShaperTools do
         {:error,
          %Error{
            reason: :write_scope,
-           detail: "Write target is outside the shaper's two-file scope."
+           detail:
+             "Write target is outside the shaper's two-file scope. Allowed paths: " <>
+               Enum.join(allowed_paths, ", ") <> "."
          }}
   end
 

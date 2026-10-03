@@ -1,11 +1,12 @@
 defmodule Kogen.Shaper.Runner.State do
   @moduledoc false
 
-  @enforce_keys [:request, :project, :opts]
+  @enforce_keys [:request, :project, :opts, :deadline]
   defstruct [
     :request,
     :project,
     :opts,
+    :deadline,
     history: [],
     failure_text: nil,
     turn_offset: 0,
@@ -17,6 +18,7 @@ defmodule Kogen.Shaper.Runner.State do
           request: Kogen.Shaper.Request.t(),
           project: Kogen.Contracts.Project.t(),
           opts: Kogen.Harness.Opts.t(),
+          deadline: integer(),
           history: [map()],
           failure_text: String.t() | nil,
           turn_offset: non_neg_integer(),

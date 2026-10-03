@@ -35,7 +35,7 @@ defmodule Kogen.Harness.Shaping do
   alias Kogen.Harness.Usage
 
   @instructions """
-  You are Kogen Intent shaper. The Intent uses YAML frontmatter with title, domains, and size, a prose Brief, `## Acceptance` items `A1` through `An`, and `## Verify` lines `- A1: test domain=<domain>` or `- A1: test keep domain=<domain>`. Each test has `@tag intent: \"<slug>/A<n>\"`. A `test` item must fail on the unchanged checkout; use `test keep` for existing behaviour that must pass. Test through public functions. Do not implement the task.
+  You are Kogen Intent shaper. Write exactly two files: `.kogen/intents/<slug>/intent.md` and `.kogen/acceptance/<slug>_test.exs`, replacing `<slug>` with the requested slug. The Intent uses YAML frontmatter with title, domains, and size, a prose Brief, `## Acceptance` items `A1` through `An`, and `## Verify` lines `- A1: test domain=<domain>` or `- A1: test keep domain=<domain>`. Each test has `@tag intent: \"<slug>/A<n>\"`. A `test` item must fail on the unchanged checkout; use `test keep` for existing behaviour that must pass. Test through public functions. Do not write to any other path or implement the task.
   """
 
   @spec run(Opts.t(), String.t(), String.t(), [map()], String.t() | nil, non_neg_integer()) ::
@@ -43,7 +43,8 @@ defmodule Kogen.Harness.Shaping do
   def run(%Opts{} = opts, slug, task, history, failure_text, turn_offset) do
     with :ok <- valid_request(slug, task, history, failure_text, turn_offset, opts),
          {:ok, transcript_path} <- Recording.path(opts),
-         {:ok, items} <- input_items(slug, task, history, failure_text) do
+         {:ok, items} <-
+           input_items(slug, task, Map.keys(opts.project.domains), history, failure_text) do
       started_at = System.monotonic_time(:millisecond)
 
       state = %State{
@@ -162,14 +163,16 @@ defmodule Kogen.Harness.Shaping do
   defp continue_loop({:ok, %State{} = state}), do: shape_loop(state)
   defp continue_loop({:error, reason}), do: {:error, reason}
 
-  defp input_items(slug, task, [], nil) do
+  defp input_items(slug, task, domains, [], nil) do
+    configured_domains = domains |> Enum.sort() |> Enum.join(", ")
+
     text =
-      "Slug: #{slug}\n\nTask statement:\n#{task}\n\nWrite the Intent and acceptance test at the two paths named by the Kogen format."
+      "Slug: #{slug}\n\nConfigured project domains: #{configured_domains}. Use only these names in the Intent and Verify lines.\n\nTask statement:\n#{task}\n\nWrite the Intent to `.kogen/intents/#{slug}/intent.md` and its acceptance test to `.kogen/acceptance/#{slug}_test.exs`."
 
     {:ok, [Codec.user_item(text)]}
   end
 
-  defp input_items(_slug, _task, history, failure_text)
+  defp input_items(_slug, _task, _domains, history, failure_text)
        when is_list(history) and is_binary(failure_text) do
     repair =
       "Validation failed. Repair the generated files. Exact failure output follows:\n\n" <>
@@ -178,7 +181,7 @@ defmodule Kogen.Harness.Shaping do
     {:ok, history ++ [Codec.user_item(repair)]}
   end
 
-  defp input_items(_slug, _task, _history, _failure_text),
+  defp input_items(_slug, _task, _domains, _history, _failure_text),
     do: error(:invalid_shape_history, "Shaper repair history is invalid.")
 
   defp valid_request(slug, task, history, failure_text, turn_offset, opts) do

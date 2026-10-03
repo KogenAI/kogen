@@ -29,7 +29,9 @@ defmodule Kogen.Shaper.Tests do
     config = %Config{server: server}
 
     try do
-      assert {:ok, result} = Shaper.shape(request(project, tmp_dir, config))
+      shape_request = request(project, tmp_dir, config)
+      assert shape_request.limits == %{max_turns: 60, wall_ms: 1_800_000}
+      assert {:ok, result} = Shaper.shape(shape_request)
       assert result.rounds == 2
       assert length(result.calls) == 6
       assert Enum.all?(result.calls, &(&1.model == "scripted-model" and is_integer(&1.wall_ms)))
@@ -37,6 +39,15 @@ defmodule Kogen.Shaper.Tests do
       assert transcript =~ "model_usage"
       assert transcript =~ "cached_input"
       assert transcript =~ "wall_ms"
+
+      run_log =
+        File.read!(Path.join([Path.dirname(result.transcript_path), "logs", "shaper.log"]))
+
+      assert run_log =~ "attempt=1 started turns_used=0/60"
+      assert run_log =~ "attempt=1 model_pass_complete"
+      assert run_log =~ "attempt=1 validation_failed"
+      assert run_log =~ "attempt=2 started turns_used=4/60"
+      assert run_log =~ "attempt=2 validation_passed"
       assert File.read!(result.intent_path) == valid_intent
       assert File.read!(result.acceptance_path) == test_source
       refute File.exists?(Path.join(project, "README.md"))
@@ -47,6 +58,18 @@ defmodule Kogen.Shaper.Tests do
 
       assert Enum.map_join(Enum.at(requests, 1).input, &inspect/1) =~
                "outside the shaper's two-file scope"
+
+      assert Enum.map_join(Enum.at(requests, 0).input, &inspect/1) =~
+               ".kogen/intents/shape-loop/intent.md"
+
+      assert Enum.map_join(Enum.at(requests, 0).input, &inspect/1) =~
+               ".kogen/acceptance/shape-loop_test.exs"
+
+      assert Enum.map_join(Enum.at(requests, 0).input, &inspect/1) =~
+               "Configured project domains: app"
+
+      assert Enum.map_join(Enum.at(requests, 1).input, &inspect/1) =~
+               ".kogen/acceptance/shape-loop_test.exs"
 
       assert Enum.map_join(Enum.at(requests, 4).input, &inspect/1) =~ "intent_lint_failed"
       assert Enum.map_join(Enum.at(requests, 4).input, &inspect/1) =~ "contains a hedge"

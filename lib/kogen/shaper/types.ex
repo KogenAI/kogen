@@ -1,6 +1,8 @@
 defmodule Kogen.Shaper.Request do
   @moduledoc false
 
+  @default_limits %{max_turns: 60, wall_ms: 1_800_000}
+
   @enforce_keys [
     :workdir,
     :slug,
@@ -13,7 +15,9 @@ defmodule Kogen.Shaper.Request do
     :git_env,
     :run_dir
   ]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [limits: @default_limits]
+
+  @type limits :: %{max_turns: pos_integer(), wall_ms: pos_integer()}
 
   @type t :: %__MODULE__{
           workdir: Path.t(),
@@ -25,7 +29,8 @@ defmodule Kogen.Shaper.Request do
           provider_config: term(),
           env: %{String.t() => String.t()},
           git_env: %{String.t() => String.t()},
-          run_dir: Path.t()
+          run_dir: Path.t(),
+          limits: limits()
         }
 end
 

@@ -84,11 +84,27 @@ if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) for key in env):
     raise SystemExit("task.json env keys must be environment variable names")
 
 extra_path = env.get("BENCH_EXTRA_PATH", "")
+toolchain_override = os.environ.get("KOGEN_BENCH_EXTRA_PATH")
+if toolchain_override:
+    extra_path = toolchain_override
+    env["BENCH_EXTRA_PATH"] = extra_path
 if extra_path:
     env["PATH"] = extra_path + (":" + env["PATH"] if env.get("PATH") else "")
 
-direct_path = bool(env.get("PATH")) and bool(shutil.which("mix", path=env["PATH"]))
-prefix = [] if direct_path else ["mise", "exec", "--"]
+mise_path = shutil.which("mise")
+if mise_path:
+    mise_bin = os.path.dirname(mise_path)
+    env["PATH"] = mise_bin + (":" + env["PATH"] if env.get("PATH") else "")
+
+mise_config = os.environ.get("KOGEN_BENCH_MISE_CONFIG")
+if mise_config:
+    if not mise_path:
+        raise SystemExit("KOGEN_BENCH_MISE_CONFIG requires mise on PATH")
+    env["MISE_CONFIG_FILE"] = mise_config
+
+prefix = ["mise", "exec", "--"] if mise_path else []
+if not prefix and not (env.get("PATH") and shutil.which("mix", path=env["PATH"])):
+    prefix = ["mise", "exec", "--"]
 quote = lambda value: json.dumps(str(value), ensure_ascii=False)
 array = lambda values: "[" + ", ".join(quote(value) for value in values) + "]"
 
@@ -111,6 +127,14 @@ lines = [
 ]
 
 raw_setup = document.get("setup")
+deps_source_override = os.environ.get("KOGEN_BENCH_DEPS_SOURCE")
+if deps_source_override and isinstance(raw_setup, str):
+    copy_step = re.match(r"\s*cp\s+-cR\s+\S+\s+deps\s+&&\s*(.*)$", raw_setup, re.DOTALL)
+    if not copy_step:
+        raise SystemExit("KOGEN_BENCH_DEPS_SOURCE requires setup to begin by copying deps")
+    env["BENCH_DEPS_SOURCE"] = deps_source_override
+    raw_setup = 'cp -cR "$BENCH_DEPS_SOURCE" deps && ' + copy_step.group(1)
+
 if isinstance(raw_setup, str) and raw_setup.strip():
     setup_argv = prefix + ["sh", "-lc", raw_setup]
 elif isinstance(raw_setup, list) and raw_setup and all(isinstance(part, str) for part in raw_setup):
@@ -146,7 +170,13 @@ git clone --quiet --bare "$project_dir" "$origin"
 git --git-dir="$origin" symbolic-ref HEAD refs/heads/main
 base_sha=$(git --git-dir="$origin" rev-parse refs/heads/main)
 
-export MISE_TRUSTED_CONFIG_PATHS="$project_dir"
+if [ -n "${KOGEN_BENCH_MISE_CONFIG:-}" ]; then
+  bench_mise_config_dir=$(dirname "$KOGEN_BENCH_MISE_CONFIG")
+  export MISE_CONFIG_FILE="$KOGEN_BENCH_MISE_CONFIG"
+  export MISE_TRUSTED_CONFIG_PATHS="$project_dir:$bench_mise_config_dir"
+else
+  export MISE_TRUSTED_CONFIG_PATHS="$project_dir"
+fi
 
 run_capture() {
   name=$1
@@ -154,7 +184,7 @@ run_capture() {
   shift 2
   capture_started=$(python3 -c 'import time; print(time.monotonic_ns())')
   printf '\n--- %s ---\n' "$name" >> "$log_file"
-  if "$@" > "$capture" 2>&1; then
+  if "$@" > "$capture" 2>> "$log_file"; then
     status=0
   else
     status=$?
@@ -166,6 +196,13 @@ run_capture() {
     printf '%s failed with exit %s\n' "$name" "$status" >> "$log_file"
     return "$status"
   fi
+}
+
+copy_shaper_setup_logs() {
+  for setup_log in "$shaper_root"/*/logs/shape-setup-*.log; do
+    [ -f "$setup_log" ] || continue
+    cp "$setup_log" "$out_dir/$(basename "$setup_log")"
+  done
 }
 
 write_failed_usage() {
@@ -306,6 +343,7 @@ if run_capture shape "$out_dir/shape.json" "$KOGEN_BIN" intent shape "$slug" \
   :
 else
   stage_status=$?
+  copy_shaper_setup_logs
   write_failed_usage shape gpt-6-luna max "$stage_status" "$CAPTURE_WALL_MS"
   exit "$stage_status"
 fi

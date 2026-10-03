@@ -16,8 +16,6 @@ defmodule Kogen.Shaper.Runner do
   alias Kogen.Shaper.Runner.State
 
   @max_repairs 2
-  @max_turns 12
-  @wall_ms 300_000
 
   @spec run(Request.t()) :: {:ok, Result.t()} | {:error, term()}
   def run(%Request{} = request) do
@@ -25,7 +23,8 @@ defmodule Kogen.Shaper.Runner do
          {:ok, project} <- ProjectDomain.load(request.workdir),
          {:ok, opts} <- harness_options(request, project),
          :ok <- setup_project(request, project) do
-      attempt(%State{request: request, project: project, opts: opts})
+      deadline = System.monotonic_time(:millisecond) + request.limits.wall_ms
+      attempt(%State{request: request, project: project, opts: opts, deadline: deadline})
     end
   end
 
@@ -74,33 +73,88 @@ defmodule Kogen.Shaper.Runner do
 
   defp attempt(%State{} = state) do
     request = state.request
+    attempt_number = state.repairs + 1
+    remaining_turns = request.limits.max_turns - state.turn_offset
+    remaining_ms = max(state.deadline - System.monotonic_time(:millisecond), 0)
+
+    progress(
+      request,
+      attempt_number,
+      "started turns_used=#{state.turn_offset}/#{request.limits.max_turns} " <>
+        "wall_remaining_ms=#{remaining_ms}"
+    )
+
+    cond do
+      remaining_turns < 1 ->
+        limit_failure(
+          request,
+          attempt_number,
+          :shape_turn_limit,
+          "Shaper exhausted its turn limit."
+        )
+
+      remaining_ms < 1 ->
+        limit_failure(
+          request,
+          attempt_number,
+          :shape_wall_limit,
+          "Shaper exhausted its wall time limit."
+        )
+
+      true ->
+        run_attempt(state, attempt_number, remaining_turns, remaining_ms)
+    end
+  end
+
+  defp run_attempt(state, attempt_number, remaining_turns, remaining_ms) do
+    opts = %{state.opts | limits: %{max_turns: remaining_turns, wall_ms: remaining_ms}}
 
     case Harness.shape(
-           state.opts,
-           request.slug,
-           request.task,
+           opts,
+           state.request.slug,
+           state.request.task,
            state.history,
            state.failure_text,
            state.turn_offset
          ) do
       {:ok, %ShapePass{} = pass} ->
+        progress(
+          state.request,
+          attempt_number,
+          "model_pass_complete turns=#{pass.turns} calls=#{length(pass.calls)}"
+        )
+
         next = %{state | calls: state.calls ++ pass.calls}
-        validate_pass(next, pass)
+        validate_pass(next, pass, attempt_number)
 
       {:error, reason} ->
+        progress(state.request, attempt_number, "model_pass_failed reason=#{inspect(reason)}")
         {:error, reason}
     end
   end
 
-  defp validate_pass(%State{} = state, %ShapePass{} = pass) do
+  defp validate_pass(%State{} = state, %ShapePass{} = pass, attempt_number) do
     case validate_files(state.request, state.project, state.opts) do
       :ok ->
+        progress(state.request, attempt_number, "validation_passed")
         {:ok, result(state.request, state.calls, state.repairs + 1, state.opts)}
 
       {:error, %Failure{class: :candidate} = failure} when state.repairs < @max_repairs ->
+        progress(
+          state.request,
+          attempt_number,
+          "validation_failed reason=#{failure.reason}; repair_scheduled"
+        )
+
         repair(state, pass, failure)
 
       {:error, %Failure{} = failure} ->
+        progress(
+          state.request,
+          attempt_number,
+          "validation_failed reason=#{failure.reason}; repair_limit_reached"
+        )
+
         validation_exhausted(failure, state.repairs)
     end
   end
@@ -179,7 +233,7 @@ defmodule Kogen.Shaper.Runner do
       proc_mod: Proc,
       env: Map.merge(request.env, project.env),
       models: %{builder: {request.model, request.effort}, strong: {request.model, request.effort}},
-      limits: %{max_turns: @max_turns, wall_ms: @wall_ms}
+      limits: request.limits
     }
 
     {:ok, opts}
@@ -202,8 +256,18 @@ defmodule Kogen.Shaper.Runner do
       not is_binary(request.run_dir) or Path.type(request.run_dir) != :absolute ->
         {:error, :invalid_run_dir}
 
+      true ->
+        valid_runtime_options(request)
+    end
+  end
+
+  defp valid_runtime_options(request) do
+    cond do
       not is_map(request.env) or not is_map(request.git_env) ->
         {:error, :invalid_environment}
+
+      not valid_limits?(request.limits) ->
+        {:error, :invalid_limits}
 
       true ->
         :ok
@@ -249,7 +313,24 @@ defmodule Kogen.Shaper.Runner do
   defp valid_slug?(slug),
     do: is_binary(slug) and Regex.match?(~r/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/, slug)
 
+  defp valid_limits?(%{max_turns: turns, wall_ms: wall_ms}),
+    do: is_integer(turns) and turns > 0 and is_integer(wall_ms) and wall_ms > 0
+
+  defp valid_limits?(_limits), do: false
+
   defp intent_path(slug), do: ".kogen/intents/#{slug}/intent.md"
   defp acceptance_path(slug), do: ".kogen/acceptance/#{slug}_test.exs"
   defp failure(class, reason, detail), do: %Failure{class: class, reason: reason, detail: detail}
+
+  defp limit_failure(request, attempt_number, reason, detail) do
+    progress(request, attempt_number, "stopped reason=#{reason}")
+    {:error, failure(:candidate, reason, detail)}
+  end
+
+  defp progress(request, attempt_number, message) do
+    line = "attempt=#{attempt_number} #{message}"
+    log_path = Path.join([request.run_dir, "logs", "shaper.log"])
+    _ = File.write(log_path, line <> "\n", [:append])
+    IO.puts(:stderr, "shaper #{line}")
+  end
 end
