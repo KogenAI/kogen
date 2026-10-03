@@ -315,6 +315,11 @@ defmodule Kogen.Kernel.Report do
          nullable(event_value(events, :base_sha) || landing_value(run, :expected_parent))},
         {"candidate", nullable(landing_value(run, :candidate_commit))},
         {"landed_sha", nullable(landed_sha)},
+        {"credential",
+         json_object([
+           {"source", nullable(event_value(events, :credential_source))},
+           {"label", nullable(event_value(events, :credential_label))}
+         ])},
         {"acceptance_results", event_payload(events, "acceptance_result", :ledger, [])},
         {"check_receipts", event_payload(events, "check_result", :receipts, [])},
         {"model_stages", model_stages(events)},

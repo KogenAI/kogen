@@ -3,7 +3,7 @@
 This file is the contract between domains. Change it only through the integrator. Types refer to `Kogen.Contracts.*` structs unless stated. Paths are absolute strings. Only `Kogen.Kernel` reads HOME, env or cwd; everyone else receives explicit values.
 
 ## Dependency graph (Boundary, acyclic)
-`contracts` ← every domain. `workspace` → proc. `state` → workspace. `checks` → proc, workspace, project. `harness` → proc, provider, project. `build` is pure (contracts only). `shaper` → checks, harness, intent, proc, project. `engine` → build, intent, proc, project, provider, workspace, state, checks, harness. `kernel` → proc, project, intent, provider, engine, workspace, state, checks, harness, shaper.
+`contracts` ← every domain. `workspace` → proc. `provider` → proc. `state` → workspace. `checks` → proc, workspace, project. `harness` → proc, provider, project. `build` is pure (contracts only). `shaper` → checks, harness, intent, proc, project. `engine` → build, intent, proc, project, provider, workspace, state, checks, harness. `kernel` → proc, project, intent, provider, engine, workspace, state, checks, harness, shaper.
 
 ## Kogen.Proc
 - `run([String.t()], opts) :: {:ok, ProcResult.t()} | {:error, :enoent | term()}`
@@ -49,6 +49,8 @@ This file is the contract between domains. Change it only through the integrator
 
 ## Kogen.Provider
 - `Kogen.Provider.ChatGPT.config(auth_path) :: {:ok, %Kogen.Provider.ChatGPT.Config{}} | {:error, ProviderError.t()}`
+- `owned_config(root, :file | :keychain, label)` uses Kogen's saved ChatGPT plan credential; `borrowed_codex_config(path)` is only selected by the explicit `--borrow codex` option.
+- Kogen-owned requests use `https://api.openai.com/v1/responses`; refresh tokens are rotated under a cross-process lock. Linux stores credentials in a 0600 file; macOS stores them through `/usr/bin/security`.
 - `respond(config, ModelRequest.t()) :: {:ok, ModelResponse.t()} | {:error, ProviderError.t()}` (the ProviderPort behaviour is `respond(term(), ModelRequest.t())`)
 - `Kogen.Provider.Fake.config(fixture_paths)` with the same `respond/2`.
 - `ModelResponse.raw_items` = the full ordered output items. The harness sends them back with `function_call_output` items `{type: "function_call_output", call_id, output}`.
@@ -126,13 +128,16 @@ This file is the contract between domains. Change it only through the integrator
 - `Kogen.Kernel.intent_check(path) :: {:ok, Intent.t()} | {:error, term()}` parses and lints a local Intent.
 - `approval_preview(slug, project_root, origin, base, by) :: {:ok, ApprovalPreview.t()} | {:error, term()}` reads the project Intent and acceptance file, captures the current base SHA, and prepares the protected-file manifest.
 - `approve(ApprovalPreview.t()) :: {:ok, approval_commit_sha} | {:error, term()}` writes the immutable approval ref.
-- `build(slug, project_root, origin, base, model, effort) :: {:ok, Kogen.Engine.Build.Result.t()} | {:error, term()}` discovers runtime and provider configuration, then delegates execution to `Kogen.Engine`. At Build start, a moved base is accepted only if the approved base is an ancestor of the current tip and every path in the approval's protected manifest has unchanged contents between those commits; otherwise the Build is refused (a changed protected path is named in the reason). An accepted Build starts from the current tip. Candidate/environment/provider/controller failures map to CLI exit codes 1/3/4/70. Candidate repair resumes Developer with the failure output, up to two repairs.
+- `build(BuildOptions.t()) :: {:ok, Kogen.Engine.Build.Result.t()} | {:error, term()}` discovers runtime and provider configuration, then delegates execution to `Kogen.Engine`. At Build start, a moved base is accepted only if the approved base is an ancestor of the current tip and every path in the approval's protected manifest has unchanged contents between those commits; otherwise the Build is refused (a changed protected path is named in the reason). An accepted Build starts from the current tip. Candidate/environment/provider/controller failures map to CLI exit codes 1/3/4/70. Candidate repair resumes Developer with the failure output, up to two repairs.
+- The existing six argument `build(slug, project_root, origin, base, model, effort)` entry point remains as a default-options wrapper.
 - `build(Kogen.Engine.Build.Request.t())` remains available for explicit/test requests and delegates to `Kogen.Engine.run/1`. The request carries explicit `home` and `workspace_root` values; Engine does not discover HOME.
+- `provider_login(label)`, `provider_logout(label)`, and `provider_list()` manage saved ChatGPT accounts. Login uses the open-source Sign in with ChatGPT PKCE flow at `auth.openai.com`, a loopback callback on `127.0.0.1:1455`, and a stable host ID. The CLI prints the authorization URL and `Continue with ChatGPT`; after first authorization it shows `You're using your ChatGPT plan` once.
+- `kogen provider list`, `kogen provider login chatgpt [--as label]`, and `kogen provider logout chatgpt [--as label]` need no project checkout. Builds use the Kogen-owned credential by default; Codex credentials are read only when the owner passes `--borrow codex`. The Build receipt records credential source and account label.
 - `status(project_root, origin, base) :: {:ok, [IntentStatus.t()]} | {:error, term()}` reports one record for each `.kogen/intents/*/intent.md`; landed state is verified by candidate reachability from the selected branch.
 - `report(slug, project_root, origin, base) :: {:ok, json_binary} | {:error, term()}` returns the latest run's approval/base/candidate/landed SHAs, acceptance ledger, check receipts, model stages and failures.
 - Each Build `model_stage` report row includes the model, effort, token counts, and `wall_ms` spent in that stage.
 - `reconcile(run_id, project_root, origin, base) :: {:ok, :landed | :unchanged} | {:error, term()}` closes a run journal after a crash following successful CAS.
-- Every command except `--help` requires `--project <checkout>` and accepts `--origin <repo>` (default project checkout) and `--base <branch>` (default `main`). Build additionally accepts `--model` and `--effort`; approval requires `--by` and supports `--yes` to skip its TTY prompt.
+- Project commands require `--project <checkout>` and accept `--origin <repo>` (default project checkout) and `--base <branch>` (default `main`). Build additionally accepts `--model`, `--effort`, `--as`, and explicit `--borrow codex`; approval requires `--by` and supports `--yes` to skip its TTY prompt.
 - Runtime discovery, including HOME, environment, cwd, `mise`, credential paths and escript/ERTS markers, lives in `Kogen.Kernel.RuntimeDiscovery`. The runtime value and explicit `mise env -C <workdir> --json` call live in `Kogen.Engine`. Harness and checks receive the target process environment; Workspace receives its Git-allowlisted projection.
 
 ### Shaping an Intent from a task statement

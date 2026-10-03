@@ -57,7 +57,8 @@ defmodule Kogen.E2e.Build do
       runtime: runtime,
       provider_mod: ScriptedProvider,
       provider_config: %Config{server: server},
-      credential_source: :custom
+      credential_source: :custom,
+      credential_label: "test"
     }
 
     case Kogen.Kernel.build(request) do

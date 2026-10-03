@@ -38,14 +38,17 @@ defmodule Kogen.Provider.ChatGPT.TransportTest do
       {401, ~s({"detail":"login rejected"}), :login},
       {429, ~s({"detail":"usage limit reached"}), :usage_limit},
       {429, ~s({"error":{"code":"subscription_sharing_usage_limit_exceeded"}}), :usage_limit},
+      {503, ~s({"error":{"code":"subscription_sharing_usage_unavailable"}}), :overload},
       {503, ~s({"error":{"message":"overloaded"}}), :overload}
     ]
 
     Enum.each(responses, fn {status, body, expected_class} ->
       {url, _server} = start_server(status, body, :normal)
 
-      assert {:error, %ProviderError{class: ^expected_class}} =
+      assert {:error, %ProviderError{class: ^expected_class} = error} =
                ChatGPT.respond(config(url), request())
+
+      if expected_class == :usage_limit, do: assert(error.message =~ "Manage usage")
 
       assert_receive {:captured_request, _request}
     end)

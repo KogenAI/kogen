@@ -27,6 +27,24 @@ defmodule Kogen.Kernel.Types.IntentStatus do
         }
 end
 
+defmodule Kogen.Kernel.Types.BuildOptions do
+  @moduledoc false
+
+  @enforce_keys [:slug, :project_root, :origin, :base, :model, :effort]
+  defstruct [:slug, :project_root, :origin, :base, :model, :effort, borrow: nil, label: "default"]
+
+  @type t :: %__MODULE__{
+          slug: String.t(),
+          project_root: Path.t(),
+          origin: Path.t(),
+          base: String.t(),
+          model: String.t(),
+          effort: String.t(),
+          borrow: :codex | nil,
+          label: String.t()
+        }
+end
+
 defmodule Kogen.Kernel.CLI.Args do
   @moduledoc false
 
@@ -39,6 +57,8 @@ defmodule Kogen.Kernel.CLI.Args do
     :effort,
     :by,
     :task_file,
+    :account_label,
+    :borrow,
     positionals: [],
     yes: false,
     json: false
@@ -53,6 +73,8 @@ defmodule Kogen.Kernel.CLI.Args do
           effort: String.t() | nil,
           by: String.t() | nil,
           task_file: Path.t() | nil,
+          account_label: String.t() | nil,
+          borrow: String.t() | nil,
           positionals: [String.t()],
           yes: boolean(),
           json: boolean()

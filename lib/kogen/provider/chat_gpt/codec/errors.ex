@@ -4,7 +4,8 @@ defmodule Kogen.Provider.ChatGPT.Codec.Errors do
   alias Kogen.Contracts.ProviderError
 
   @messages %{
-    usage_limit: "ChatGPT subscription usage limit reached.",
+    usage_limit:
+      "ChatGPT subscription usage limit reached. Manage usage: https://chatgpt.com/settings/usage",
     overload: "ChatGPT service is temporarily overloaded.",
     transport: "ChatGPT stream reported a provider error.",
     malformed: "ChatGPT returned a malformed response stream."

@@ -5,53 +5,29 @@ defmodule Kogen.Provider.ChatGPT.Codec do
   alias Kogen.Contracts.ProviderError
   alias Kogen.Contracts.ToolCall
   alias Kogen.Provider.ChatGPT.Codec.Errors
+  alias Kogen.Provider.ChatGPT.Codec.Recording
   alias Kogen.Provider.ChatGPT.Codec.Stream
+  alias Kogen.Provider.ChatGPT.SIWCCCodec
   alias Kogen.Provider.ChatGPT.SSE
 
   @type credentials :: {String.t(), String.t()}
   @type recording :: {String.t(), String.t(), [binary()]}
-  @tool_call_recording """
-  {
-    "instructions": "Call the echo_phrase function exactly once with phrase set to recorded.",
-    "input": [{"role": "user", "content": [{"type": "input_text", "text": "Use the function tool now."}]}],
-    "tools": [
-      {
-        "type": "function",
-        "name": "echo_phrase",
-        "description": "Echo a phrase supplied by the user.",
-        "parameters": {
-          "type": "object",
-          "properties": {"phrase": {"type": "string"}},
-          "required": ["phrase"],
-          "additionalProperties": false
-        },
-        "strict": false
-      }
-    ]
-  }
-  """
-  @text_recording ~s({"instructions":"Answer exactly with the word recorded.","input":[{"role":"user","content":[{"type":"input_text","text":"Reply now."}]}],"tools":[]})
-  @spec encode_request(ModelRequest.t()) :: {:ok, binary()} | {:error, ProviderError.t()}
-  def encode_request(%ModelRequest{} = request) do
-    if valid_request?(request),
-      do: request |> request_body() |> encode_json(),
-      else: Errors.malformed()
+  @spec encode_request(ModelRequest.t(), :codex | :siwc) ::
+          {:ok, binary()} | {:error, ProviderError.t()}
+  def encode_request(%ModelRequest{} = request, mode \\ :codex) when mode in [:codex, :siwc] do
+    if valid_request?(request) do
+      case mode do
+        :codex -> request |> request_body() |> encode_json()
+        :siwc -> SIWCCCodec.encode_request(request)
+      end
+    else
+      Errors.malformed()
+    end
   end
 
   @spec recording_request(String.t(), String.t(), String.t()) :: ModelRequest.t()
-  def recording_request(scenario, model, effort) do
-    template = if scenario == "tool_call", do: @tool_call_recording, else: @text_recording
-    {:ok, fields} = decode_json(template)
-
-    %ModelRequest{
-      model: model,
-      effort: effort,
-      instructions: fields["instructions"],
-      input: fields["input"],
-      tools: fields["tools"],
-      previous_response_id: nil
-    }
-  end
+  def recording_request(scenario, model, effort),
+    do: Recording.recording_request(scenario, model, effort)
 
   @spec decode_credentials(binary()) :: {:ok, credentials()} | {:error, ProviderError.t()}
   def decode_credentials(contents) when is_binary(contents) do
@@ -67,22 +43,14 @@ defmodule Kogen.Provider.ChatGPT.Codec do
   def decode_credentials(_contents), do: Errors.login()
 
   @spec decode_recording(binary()) :: {:ok, recording()} | {:error, ProviderError.t()}
-  def decode_recording(contents) when is_binary(contents) do
-    case String.split(contents, "\n", trim: true) do
-      [metadata | rows] -> decode_recording(metadata, rows)
-      [] -> Errors.recording("Provider fixture is missing or malformed.")
-    end
-  end
+  def decode_recording(contents) when is_binary(contents),
+    do: Recording.decode_recording(contents)
 
   @spec encode_recording(ModelRequest.t(), [binary()]) ::
           {:ok, binary()} | {:error, ProviderError.t()}
   def encode_recording(%ModelRequest{} = request, event_lines) when is_list(event_lines) do
-    with {:ok, fingerprint} <- request_fingerprint(request),
-         true <- Enum.all?(event_lines, &is_binary/1),
-         {:ok, contents} <- encode_recording_rows(request.model, fingerprint, event_lines) do
-      {:ok, contents}
-    else
-      false -> {:error, Errors.provider(:malformed)}
+    case request_fingerprint(request) do
+      {:ok, fingerprint} -> Recording.encode_recording(request.model, fingerprint, event_lines)
       {:error, %ProviderError{} = provider_error} -> {:error, provider_error}
     end
   end
@@ -145,10 +113,13 @@ defmodule Kogen.Provider.ChatGPT.Codec do
       "include" => ["reasoning.encrypted_content"]
     }
 
-    case request.previous_response_id do
-      nil -> body
-      response_id -> Map.put(body, "previous_response_id", response_id)
-    end
+    case_result =
+      case request.previous_response_id do
+        nil -> body
+        response_id -> Map.put(body, "previous_response_id", response_id)
+      end
+
+    case_result
   end
 
   defp encode_json(value) do
@@ -352,48 +323,5 @@ defmodule Kogen.Provider.ChatGPT.Codec do
       :error ->
         {:error, :invalid_token}
     end
-  end
-
-  defp decode_recording(metadata, rows) do
-    case decode_json(metadata) do
-      {:ok, %{"kind" => "recording", "model" => model, "request_sha256" => fingerprint}}
-      when is_binary(model) and is_binary(fingerprint) ->
-        case decode_recording_events(rows) do
-          {:ok, event_lines} -> {:ok, {model, fingerprint, event_lines}}
-          {:error, %ProviderError{} = provider_error} -> {:error, provider_error}
-        end
-
-      _ ->
-        Errors.recording("Provider fixture is missing or malformed.")
-    end
-  end
-
-  defp decode_recording_events(rows) do
-    rows
-    |> Enum.reduce_while({:ok, []}, fn row, {:ok, event_lines} ->
-      case decode_json(row) do
-        {:ok, %{"kind" => "sse", "data" => data}} when is_binary(data) ->
-          {:cont, {:ok, [data | event_lines]}}
-
-        _ ->
-          {:halt, Errors.recording("Provider fixture contains an invalid SSE event.")}
-      end
-    end)
-    |> case do
-      {:ok, []} -> Errors.recording("Provider fixture contains no SSE events.")
-      {:ok, event_lines} -> {:ok, Enum.reverse(event_lines)}
-      {:error, %ProviderError{} = provider_error} -> {:error, provider_error}
-    end
-  end
-
-  defp encode_recording_rows(model, fingerprint, event_lines) do
-    rows =
-      [%{"kind" => "recording", "model" => model, "request_sha256" => fingerprint}] ++
-        Enum.map(event_lines, &%{"kind" => "sse", "data" => &1})
-
-    encoded = Enum.map_join(rows, "\n", &(&1 |> :json.encode() |> IO.iodata_to_binary()))
-    {:ok, encoded <> "\n"}
-  rescue
-    ErlangError -> Errors.malformed()
   end
 end

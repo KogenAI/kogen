@@ -17,6 +17,30 @@ defmodule Kogen.Provider.ChatGPT.CodecTest do
     refute Map.has_key?(body, "max_output_tokens")
   end
 
+  test "encodes ChatGPT plan requests with documented stateless additional tools" do
+    tool = %{
+      "type" => "function",
+      "name" => "read",
+      "parameters" => %{"type" => "object", "properties" => %{}, "required" => []}
+    }
+
+    assert {:ok, encoded} =
+             Codec.encode_request(
+               %{request() | tools: [tool], previous_response_id: "resp_ignored"},
+               :siwc
+             )
+
+    body = :json.decode(encoded)
+
+    assert [%{"type" => "additional_tools", "role" => "developer", "tools" => [^tool]} | _rest] =
+             body["input"]
+
+    assert body["store"] == false
+    assert body["stream"] == true
+    refute Map.has_key?(body, "previous_response_id")
+    refute Map.has_key?(body, "include")
+  end
+
   test "decodes fragmented ordered output items, tool calls, and usage" do
     items = [reasoning_item(), function_item(), message_item()]
     events = Enum.map(items, &item_done/1) ++ [completed(items)]
@@ -54,8 +78,10 @@ defmodule Kogen.Provider.ChatGPT.CodecTest do
       "response" => %{"error" => %{"code" => "server_is_overloaded"}}
     }
 
-    assert {:error, %ProviderError{class: :usage_limit}} =
+    assert {:error, %ProviderError{class: :usage_limit, message: message}} =
              Codec.new_stream() |> Codec.feed(frame(usage_event)) |> Codec.finish()
+
+    assert message =~ "Manage usage"
 
     assert {:error, %ProviderError{class: :overload}} =
              Codec.new_stream() |> Codec.feed(frame(overload_event)) |> Codec.finish()

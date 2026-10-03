@@ -133,7 +133,8 @@ defmodule Kogen.Engine.Build.Engine do
       base_sha: base_sha,
       model: request.model,
       effort: request.effort,
-      credential_source: request.credential_source
+      credential_source: request.credential_source,
+      credential_label: request.credential_label
     })
   end
 
@@ -392,7 +393,6 @@ defmodule Kogen.Engine.Build.Engine do
   defp add_record_line(session, _event), do: session
 
   defp terminal_failure(session, failure), do: Finish.terminal_failure(session, failure)
-
   defp failed_setup(request, run, reason), do: Finish.setup_failure(request, run, reason)
 
   defp state_root(request), do: request.workspace_root

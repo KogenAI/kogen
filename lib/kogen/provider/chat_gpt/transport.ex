@@ -16,6 +16,21 @@ defmodule Kogen.Provider.ChatGPT.Transport do
 
   @max_response_bytes 16_000_000
 
+  @spec post_form(String.t(), [{String.t(), String.t()}], pos_integer()) ::
+          {:ok, pos_integer(), binary()} | {:error, :timeout | :transport}
+  def post_form(url, fields, timeout_ms)
+      when is_binary(url) and is_list(fields) and is_integer(timeout_ms) do
+    body = URI.encode_query(fields)
+    request = {String.to_charlist(url), [], ~c"application/x-www-form-urlencoded", body}
+    request_small(:post, request, url, timeout_ms)
+  end
+
+  @spec get(String.t(), pos_integer()) ::
+          {:ok, pos_integer(), binary()} | {:error, :timeout | :transport}
+  def get(url, timeout_ms) when is_binary(url) and is_integer(timeout_ms) do
+    request_small(:get, {String.to_charlist(url), []}, url, timeout_ms)
+  end
+
   @spec post_stream(String.t(), [{String.t(), String.t()}], binary(), pos_integer()) ::
           {:ok, Response.t()} | {:error, :timeout | :transport | :too_large}
   def post_stream(url, headers, body, timeout_ms)
@@ -46,6 +61,34 @@ defmodule Kogen.Provider.ChatGPT.Transport do
       {:error, _reason} ->
         {:error, :transport}
     end
+  end
+
+  defp request_small(method, request, url, timeout_ms) do
+    with {:ok, _apps} <- Application.ensure_all_started(:inets),
+         {:ok, _apps} <- Application.ensure_all_started(:ssl) do
+      case :httpc.request(method, request, small_http_options(url, timeout_ms),
+             body_format: :binary
+           ) do
+        {:ok, {{_version, status, _reason}, _headers, body}} -> {:ok, status, body}
+        {:error, reason} -> {:error, transport_reason(reason)}
+      end
+    else
+      {:error, _reason} -> {:error, :transport}
+    end
+  end
+
+  defp small_http_options(url, timeout_ms) do
+    [
+      timeout: timeout_ms,
+      connect_timeout: min(timeout_ms, 30_000),
+      autoredirect: false,
+      autoretry: 0,
+      ssl: ssl_options(url)
+    ]
+  end
+
+  defp transport_reason(reason) do
+    if timeout_reason?(reason), do: :timeout, else: :transport
   end
 
   defp charlist_headers(headers) do

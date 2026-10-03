@@ -16,6 +16,8 @@ defmodule Kogen.State.Event do
     :receipts,
     :model,
     :effort,
+    :credential_source,
+    :credential_label,
     :tokens,
     :wall_ms
   ]
@@ -34,6 +36,8 @@ defmodule Kogen.State.Event do
           receipts: term(),
           model: String.t() | nil,
           effort: String.t() | nil,
+          credential_source: String.t() | nil,
+          credential_label: String.t() | nil,
           tokens: term(),
           wall_ms: non_neg_integer() | nil
         }

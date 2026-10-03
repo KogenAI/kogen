@@ -18,6 +18,7 @@ defmodule Kogen.Kernel do
       Approval,
       CLI,
       Types.ApprovalPreview,
+      Types.BuildOptions,
       Types.IntentStatus
     ]
 
@@ -31,12 +32,15 @@ defmodule Kogen.Kernel do
   alias Kogen.Kernel.Approval
   alias Kogen.Kernel.RuntimeDiscovery
   alias Kogen.Kernel.Types.ApprovalPreview
+  alias Kogen.Kernel.Types.BuildOptions
   alias Kogen.Kernel.Types.IntentStatus
   alias Kogen.Kernel.Workspaces
   alias Kogen.Provider.ChatGPT
   alias Kogen.Shaper
   alias Kogen.Shaper.Request, as: ShapeRequest
   alias Kogen.Shaper.Result, as: ShapeResult
+  alias Kogen.Provider.ChatGPT.CredentialStore
+  alias Kogen.Provider.ChatGPT.SIWC
 
   @type toolchain_error ::
           :mise_missing
@@ -86,25 +90,39 @@ defmodule Kogen.Kernel do
   @spec build(String.t(), Path.t(), Path.t(), String.t(), String.t(), String.t()) ::
           {:ok, Result.t()} | {:error, term()}
   def build(slug, project_root, origin, base, model, effort) do
+    build(%BuildOptions{
+      slug: slug,
+      project_root: project_root,
+      origin: origin,
+      base: base,
+      model: model,
+      effort: effort
+    })
+  end
+
+  @spec build(BuildOptions.t()) :: {:ok, Result.t()} | {:error, term()}
+  def build(%BuildOptions{} = options) do
     with {:ok, runtime} <- runtime(),
-         {:ok, process_env} <- project_environment(project_root, runtime),
-         {:ok, provider_config, source} <- provider_config(),
+         {:ok, process_env} <- project_environment(options.project_root, runtime),
+         {:ok, provider_config, source, label} <-
+           provider_config(borrow: options.borrow, label: options.label),
          {:ok, home} <- runtime_home(runtime) do
       runtime = Runtime.for_project(runtime, process_env)
 
       request = %Request{
-        slug: slug,
+        slug: options.slug,
         home: home,
-        project_root: project_root,
-        workspace_root: Workspaces.root(project_root, home),
-        origin: origin,
-        base: base,
-        model: model,
-        effort: effort,
+        project_root: options.project_root,
+        workspace_root: Workspaces.root(options.project_root, home),
+        origin: options.origin,
+        base: options.base,
+        model: options.model,
+        effort: options.effort,
         runtime: runtime,
         provider_mod: ChatGPT,
         provider_config: provider_config,
-        credential_source: source
+        credential_source: source,
+        credential_label: label
       }
 
       Engine.run(request)
@@ -209,18 +227,56 @@ defmodule Kogen.Kernel do
     RuntimeDiscovery.runtime()
   end
 
+  @spec provider_list() :: {:ok, [String.t()]} | {:error, term()}
+  def provider_list do
+    with {:ok, root} <- RuntimeDiscovery.provider_root(),
+         {:ok, profiles} <- CredentialStore.profiles(root) do
+      {:ok, Enum.map(profiles, &provider_profile_line/1)}
+    end
+  end
+
+  @spec provider_login(String.t()) :: {:ok, map()} | {:error, ProviderError.t()}
+  def provider_login(label) when is_binary(label) do
+    with {:ok, root} <- RuntimeDiscovery.provider_root() do
+      SIWC.login(root, RuntimeDiscovery.credential_backend(), label,
+        authorize: fn url ->
+          IO.puts("Continue with ChatGPT")
+          IO.puts(url)
+          _ = RuntimeDiscovery.open_browser(url)
+          :ok
+        end
+      )
+    end
+  end
+
+  @spec provider_logout(String.t()) ::
+          {:ok, %{label: String.t(), remote_revoked?: boolean()}} | {:error, ProviderError.t()}
+  def provider_logout(label) when is_binary(label) do
+    with {:ok, root} <- RuntimeDiscovery.provider_root() do
+      SIWC.logout(root, RuntimeDiscovery.credential_backend(), label)
+    end
+  end
+
   @doc false
-  @spec provider_config() ::
-          {:ok, ChatGPT.Config.t(), :kogen_owned | :codex_borrowed | :custom}
+  @spec provider_config(keyword()) ::
+          {:ok, ChatGPT.Config.t(), :kogen_owned | :codex_borrowed | :custom, String.t()}
           | {
               :error,
               ProviderError.t()
             }
-  def provider_config do
-    RuntimeDiscovery.provider_config()
+  def provider_config(opts \\ []) do
+    RuntimeDiscovery.provider_config(opts)
   end
 
   defp legacy_state_root(project_root), do: Path.join(project_root, ".kogen")
+
+  defp provider_profile_line(%CredentialStore.Profile{} = profile) do
+    state = if profile.signed_in, do: "signed in", else: "signed out"
+    plan = if profile.plan_usage, do: " Using ChatGPT plan", else: ""
+    email = if is_binary(profile.email), do: " #{profile.email}", else: ""
+    expiry = if is_integer(profile.expires_at), do: " expires=#{profile.expires_at}", else: ""
+    "chatgpt:#{profile.label} #{state}#{email}#{plan}#{expiry}\n"
+  end
 
   defp runtime_home(%Runtime{} = runtime) do
     case Runtime.home(runtime) do

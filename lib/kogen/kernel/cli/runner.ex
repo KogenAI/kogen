@@ -8,6 +8,7 @@ defmodule Kogen.Kernel.CLI.Runner do
   alias Kogen.Kernel.CLI.Args
   alias Kogen.Kernel.CLI.ShapeJson
   alias Kogen.Kernel.Types.ApprovalPreview
+  alias Kogen.Kernel.Types.BuildOptions
 
   @spec run(Args.t()) :: {non_neg_integer(), String.t()}
   def run(%Args{command: :version} = args), do: version(args)
@@ -18,6 +19,9 @@ defmodule Kogen.Kernel.CLI.Runner do
   def run(%Args{command: :status} = args), do: status(args)
   def run(%Args{command: :report} = args), do: report(args)
   def run(%Args{command: :reconcile} = args), do: reconcile(args)
+  def run(%Args{command: :provider_list}), do: provider_list()
+  def run(%Args{command: :provider_login} = args), do: provider_login(args)
+  def run(%Args{command: :provider_logout} = args), do: provider_logout(args)
 
   defp version(%Args{project: nil}), do: {0, "kogen #{Kogen.Kernel.version()}\n"}
 
@@ -141,14 +145,16 @@ defmodule Kogen.Kernel.CLI.Runner do
   defp build(args) do
     with :ok <- project_directory(args),
          {:ok, %Result{} = result} <-
-           Kogen.Kernel.build(
-             hd(args.positionals),
-             args.project,
-             args.origin,
-             args.base,
-             args.model,
-             args.effort
-           ) do
+           Kogen.Kernel.build(%BuildOptions{
+             slug: hd(args.positionals),
+             project_root: args.project,
+             origin: args.origin,
+             base: args.base,
+             model: args.model,
+             effort: args.effort,
+             borrow: if(args.borrow == "codex", do: :codex),
+             label: args.account_label || "default"
+           }) do
       render_build(result)
     else
       {:error, reason} -> command_error(reason)
@@ -197,6 +203,45 @@ defmodule Kogen.Kernel.CLI.Runner do
       {0, "reconcile: #{result}\n"}
     else
       {:error, reason} -> command_error(reason)
+    end
+  end
+
+  defp provider_list do
+    case Kogen.Kernel.provider_list() do
+      {:ok, []} -> {0, "chatgpt: not signed in\n"}
+      {:ok, lines} -> {0, Enum.join(lines)}
+      {:error, reason} -> command_error(reason)
+    end
+  end
+
+  defp provider_login(args) do
+    label = args.account_label || "default"
+
+    case Kogen.Kernel.provider_login(label) do
+      {:ok, result} ->
+        notice = if result.first_notice?, do: "You're using your ChatGPT plan\n", else: ""
+        email = if is_binary(result.email), do: " (#{result.email})", else: ""
+        {0, notice <> "chatgpt:#{result.label} signed in#{email}\n"}
+
+      {:error, reason} ->
+        command_error(reason)
+    end
+  end
+
+  defp provider_logout(args) do
+    label = args.account_label || "default"
+
+    case Kogen.Kernel.provider_logout(label) do
+      {:ok, %{remote_revoked?: true}} ->
+        {0, "chatgpt:#{label} signed out\n"}
+
+      {:ok, %{remote_revoked?: false}} ->
+        {0,
+         "chatgpt:#{label} signed out locally; remote revocation was not confirmed. " <>
+           "You can disconnect Kogen in ChatGPT Settings if needed.\n"}
+
+      {:error, reason} ->
+        command_error(reason)
     end
   end
 

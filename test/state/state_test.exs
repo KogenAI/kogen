@@ -254,6 +254,18 @@ defmodule Kogen.State.StateTest do
              State.decode_event(~s({"event":"model_stage","stage":"shape","wall_ms":37}))
   end
 
+  test "journal decoding retains build credential provenance for reports" do
+    assert {:ok,
+            %Event{
+              event: "started",
+              credential_source: "kogen_owned",
+              credential_label: "personal"
+            }} =
+             State.decode_event(
+               ~s({"event":"started","credential_source":"kogen_owned","credential_label":"personal"})
+             )
+  end
+
   test "reconcile records a landing after CAS and releases only its own claim", context do
     approved = approval()
 

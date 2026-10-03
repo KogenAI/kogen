@@ -17,6 +17,23 @@ defmodule Kogen.Kernel.CLITest do
     assert args.origin == args.project
   end
 
+  test "provider commands parse account labels without requiring a project" do
+    assert {:ok, login} = Arguments.parse(["provider", "login", "chatgpt", "--as", "personal"])
+    assert login.command == :provider_login
+    assert login.account_label == "personal"
+    assert login.project == nil
+    assert login.origin == nil
+
+    assert {:ok, logout} = Arguments.parse(["provider", "logout", "chatgpt", "--as", "personal"])
+    assert logout.command == :provider_logout
+    assert logout.account_label == "personal"
+
+    assert {:ok, list} = Arguments.parse(["provider", "list"])
+    assert list.command == :provider_list
+    assert list.project == nil
+    assert list.origin == nil
+  end
+
   test "intent check parses and lints from the named project root" do
     assert {0, output} =
              CLI.execute([

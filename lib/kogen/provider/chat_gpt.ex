@@ -1,5 +1,5 @@
 defmodule Kogen.Provider.ChatGPT do
-  @moduledoc "Streams Responses requests through the ChatGPT Codex subscription backend."
+  @moduledoc "Streams Responses requests using Kogen's ChatGPT login or an explicit Codex borrow."
   @behaviour Kogen.Contracts.ProviderPort
 
   alias Kogen.Contracts.ModelRequest
@@ -7,22 +7,39 @@ defmodule Kogen.Provider.ChatGPT do
   alias Kogen.Contracts.ProviderError
   alias Kogen.Provider.ChatGPT.Auth
   alias Kogen.Provider.ChatGPT.Codec
+  alias Kogen.Provider.ChatGPT.CredentialStore
+  alias Kogen.Provider.ChatGPT.Refresh
   alias Kogen.Provider.ChatGPT.Transport
 
-  @endpoint "https://chatgpt.com/backend-api/codex/responses"
+  @responses_endpoint "https://api.openai.com/v1/responses"
+  @codex_endpoint "https://chatgpt.com/backend-api/codex/responses"
   @request_timeout_ms 300_000
+  @manage_usage "https://chatgpt.com/settings/usage"
 
   defmodule Config do
     @moduledoc false
     @derive {Inspect, except: [:access_token, :account_id]}
-    @enforce_keys [:access_token, :account_id, :endpoint, :timeout_ms]
-    defstruct @enforce_keys
+    @enforce_keys [:endpoint, :timeout_ms]
+    defstruct source: :custom,
+              label: "custom",
+              endpoint: nil,
+              timeout_ms: nil,
+              credential_path: nil,
+              credential_root: nil,
+              backend: nil,
+              access_token: nil,
+              account_id: nil
 
     @type t :: %__MODULE__{
-            access_token: String.t(),
-            account_id: String.t(),
+            source: :kogen_owned | :codex_borrowed | :custom,
+            label: String.t(),
             endpoint: String.t(),
-            timeout_ms: pos_integer()
+            timeout_ms: pos_integer(),
+            credential_path: Path.t() | nil,
+            credential_root: Path.t() | nil,
+            backend: :file | :keychain | nil,
+            access_token: String.t() | nil,
+            account_id: String.t() | nil
           }
   end
 
@@ -31,26 +48,62 @@ defmodule Kogen.Provider.ChatGPT do
     with {:ok, credentials} <- Auth.load(auth_path) do
       {:ok,
        %Config{
+         source: :custom,
+         label: "custom",
+         endpoint: @codex_endpoint,
+         timeout_ms: @request_timeout_ms,
+         credential_path: auth_path,
          access_token: credentials.access_token,
-         account_id: credentials.account_id,
-         endpoint: @endpoint,
-         timeout_ms: @request_timeout_ms
+         account_id: credentials.account_id
        }}
     end
   end
 
   @spec config(term()) :: {:error, ProviderError.t()}
-  def config(_auth_path), do: login_error()
+  def config(_auth_path), do: login_error("ChatGPT login path is invalid.")
+
+  @spec owned_config(Path.t(), :file | :keychain, String.t()) ::
+          {:ok, Config.t()} | {:error, ProviderError.t()}
+  def owned_config(root, backend, label) do
+    case CredentialStore.load(root, backend, label) do
+      {:ok, _credentials} ->
+        {:ok,
+         %Config{
+           source: :kogen_owned,
+           label: label,
+           endpoint: @responses_endpoint,
+           timeout_ms: @request_timeout_ms,
+           credential_root: root,
+           backend: backend
+         }}
+
+      {:error, _reason} ->
+        login_error("ChatGPT login is missing or invalid; run `kogen provider login chatgpt`.")
+    end
+  end
+
+  @spec borrowed_codex_config(Path.t()) :: {:ok, Config.t()} | {:error, ProviderError.t()}
+  def borrowed_codex_config(path) when is_binary(path) do
+    with {:ok, credentials} <- Auth.load(path) do
+      {:ok,
+       %Config{
+         source: :codex_borrowed,
+         label: "codex",
+         endpoint: @codex_endpoint,
+         timeout_ms: @request_timeout_ms,
+         credential_path: path,
+         access_token: credentials.access_token,
+         account_id: credentials.account_id
+       }}
+    end
+  end
 
   @impl true
   @spec respond(term(), ModelRequest.t()) ::
           {:ok, ModelResponse.t()} | {:error, ProviderError.t()}
   def respond(%Config{} = config, %ModelRequest{} = request) do
     if valid_config?(config) do
-      case execute(config, request) do
-        {:ok, response, _body} -> {:ok, response}
-        error -> error
-      end
+      respond_with_refresh(config, request)
     else
       provider_error(:malformed, "ChatGPT provider configuration is invalid.")
     end
@@ -63,13 +116,87 @@ defmodule Kogen.Provider.ChatGPT do
   @spec respond_with_transcript(Config.t(), ModelRequest.t()) ::
           {:ok, ModelResponse.t(), binary()} | {:error, ProviderError.t()}
   def respond_with_transcript(%Config{} = config, %ModelRequest{} = request) do
-    execute(config, request)
+    with {:ok, token, account_id} <- credential_for_request(config) do
+      execute(config, request, token, account_id)
+    end
   end
 
-  defp execute(config, request) do
-    with {:ok, body} <- Codec.encode_request(request),
+  defp respond_with_refresh(config, request) do
+    with {:ok, token, account_id} <- credential_for_request(config) do
+      case execute(config, request, token, account_id) do
+        {:ok, response, _body} ->
+          {:ok, response}
+
+        {:error, %ProviderError{class: :login}} when config.source == :kogen_owned ->
+          with {:ok, refreshed} <-
+                 Refresh.force(
+                   config.credential_root,
+                   config.backend,
+                   config.label,
+                   token
+                 ),
+               {:ok, response, _body} <- execute(config, request, refreshed.access_token, nil) do
+            {:ok, response}
+          else
+            {:error, _reason} ->
+              login_error("ChatGPT rejected this session; run `kogen provider login chatgpt`.")
+          end
+
+        error ->
+          error
+      end
+    end
+  end
+
+  defp credential_for_request(%Config{source: :kogen_owned} = config) do
+    case Refresh.access_token(
+           config.credential_root,
+           config.backend,
+           config.label
+         ) do
+      {:ok, credentials} ->
+        {:ok, credentials.access_token, nil}
+
+      {:error, _reason} ->
+        login_error("ChatGPT login is unavailable; run `kogen provider login chatgpt`.")
+    end
+  end
+
+  defp credential_for_request(%Config{
+         source: :custom,
+         credential_path: nil,
+         access_token: token,
+         account_id: account_id
+       })
+       when is_binary(token) and is_binary(account_id) do
+    {:ok, token, account_id}
+  end
+
+  defp credential_for_request(%Config{source: source, credential_path: path})
+       when source in [:codex_borrowed, :custom] do
+    case Auth.load(path) do
+      {:ok, credentials} ->
+        {:ok, credentials.access_token, credentials.account_id}
+
+      {:error, _reason} when source == :codex_borrowed ->
+        login_error("Codex login is missing or invalid; run `codex login`.")
+
+      {:error, _reason} ->
+        login_error("The configured ChatGPT credential is missing or invalid.")
+    end
+  end
+
+  defp execute(config, request, token, account_id) do
+    mode = if config.source == :kogen_owned, do: :siwc, else: :codex
+
+    with {:ok, body} <- Codec.encode_request(request, mode),
          {:ok, response} <-
-           Transport.post_stream(config.endpoint, headers(config), body, config.timeout_ms) do
+           Transport.post_stream(
+             config.endpoint,
+             headers(config, token, account_id),
+             body,
+             config.timeout_ms
+           ) do
       handle_response(response)
     else
       {:error, reason} when reason in [:timeout, :transport, :too_large] ->
@@ -93,10 +220,18 @@ defmodule Kogen.Provider.ChatGPT do
   defp handle_response(%Transport.Response{status: status, body: body}),
     do: response_error(status, body)
 
-  defp headers(config) do
+  defp headers(%Config{source: :kogen_owned}, token, _account_id) do
     [
-      {"authorization", "Bearer " <> config.access_token},
-      {"chatgpt-account-id", config.account_id},
+      {"authorization", "Bearer " <> token},
+      {"accept", "text/event-stream"},
+      {"user-agent", "kogen/0.1"}
+    ]
+  end
+
+  defp headers(_config, token, account_id) do
+    [
+      {"authorization", "Bearer " <> token},
+      {"chatgpt-account-id", account_id},
       {"openai-beta", "responses=experimental"},
       {"originator", "kogen"},
       {"accept", "text/event-stream"},
@@ -104,18 +239,33 @@ defmodule Kogen.Provider.ChatGPT do
     ]
   end
 
-  defp valid_config?(config) do
-    is_binary(config.access_token) and config.access_token != "" and
-      is_binary(config.account_id) and config.account_id != "" and
-      is_binary(config.endpoint) and is_integer(config.timeout_ms) and config.timeout_ms > 0
+  defp valid_config?(%Config{source: :kogen_owned} = config) do
+    is_binary(config.credential_root) and config.backend in [:file, :keychain] and
+      is_binary(config.label) and is_binary(config.endpoint) and valid_timeout?(config.timeout_ms)
   end
 
-  defp response_error(401, _body), do: provider_error(:login, "ChatGPT rejected the Codex login.")
+  defp valid_config?(%Config{source: source} = config)
+       when source in [:codex_borrowed, :custom] do
+    custom_token? = is_binary(config.access_token) and config.access_token != ""
+
+    is_binary(config.endpoint) and valid_timeout?(config.timeout_ms) and
+      (is_binary(config.credential_path) or (source == :custom and custom_token?))
+  end
+
+  defp valid_config?(_config), do: false
+  defp valid_timeout?(timeout), do: is_integer(timeout) and timeout > 0
+
+  defp response_error(401, _body) do
+    provider_error(:login, "ChatGPT rejected the login; sign in again.")
+  end
 
   defp response_error(status, body) do
     cond do
       status == 429 or usage_limit_body?(body) ->
-        provider_error(:usage_limit, "ChatGPT subscription usage limit reached.")
+        provider_error(
+          :usage_limit,
+          "ChatGPT subscription usage limit reached. Manage usage: #{@manage_usage}"
+        )
 
       status in 500..599 or overloaded_body?(body) ->
         provider_error(:overload, "ChatGPT service is temporarily overloaded.")
@@ -132,7 +282,11 @@ defmodule Kogen.Provider.ChatGPT do
     body = normalized_error_body(body)
 
     Enum.any?(
-      ["subscription_sharing_usage_limit_exceeded", "usage_limit", "usage limit"],
+      [
+        "subscription_sharing_usage_limit_exceeded",
+        "usage_limit",
+        "usage limit"
+      ],
       &String.contains?(body, &1)
     )
   end
@@ -157,5 +311,5 @@ defmodule Kogen.Provider.ChatGPT do
   defp provider_error(class, message),
     do: {:error, %ProviderError{class: class, message: message}}
 
-  defp login_error, do: provider_error(:login, "Codex login path is invalid.")
+  defp login_error(message), do: provider_error(:login, message)
 end

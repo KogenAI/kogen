@@ -2,7 +2,7 @@
 
 Kogen is an AI-agent software-building system written in Elixir. A human approves a short Markdown Intent; Kogen builds it in an isolated checkout with an LLM Developer loop, verifies the result with deterministic checks, and lands it on the main branch.
 
-This repository is the single Mix application that forms Kogen's core. The current work is the P0/T1 foundation: shared contracts, strict domain boundaries, the developer checks and testkit, and the command-line entry point. Later work fills each domain behind its facade.
+This repository is the single Mix application that forms Kogen's core. Current work extends its domain foundation with account-scoped ChatGPT login, explicit credential selection, and credential-aware Build receipts.
 
 ## Start here
 
@@ -27,7 +27,7 @@ This repository is the single Mix application that forms Kogen's core. The curre
 | Proc | Bounded operating-system process execution | Contracts |
 | Project | Project configuration and check definitions | Contracts |
 | Intent | Human-authored Intent loading and validation | Contracts |
-| Provider | Model-provider requests and responses | Contracts |
+| Provider | Model-provider requests and responses | Contracts, Proc |
 | Build | Developer loop and candidate lifecycle | Contracts |
 | Workspace | Isolated checkout and worktree operations | Contracts, Proc |
 | State | Persisted build state and receipts | Contracts, Workspace |
