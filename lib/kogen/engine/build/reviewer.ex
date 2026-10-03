@@ -1,12 +1,12 @@
-defmodule Kogen.Kernel.Build.Reviewer do
+defmodule Kogen.Engine.Build.Reviewer do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.ProcResult
   alias Kogen.Contracts.ProviderError
+  alias Kogen.Engine.Build.Session
+  alias Kogen.Engine.Build.StageRunner
   alias Kogen.Harness
-  alias Kogen.Kernel.Build.Session
-  alias Kogen.Kernel.Build.StageRunner
   alias Kogen.State
 
   @spec run(Session.t()) ::

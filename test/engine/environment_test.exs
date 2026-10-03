@@ -1,8 +1,8 @@
-defmodule Kogen.Kernel.EnvironmentTest do
+defmodule Kogen.Engine.EnvironmentTest do
   use Kogen.Testkit.Case
 
-  alias Kogen.Kernel.Environment
-  alias Kogen.Kernel.Runtime
+  alias Kogen.Engine.Environment
+  alias Kogen.Engine.Runtime
 
   test "includes mise failure output in the toolchain error", %{tmp_dir: tmp_dir} do
     mise = Path.join(tmp_dir, "mise")

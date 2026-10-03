@@ -1,16 +1,16 @@
-defmodule Kogen.Kernel.Build.Finish do
+defmodule Kogen.Engine.Build.Finish do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
-  alias Kogen.Kernel.Build.Guard
-  alias Kogen.Kernel.Build.Request
-  alias Kogen.Kernel.Build.Session
-  alias Kogen.Kernel.Types.BuildResult
+  alias Kogen.Engine.Build.Guard
+  alias Kogen.Engine.Build.Request
+  alias Kogen.Engine.Build.Result
+  alias Kogen.Engine.Build.Session
   alias Kogen.State
   alias Kogen.State.Run
   alias Kogen.Workspace
 
-  @spec run(Session.t(), :landed | :failed | :parked, term()) :: {:ok, BuildResult.t()}
+  @spec run(Session.t(), :landed | :failed | :parked, term()) :: {:ok, Result.t()}
   def run(%Session{} = session, status, reason) do
     preserve = preserve_candidate(session, status)
     release = release_claim(session)
@@ -19,7 +19,7 @@ defmodule Kogen.Kernel.Build.Finish do
     failure = final_failure(session.failure, lifecycle, write_result)
 
     {:ok,
-     %BuildResult{
+     %Result{
        status: status,
        reason: reason,
        failure: failure,
@@ -30,7 +30,7 @@ defmodule Kogen.Kernel.Build.Finish do
      }}
   end
 
-  @spec terminal_failure(Session.t(), Failure.t()) :: {:ok, BuildResult.t()}
+  @spec terminal_failure(Session.t(), Failure.t()) :: {:ok, Result.t()}
   def terminal_failure(%Session{} = session, %Failure{} = failure) do
     record =
       State.record(session.run, %{event: :finished, status: :failed, reason: failure.reason})
@@ -40,7 +40,7 @@ defmodule Kogen.Kernel.Build.Finish do
     final = terminal_cleanup_failure(failure, record, preserve, release)
 
     {:ok,
-     %BuildResult{
+     %Result{
        status: :failed,
        reason: final.reason,
        failure: final,
@@ -51,12 +51,12 @@ defmodule Kogen.Kernel.Build.Finish do
      }}
   end
 
-  @spec setup_failure(Request.t(), Run.t(), term()) :: {:ok, BuildResult.t()}
+  @spec setup_failure(Request.t(), Run.t(), term()) :: {:ok, Result.t()}
   def setup_failure(%Request{} = request, %Run{} = run, reason) do
     setup_failure(request, run, reason, true)
   end
 
-  @spec setup_failure(Request.t(), Run.t(), term(), boolean()) :: {:ok, BuildResult.t()}
+  @spec setup_failure(Request.t(), Run.t(), term(), boolean()) :: {:ok, Result.t()}
   def setup_failure(%Request{} = request, %Run{} = run, reason, claimed?) do
     failure = normalize_setup_failure(reason)
 
@@ -74,7 +74,7 @@ defmodule Kogen.Kernel.Build.Finish do
     failure = persistence_failure(failure, combine(first, terminal), release)
 
     {:ok,
-     %BuildResult{
+     %Result{
        status: :failed,
        reason: failure.reason,
        failure: failure,

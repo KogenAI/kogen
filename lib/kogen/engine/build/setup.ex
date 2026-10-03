@@ -1,4 +1,4 @@
-defmodule Kogen.Kernel.Build.Setup do
+defmodule Kogen.Engine.Build.Setup do
   @moduledoc false
 
   alias Kogen.Contracts.CheckSpec

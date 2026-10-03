@@ -3,6 +3,7 @@ defmodule Kogen.E2e do
   use Boundary,
     deps: [
       Kogen.Contracts,
+      Kogen.Engine,
       Kogen.Kernel,
       Kogen.Proc,
       Kogen.State,
@@ -44,7 +45,7 @@ defmodule Kogen.E2e.Build.Result do
   defstruct @enforce_keys
 
   @type t :: %__MODULE__{
-          build: Kogen.Kernel.Types.BuildResult.t(),
+          build: Kogen.Engine.Build.Result.t(),
           events: [Kogen.State.Event.t()],
           fixture: Kogen.E2e.Build.Fixture.t(),
           run_status: Kogen.State.Run.status(),
@@ -61,8 +62,8 @@ defmodule Kogen.E2e.Build do
   alias Kogen.E2e.Build.Result
   alias Kogen.E2e.ScriptedProvider
   alias Kogen.E2e.ScriptedProvider.Config
-  alias Kogen.Kernel.Build.Request
-  alias Kogen.Kernel.Runtime
+  alias Kogen.Engine.Build.Request
+  alias Kogen.Engine.Runtime
   alias Kogen.Kernel.Types.ApprovalPreview
   alias Kogen.Proc
   alias Kogen.Testkit.Git

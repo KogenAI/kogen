@@ -1,4 +1,4 @@
-defmodule Kogen.Kernel.Build.SetupTest.FakeProc do
+defmodule Kogen.Engine.Build.SetupTest.FakeProc do
   @moduledoc false
   alias Kogen.Contracts.ProcResult
 
@@ -19,14 +19,14 @@ defmodule Kogen.Kernel.Build.SetupTest.FakeProc do
   end
 end
 
-defmodule Kogen.Kernel.Build.SetupTest do
+defmodule Kogen.Engine.Build.SetupTest do
   use Kogen.Testkit.Case
 
   alias Kogen.Contracts.CheckSpec
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.ProcResult
-  alias Kogen.Kernel.Build.Setup
-  alias Kogen.Kernel.Build.SetupTest.FakeProc
+  alias Kogen.Engine.Build.Setup
+  alias Kogen.Engine.Build.SetupTest.FakeProc
 
   test "runs setup commands in order with the Candidate env and per-command logs", %{
     tmp_dir: tmp_dir

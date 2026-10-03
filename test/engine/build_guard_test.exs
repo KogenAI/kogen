@@ -1,10 +1,10 @@
-defmodule Kogen.Kernel.BuildGuardTest do
+defmodule Kogen.Engine.BuildGuardTest do
   use Kogen.Testkit.Case
 
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.Intent
   alias Kogen.Contracts.Project
-  alias Kogen.Kernel.Build.Guard
+  alias Kogen.Engine.Build.Guard
   alias Kogen.Testkit.Proc
 
   test "rejects a changed protected file before checks run", %{tmp_dir: tmp_dir} do

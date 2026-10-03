@@ -7,7 +7,7 @@ defmodule Kogen.Kernel do
       Kogen.Project,
       Kogen.Intent,
       Kogen.Provider,
-      Kogen.Build,
+      Kogen.Engine,
       Kogen.Workspace,
       Kogen.State,
       Kogen.Checks,
@@ -15,25 +15,21 @@ defmodule Kogen.Kernel do
     ],
     exports: [
       Approval,
-      Build.Request,
       CLI,
-      Runtime,
       Types.ApprovalPreview,
-      Types.BuildResult,
       Types.IntentStatus
     ]
 
   alias Kogen.Contracts.Intent
   alias Kogen.Contracts.Project
   alias Kogen.Contracts.ProviderError
+  alias Kogen.Engine
+  alias Kogen.Engine.Build.Request
+  alias Kogen.Engine.Build.Result
+  alias Kogen.Engine.Runtime
   alias Kogen.Kernel.Approval
-  alias Kogen.Kernel.Build.Engine
-  alias Kogen.Kernel.Build.Request
-  alias Kogen.Kernel.Environment
-  alias Kogen.Kernel.Runtime
   alias Kogen.Kernel.RuntimeDiscovery
   alias Kogen.Kernel.Types.ApprovalPreview
-  alias Kogen.Kernel.Types.BuildResult
   alias Kogen.Kernel.Types.IntentStatus
   alias Kogen.Provider.ChatGPT
 
@@ -83,7 +79,7 @@ defmodule Kogen.Kernel do
   def approve(%ApprovalPreview{} = preview), do: Approval.commit(preview)
 
   @spec build(String.t(), Path.t(), Path.t(), String.t(), String.t(), String.t()) ::
-          {:ok, BuildResult.t()} | {:error, term()}
+          {:ok, Result.t()} | {:error, term()}
   def build(slug, project_root, origin, base, model, effort) do
     with {:ok, runtime} <- runtime(),
          {:ok, process_env} <- project_environment(project_root, runtime),
@@ -108,7 +104,7 @@ defmodule Kogen.Kernel do
   end
 
   @doc false
-  @spec build(Request.t()) :: {:ok, BuildResult.t()} | {:error, term()}
+  @spec build(Request.t()) :: {:ok, Result.t()} | {:error, term()}
   def build(%Request{} = request), do: Engine.run(request)
 
   @spec status(Path.t(), Path.t(), String.t()) :: {:ok, [IntentStatus.t()]} | {:error, term()}
@@ -147,16 +143,13 @@ defmodule Kogen.Kernel do
               toolchain_error()
             }
   def project_environment(workdir, %Runtime{} = runtime),
-    do: Environment.project(workdir, runtime)
+    do: Engine.project_environment(workdir, runtime)
 
   @doc false
   @spec candidate_environment(Path.t(), Runtime.t(), Project.t()) ::
           {:ok, %{String.t() => String.t()}} | {:error, toolchain_error()}
-  def candidate_environment(workdir, %Runtime{} = runtime, %Project{env: project_env}) do
-    with {:ok, environment} <- project_environment(workdir, runtime) do
-      {:ok, Map.merge(environment, project_env)}
-    end
-  end
+  def candidate_environment(workdir, %Runtime{} = runtime, %Project{} = project),
+    do: Engine.candidate_environment(workdir, runtime, project)
 
   @doc false
   @spec runtime() :: {:ok, Runtime.t()} | {:error, toolchain_error()}

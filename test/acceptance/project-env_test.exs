@@ -1,7 +1,7 @@
 defmodule Kogen.Acceptance.ProjectEnvTest do
   use Kogen.Testkit.Case
 
-  alias Kogen.Kernel.Runtime
+  alias Kogen.Engine.Runtime
 
   @moduletag :acceptance
 

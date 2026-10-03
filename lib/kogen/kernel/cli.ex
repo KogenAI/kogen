@@ -1,6 +1,6 @@
 defmodule Kogen.Kernel.CLI do
   @moduledoc "The escript entry point for the Kogen command line."
-  use Boundary, deps: [Kogen.Contracts, Kogen.Kernel], exports: []
+  use Boundary, deps: [Kogen.Contracts, Kogen.Engine, Kogen.Kernel], exports: []
 
   alias Kogen.Kernel.CLI.Args
   alias Kogen.Kernel.CLI.Arguments

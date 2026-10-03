@@ -1,10 +1,11 @@
-defmodule Kogen.Kernel.Build.Guard do
+defmodule Kogen.Engine.Build.Guard do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.Intent
   alias Kogen.Contracts.ProcResult
   alias Kogen.Contracts.Project
+  alias Kogen.Engine.Runtime
   alias Kogen.Proc
 
   @snapshot_script """
@@ -61,9 +62,10 @@ defmodule Kogen.Kernel.Build.Guard do
 
   defp snapshot(workdir, base_sha, git_env, mode) do
     suffix = "#{System.pid()}-#{System.unique_integer([:positive])}"
+    temp_dir = Runtime.temporary_directory(git_env)
 
     [index, output, log] =
-      Enum.map(["index", "output", "log"], &Path.join(System.tmp_dir!(), "kogen-#{&1}-#{suffix}"))
+      Enum.map(["index", "output", "log"], &Path.join(temp_dir, "kogen-#{&1}-#{suffix}"))
 
     result =
       ["/bin/sh", "-c", @snapshot_script, "kogen-snapshot", index, base_sha, output]

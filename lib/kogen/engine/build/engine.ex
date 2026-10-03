@@ -1,23 +1,23 @@
-defmodule Kogen.Kernel.Build.Engine do
+defmodule Kogen.Engine.Build.Engine do
   @moduledoc false
 
   alias Kogen.Build.Cycle
   alias Kogen.Contracts.Failure
-  alias Kogen.Kernel.Build.Finish
-  alias Kogen.Kernel.Build.Prepared
-  alias Kogen.Kernel.Build.Request
-  alias Kogen.Kernel.Build.Session
-  alias Kogen.Kernel.Build.Setup
-  alias Kogen.Kernel.Build.StageRunner
-  alias Kogen.Kernel.Runtime
-  alias Kogen.Kernel.Types.BuildResult
+  alias Kogen.Engine.Build.Finish
+  alias Kogen.Engine.Build.Prepared
+  alias Kogen.Engine.Build.Request
+  alias Kogen.Engine.Build.Result
+  alias Kogen.Engine.Build.Session
+  alias Kogen.Engine.Build.Setup
+  alias Kogen.Engine.Build.StageRunner
+  alias Kogen.Engine.Runtime
   alias Kogen.Project
   alias Kogen.State
   alias Kogen.State.Approval
   alias Kogen.State.Run
   alias Kogen.Workspace
 
-  @spec run(Request.t()) :: {:ok, BuildResult.t()} | {:error, term()}
+  @spec run(Request.t()) :: {:ok, Result.t()} | {:error, term()}
   def run(%Request{} = request) do
     with {:ok, approval_commit, approval} <- approved(request),
          {:ok, base_sha} <- current_base(request, approval),
@@ -136,7 +136,7 @@ defmodule Kogen.Kernel.Build.Engine do
   # toolchain already resolved for this Build, so the workspace (an exact clone)
   # inherits that trust through the environment, never through global mise state.
   defp workspace_environment(path, runtime, project) do
-    Kogen.Kernel.candidate_environment(path, Runtime.trust_workspace(runtime, path), project)
+    Kogen.Engine.candidate_environment(path, Runtime.trust_workspace(runtime, path), project)
   end
 
   defp setup_candidate(%Prepared{} = prepared, path) do

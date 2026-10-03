@@ -1,15 +1,15 @@
-defmodule Kogen.Kernel.Build.StageRunner do
+defmodule Kogen.Engine.Build.StageRunner do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.ProviderError
+  alias Kogen.Engine.Build.Commit
+  alias Kogen.Engine.Build.Guard
+  alias Kogen.Engine.Build.Reviewer
+  alias Kogen.Engine.Build.Session
   alias Kogen.Harness
   alias Kogen.Harness.Opts
   alias Kogen.Harness.Result, as: HarnessResult
-  alias Kogen.Kernel.Build.Commit
-  alias Kogen.Kernel.Build.Guard
-  alias Kogen.Kernel.Build.Reviewer
-  alias Kogen.Kernel.Build.Session
   alias Kogen.State
 
   @spec run(atom(), map(), Session.t()) ::

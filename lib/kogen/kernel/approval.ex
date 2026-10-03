@@ -4,8 +4,8 @@ defmodule Kogen.Kernel.Approval do
   alias Kogen.Contracts.Intent, as: IntentData
   alias Kogen.Contracts.ProcResult
   alias Kogen.Contracts.Project, as: ProjectData
+  alias Kogen.Engine.Runtime
   alias Kogen.Intent
-  alias Kogen.Kernel.Runtime
   alias Kogen.Kernel.Types.ApprovalPreview
   alias Kogen.Proc
   alias Kogen.Project

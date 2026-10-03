@@ -81,13 +81,14 @@
                    {System, :fetch_env},
                    {System, :user_home},
                    {System, :user_home!},
+                   {System, :tmp_dir!},
                    {File, :cwd!},
                    {File, :cwd},
                    {DateTime, :utc_now},
                    {System, :os_time}
                  ],
                  message: "Pass explicit values; read ambient configuration in Kogen.Kernel.",
-                 allow: ["lib/kogen/kernel/"]
+                 allow: ["lib/kogen/kernel/", "test/support/testkit/temp.ex"]
                }
              ]
            ]},
@@ -111,7 +112,7 @@
                Kogen.Proc.Request,
                Kogen.Project.Loader,
                Kogen.Workspace.Git,
-               Kogen.Kernel.Runtime,
+               Kogen.Engine.Runtime,
                Kogen.Provider.ChatGPT.Codec,
                Kogen.Harness.Codec,
                Kogen.Checks.Ledger,
@@ -131,6 +132,7 @@
                  Kogen.Intent,
                  Kogen.Provider,
                  Kogen.Build,
+                 Kogen.Engine,
                  Kogen.Workspace,
                  Kogen.State,
                  Kogen.Checks,
@@ -141,12 +143,23 @@
                Kogen.State => [Kogen.Workspace],
                Kogen.Checks => [Kogen.Proc, Kogen.Workspace, Kogen.Project],
                Kogen.Harness => [Kogen.Proc, Kogen.Provider, Kogen.Project],
-               Kogen.Kernel => [
+               Kogen.Engine => [
                  Kogen.Proc,
                  Kogen.Project,
                  Kogen.Intent,
                  Kogen.Provider,
                  Kogen.Build,
+                 Kogen.Workspace,
+                 Kogen.State,
+                 Kogen.Checks,
+                 Kogen.Harness
+               ],
+               Kogen.Kernel => [
+                 Kogen.Proc,
+                 Kogen.Project,
+                 Kogen.Intent,
+                 Kogen.Provider,
+                 Kogen.Engine,
                  Kogen.Workspace,
                  Kogen.State,
                  Kogen.Checks,

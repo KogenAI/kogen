@@ -1,9 +1,9 @@
-defmodule Kogen.Kernel.Build.Commit do
+defmodule Kogen.Engine.Build.Commit do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
-  alias Kogen.Kernel.Build.Guard
-  alias Kogen.Kernel.Build.Session
+  alias Kogen.Engine.Build.Guard
+  alias Kogen.Engine.Build.Session
   alias Kogen.State
   alias Kogen.Workspace
 

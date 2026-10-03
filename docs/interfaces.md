@@ -3,7 +3,7 @@
 This file is the contract between domains. Change it only through the integrator. Types refer to `Kogen.Contracts.*` structs unless stated. Paths are absolute strings. Only `Kogen.Kernel` reads HOME, env or cwd; everyone else receives explicit values.
 
 ## Dependency graph (Boundary, acyclic)
-`contracts` ← every domain. `workspace` → proc. `state` → workspace. `checks` → proc, workspace, project. `harness` → proc, provider, project. `kernel` → all. `build` is pure (contracts only).
+`contracts` ← every domain. `workspace` → proc. `state` → workspace. `checks` → proc, workspace, project. `harness` → proc, provider, project. `build` is pure (contracts only). `engine` → build, intent, proc, project, provider, workspace, state, checks, harness. `kernel` → proc, project, intent, provider, engine, workspace, state, checks, harness.
 
 ## Kogen.Proc
 - `run([String.t()], opts) :: {:ok, ProcResult.t()} | {:error, :enoent | term()}`
@@ -72,6 +72,13 @@ This file is the contract between domains. Change it only through the integrator
 - `protected_violations(workdir, base_sha, manifest :: %{path => sha256}, git_env) :: {:ok, [path]}`
 - `scope_violations(workdir, base_sha, Intent.t(), Project.t(), allowed_extra :: [path], git_env) :: {:ok, [path]}`
 
+## Kogen.Engine
+- `run(Kogen.Engine.Build.Request.t()) :: {:ok, Kogen.Engine.Build.Result.t()} | {:error, term()}` interprets Cycle effects and owns Build setup, stages, review, guard, commit, landing, and cleanup.
+- `project_environment(workdir, Runtime.t())` runs `mise env -C <workdir> --json` using the supplied runtime.
+- `candidate_environment(workdir, Runtime.t(), Project.t())` adds the project's explicit environment, with project values taking precedence.
+- `Kogen.Engine.Runtime` is the runtime value and pure environment helpers (`git_environment/1`, `process_env/2`, `trust_workspace/2`, `for_project/2`, `temporary_directory/1`, `output_tail/1`). It contains no ambient discovery.
+- `Kogen.Engine.Environment` resolves an explicit workdir using the supplied runtime and `Kogen.Proc`.
+
 ## Kogen.Build.Cycle (pure)
 - `new(%{approval: Approval, repairs: 2}) :: state`
 - `step(state, event) :: {state, [effect]}`
@@ -109,16 +116,17 @@ This file is the contract between domains. Change it only through the integrator
 - `Kogen.Kernel.intent_check(path) :: {:ok, Intent.t()} | {:error, term()}` parses and lints a local Intent.
 - `approval_preview(slug, project_root, origin, base, by) :: {:ok, ApprovalPreview.t()} | {:error, term()}` reads the project Intent and acceptance file, captures the current base SHA, and prepares the protected-file manifest.
 - `approve(ApprovalPreview.t()) :: {:ok, approval_commit_sha} | {:error, term()}` writes the immutable approval ref.
-- `build(slug, project_root, origin, base, model, effort) :: {:ok, BuildResult.t()} | {:error, term()}` interprets Cycle effects in context → plan → develop → fix → checks and acceptance → review → repair → commit → land order. Candidate/environment/provider/controller failures map to CLI exit codes 1/3/4/70. Candidate repair resumes Developer with the failure output, up to two repairs.
+- `build(slug, project_root, origin, base, model, effort) :: {:ok, Kogen.Engine.Build.Result.t()} | {:error, term()}` discovers runtime and provider configuration, then delegates execution to `Kogen.Engine`. Candidate/environment/provider/controller failures map to CLI exit codes 1/3/4/70. Candidate repair resumes Developer with the failure output, up to two repairs.
+- `build(Kogen.Engine.Build.Request.t())` remains available for explicit/test requests and delegates to `Kogen.Engine.run/1`.
 - `status(project_root, origin, base) :: {:ok, [IntentStatus.t()]} | {:error, term()}` reports one record for each `.kogen/intents/*/intent.md`; landed state is verified by candidate reachability from the selected branch.
 - `report(slug, project_root, origin, base) :: {:ok, json_binary} | {:error, term()}` returns the latest run's approval/base/candidate/landed SHAs, acceptance ledger, check receipts, model stages and failures.
 - `reconcile(run_id, project_root, origin, base) :: {:ok, :landed | :unchanged} | {:error, term()}` closes a run journal after a crash following successful CAS.
 - Every command except `--help` requires `--project <checkout>` and accepts `--origin <repo>` (default project checkout) and `--base <branch>` (default `main`). Build additionally accepts `--model` and `--effort`; approval requires `--by` and supports `--yes` to skip its TTY prompt.
-- Runtime discovery, including HOME, environment, cwd, `mise`, credential paths and escript/ERTS markers, lives in the Kernel. Per-build toolchain variables come from `mise env -C <workdir> --json` through Proc. Harness and checks receive the target process environment; Workspace receives its Git-allowlisted projection.
+- Runtime discovery, including HOME, environment, cwd, `mise`, credential paths and escript/ERTS markers, lives in `Kogen.Kernel.RuntimeDiscovery`. The runtime value and explicit `mise env -C <workdir> --json` call live in `Kogen.Engine`. Harness and checks receive the target process environment; Workspace receives its Git-allowlisted projection.
 
 ### Writing an acceptance test for a Build-engine Intent
 
-Use `Kogen.E2e.Build.prepare_seed!/1` once in `setup_all/1`, then pass its compiled tiny Mix project to `run!/3`. The helper creates a bare origin and checkout, writes and approves the Intent through Kernel approval code, uses a fake `mise`, and returns the `BuildResult` with decoded run events and fixture paths. Script provider responses by stage; the response queue must cover each provider request.
+Use `Kogen.E2e.Build.prepare_seed!/1` once in `setup_all/1`, then pass its compiled tiny Mix project to `run!/3`. The helper creates a bare origin and checkout, writes and approves the Intent through Kernel approval code, uses a fake `mise`, and returns the `Kogen.Engine.Build.Result` with decoded run events and fixture paths. Script provider responses by stage; the response queue must cover each provider request.
 
 ```elixir
 seed = Kogen.E2e.Build.prepare_seed!(shared_dir)

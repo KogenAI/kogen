@@ -3,9 +3,10 @@ defmodule Kogen.Kernel.CLI.Runner do
 
   alias Kogen.Contracts.Failure
   alias Kogen.Contracts.ProviderError
+  alias Kogen.Engine.Build.Result
+  alias Kogen.Engine.Runtime
   alias Kogen.Kernel.CLI.Args
   alias Kogen.Kernel.Types.ApprovalPreview
-  alias Kogen.Kernel.Types.BuildResult
 
   @spec run(Args.t()) :: {non_neg_integer(), String.t()}
   def run(%Args{command: :version} = args), do: version(args)
@@ -81,7 +82,7 @@ defmodule Kogen.Kernel.CLI.Runner do
 
   defp build(args) do
     with :ok <- project_directory(args),
-         {:ok, %BuildResult{} = result} <-
+         {:ok, %Result{} = result} <-
            Kogen.Kernel.build(
              hd(args.positionals),
              args.project,
@@ -96,17 +97,17 @@ defmodule Kogen.Kernel.CLI.Runner do
     end
   end
 
-  defp render_build(%BuildResult{status: :landed} = result) do
+  defp render_build(%Result{status: :landed} = result) do
     {0, format_build(result)}
   end
 
-  defp render_build(%BuildResult{} = result) do
+  defp render_build(%Result{} = result) do
     code = failure_code(result.failure)
     repair = repair_guidance(result.failure)
     {code, format_build(result) <> repair}
   end
 
-  defp format_build(%BuildResult{} = result) do
+  defp format_build(%Result{} = result) do
     lines = Enum.map_join(result.lines, "\n", & &1)
     "run: #{result.run_id}\n#{lines}\nrun dir: #{result.run_dir}\n"
   end
@@ -250,7 +251,7 @@ defmodule Kogen.Kernel.CLI.Runner do
   defp command_error({:acceptance_check_failed, name, {:ok, result}}) do
     status = if result.timed_out, do: "timed out", else: "failed"
     detail = "check/acceptance_check_failed: acceptance check #{name} #{status}\n"
-    {1, detail <> Kogen.Kernel.Runtime.output_tail(result.output_tail)}
+    {1, detail <> Runtime.output_tail(result.output_tail)}
   end
 
   defp command_error({:acceptance_check_failed, name, _}),
