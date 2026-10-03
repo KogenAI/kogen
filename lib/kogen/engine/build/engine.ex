@@ -3,6 +3,7 @@ defmodule Kogen.Engine.Build.Engine do
 
   alias Kogen.Build.Cycle
   alias Kogen.Contracts.Failure
+  alias Kogen.Engine.Build.ApprovalManifest
   alias Kogen.Engine.Build.Finish
   alias Kogen.Engine.Build.Prepared
   alias Kogen.Engine.Build.Request
@@ -76,12 +77,34 @@ defmodule Kogen.Engine.Build.Engine do
     end
   end
 
-  defp current_base(request, %Approval{base_sha: approved_sha}) do
+  defp current_base(request, %Approval{} = approval) do
+    approved_sha = approval.base_sha
+
     case Workspace.ref_read(request.origin, "refs/heads/#{request.base}", request.runtime.git_env) do
-      {:ok, ^approved_sha} -> {:ok, approved_sha}
-      {:ok, current} -> {:error, {:base_moved, approved_sha, current}}
-      {:error, :missing} -> {:error, {:base_moved, approved_sha, nil}}
-      {:error, reason} -> {:error, reason}
+      {:ok, ^approved_sha} ->
+        {:ok, approved_sha}
+
+      {:ok, current} ->
+        if Workspace.ancestor?(request.origin, approved_sha, current, request.runtime.git_env) do
+          with :ok <-
+                 ApprovalManifest.unchanged_between(
+                   request.origin,
+                   approved_sha,
+                   current,
+                   approval.protected_manifest,
+                   request.runtime.git_env
+                 ) do
+            {:ok, current}
+          end
+        else
+          {:error, {:base_moved, approved_sha, current}}
+        end
+
+      {:error, :missing} ->
+        {:error, {:base_moved, approved_sha, nil}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
