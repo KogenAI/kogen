@@ -270,6 +270,30 @@ defmodule Kogen.Harness.Tests do
     assert length(ScriptedProvider.requests(provider)) == 6
   end
 
+  test "review marks the remainder of diffs beyond its character limit", %{tmp_dir: tmp_dir} do
+    provider = ScriptedProvider.start([message(~s({"verdict":"accept","findings":[]}))])
+    opts = options(tmp_dir, provider)
+    large_diff = "HEAD_OF_DIFF\n" <> String.duplicate("padding\n", 25_000) <> "TAIL_OF_DIFF"
+
+    assert {:ok, %Review{verdict: :accept}} = Harness.review(opts, @intent, large_diff, %{})
+
+    [request] = ScriptedProvider.requests(provider)
+
+    review_input =
+      request.input
+      |> hd()
+      |> Map.fetch!("content")
+      |> hd()
+      |> Map.fetch!("text")
+
+    assert review_input =~ "HEAD_OF_DIFF"
+
+    assert review_input =~
+             "[TRUNCATED: Candidate diff continues beyond the 200,000-character review limit.]"
+
+    refute review_input =~ "TAIL_OF_DIFF"
+  end
+
   defp options(tmp_dir, provider, checks \\ []) do
     workdir = Kogen.Testkit.Git.create!(Path.join(tmp_dir, "candidate"))
     run_dir = Path.join(tmp_dir, "run")

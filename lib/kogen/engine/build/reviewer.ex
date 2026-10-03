@@ -2,12 +2,12 @@ defmodule Kogen.Engine.Build.Reviewer do
   @moduledoc false
 
   alias Kogen.Contracts.Failure
-  alias Kogen.Contracts.ProcResult
   alias Kogen.Contracts.ProviderError
   alias Kogen.Engine.Build.Session
   alias Kogen.Engine.Build.StageRunner
   alias Kogen.Harness
   alias Kogen.State
+  alias Kogen.Workspace
 
   @spec run(Session.t()) ::
           {:ok, Session.t(), [term()]} | {:error, Session.t(), Failure.t()}
@@ -37,18 +37,7 @@ defmodule Kogen.Engine.Build.Reviewer do
     end
   end
 
-  defp diff(session) do
-    case Kogen.Proc.run(
-           ["git", "diff", "--no-ext-diff", "--no-color", session.base_sha, "--"],
-           cd: session.workdir,
-           env: session.git_env,
-           timeout_ms: 30_000
-         ) do
-      {:ok, %ProcResult{exit_status: 0, timed_out: false, output_tail: output}} -> {:ok, output}
-      {:ok, %ProcResult{}} -> {:error, :diff_failed}
-      {:error, reason} -> {:error, reason}
-    end
-  end
+  defp diff(session), do: Workspace.diff(session.workdir, session.base_sha, session.git_env)
 
   defp harness_opts(session), do: StageRunner.harness_options(session)
 

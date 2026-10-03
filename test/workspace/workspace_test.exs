@@ -48,6 +48,12 @@ defmodule Kogen.Workspace.WorkspaceTest do
     assert File.read!(Path.join([candidate, "test", "acceptance", "frozen_test.exs"])) ==
              "binary\0artifact"
 
+    assert {:ok, diff} = Workspace.diff(candidate, base_sha, @git_env)
+    assert diff =~ "README.md"
+    assert diff =~ "edited"
+    assert diff =~ "frozen_test.exs"
+    assert :ok = git!(candidate, ["diff", "--cached", "--quiet"])
+
     assert {:error, :invalid_files} = Workspace.insert_files(candidate, %{"../escape" => "no"})
 
     assert {:ok, commit_sha} =

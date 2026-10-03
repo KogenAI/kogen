@@ -13,6 +13,9 @@ defmodule Kogen.Harness.Stages do
   alias Kogen.Harness.PlanSanitizer
   alias Kogen.Harness.Review
 
+  @review_diff_limit 200_000
+  @review_diff_truncated_marker "\n\n[TRUNCATED: Candidate diff continues beyond the 200,000-character review limit.]"
+
   @review_accept_prompt """
   You are Kogen's advisory code reviewer. Return exactly one JSON object with keys verdict and findings. verdict is accept or revise; findings is an array of strings. Review the supplied Intent, diff, and deterministic check summary. Recommend revise only for a named Acceptance id or a public-behaviour regression. Do not add scope, requirements, dependencies, or files. You have no tools and cannot run checks.
   """
@@ -102,18 +105,26 @@ defmodule Kogen.Harness.Stages do
   end
 
   defp reviewer_input(intent_text, diff, check_summary) do
-    clipped_diff = String.slice(diff, 0, 20_000)
+    clipped_diff = clip_review_diff(diff)
 
     String.trim("""
     Approved Intent:
     #{intent_text}
 
-    Candidate diff (first 20,000 characters):
+    Candidate diff (up to 200,000 characters; any omitted remainder is marked):
     #{clipped_diff}
 
     Deterministic checks:
     #{inspect(check_summary, limit: 200, printable_limit: 10_000)}
     """)
+  end
+
+  defp clip_review_diff(diff) do
+    if String.length(diff) > @review_diff_limit do
+      String.slice(diff, 0, @review_diff_limit) <> @review_diff_truncated_marker
+    else
+      diff
+    end
   end
 
   defp review_result(text, intent_text, usage) do

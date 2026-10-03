@@ -18,6 +18,7 @@ This file is the contract between domains. Change it only through the integrator
 - `create(origin, base_sha, root, build_id, git_env, options \\ []) :: {:ok, %{path: String.t(), base_sha: String.t()}} | {:error, term()}`: clone --local from origin into `<root>/w/<build_id>` and check out `base_sha` detached. `options` may contain `seed_from:`; deps/_build are copied from that checkout (or origin by default) with `cp -c -R`.
 - `insert_files(path, %{dest_rel_path => binary}) :: :ok`
 - `tree_hash(path, git_env) :: {:ok, sha}`: includes untracked, non-ignored files; private index.
+- `diff(path, base_sha, git_env) :: {:ok, binary()}`: full diff of the Candidate's working tree against `base_sha`, including untracked, non-ignored files; materializes through a private index and does not modify the real index.
 - `changed_paths(path, base_sha, git_env) :: {:ok, [rel_path]}`
 - `commit(path, message, trailers :: [{key, value}], git_env) :: {:ok, sha}`: `git add -A` + `git commit`. Signing follows the user's config; tests disable it via git_env.
 - `reset_soft(path, base_sha, git_env) :: :ok | {:error, term()}`: move Candidate HEAD to the approved base while preserving staged changes.

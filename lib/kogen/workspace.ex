@@ -22,6 +22,9 @@ defmodule Kogen.Workspace do
   @spec tree_hash(Path.t(), git_env()) :: {:ok, String.t()} | {:error, term()}
   def tree_hash(path, git_env), do: Checkout.tree_hash(path, git_env)
 
+  @spec diff(Path.t(), String.t(), git_env()) :: {:ok, binary()} | {:error, term()}
+  def diff(path, base_sha, git_env), do: Checkout.diff(path, base_sha, git_env)
+
   @spec changed_paths(Path.t(), String.t(), git_env()) ::
           {:ok, [String.t()]} | {:error, term()}
   def changed_paths(path, base_sha, git_env), do: Checkout.changed_paths(path, base_sha, git_env)

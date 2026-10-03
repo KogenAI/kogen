@@ -56,6 +56,27 @@ defmodule Kogen.Workspace.Checkout do
     end)
   end
 
+  @spec diff(Path.t(), String.t(), %{String.t() => String.t()}) ::
+          {:ok, binary()} | {:error, term()}
+  def diff(path, base_sha, git_env) do
+    with_private_index(path, git_env, fn index_env ->
+      with {:ok, _output} <- git_ok(path, ["read-tree", "HEAD"], index_env),
+           {:ok, _output} <- git_ok(path, ["add", "-A", "--", "."], index_env),
+           {:ok, tree} <- git_ok(path, ["write-tree"], index_env) do
+        # Git.run reads the full log; keep the patch out of the bounded Proc output tail.
+        case Git.run(
+               path,
+               ["diff", "--no-ext-diff", "--no-color", base_sha, Git.trim_line(tree)],
+               index_env
+             ) do
+          {:ok, 0, complete_diff} -> {:ok, complete_diff}
+          {:ok, _status, _output} -> {:error, :git_failed}
+          {:error, reason} -> {:error, reason}
+        end
+      end
+    end)
+  end
+
   @spec changed_paths(Path.t(), String.t(), %{String.t() => String.t()}) ::
           {:ok, [String.t()]} | {:error, term()}
   def changed_paths(path, base_sha, git_env) do
