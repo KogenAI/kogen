@@ -32,6 +32,29 @@ defmodule Kogen.DetectTest do
     assert Enum.any?(problems, &String.contains?(&1, "one-time machine prerequisite"))
   end
 
+  test "SET-11: deduplicate exact commands without assuming test paths are covered" do
+    detected = %{setup: [], fix: [], protect: [], checks: [%{name: "test", run: "mix test"}]}
+
+    proposed = %{
+      setup: [],
+      fix: [],
+      protect: [],
+      checks: [
+        %{name: "duplicate", run: "mix test"},
+        %{name: "unit", run: "mix test test/kogen"},
+        %{name: "integration", run: "mix test test/integration"},
+        %{name: "tagged", run: "mix test test/integration --include external"}
+      ]
+    }
+
+    assert Init.merge(detected, proposed).checks == [
+             %{name: "test", run: "mix test"},
+             %{name: "unit", run: "mix test test/kogen"},
+             %{name: "integration", run: "mix test test/integration"},
+             %{name: "tagged", run: "mix test test/integration --include external"}
+           ]
+  end
+
   test "SET-10: a Mix project with a formatter and credo gets setup, fixer, checks and protect" do
     mix = ~s(defp deps, do: [{:credo, "~> 1.7", only: :test}])
     d = Detect.detect(%{"mix.exs" => mix}, ~w(mix.exs .formatter.exs .credo.exs lib/a.ex))

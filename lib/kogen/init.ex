@@ -432,11 +432,15 @@ defmodule Kogen.Init do
       setup: Enum.uniq(detected.setup ++ proposed.setup),
       fix: Enum.uniq(detected.fix ++ proposed.fix),
       checks:
-        Enum.map(detected.checks, &Map.get(by_name, &1.name, &1)) ++
-          Enum.reject(proposed.checks, &MapSet.member?(names, &1.name)),
+        unique_checks(
+          Enum.map(detected.checks, &Map.get(by_name, &1.name, &1)) ++
+            Enum.reject(proposed.checks, &MapSet.member?(names, &1.name))
+        ),
       protect: Enum.uniq(detected.protect ++ proposed.protect)
     }
   end
+
+  defp unique_checks(checks), do: Enum.uniq_by(checks, & &1.run)
 
   defp instructions do
     """
@@ -460,7 +464,8 @@ defmodule Kogen.Init do
     audit reads it. The caller can correct an ineligible path once; do not omit it silently.
 
     Machine-wide bootstrap (such as mix local.hex or mix local.rebar) belongs in prerequisites, \
-    not recurring project setup.
+    not recurring project setup. Avoid overlapping test commands only when the project sources \
+    establish their coverage; configured test paths/filters can make explicit paths necessary.
 
     Propose only commands the sources name or Kogen detected. Kogen runs every command once on the \
     committed tree and keeps only those that pass, so do not leave a check out because it might \
