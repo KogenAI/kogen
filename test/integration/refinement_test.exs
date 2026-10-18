@@ -23,6 +23,34 @@ defmodule Kogen.Integration.RefinementTest do
     assert status == 0, output
     assert output =~ "refined fixture"
     assert package(context) == Map.put(before, path, updated)
+    evidence_path = Path.join(context.repo, ".kogen/local/readiness/fixture.json")
+    evidence = evidence_path |> File.read!() |> JSON.decode!()
+    assert evidence["outcome"] == "ready"
+    assert evidence["sha256"] == hash(context)
+    assert evidence["title"] == "Clarify the fixture"
+    assert evidence["scenarios"] != []
+    assert Enum.all?(evidence["scenarios"], &(&1["status"] in ["passed", "failed"]))
+    original_evidence = File.read!(evidence_path)
+    {card, 5} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+    assert card =~ "Clarify the fixture"
+    assert File.read!(evidence_path) == original_evidence
+    # Incomplete/failed/model-corrupt/scenario-corrupt records must be replaced by
+    # actual successful readiness, never rendered as though they were complete.
+    for broken <- [
+          Map.delete(evidence, "model_outcome"),
+          Map.put(evidence, "outcome", "failed"),
+          Map.put(evidence, "model", %{}),
+          Map.put(evidence, "scenarios", []),
+          Map.update!(evidence, "scenarios", fn [first | rest] ->
+            [Map.put(first, "status", "skipped") | rest]
+          end)
+        ] do
+      File.write!(evidence_path, JSON.encode!(broken))
+      {fresh_card, 5} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+      assert String.ends_with?(fresh_card, card)
+      assert evidence_path |> File.read!() |> JSON.decode!() == evidence
+    end
+
     refute File.exists?(Intent.approval_path(context.repo, "fixture"))
     {output, 5} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
     assert output =~ "intent/not_approved"
@@ -427,6 +455,66 @@ defmodule Kogen.Integration.RefinementTest do
     assert package(context) == before
     [evidence] = Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/result.json"))
     assert File.read!(evidence) =~ "interrupted"
+  end
+
+  test "a runner failure after passing scenarios never supplies reusable readiness", %{
+    suite: suite
+  } do
+    context = fixture!(suite)
+    config_path = Path.join(context.repo, Config.path())
+    config = Config.load!(context.repo)
+
+    command =
+      "printf 'run\\n' >> .kogen/local/runner-executions; " <>
+        config.acceptance_run <>
+        "; echo fresh runner failure; exit 17"
+
+    File.write!(
+      config_path,
+      Config.render(%{
+        setup: config.setup,
+        fix: config.fix,
+        checks: config.checks,
+        protect: config.protect,
+        acceptance: %{run: command, steps_dir: config.steps_dir}
+      })
+    )
+
+    for n <- 1..2 do
+      {output, 1} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+      assert output =~ "exit 17 with all scenarios passed"
+      assert output =~ "fresh runner failure"
+      refute output =~ "Approve with:"
+      refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/fixture.json"))
+      refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+
+      assert File.read!(Path.join(context.repo, ".kogen/local/runner-executions")) ==
+               String.duplicate("run\n", n)
+    end
+  end
+
+  test "readiness mutations cannot certify the changed baseline, even on repeated cards", %{
+    suite: suite
+  } do
+    context = fixture!(suite)
+    steps = Path.join(context.repo, "features/steps/integration_steps.js")
+
+    File.write!(
+      steps,
+      File.read!(steps) <>
+        """
+        const fs = require('node:fs');
+        fs.appendFileSync('.kogen/intents/fixture/intent.md', '\\n');
+        """
+    )
+
+    for _ <- 1..2 do
+      {output, 1} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+      assert output =~ "readiness inputs changed"
+      refute output =~ "Approve with:"
+      refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/fixture.json"))
+      refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+    end
   end
 
   defp fixture!(suite) do

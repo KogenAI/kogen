@@ -277,6 +277,7 @@ defmodule Kogen.Shape do
         print_blocked(paths, reason)
 
       :ready ->
+        Readiness.record_pass!(root, slug, config, sh.ready)
         File.rm_rf!(state_dir)
         new_paths = for {p, :absent} <- sh.originals, do: p
         print_ready(root, slug, sh.ready, new_paths, usage_line)

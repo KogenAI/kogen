@@ -1,7 +1,7 @@
 defmodule Kogen.Readiness do
   @moduledoc """
-  Whether an Intent is ready to build (SHP-8), run after shaping and at approval unless a card
-  already passed for the same baseline hash and HEAD: the SHP-5 rules, the model checks (VER-5)
+  Whether an Intent is ready to build (SHP-8), run after shaping and reused at approval when complete successful evidence
+  already exists for the same baseline hash and HEAD: the SHP-5 rules, the model checks (VER-5)
   and a dry run of `commands.setup` and the acceptance command that must account for every
   scenario exactly once as passed or failed.
   Also the start checks shared with Builds: tools on PATH (LOOP-12) and setup (AUT-5).
@@ -112,28 +112,82 @@ defmodule Kogen.Readiness do
     :ok
   end
 
-  @doc "Whether `.kogen/local` records a successful readiness pass for this Intent hash and HEAD."
-  def cached?(root, slug, sha, head) do
-    case File.read(readiness_path(root, slug)) do
-      {:ok, text} ->
-        case JSON.decode(text) do
-          {:ok, record} when is_map(record) ->
-            record["sha256"] == sha and record["head"] == head
+  @doc "Loads complete successful evidence for the current full baseline and HEAD, or returns nil."
+  def cached(root, slug, config) do
+    {baseline, sha, head} = inputs(root, slug, config)
 
-          _ ->
-            false
-        end
+    with {:ok, text} <- File.read(readiness_path(root, slug)),
+         {:ok, record} when is_map(record) <- JSON.decode(text),
+         true <- record["version"] == 1 and record["outcome"] == "ready",
+         true <- record["sha256"] == sha and record["head"] == head,
+         true <- record["baseline"] == baseline,
+         {:ok, intent, _} <- Intent.check(root, slug),
+         {:ok, feature} <- File.read(Path.join(root, Intent.feature(slug))),
+         {:ok, expected} <- Kogen.Gherkin.parse(feature),
+         true <- record["title"] == intent.title,
+         true <- record["model"] == json(Intent.model(intent)),
+         true <-
+           record["model_outcome"] ==
+             if(Intent.model(intent) == :none, do: "not_applicable", else: "passed"),
+         scenarios when is_list(scenarios) <- record["scenarios"],
+         true <- length(scenarios) == length(expected),
+         true <-
+           Enum.zip(expected, scenarios)
+           |> Enum.all?(fn {e, s} ->
+             is_map(s) and s["status"] in ["passed", "failed"] and
+               Map.drop(s, ["status", "detail"]) == json(e) and Map.has_key?(s, "detail") and
+               (is_nil(s["detail"]) or is_binary(s["detail"]))
+           end) do
+      checked =
+        Enum.zip_with(expected, scenarios, fn e, s ->
+          Map.merge(e, %{status: s["status"], detail: s["detail"]})
+        end)
 
-      {:error, _} ->
-        false
+      %{
+        intent: intent,
+        model: Intent.model(intent),
+        scenarios: checked,
+        baseline: baseline,
+        sha256: sha,
+        head: head
+      }
+    else
+      _ -> nil
     end
   end
 
-  @doc "Records a successful readiness pass keyed by both the baseline hash and HEAD."
-  def record_pass!(root, slug, sha, head) do
+  defp json(value), do: value |> JSON.encode!() |> JSON.decode!()
+
+  defp inputs(root, slug, config) do
+    baseline = Intent.baseline(root, slug, config)
+    {baseline, Intent.hash(root, baseline), Git.head(root)}
+  end
+
+  @doc "Publishes the original successful evidence only when the complete checked inputs still match."
+  def record_pass!(root, slug, config, ready) do
+    unless inputs(root, slug, config) == {ready.baseline, ready.sha256, ready.head},
+      do:
+        Error.raise!("intent", "not_ready", "the Intent is not ready to build", 1, [
+          "readiness inputs changed during checking or publication"
+        ])
+
     path = readiness_path(root, slug)
     File.mkdir_p!(Path.dirname(path))
-    File.write!(path, JSON.encode!(%{"sha256" => sha, "head" => head}) <> "\n")
+
+    File.write!(
+      path,
+      JSON.encode!(%{
+        "version" => 1,
+        "outcome" => "ready",
+        "sha256" => ready.sha256,
+        "head" => ready.head,
+        "baseline" => ready.baseline,
+        "title" => ready.intent.title,
+        "model" => ready.model,
+        "model_outcome" => if(ready.model == :none, do: "not_applicable", else: "passed"),
+        "scenarios" => ready.scenarios
+      }) <> "\n"
+    )
   end
 
   defp readiness_path(root, slug),
@@ -144,6 +198,9 @@ defmodule Kogen.Readiness do
   status, or raises `intent/parse`, `intent/lint` or `intent/not_ready`.
   """
   def check!(root, slug, %Config{} = config) do
+    File.rm(readiness_path(root, slug))
+    {baseline, sha, head} = inputs(root, slug, config)
+
     intent =
       case Intent.check(root, slug) do
         {:ok, intent, _} ->
@@ -197,12 +254,27 @@ defmodule Kogen.Readiness do
           ["undefined steps in acceptance.feature"]
 
         true ->
-          for p <- result.problems, String.starts_with?(p, ["report_", "unexpected"]), do: p
+          for p <- result.problems,
+              String.starts_with?(p, ["report_", "unexpected", "exit "]) do
+            if String.starts_with?(p, "exit "),
+              do: p <> "; its output:\n" <> Checks.excerpt(result.output),
+              else: p
+          end
       end
 
     case model_problems ++ dry_problems do
       [] ->
-        %{intent: intent, model: model, scenarios: result.scenarios}
+        ready = %{
+          intent: intent,
+          model: model,
+          scenarios: result.scenarios,
+          baseline: baseline,
+          sha256: sha,
+          head: head
+        }
+
+        record_pass!(root, slug, config, ready)
+        ready
 
       problems ->
         Error.raise!(

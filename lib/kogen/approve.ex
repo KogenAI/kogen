@@ -1,8 +1,7 @@
 defmodule Kogen.Approve do
   @moduledoc """
-  `kogen intent approve <slug> [<hash>]` (AUT-1, AUT-2): without a hash, check readiness and
-  print the review card; with a hash that matches the acceptance baseline, reuse a passing card
-  check for the same baseline hash and HEAD or check readiness again. Approval never starts a Build.
+  `kogen intent approve <slug> [<hash>]` (AUT-1, AUT-2): without a hash, obtain current readiness and
+  print the review card; with a hash that matches the acceptance baseline, reuse successful shaping, published refinement or card evidence for the same baseline hash and HEAD or check readiness again. Approval never starts a Build.
   """
   alias Kogen.{Bridge, Build, Config, Error, Git, Intent, Lock, Readiness}
 
@@ -34,29 +33,13 @@ defmodule Kogen.Approve do
     baseline = Intent.baseline(root, slug, config)
     before = Intent.hash(root, baseline)
     if hash && not String.starts_with?(before, hash), do: mismatch!(slug, before, hash)
-    head = Git.head(root)
-    cached = hash != nil and Readiness.cached?(root, slug, before, head)
-    ready = if cached, do: nil, else: Readiness.check!(root, slug, config)
+    ready = Readiness.cached(root, slug, config) || Readiness.check!(root, slug, config)
+    baseline = Intent.baseline(root, slug, config)
     sha = Intent.hash(root, baseline)
-    head_after = Git.head(root)
+    if hash && sha != before, do: mismatch!(slug, sha, hash)
 
-    {ready, sha, head_after} =
-      cond do
-        hash != nil and sha != before ->
-          mismatch!(slug, sha, hash)
-
-        head_after != head and (not cached or ready == nil) ->
-          ready = Readiness.check!(root, slug, config)
-          sha = Intent.hash(root, baseline)
-          if hash && sha != before, do: mismatch!(slug, sha, hash)
-          {ready, sha, Git.head(root)}
-
-        true ->
-          {ready, sha, head_after}
-      end
-
-    if ready != nil and sha == before and head_after == head,
-      do: Readiness.record_pass!(root, slug, sha, head_after)
+    if sha != ready.sha256 or baseline != ready.baseline or Git.head(root) != ready.head,
+      do: Error.raise!("intent", "not_ready", "readiness inputs changed; review again", 1)
 
     cond do
       hash == nil ->

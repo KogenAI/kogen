@@ -135,11 +135,11 @@ defmodule Kogen.Refine do
         role = config.models["shape"]
         input = [%{"role" => "user", "content" => context(state, request)}]
         tools = Tools.defs(~w(read_file list_files search_text probe)) ++ [submit_def()]
-        {changes, usage} = converse(state, role, tools, input, 0, Usage.zero())
+        {changes, ready, usage} = converse(state, role, tools, input, 0, Usage.zero())
         freeze!(state)
         # Publication is serialized with approval/Build. Each destination existed at the
         # frozen baseline; scratch checks and failed submissions never write the draft.
-        publish!(state, changes)
+        publish!(state, changes, ready)
         result!(state, "ready", %{usage: usage, changed: Map.keys(changes)})
 
         Bridge.puts(
@@ -190,7 +190,7 @@ defmodule Kogen.Refine do
     end
   end
 
-  defp publish!(s, changes) do
+  defp publish!(s, changes, ready) do
     save_files(s.evidence, "publish", changes)
     save_files(s.evidence, "rollback", Map.take(s.originals, Map.keys(changes)))
 
@@ -225,6 +225,8 @@ defmodule Kogen.Refine do
 
         Bridge.check_cancel()
       end
+
+      Readiness.record_pass!(s.root, s.slug, s.config, ready)
     rescue
       error ->
         restore_published!(s, changes)
@@ -354,8 +356,8 @@ defmodule Kogen.Refine do
     input = input ++ replay ++ outputs
 
     case outcome do
-      {:ready, files} ->
-        {files, usage}
+      {:ready, files, ready} ->
+        {files, ready, usage}
 
       {:constraint, reason} ->
         constraint!(reason)
@@ -448,7 +450,7 @@ defmodule Kogen.Refine do
         if Enum.any?(Snapshot.changed(s.scratch, s.tree, tree), &(&1 not in paths)),
           do: constraint!("A fixer changed files outside the submitted correction.")
 
-        Readiness.check!(s.scratch, s.slug, s.config)
+        ready = Readiness.check!(s.scratch, s.slug, s.config)
 
         if Snapshot.tree(s.scratch, s.head, []) != tree,
           do:
@@ -458,7 +460,7 @@ defmodule Kogen.Refine do
 
         changes = Map.new(paths, &{&1, File.read!(Path.join(s.scratch, &1))})
         save_files(s.evidence, "candidate-#{attempt}", changes)
-        {"accepted: merged draft is ready", {:ready, changes}}
+        {"accepted: merged draft is ready", {:ready, changes, ready}}
       rescue
         e in Error ->
           diagnostic = Error.render(e)

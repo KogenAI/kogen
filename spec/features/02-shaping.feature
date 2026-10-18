@@ -1,3 +1,5 @@
+# SHP-8/SHP-11: stable successful shaping and published refinement evidence is reusable
+# for the full protected baseline hash and HEAD; failed readiness is never reused.
 Feature: Shaping
   A request becomes a ready Intent (prose, Gherkin with step files, Quint
   when needed), or numbered questions about open UI/UX choices.
@@ -384,7 +386,6 @@ Feature: Shaping
     Then the exit code is 0
     When the caller runs "kogen intent approve is-even"
     Then the exit code is 5
-    And stderr contains "kogen: setup already ran for this checkout state"
     And the file ".kogen/local/setup-runs" has 1 line
 
   @SHP-2 @LOOP-12

@@ -83,7 +83,7 @@ Feature: Approval and starting a Build
     And the fake ChatGPT server received 0 requests
 
   @AUT-2
-  Scenario: Hash approval reuses readiness for the same baseline hash and HEAD
+  Scenario: Card and hash approval reuse complete readiness for the same baseline hash and HEAD
     Given the project config sets "commands.setup" to "['mkdir -p .kogen/local; if [ -e .kogen/local/readiness-ran ]; then echo again > .kogen/local/readiness-result; else echo once > .kogen/local/readiness-result; fi; touch .kogen/local/readiness-ran']"
     And the Intent "is-even" from fixture "is-even" is shaped
     When the caller noted the review card hash of "is-even"

@@ -1,4 +1,7 @@
 // Shaping readiness and authorization for one Intent (chapters 02 and 03).
+// ready abstracts complete successful evidence for the full protected baseline and HEAD.
+// Unchanged cards/approval may reuse it; changed inputs invalidate it.
+// Detailed evidence reuse Safety: .kogen/intents/reuse-ready-evidence-v2/model.qnt.
 // Abstraction: Intent content is a version number (`digest`); every write or
 // edit makes a new version. Readiness is the result of the readiness checks
 // for the current version. Only the caller approves and only the caller starts
