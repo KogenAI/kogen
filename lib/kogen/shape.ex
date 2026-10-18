@@ -873,6 +873,7 @@ defmodule Kogen.Shape do
     When the change has meaningful state, write a Quint model `model.qnt` and use instead:
     `Model: .kogen/intents/<slug>/model.qnt invariants=<Name>[,<Name>...] seed=<n> samples=<n> steps=<n>`
     (Quint 0.33, TypeScript backend; each invariant a `val` in the model; keep it small). In `## Feasibility`, list each probe you ran with what it showed and its result, e.g. `- <finding>. (probe 1: exit 0, 0.1 s)`, or `- none`.
+    For direct probes use a Boolean expression, e.g. `quint run model.qnt --backend=typescript --invariant='A and B'`; commas belong only to Intent metadata `invariants=A,B`.
     When the request changes the acceptance runner or a step library, the scenarios exercise it through an independent harness that you list in `Acceptance:`; the files that implement the requested change stay out of `Acceptance:` so the Build can change them.
 
     2. `acceptance.feature`: Gherkin scenarios that fail now and pass once the feature is implemented. Every scenario needs a Then step; no @skip, @wip, @pending, @manual or @ignore tags. Expected values live in the feature file. Use only step sentences that the existing step files define or that step files you submit define.

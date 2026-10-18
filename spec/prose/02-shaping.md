@@ -30,7 +30,7 @@ calc.is_even(n) returns True for even integers and False for odd ones; non-integ
 
 `## Tests` lists, for each behavioral rule the request adds, changes or removes, the test to update or add, chosen by the table of `docs/testing-rules.md` (SET-6): one line `- <rule>: <test to add or update> (<layer>)`, where `<layer>` is `unit`, `integration`, `scenario`, `regression` or `existing`; or `- none: <reason>` for a change with no executable behavior (copy, documentation).
 
-With a model: `Model: .kogen/intents/<slug>/model.qnt invariants=<Name>[,<Name>...] seed=<n> samples=<n> steps=<n>`.
+With a model: `Model: .kogen/intents/<slug>/model.qnt invariants=<Name>[,<Name>...] seed=<n> samples=<n> steps=<n>`. For direct probes use a Boolean expression, e.g. `quint run model.qnt --backend=typescript --invariant='A and B'`; commas belong only to Intent metadata `invariants=A,B`.
 
 ## Requirements
 
