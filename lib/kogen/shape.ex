@@ -311,7 +311,10 @@ defmodule Kogen.Shape do
   defp converse(sh, input, invalid, usage) do
     sh = Map.update(sh, :requests, 1, &(&1 + 1))
     Bridge.progress("kogen: shaping (request #{sh.requests}, #{elapsed_seconds(sh)} s)")
+    t0 = System.monotonic_time(:millisecond)
     resp = ChatGPT.respond(sh.role, instructions(), input, sh.tools)
+    wall = System.monotonic_time(:millisecond) - t0
+    progress(sh, "kogen: shape response #{Usage.line(resp.usage)} wall_ms=#{wall}")
     usage = Usage.add(usage, resp.usage)
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &replay_item/1) |> Enum.reject(&is_nil/1))
@@ -331,8 +334,22 @@ defmodule Kogen.Shape do
             if call["name"] == "probe",
               do: progress(sh, "kogen: probe: #{decode(call)["command"]}")
 
-            {outs ++ [output(call, Tools.run(call["name"], decode(call), ctx) |> Tools.cut())],
-             nil, sh}
+            tool_result = Tools.run(call["name"], decode(call), ctx)
+
+            if call["name"] == "probe" do
+              summary =
+                case Regex.run(
+                       ~r/\Aexit status: -?\d+\ntimed_out: (?:true|false)\nwall: [\d.]+ s(?:\n|\z)/,
+                       tool_result
+                     ) do
+                  [metadata] -> metadata |> String.trim() |> String.replace("\n", "; ")
+                  _ -> "tool error"
+                end
+
+              progress(sh, "kogen: probe result: #{summary}")
+            end
+
+            {outs ++ [output(call, Tools.cut(tool_result))], nil, sh}
         end
       end)
 

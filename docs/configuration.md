@@ -32,3 +32,5 @@ models:
 - **Models** and efforts live only here; no command takes model flags. Defaults are Sol 6.1 high for shaping/review and Sol 6.1 medium for building. There is no separate planner; an older `models.plan` entry is ignored.
 
 Init detects Go at the root or under `cli/`; other layouts can be supplied from the README. It deduplicates identical check commands; different commands remain because test paths and filters can change coverage. Machine bootstrap (`mix local.hex`, `mix local.rebar`) belongs in prerequisites rather than recurring setup.
+
+Progress goes to stderr: each build/review request names its model/effort, and completed shape/build/review responses report usage and wall time. Probe completion reports exit status, timeout and duration without echoing its output. A quiet in-flight request has no streaming activity indicator; these notices do not imply a deadline or add retries. Build request durations are also stored as `wall_ms` in the existing run log.

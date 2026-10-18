@@ -13,6 +13,25 @@ defmodule Kogen.Integration.ContractRegressionsTest do
     {:ok, suite: suite}
   end
 
+  test "SHP-10 probe progress reports status without echoing tool output", %{suite: suite} do
+    context =
+      fixture!(suite, [
+        {:function, "probe", %{"command" => "cat probe-output.txt; exit 7"}},
+        {:function, "submit", %{"questions" => [%{"question" => "Continue?"}]}}
+      ])
+
+    File.write!(Path.join(context.repo, "probe-output.txt"), "private fixture probe output")
+    request = Path.join(context.root, "request.txt")
+    File.write!(request, "Check feasibility before asking about display.")
+    {output, status} = Helpers.run_kogen(context, ["intent", "shape", "probe-progress", request])
+    assert status == 5, output
+    assert output =~ "kogen: probe result: exit status: 7; timed_out: false; wall:"
+    refute output =~ "private fixture probe output"
+
+    assert FakeProvider.tool_outputs(context.server)
+           |> Enum.any?(&String.contains?(&1, "private fixture probe output"))
+  end
+
   test "SHP-2 quoted executable paths and assignment values pass tool lookup without execution",
        %{suite: suite} do
     question = %{"question" => "Which display?"}

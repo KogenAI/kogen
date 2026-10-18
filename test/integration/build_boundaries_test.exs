@@ -103,6 +103,11 @@ defmodule Kogen.Integration.BuildBoundariesTest do
 
     assert status == 0, output
     assert output =~ "landed fixture"
+    assert output =~ "kogen: build request gpt-6.1-sol/medium"
+    assert output =~ "kogen: build response input="
+    assert output =~ "kogen: review request gpt-6.1-sol/high"
+    assert output =~ "kogen: review response input="
+    assert output =~ "wall_ms="
     committed = git_value!(context, ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"])
     assert "app.txt" in String.split(committed, "\n")
     refute committed =~ ".kogen/intents/staged/"

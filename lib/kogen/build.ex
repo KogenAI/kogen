@@ -750,14 +750,19 @@ defmodule Kogen.Build do
   @doc false
   def request(b, role_name, role, instructions, input, tools) do
     Bridge.check_cancel()
+    t0 = System.monotonic_time(:millisecond)
+    Bridge.progress("kogen: #{role_name} request #{role.model}/#{role.effort}")
     resp = ChatGPT.respond(role, instructions, input, tools)
+    wall = System.monotonic_time(:millisecond) - t0
+    Bridge.progress("kogen: #{role_name} response #{Usage.line(resp.usage)} wall_ms=#{wall}")
 
     Run.log(b.run, %{
       "event" => "request",
       "role" => role_name,
       "model" => role.model,
       "effort" => role.effort,
-      "usage" => resp.usage
+      "usage" => resp.usage,
+      "wall_ms" => wall
     })
 
     resp
