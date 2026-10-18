@@ -161,7 +161,7 @@ Feature: CLI and process
 
     Examples:
       | point                  | signal  | exit |
-      | plan request in flight | SIGINT  | 130  |
+      | builder request in flight | SIGINT  | 130  |
       | tool command running   | SIGTERM | 143  |
       | review approved        | SIGINT  | 130  |
       | tool command running   | SIGHUP  | 129  |

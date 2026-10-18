@@ -40,11 +40,11 @@ defmodule Kogen.ConfigTest do
     assert config.acceptance_run == input.acceptance.run
     assert config.steps_dir == input.acceptance.steps_dir
 
-    for role <- ["shape", "plan", "review"] do
+    for role <- ["shape", "review"] do
       assert config.models[role] == %{model: long_model, effort: "high"}
     end
 
-    assert config.models["build"] == Config.default_models()["build"]
+    assert config.models["build"] == %{model: long_model, effort: "medium"}
   end
 
   test "SET-8: empty generated settings retain the template's nulls and empty lists" do
@@ -78,7 +78,6 @@ defmodule Kogen.ConfigTest do
 
     assert config.models == %{
              "shape" => %{model: "gpt-6.1-sol", effort: "high"},
-             "plan" => %{model: "gpt-6.1-sol", effort: "high"},
              "build" => %{model: "gpt-6-luna", effort: "high"},
              "review" => %{model: "gpt-6.1-sol", effort: "high"}
            }
@@ -91,6 +90,13 @@ defmodule Kogen.ConfigTest do
              {"lint", "mix credo"},
              {"acceptance", "npx cucumber --format message:$KOGEN_ACCEPTANCE_REPORT"}
            ]
+  end
+
+  test "SET-8: obsolete planner settings do not add a planner role" do
+    text = Config.template() <> "  plan: {model: old-planner, effort: high}\n"
+    config = Config.parse!(text, "legacy")
+    refute Map.has_key?(config.models, "plan")
+    assert config.models["build"] == %{model: "gpt-6.1-sol", effort: "medium"}
   end
 
   test "SET-8: a plain command scalar keeps its comma and shell arguments" do

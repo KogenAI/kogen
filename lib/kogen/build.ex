@@ -1,6 +1,6 @@
 defmodule Kogen.Build do
   @moduledoc """
-  `kogen intent build <slug>` (chapters 03-07): start checks, one planning request, then the
+  `kogen intent build <slug>` (chapters 03-07): start checks, then the
   builder conversation with `shell`, `read_file`, `write_file` and `finish`; after each round the
   fixers and a verification pass; a green pass goes to the blocking review; an approved, still
   identical candidate is committed. No time or token limit: a Build ends with a commit, an
@@ -187,7 +187,7 @@ defmodule Kogen.Build do
       baseline_intact!(b)
       already_failing!(root, config, run)
       Bridge.puts("building #{slug}")
-      plan_and_build(track(%{b | phase: :building}))
+      start_builder(track(%{b | phase: :building}))
     rescue
       e in Error -> stopped(Process.get(:kogen_build), e)
     catch
@@ -259,29 +259,9 @@ defmodule Kogen.Build do
     end
   end
 
-  # ---- Plan and build (LOOP-1..7) ----
+  # ---- Build (LOOP-1..7) ----
 
-  defp plan_and_build(b) do
-    Bridge.progress("kogen: planning")
-    role = b.config.models["plan"]
-
-    resp =
-      request(
-        b,
-        "plan",
-        role,
-        plan_instructions(),
-        [
-          %{"role" => "user", "content" => context(b) <> "\n\nWrite a short implementation plan."}
-        ],
-        []
-      )
-
-    b = %{b | usage: Usage.add(b.usage, resp.usage)}
-    plan = text(resp.items)
-    input = [%{"role" => "user", "content" => context(b) <> "\n\n# Plan\n\n" <> plan}]
-    loop(b, input)
-  end
+  defp start_builder(b), do: loop(b, [%{"role" => "user", "content" => context(b)}])
 
   # The latest Build state, for the report of a Build that stops on an error or an interrupt.
   defp track(b) do
@@ -783,13 +763,6 @@ defmodule Kogen.Build do
     resp
   end
 
-  def text(items) do
-    items
-    |> Enum.filter(&(&1["type"] == "message"))
-    |> Enum.flat_map(&(&1["content"] || []))
-    |> Enum.map_join("", &(&1["text"] || ""))
-  end
-
   # ---- Prompts (LOOP-2) ----
 
   defp context(b) do
@@ -836,13 +809,9 @@ defmodule Kogen.Build do
     """
   end
 
-  defp plan_instructions do
-    "You plan the implementation of an approved Intent in this repository. Reply with a short, concrete plan: the files to change or add, what to change, what existing code to remove or rewire, and how the acceptance scenarios will pass. Keep to what the Intent asks; no extra features, settings, abstractions or defensive code."
-  end
-
   defp builder_instructions do
     """
-    You implement an approved Intent in this Git repository with four tools: shell, read_file, write_file and finish. Follow the plan and the project's README and conventions.
+    You implement an approved Intent in this Git repository with four tools: shell, read_file, write_file and finish. Follow the approved Intent and the project's README and conventions.
 
     Rules:
     - Write and update tests as the Intent's `## Tests` section and the testing rules say, and run the affected tests with shell while you work.

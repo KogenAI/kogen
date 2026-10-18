@@ -203,7 +203,7 @@ Feature: Approval and starting a Build
     And HEAD is unchanged
 
   @AUT-5 @VER-8
-  Scenario: A setup that changes the approved baseline stops the Build before planning
+  Scenario: A setup that changes the approved baseline stops the Build before the builder starts
     Given the project config sets "commands.setup" to "['if [ -e .kogen/local/weaken ]; then echo ignore=E >> .style.cfg; fi']"
     And the Intent "is-even" from fixture "is-even" is approved
     And the file ".kogen/local/weaken" is changed outside Kogen

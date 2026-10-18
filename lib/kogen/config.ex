@@ -16,8 +16,7 @@ defmodule Kogen.Config do
   # The one owner of the per-role defaults (SET-8); the template below is derived from it.
   @default_models %{
     "shape" => %{model: "gpt-6.1-sol", effort: "high"},
-    "plan" => %{model: "gpt-6.1-sol", effort: "high"},
-    "build" => %{model: "gpt-6-luna", effort: "max"},
+    "build" => %{model: "gpt-6.1-sol", effort: "medium"},
     "review" => %{model: "gpt-6.1-sol", effort: "high"}
   }
 
@@ -32,7 +31,7 @@ defmodule Kogen.Config do
       steps_dir: null  # where shaping writes step-definition files
   protect: []          # check configuration the Build must not change, e.g. .credo.exs
   models:
-  #{for role <- ~w(shape plan build review), into: "", do: "  #{role}:\n    model: #{@default_models[role].model}\n    effort: #{@default_models[role].effort}\n"}\
+  #{for role <- ~w(shape build review), into: "", do: "  #{role}:\n    model: #{@default_models[role].model}\n    effort: #{@default_models[role].effort}\n"}\
   """
   def template, do: @template
 
@@ -248,6 +247,10 @@ defmodule Kogen.Config do
   defp checks(node), do: {[{line(node), "commands.checks must be a list"}], []}
 
   defp models({:map, _, pairs}) do
+    # Older project files may retain a planner model. It is ignored: building
+    # starts directly and never issues a separate planning request.
+    pairs = Enum.reject(pairs, fn {role, _, _} -> role == "plan" end)
+
     Enum.reduce(pairs, {[], @default_models}, fn {role, line, node}, {probs, models} ->
       with true <- Map.has_key?(@default_models, role),
            {:map, _, kv} <- node,

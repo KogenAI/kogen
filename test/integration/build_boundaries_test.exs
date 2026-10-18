@@ -98,7 +98,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
       {:function, "write_file",
        %{"path" => ".kogen/intents/staged/new.md", "content" => "new unrelated draft\n"}}
 
-    context = fixture!(suite, List.insert_at(build_script(), 2, extra))
+    context = fixture!(suite, [extra | build_script()])
     {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
 
     assert status == 0, output
@@ -250,7 +250,6 @@ defmodule Kogen.Integration.BuildBoundariesTest do
 
   defp build_script do
     [
-      {:text, "Plan the fixture edit."},
       {:function, "write_file", %{"path" => "app.txt", "content" => "verified edit\n"}},
       {:function, "finish", %{"summary" => "The fixture edit is ready."}},
       {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}

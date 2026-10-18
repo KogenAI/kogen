@@ -24,7 +24,7 @@ Feature: Reviewing
     And the review request contains "acceptance: passed (3 scenarios)"
     And the review request contains "nothing the Intent did not ask for"
     And the review request contains "no test is needlessly duplicated"
-    And the review request does not contain the builder's plan, tool calls or tool results
+    And the review request does not contain the builder's conversation, tool calls or tool results
 
   @REV-1 @model:build
   Scenario: No review while verification is red

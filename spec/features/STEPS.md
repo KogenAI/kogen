@@ -16,7 +16,7 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 - **Process groups.** "the Build command's process group" is the group of the active command of the Build, of shaping or of approval; "processes started by the Build's commands" are the members of every process group the Build's commands ran in. The test records them when the commands start and checks them itself.
 - **Review requests.** "the review request" is the request with the `submit_review` tool; "review <n>" is the n-th one of the Build.
 - **Intent steps.** "the Intent is shaped" writes the fixture's Intent files; "is approved" also records an approval for their hash; "has landed" approves the Intent and builds it with script `build-correct-first-try`, so its commit exists and its approval is gone (GIT-8). "the hash of its acceptance baseline" is the hash that AUT-2 defines, computed by the step itself.
-- **Pause points.** `plan request in flight`, `tool command running` and `review approved` are points of the fake server's script. `git commit running` is reached when the Build's `git commit` has started and is held by the step "a pre-commit hook that sleeps for <n> seconds"; the test, not the server, waits for it.
+- **Pause points.** `builder request in flight`, `tool command running` and `review approved` are points of the fake server's script. `git commit running` is reached when the Build's `git commit` has started and is held by the step "a pre-commit hook that sleeps for <n> seconds"; the test, not the server, waits for it.
 - **Live projects.** In the `@live` outline, "example" is the example app in `examples/` of the repository, copied into the run folder with a fixed baseline commit; "kogen" is the candidate Kogen source (REL-3); "external" is a real project kept outside the repository, run with its own settings file (`@external`, REL-2).
 - **Waiting.** "has sent the feedback of verification pass <n>" waits until the builder request carrying that pass's feedback reached the fake server.
 - **Tags.** `@live` scenarios are the real-use script, not the deterministic suite.
@@ -56,7 +56,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `shape-undefined-step`, `shape-failing-invariant` | valid format; readiness fails as named; the same files are submitted 3 times (SHP-4) |
 | `shape-probes-then-writes` | `probe python3 -c 'print(1.5 % 2)'`, then submits `is-even` with the probe in `## Feasibility` |
 | `shape-probe-hangs-then-writes` | `probe sleep 600`, then submits `is-even` recording the timed-out probe. Its SHP-10 scenario uses a test-only Go driver around the actual installed core: verify its outgoing 300000 ms policy, contract only that execution request to 200 ms, and return the real production executor’s timeout result. Assert process-group death, scratch removal and continued shaping. This composes policy and real timeout-path evidence; it does not measure 300 seconds of elapsed time. |
-| `build-correct-first-try` | plan; correct implementation; `finish` |
+| `build-correct-first-try` | correct implementation; `finish` |
 | `build-wrong-then-repair` | wrong `is_even`; after feedback, the correct one |
 | `build-wrong-forever` | always a wrong implementation of `calc.py` and `tests/test_calc.py` |
 | `build-unformatted-then-formatted` | correct but unformatted, then formatted |
@@ -118,10 +118,8 @@ One JavaScript regular expression per line.
 ^no\ review\ request\ was\ sent$
 ^nothing\ is\ staged$
 ^request\ (\d+)\ contains\ "([^"]*)"$
-^request\ (\d+)\ contains\ the\ plan\ returned\ by\ response\ (\d+)$
 ^request\ (\d+)\ contains\ the\ text\ of\ the\ file\ "([^"]*)"$
 ^request\ (\d+)\ offers\ exactly\ the\ tools\ "([^"]*)"$
-^request\ (\d+)\ offers\ no\ tools$
 ^request\ (\d+)\ uses\ model\ "([^"]*)"\ with\ effort\ "([^"]*)"$
 ^stderr\ contains\ "([^"]*)"$
 ^stderr\ matches\ "([^"]*)"$
@@ -239,7 +237,7 @@ One JavaScript regular expression per line.
 ^the\ review\ request\ contains\ the\ diff\ of\ "([^"]*)"\ against\ the\ start\ HEAD$
 ^the\ review\ request\ contains\ the\ full\ text\ of\ the\ committed\ "([^"]*)"$
 ^the\ review\ request\ contains\ the\ text\ of\ the\ file\ "([^"]*)"$
-^the\ review\ request\ does\ not\ contain\ the\ builder's\ plan,\ tool\ calls\ or\ tool\ results$
+^the\ review\ request\ does\ not\ contain\ the\ builder's\ conversation,\ tool\ calls\ or\ tool\ results$
 ^the\ review\ request\ offers\ exactly\ the\ tools\ "([^"]*)"$
 ^the\ review\ request\ uses\ model\ "([^"]*)"\ with\ effort\ "([^"]*)"$
 ^the\ run\ log\ shows\ fix\-(\d+)\ once\ before\ verification\ pass\ (\d+)$

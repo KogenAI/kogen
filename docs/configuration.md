@@ -18,8 +18,7 @@ commands:
 protect: ['.formatter.exs']       # check configuration a Build must not change
 models:
   shape:  {model: gpt-6.1-sol, effort: high}
-  plan:   {model: gpt-6.1-sol, effort: high}
-  build:  {model: gpt-6-luna, effort: max}
+  build:  {model: gpt-6.1-sol, effort: medium}
   review: {model: gpt-6.1-sol, effort: high}
 ```
 
@@ -29,4 +28,4 @@ models:
 - **Services.** Test databases and other services are the project's own: start them before Kogen, and put what prepares them (for example `mix ecto.create`) in `setup`. A check that needs a stopped service fails in `kogen init` and is left out; add it back once the service runs.
 - **Acceptance.** Kogen ships Cucumber 13.3.0 and runs it on its own Node, so the project needs no Node of its own. A project that already has `@cucumber/cucumber` in its `package.json` keeps its own, run as `"$KOGEN_NODE" node_modules/@cucumber/cucumber/bin/cucumber.js ...`. Step files go in `steps_dir` and use `require('@cucumber/cucumber')`.
 - **protect** lists paths or globs of check configuration (linter rules, formatter settings, suppression files). They are part of every Intent's approved baseline, so a Build cannot pass a check by weakening it.
-- **Models** and efforts live only here; no command takes model flags.
+- **Models** and efforts live only here; no command takes model flags. Defaults are Sol 6.1 high for shaping/review and Sol 6.1 medium for building. There is no separate planner; an older `models.plan` entry is ignored.

@@ -1,5 +1,5 @@
 Feature: Building
-  One plan request, then the builder with shell, read_file, write_file and
+  The builder uses shell, read_file, write_file and
   finish, until verification is green and the review approves. No time or
   token limit.
 
@@ -11,24 +11,22 @@ Feature: Building
     And the caller is signed in to ChatGPT
 
   @LOOP-1 @LOOP-2 @LOOP-3 @SET-6
-  Scenario: A plan request without tools, then the builder with the Intent, README, commands and protected paths
+  Scenario: The builder starts directly with the approved Intent and project context
     Given the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
-    And request 1 uses model "gpt-6.1-sol" with effort "high"
-    And request 1 offers no tools
-    And request 2 uses model "gpt-6-luna" with effort "max"
-    And request 2 offers exactly the tools "shell, read_file, write_file, finish"
-    And request 2 contains the plan returned by response 1
-    And request 2 contains the text of the file ".kogen/intents/is-even/acceptance.feature"
-    And request 2 contains the text of the file "README.md"
-    And request 2 contains "python3 -m unittest"
-    And request 2 contains "features/steps/is_even_steps.js"
-    And request 2 contains ".style.cfg"
-    And request 2 contains "background"
-    And request 2 contains the text of the file ".kogen/intents/is-even/intent.md"
-    And request 2 contains "Use the narrowest test that exercises the rule"
+    And request 1 uses model "gpt-6.1-sol" with effort "medium"
+    And request 1 offers exactly the tools "shell, read_file, write_file, finish"
+    And request 1 contains the text of the file ".kogen/intents/is-even/acceptance.feature"
+    And request 1 contains the text of the file "README.md"
+    And request 1 contains "python3 -m unittest"
+    And request 1 contains "features/steps/is_even_steps.js"
+    And request 1 contains ".style.cfg"
+    And request 1 contains "background"
+    And request 1 contains the text of the file ".kogen/intents/is-even/intent.md"
+    And request 1 contains "Use the narrowest test that exercises the rule"
+    And the fake ChatGPT server received 2 requests
 
   @LOOP-5 @LOOP-6
   Scenario: Shell results include stderr, and several streamed calls run in order
@@ -85,7 +83,7 @@ Feature: Building
     And the fake ChatGPT server plays script "build-context-overflow"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
-    And stdout contains "candidate/context_exhausted: the conversation no longer fits gpt-6-luna's context; edits are left in place"
+    And stdout contains "candidate/context_exhausted: the conversation no longer fits gpt-6.1-sol's context; edits are left in place"
     And stdout contains "  edited: calc.py"
     And HEAD is unchanged
 
@@ -126,7 +124,6 @@ Feature: Building
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then stderr contains "kogen: checking test before the Build changes anything"
-    And stderr contains "kogen: planning"
     And stderr contains "kogen: verifying (pass 1)"
     And stderr contains "kogen: pass 1: all checks passed"
     And stderr contains "kogen: reviewing (review 1)"

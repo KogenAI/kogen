@@ -7,7 +7,6 @@ const FAKE_ACCESS_TOKEN = 'KOGEN_ACCEPTANCE_FAKE_ACCESS_TOKEN_DO_NOT_LEAK_202610
 const FAKE_REFRESH_TOKEN = 'KOGEN_ACCEPTANCE_FAKE_REFRESH_TOKEN_20261016';
 const ROTATED_REFRESH_TOKEN = 'KOGEN_ACCEPTANCE_ROTATED_REFRESH_TOKEN_20261016';
 const DEFAULT_SCOPE = 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
-const PLAN = 'Implement the approved Intent with the existing calculator API, then run its acceptance scenarios and unit tests.';
 
 function flatten(value, out = []) {
   if (typeof value === 'string') out.push(value);
@@ -26,7 +25,7 @@ function functionCall(name, args, id) {
   };
 }
 
-function message(text, id = 'plan') {
+function message(text, id = 'text') {
   return { type: 'message', id: `item_${id}`, role: 'assistant', content: [{ type: 'output_text', text }] };
 }
 
@@ -251,7 +250,7 @@ class FakeServers {
     }
     const body = await decodeRequest(req);
     const tools = (body.tools || []).map(tool => tool.name);
-    const kind = !Array.isArray(body.tools) ? 'plan' : tools.includes('submit_configuration') ? 'init' : tools.includes('submit_review') ? 'review' : tools.includes('submit') ? 'shape' : 'build';
+    const kind = !Array.isArray(body.tools) ? 'unknown' : tools.includes('submit_configuration') ? 'init' : tools.includes('submit_review') ? 'review' : tools.includes('submit') ? 'shape' : 'build';
     const record = { order: this.requests.length + 1, kind, body, tools, text: flatten(body).join('\n'), receivedAt: Date.now() };
     this.requests.push(record);
     for (const item of body.input || []) {
@@ -329,7 +328,7 @@ class FakeServers {
   }
 
   pauseMatches(point, kind, items) {
-    if (point === 'plan request in flight') return kind === 'plan';
+    if (point === 'builder request in flight') return kind === 'build';
     if (point === 'finish') return kind === 'build' && items.some(item => item.name === 'finish');
     if (point === 'review approved') return kind === 'review' && items.some(item => item.name === 'submit_review' && safeJson(item.arguments).verdict === 'approve');
     return false;
@@ -399,10 +398,6 @@ class FakeServers {
     if (name === '401-then-ok' && this.requests.length === 1) return { status: 401, error: { code: 'unauthorized', message: 'unauthorized' } };
     if (name === 'stream-cut-then-ok' && this.requests.length === 1) return { cut: true };
 
-    if (record.kind === 'plan') {
-      if (name === 'build-then-500-always') return { items: [message(PLAN)] };
-      return { items: [message(PLAN)] };
-    }
     if (record.kind === 'init') return this.initResponse(name, ordinal);
     if (record.kind === 'shape') return this.shapeResponse(name, ordinal, record);
     if (record.kind === 'review') return this.reviewResponse(name, ordinal, record);
@@ -693,7 +688,6 @@ module.exports = {
   FAKE_REFRESH_TOKEN,
   ROTATED_REFRESH_TOKEN,
   DEFAULT_SCOPE,
-  PLAN,
   flatten,
   functionCall,
   message,

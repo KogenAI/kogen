@@ -49,7 +49,6 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
   test "REV-4/REV-5 retries one invalid review verdict and lands after approval", %{suite: suite} do
     context =
       fixture!(suite, [
-        {:text, "Plan the small fixture change."},
         {:function, "write_file", %{"path" => "app.txt", "content" => "verified edit\n"}},
         {:function, "finish", %{"summary" => "The fixture change is ready."}},
         {:function, "submit_review",
@@ -128,7 +127,6 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
   } do
     context =
       fixture!(suite, [
-        {:text, "Plan the fixture change."},
         {:function, "write_file", %{"path" => "app.txt", "content" => "verified edit\n"}},
         refused_response()
       ])
@@ -151,7 +149,6 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
   } do
     context =
       fixture!(suite, [
-        {:text, "Plan the fixture change."},
         {:function, "write_file", %{"path" => "app.txt", "content" => "verified edit\n"}},
         {:function, "shell",
          %{
@@ -204,7 +201,7 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
     File.write!(lock, System.pid() <> "\n")
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
 
-    _output = Helpers.await_output(port, "kogen: planning")
+    _output = Helpers.await_output(port, "kogen: building (round 1)")
     Process.sleep(250)
     assert File.exists?(lock)
     assert FakeProvider.auth_requests(context.server) == []
@@ -249,7 +246,6 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
       fixture!(
         suite,
         [
-          {:text, "Plan the command probe."},
           {:function, "shell", %{"command" => command}},
           {:function, "finish", %{"summary" => "The command probe is complete."}},
           approve_review()
@@ -290,7 +286,6 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
 
   defp editable_build_script do
     [
-      {:text, "Plan the fixture edit."},
       {:function, "write_file", %{"path" => "app.txt", "content" => "verified edit\n"}},
       {:function, "finish", %{"summary" => "The fixture edit is ready."}},
       approve_review()

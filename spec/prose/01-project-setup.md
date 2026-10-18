@@ -56,8 +56,7 @@ commands:
 protect: []          # check configuration the Build must not change, e.g. .credo.exs
 models:
   shape:  {model: gpt-6.1-sol, effort: high}
-  plan:   {model: gpt-6.1-sol, effort: high}
-  build:  {model: gpt-6-luna, effort: max}
+  build:  {model: gpt-6.1-sol, effort: medium}
   review: {model: gpt-6.1-sol, effort: high}
 ```
 

@@ -97,8 +97,7 @@ function configText() {
     'protect: [.style.cfg]',
     'models:',
     '  shape:  {model: gpt-6.1-sol, effort: high}',
-    '  plan:   {model: gpt-6.1-sol, effort: high}',
-    '  build:  {model: gpt-6-luna, effort: max}',
+    '  build:  {model: gpt-6.1-sol, effort: medium}',
     '  review: {model: gpt-6.1-sol, effort: high}',
     '',
   ].join('\n');
@@ -215,12 +214,9 @@ function initTemplate() {
     '  shape:',
     '    model: gpt-6.1-sol',
     '    effort: high',
-    '  plan:',
-    '    model: gpt-6.1-sol',
-    '    effort: high',
     '  build:',
-    '    model: gpt-6-luna',
-    '    effort: max',
+    '    model: gpt-6.1-sol',
+    '    effort: medium',
     '  review:',
     '    model: gpt-6.1-sol',
     '    effort: high',
@@ -395,14 +391,6 @@ function requestAssertions(world, label, args) {
   const request = world.server.requests[ordinal - 1];
   assert.ok(request, `no request ${ordinal} was received`);
   const actualText = request.text;
-  if (label.includes(' contains the plan returned by response ')) {
-    const responseOrdinal = Number(args[1]);
-    const response = world.server.responses.find(item => item.order === responseOrdinal);
-    const plan = (response?.items || []).filter(item => item.type === 'message')
-      .flatMap(item => item.content || []).filter(item => item.type === 'output_text').map(item => item.text).join('\n');
-    assert.ok(plan && actualText.includes(plan), 'request did not include the plan response');
-    return;
-  }
   if (label.includes(' contains the text of the file ')) {
     const text = fs.readFileSync(projectFile(world, args[1]), 'utf8');
     assert.ok(actualText.includes(text), `request ${ordinal} did not contain ${args[1]}`);
@@ -410,10 +398,6 @@ function requestAssertions(world, label, args) {
   }
   if (label.includes(' offers exactly the tools ')) {
     assert.equal(request.tools.join(', '), args[1]);
-    return;
-  }
-  if (label.includes(' offers no tools')) {
-    assert.equal(request.tools.length, 0);
     return;
   }
   if (label.includes(' uses model ')) {
@@ -480,7 +464,6 @@ function reviewAssertions(world, label, args) {
       assert.notEqual(item.type, 'function_call_output', 'review input includes a function_call_output');
       assert.notEqual(item.role, 'assistant', 'review input includes an assistant message');
     }
-    assert.ok(!request.text.includes('Implement the approved Intent with the existing calculator API, then run its acceptance scenarios and unit tests.'), 'review input includes the builder plan');
     for (const response of world.server.responses.filter(item => item.kind === 'build')) {
       for (const item of response.items.filter(value => value.type === 'message')) {
         for (const content of item.content || []) {
