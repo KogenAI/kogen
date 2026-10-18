@@ -62,6 +62,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `shape-undefined-step`, `shape-failing-invariant` | valid format; readiness fails as named; the same files are submitted 3 times (SHP-4) |
 | `shape-probes-then-writes` | `probe python3 -c 'print(1.5 % 2)'`, then submits `is-even` with the probe in `## Feasibility` |
 | `shape-probe-hangs-then-writes` | `probe sleep 600`, then submits `is-even` recording the timed-out probe. Its SHP-10 scenario uses a test-only Go driver around the actual installed core: it verifies the outgoing 300000 ms policy, shortens only that execution request's deadline to 200 ms, and returns the real production executor's timeout result. The scenario asserts process-group death, scratch removal and continued shaping. This composes policy and real timeout-path evidence; it does not measure 300 seconds of elapsed time. |
+| `build-reports-blocker` | builder-only protected-path report with evidence, then forbidden later write/finish in the same response; stops as builder-reported, not independently proven |
 | `build-correct-first-try` | correct implementation; `finish` |
 | `build-wrong-then-repair` | wrong `is_even`; after feedback, the correct one |
 | `build-wrong-forever` | always a wrong implementation of `calc.py` and `tests/test_calc.py` |

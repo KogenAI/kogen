@@ -5,7 +5,7 @@
 // is green only when every check passed and nothing changed while it ran.
 // There is no time or token limit. A Build ends in exactly one of these ways (chapter 04):
 // commit (landed), baseline_changed, head_moved, hook_changed_commit, commit_failed,
-// context_exhausted, review_invalid, review_blocked, provider, interrupted.
+// context_exhausted, review_invalid, review_blocked, build_blocked, provider, interrupted.
 module build {
   type Phase = Loop | Verifying | Reviewing | RepairingReview | FinalVerifying | Committing | Done | Failed | Interrupted
 
@@ -51,6 +51,21 @@ module build {
       passVersion' = passVersion, reviewedVersion' = reviewedVersion, invalidReviews' = invalidReviews,
       headMoved' = headMoved, commits' = commits, committedVersion' = committedVersion,
     },
+  }
+
+  // LOOP-7: only the builder may report a protected contradiction; validity abstracts
+  // the exact envelope/current protected paths/evidence. Existing guards take priority.
+  action blockerWith(valid: bool): bool = all {
+    phase == Loop,
+    if (not(valid)) move(Loop, cand, passVersion, reason)
+    else if (not(baselineIntact)) move(Failed, cand, passVersion, "baseline_changed")
+    else if (headMoved) move(Failed, cand, passVersion, "head_moved")
+    else move(Failed, cand, passVersion, "build_blocked"),
+  }
+
+  action blocker = all {
+    nondet valid = Set(true, false).oneOf()
+    blockerWith(valid),
   }
 
   // VER-6/7/9: fixers ran; now the checks. VER-8: a changed baseline stops the Build at once.
@@ -146,7 +161,7 @@ module build {
     },
   }
 
-  action step = any { modelTurn, verify, reviewEdit, review, finalVerify, commit, world }
+  action step = any { modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
 
   // ---- Invariants ----
   // GIT-3/6: a kept commit holds exactly the reviewed, green candidate; baseline intact; same HEAD.
@@ -163,11 +178,20 @@ module build {
   // failing checks continue with their current repair owner; unresolved review blockers stop.
   val FailureReasons = terminal(phase) implies Set(
     "commit", "baseline_changed", "head_moved", "hook_changed_commit", "commit_failed",
-    "context_exhausted", "review_invalid", "review_blocked", "provider", "interrupted").contains(reason)
+    "context_exhausted", "review_invalid", "review_blocked", "build_blocked", "provider", "interrupted").contains(reason)
   val Safety = CommitOnlyWhenEligible and AtMostOneCommit and ReviewNeverOverridesChecks
     and BaselineChangeNeverCommits and FailureReasons
 
   // ---- Tests ----
+  run builderBlockerPreservesCandidateTest =
+    init.then(move(Loop, 3, -1, ""))
+      .then(blockerWith(true))
+      .expect(phase == Failed and reason == "build_blocked" and cand == 3 and commits == 0)
+
+  run invalidBuilderBlockerContinuesTest =
+    init.then(blockerWith(false))
+      .expect(phase == Loop and reason == "" and commits == 0)
+
   run redThenGreenReviewedCommitsTest =
     init
       .then(move(Verifying, 1, -1, ""))

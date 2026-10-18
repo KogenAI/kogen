@@ -1,7 +1,7 @@
 defmodule Kogen.Build do
   @moduledoc """
   `kogen intent build <slug>` (chapters 03-07): start checks, then the
-  builder conversation with `shell`, `read_file`, `write_file` and `finish`; after each round the
+  builder conversation with `shell`, `read_file`, `write_file`, `finish` and `report_blocker`; after each round the
   fixers and a verification pass; a green pass goes to independent review/fix, followed by
   external verification of repairs; an approved, verified, still identical candidate is committed. No time or token limit: a Build ends with a commit, an
   integrity stop, a provider failure, context exhaustion, an invalid/unresolved review or an interrupt.
@@ -171,7 +171,8 @@ defmodule Kogen.Build do
       review: 0,
       repairs: 0,
       last_pass: nil,
-      last_review: nil
+      last_review: nil,
+      blocker: nil
     }
 
     Bridge.send_msg(%{
@@ -291,7 +292,7 @@ defmodule Kogen.Build do
         role,
         builder_instructions(),
         input,
-        Tools.defs(~w(shell read_file write_file finish))
+        Tools.defs(~w(shell read_file write_file finish report_blocker))
       )
 
     b = track(%{b | usage: Usage.add(b.usage, resp.usage)})
@@ -305,9 +306,11 @@ defmodule Kogen.Build do
         args = Shape.decode(call)
 
         result =
-          if call["name"] == "finish",
-            do: :finish,
-            else: call["name"] |> Tools.run(args, ctx) |> Tools.cut()
+          case call["name"] do
+            "finish" -> :finish
+            "report_blocker" -> report_blocker(b, args, call)
+            name -> name |> Tools.run(args, ctx) |> Tools.cut()
+          end
 
         Run.log(b.run, %{
           "event" => "tool_call",
@@ -337,6 +340,51 @@ defmodule Kogen.Build do
       loop(b, input)
     else
       builder_turn(b, input ++ outputs)
+    end
+  end
+
+  defp report_blocker(b, args, call) do
+    paths = args["paths"]
+
+    valid =
+      Enum.sort(Map.keys(args)) == ~w(evidence paths reason) and is_list(paths) and paths != [] and
+        Enum.all?(paths, &(is_binary(&1) and &1 in b.baseline)) and
+        Enum.uniq(paths) == paths and
+        Enum.all?([args["reason"], args["evidence"]], &(is_binary(&1) and String.trim(&1) != ""))
+
+    if valid do
+      baseline_intact!(b)
+      head_intact!(b)
+      blocker = Map.put(args, "classification", "BUILDER-REPORTED")
+      b = track(%{b | blocker: blocker})
+
+      Run.log(b.run, %{
+        "event" => "tool_call",
+        "call_id" => call["call_id"],
+        "name" => "report_blocker",
+        "arguments" => Run.cap(call["arguments"] || ""),
+        "result" => "BUILDER-REPORTED build_blocked"
+      })
+
+      Run.log(b.run, %{"event" => "builder_blocker", "blocker" => blocker})
+
+      throw(
+        {:failed, b,
+         %Error{
+           class: "candidate",
+           reason: "build_blocked",
+           detail:
+             "BUILDER-REPORTED protected-baseline contradiction; edits are left in place; this report is not independently proven",
+           lines: [
+             "paths: #{Enum.join(paths, ", ")}",
+             "reason: #{Tools.cut(args["reason"])}",
+             "evidence: #{Tools.cut(args["evidence"])}"
+           ],
+           exit: 1
+         }}
+      )
+    else
+      "invalid blocker: supply exactly nonempty unique current protected paths, reason and observed evidence strings; no write permission is granted; continue ordinary implementation repairs"
     end
   end
 
@@ -508,26 +556,32 @@ defmodule Kogen.Build do
     end
   end
 
-  # ---- Commit (GIT-3..8) ----
-
-  defp commit(b, pass, review) do
-    Bridge.progress("kogen: committing")
-    Bridge.check_cancel()
-    baseline_intact!(b)
+  defp head_intact!(b) do
     head = Git.head(b.root)
 
     if head != b.start do
+      current_head = if head, do: String.slice(head, 0, 8), else: "(missing)"
+
       throw(
         {:failed, b,
          %Error{
            class: "candidate",
            reason: "head_moved",
            detail:
-             "HEAD moved from #{String.slice(b.start, 0, 8)} to #{String.slice(head, 0, 8)} during the Build; nothing was committed",
+             "HEAD moved from #{String.slice(b.start, 0, 8)} to #{current_head} during the Build; nothing was committed",
            exit: 1
          }}
       )
     end
+  end
+
+  # ---- Commit (GIT-3..8) ----
+
+  defp commit(b, pass, review) do
+    Bridge.progress("kogen: committing")
+    Bridge.check_cancel()
+    baseline_intact!(b)
+    head_intact!(b)
 
     if Snapshot.tree(b.root, b.start, b.excluded) != pass.tree do
       # Something changed after the reviewed pass: verify and review again.
@@ -716,11 +770,9 @@ defmodule Kogen.Build do
 
     Run.log(b.run, %{"event" => "outcome", "outcome" => reason})
 
-    Run.write(
-      b.run,
-      "result.json",
-      result(b, reason, %{"edited" => edited, "still_failing" => still})
-    )
+    extra = %{"edited" => edited, "still_failing" => still}
+    extra = if b.blocker, do: Map.put(extra, "blocker", b.blocker), else: extra
+    Run.write(b.run, "result.json", result(b, reason, extra))
   end
 
   defp result(b, outcome, extra) do
@@ -812,7 +864,7 @@ defmodule Kogen.Build do
 
   defp builder_instructions do
     """
-    You implement an approved Intent in this Git repository with four tools: shell, read_file, write_file and finish. Follow the approved Intent and the project's README and conventions.
+    You implement an approved Intent in this Git repository with shell, read_file, write_file, finish and report_blocker. Follow the approved Intent and the project's README and conventions.
 
     Rules:
     - Start with the relevant implementation and test owners. Batch independent reads, search for specific symbols instead of surveying the whole repository, and implement a small testable increment before expanding inspection. Reuse information already read; do not repeatedly reread unchanged source.
@@ -822,7 +874,7 @@ defmodule Kogen.Build do
     - Editable dependency manifests and lockfiles may change for an approved feature, but that does not permit weakening, removing or bypassing configured checks or changing actual verification configuration. Preserve every check and its behavior. Protection is whole-file: a protected combined manifest that defines checks has no dependency-only exception.
     - shell runs /bin/sh -c in the repository root with stdin closed, so a command that asks for input fails at once. Commands have no time limit. Run finite tests and browser suites in the foreground until completion, even when they take minutes; do not poll them through repeated sleep/tail/ps calls. Only persistent commands (dev servers, watch modes) run in the background with output to a log file (`cmd > log 2>&1 &`); read their logs and stop them with kill when done.
     - Do not commit, push, stash, reset or switch branches; Kogen commits after verification and review.
-    - When the implementation is complete, call finish. Kogen runs the fixers, the acceptance scenarios, the model and every check. Verification failures come back to you; fix them and call finish again. After a green pass an independent reviewer investigates and repairs supported defects, then Kogen verifies any changed contents. You cannot end the Build by giving up.
+    - When the implementation is complete, call finish. Kogen runs the fixers, the acceptance scenarios, the model and every check. Verification failures come back to you; fix them and call finish again. After a green pass an independent reviewer investigates and repairs supported defects, then Kogen verifies any changed contents. Repair ordinary implementation failures and expected missing-feature red. If observed evidence demonstrates that current protected files contradict the approved behavior or contain a fixture defect, use report_blocker with their exact protected paths, a concrete reason and observed command/step/error evidence. Do not change production semantics solely to accommodate a demonstrated bad fixture. A valid report stops as BUILDER-REPORTED build_blocked with candidate/index/approval preserved; it is not independently proven and grants no protected edits, automatic refinement or approval. Plain blocked text does not stop the Build.
     """
   end
 end

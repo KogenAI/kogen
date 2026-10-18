@@ -8,6 +8,8 @@ Kogen takes one requested feature through five steps in your own Git repository:
 4. **Review and fix**: an independent reviewer investigates and repairs concrete defects. Kogen verifies changed final files; failures stay with that reviewer. Maintenance preferences are notes. An unresolved substantive blocker stops with preserved work instead of restarting the builder/review loop.
 5. **Commit**: one commit of exactly the verified and reviewed contents, with your own Git configuration.
 
+A builder that observes a contradiction in protected fixtures can report it and stop with `candidate/build_blocked`. The report is labelled builder-reported, with evidence retained alongside the candidate, original index and approval; it does not authorize edits or skip successful checks. Ordinary implementation failures continue through repair.
+
 ChatGPT ("Sign in with ChatGPT", using your plan) is the only provider. Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
 
 ## Status

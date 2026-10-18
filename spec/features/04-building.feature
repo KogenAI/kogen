@@ -1,6 +1,6 @@
 Feature: Building
-  The builder uses shell, read_file, write_file and
-  finish, until verification is green and the review approves. No time or
+  The builder uses shell, read_file, write_file, finish and
+  report_blocker, until verification is green and the review approves. No time or
   token limit.
 
   Background:
@@ -17,7 +17,7 @@ Feature: Building
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
     And request 1 uses model "gpt-6.1-sol" with effort "medium"
-    And request 1 offers exactly the tools "shell, read_file, write_file, finish"
+    And request 1 offers exactly the tools "shell, read_file, write_file, finish, report_blocker"
     And request 1 contains the text of the file ".kogen/intents/is-even/acceptance.feature"
     And request 1 contains the text of the file "README.md"
     And request 1 contains "python3 -m unittest"
@@ -27,6 +27,21 @@ Feature: Building
     And request 1 contains the text of the file ".kogen/intents/is-even/intent.md"
     And request 1 contains "Use the narrowest test that exercises the rule"
     And the fake ChatGPT server received 2 requests
+
+  @LOOP-7 @VER-12 @GIT-8 @model:build
+  Scenario: A builder-reported protected contradiction stops without later mutations or gates
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-reports-blocker"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 1
+    And stdout contains "candidate/build_blocked"
+    And stdout contains "BUILDER-REPORTED"
+    And stdout contains "not independently proven"
+    And stdout contains "observed protected fixture evidence"
+    And the file "late.txt" does not exist
+    And HEAD is unchanged
+    And the file ".kogen/local/approvals/is-even.json" exists
+    And the fake ChatGPT server received 1 request
 
   @LOOP-5 @LOOP-6
   Scenario: Shell results include stderr, and several streamed calls run in order
@@ -58,7 +73,7 @@ Feature: Building
     And no process started by the Build's commands is running
 
   @LOOP-7 @VER-12
-  Scenario: A Build keeps repairing as long as it takes; only the caller stops it
+  Scenario: Ordinary implementation failures keep repairing until the caller stops it
     Given the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-wrong-forever"
     And the caller runs "kogen intent build is-even" in the background

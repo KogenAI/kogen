@@ -1,6 +1,6 @@
 # 04 Building
 
-A Build is Kogen's own model/tool loop: a builder conversation with four tools that edits the checkout until verification (05) is green and review (06) approves. There is no time or token limit on a Build; a Build ends in exactly one of these ways: `commit` (landed), `baseline_changed`, `head_moved`, `hook_changed_commit`, `commit_failed`, `context_exhausted`, `review_invalid`, `review_blocked`, `provider` or `interrupted`.
+A Build is Kogen's own model/tool loop: a builder conversation with five tools that edits the checkout until verification (05) is green and review (06) approves. There is no time or token limit on a Build; a Build ends in exactly one of these ways: `commit` (landed), `baseline_changed`, `head_moved`, `hook_changed_commit`, `commit_failed`, `context_exhausted`, `review_invalid`, `review_blocked`, `build_blocked`, `provider` or `interrupted`.
 
 **LOOP-1 — Build directly.** After preflight, the Build starts the builder conversation on `models.build` with the approved Intent and project context. There is no separate planning model request. The builder may plan its work within that conversation.
 
@@ -14,6 +14,7 @@ A Build is Kogen's own model/tool loop: a builder conversation with four tools t
 | `read_file` | `path`, optional `start_line`, `end_line` | numbered lines, or an error |
 | `write_file` | `path`, `content` | `ok`, or an error |
 | `finish` | `summary` | starts verification |
+| `report_blocker` | `paths`, `reason`, `evidence` | validated builder-reported protected contradiction stops without a commit |
 
 There is no patch tool.
 
@@ -23,7 +24,7 @@ There is no patch tool.
 
 **LOOP-6 — Responses.** Each response is streamed (GPT-7); tool calls are assembled from their argument fragments and run in order. A call with invalid arguments or an unknown tool gets an error result; the Build goes on.
 
-**LOOP-7 — Finish.** A `finish` call, or a response without tool calls, ends the round: Kogen runs the fixers and verification (05), then review (06) after a green pass. Failing pre-review checks become the next builder message. A green candidate enters one independent review/fix stage (06); its repairs receive external final verification and failures remain with that reviewer. Unresolved substantive review blockers stop with preserved work instead of returning to the builder. The builder cannot end its own stage by giving up.
+**LOOP-7 — Finish.** A `finish` call, or a response without tool calls, ends the round: Kogen runs the fixers and verification (05), then review (06) after a green pass. Failing pre-review checks become the next builder message. A green candidate enters one independent review/fix stage (06); its repairs receive external final verification and failures remain with that reviewer. Unresolved substantive review blockers stop with preserved work instead of returning to the builder. Ordinary implementation failures and expected missing-feature red still require repair; plain blocked text is not a terminal result. The builder may call `report_blocker` with exactly `paths`, `reason` and `evidence`: a nonempty unique list of concrete paths in the current approved protected baseline, nonempty contradiction reason and observed command/step/error evidence strings. Malformed, empty, duplicate or out-of-scope reports return ordinary tool feedback and grant no write permission. Before accepting a report, existing baseline and HEAD guards take priority. A valid report stops immediately with `candidate/build_blocked` (exit 1), labelled `BUILDER-REPORTED`, explicitly not independently proven. Record its paths/reason/evidence/classification in the run log and optional `blocker` result metadata. No later tool call in that same response executes, even after an earlier `finish`; no post-report fixer, verification, review or commit starts. The existing failure path preserves candidate edits, original index and approval. This is no successful gate bypass, automatic refinement, reapproval, replay or resume. Do not distort production semantics solely to satisfy a demonstrated protected fixture defect.
 
 **LOOP-8 — Output size.** A tool result given to the model is at most 16 KiB in all: the first 4 KiB, the marker `[... <n> bytes omitted ...]`, then the last bytes that still fit.
 

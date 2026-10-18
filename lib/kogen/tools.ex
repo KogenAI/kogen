@@ -57,6 +57,15 @@ defmodule Kogen.Tools do
         ["path", "content"]
       )
 
+  defp def_for("report_blocker"),
+    do:
+      fun(
+        "report_blocker",
+        "Stop with a BUILDER-REPORTED protected-baseline contradiction. Supply concrete current protected file paths, the contradiction, and observed command/step/error evidence. Ordinary implementation failures or expected missing-feature red require repair, not a blocker. This never authorizes protected writes or skips a successful gate.",
+        %{"paths" => %{"type" => "array", "items" => @str}, "reason" => @str, "evidence" => @str},
+        ["paths", "reason", "evidence"]
+      )
+
   defp def_for("finish"),
     do:
       fun(

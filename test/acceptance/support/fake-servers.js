@@ -502,6 +502,13 @@ class FakeServers {
     const writeFiles = list => list.map((file, i) => functionCall('write_file', file, `build_${name}_${ordinal}_${i}`));
     const finish = () => functionCall('finish', { summary: 'Implementation complete.' }, `finish_${name}_${ordinal}`);
     const calls = list => ({ items: [...writeFiles(list), finish()] });
+    if (name === 'build-reports-blocker') {
+      return { items: [functionCall('report_blocker', {
+        paths: ['features/steps/is_even_steps.js'],
+        reason: 'The builder reports a contradiction in this protected fixture.',
+        evidence: 'observed protected fixture evidence',
+      }, 'blocker'), functionCall('write_file', { path: 'late.txt', content: 'must not execute' }, 'late'), finish()] };
+    }
     if (name === 'build-runs-command') {
       const command = args.command || 'true';
       if (!this.hasToolOutput(record, 'shell', value => value.command === command)) {
