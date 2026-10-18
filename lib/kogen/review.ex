@@ -101,7 +101,7 @@ defmodule Kogen.Review do
             "kogen: review #{n}: final verification failed; continuing targeted repairs"
           )
 
-          "Final verification of your repairs failed. Fix these failures and regressions from your edits; do not restart a whole-change critique.\n" <>
+          "Final verification of your repairs failed. Fix these failures and regressions from your edits; do not restart a whole-change critique. If observed evidence demonstrates a protected fixture defect, use submit_review changes with a blocking finding at that protected path instead of a production workaround, including a test-facing hidden comment.\n" <>
             Build.pass_feedback(b, final_pass, "submit_review")
         end
 
@@ -412,6 +412,8 @@ defmodule Kogen.Review do
     - Does it leave obsolete behavior, unrewired callers or debugging output that affects the requested outcome? Remove trivial dead code while editing nearby code if useful; harmless cleanup by itself is not a delivery blocker.
 
     Make scoped repairs yourself and add or update meaningful regression coverage. Run focused/fail-fast checks and configured fixers as needed. Do not manually rerun the entire acceptance/project gate at the end: after your approval Kogen verifies changed contents externally. Preserve useful tests and every configured check. Never change the approved baseline, protected files, HEAD or the user's staged work; do not commit. If final verification fails, you receive the failures in this same conversation: repair them and regressions from your edits, without restarting the whole critique.
+
+    Do not change production semantics or add test-facing hidden HTML comments solely to satisfy a demonstrated invalid protected fixture, such as a raw serialized-HTML assertion that disagrees with correctly escaped visible text. Investigate the actual output and observed failure first. If the protected fixture cannot be repaired within this Build, use the existing submit_review verdict `changes` with a `blocking` finding naming its protected path, line and observed evidence. This stop remains available after an earlier approve and failed final verification; it preserves work and does not authorize protected edits or automatically refine, reapprove or resume.
 
     Call submit_review when the scoped review and repairs are complete: verdict `approve` has no unresolved substantive blockers; notes never block. Use `changes` only when a demonstrated substantive blocker cannot be repaired within the approved scope or constraints. It stops the Build with preserved work; it does not start another builder/reviewer cycle. Each finding is {path, line, severity: blocking or note, message}, with path a file of the repository. The approved acceptance files cannot change in this Build, so never ask for that.
     """
