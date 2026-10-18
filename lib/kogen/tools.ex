@@ -34,7 +34,7 @@ defmodule Kogen.Tools do
     do:
       fun(
         "shell",
-        "Run a command with /bin/sh -c in the repository root. stdin is closed. Returns the exit status and the combined stdout and stderr. Start long-running commands (dev servers, watch modes) in the background with output to a log file, read the log, and stop them yourself.",
+        "Run a command with /bin/sh -c in the repository root. stdin is closed. Returns the exit status and the combined stdout and stderr. Commands have no time limit. Run finite commands, including tests and browser suites, in the foreground until completion; do not poll them through repeated sleep/tail/ps calls. Only persistent commands (dev servers, watch modes) belong in the background with output to a log file; read their logs and stop them yourself.",
         %{"command" => @str},
         ["command"]
       )
