@@ -74,30 +74,8 @@ defmodule Kogen.Build do
     end
   end
 
-  defp checked(root, slug, config, start) do
-    Intent.exists!(root, slug)
-
-    approval =
-      Intent.approval(root, slug) ||
-        Error.raise!(
-          "intent",
-          "not_approved",
-          "#{slug} is not approved; review it with kogen intent approve #{slug}",
-          5
-        )
-
-    baseline = Intent.baseline(root, slug, config)
-    sha = Intent.hash(root, baseline)
-
-    if sha != approval["sha256"] do
-      Error.raise!(
-        "intent",
-        "changed_since_approval",
-        "#{slug} changed after approval and is now #{String.slice(sha, 0, 8)}; review it again with kogen intent approve #{slug}",
-        1
-      )
-    end
-
+  @doc false
+  def clean_paths!(root, slug) do
     # GIT-1: only this Intent's folder and acceptance files, and other Intents' own folders, may
     # be uncommitted; the other folders stay out of the candidate and the commit (VER-10).
     changed = Git.changed_paths(root)
@@ -128,10 +106,36 @@ defmodule Kogen.Build do
     end
 
     # Exclude the entire other Intent, including files created after this check.
-    excluded =
-      other_paths
-      |> Enum.map(&(&1 |> Path.split() |> Enum.take(3) |> Path.join()))
-      |> Enum.uniq()
+    other_paths
+    |> Enum.map(&(&1 |> Path.split() |> Enum.take(3) |> Path.join()))
+    |> Enum.uniq()
+  end
+
+  defp checked(root, slug, config, start) do
+    Intent.exists!(root, slug)
+
+    approval =
+      Intent.approval(root, slug) ||
+        Error.raise!(
+          "intent",
+          "not_approved",
+          "#{slug} is not approved; review it with kogen intent approve #{slug}",
+          5
+        )
+
+    baseline = Intent.baseline(root, slug, config)
+    sha = Intent.hash(root, baseline)
+
+    if sha != approval["sha256"] do
+      Error.raise!(
+        "intent",
+        "changed_since_approval",
+        "#{slug} changed after approval and is now #{String.slice(sha, 0, 8)}; review it again with kogen intent approve #{slug}",
+        1
+      )
+    end
+
+    excluded = clean_paths!(root, slug)
 
     intent = Intent.read(root, slug)
     model = Intent.model(intent)

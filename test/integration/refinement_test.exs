@@ -150,20 +150,228 @@ defmodule Kogen.Integration.RefinementTest do
     end
   end
 
-  test "SHP-11 approved drafts and stale exact hashes refuse before model requests", %{
+  test "SHP-11 an approved correction archives the exact approval and requires a fresh approval",
+       %{
+         suite: suite
+       } do
+    context = approved_fixture!(suite)
+    before = package(context)
+    approval = File.read!(Intent.approval_path(context.repo, "fixture"))
+    index = index(context)
+    path = Intent.intent_md("fixture")
+    updated = String.replace(before[path], "# Preserve", "# Clarify")
+    script!(context, [submission([%{"path" => path, "content" => updated}])])
+    {output, 0} = refine(context)
+    assert output =~ "refined fixture"
+    assert package(context) == Map.put(before, path, updated)
+    assert index(context) == index
+    refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+
+    [archived] =
+      Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/revoked-approval.json"))
+
+    assert File.read!(archived) == approval
+    {output, 5} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert output =~ "intent/not_approved"
+    {output, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)])
+    assert output =~ "approved fixture"
+    assert Intent.approval(context.repo, "fixture")["sha256"] == hash(context)
+  end
+
+  test "SHP-11 stale hashes, approval mismatches and dirty implementation refuse before model requests",
+       %{
+         suite: suite
+       } do
+    for kind <- [:hash, :approval, :dirty] do
+      context = approved_fixture!(suite)
+
+      if kind == :approval,
+        do:
+          File.write!(
+            Path.join(context.repo, Intent.intent_md("fixture")),
+            package(context)[Intent.intent_md("fixture")] <> "\nChanged after approval.\n"
+          )
+
+      if kind == :dirty,
+        do: File.write!(Path.join(context.repo, "app.txt"), "unfinished candidate\n")
+
+      before = package(context)
+      approval = File.read!(Intent.approval_path(context.repo, "fixture"))
+      index = index(context)
+      requests = FakeProvider.provider_requests(context.server)
+
+      {output, status} =
+        refine(context, if(kind == :hash, do: String.duplicate("0", 64), else: hash(context)))
+
+      assert status == if(kind == :dirty, do: 5, else: 1), output
+
+      assert output =~
+               if(kind == :dirty, do: "environment/dirty_tree", else: "intent/refinement_stale")
+
+      assert package(context) == before
+      assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
+      assert index(context) == index
+      assert FakeProvider.provider_requests(context.server) == requests
+    end
+  end
+
+  test "SHP-11 failed and cancelled approved corrections preserve package, raw approval and index",
+       %{suite: suite} do
+    for kind <- [:provider, :invalid, :not_ready, :cancel] do
+      context = approved_fixture!(suite)
+      before = package(context)
+      approval = File.read!(Intent.approval_path(context.repo, "fixture"))
+      index = index(context)
+      marker = Path.join(context.root, "probe-started")
+
+      actions =
+        case kind do
+          :provider ->
+            [
+              {:http, 400,
+               %{"error" => %{"code" => "invalid_request_error", "message" => "fixture refusal"}}}
+            ]
+
+          :invalid ->
+            List.duplicate(
+              submission([%{"path" => "app.txt", "content" => "not an artifact"}]),
+              3
+            )
+
+          :not_ready ->
+            List.duplicate(
+              submission([
+                %{
+                  "path" => Intent.feature("fixture"),
+                  "content" =>
+                    "Feature: Fixture\n  Scenario: Undefined\n    Then a new undefined sentence\n"
+                }
+              ]),
+              3
+            )
+
+          :cancel ->
+            [{:function, "probe", %{"command" => "touch '#{marker}' && sleep 10"}}]
+        end
+
+      script!(context, actions)
+
+      if kind == :cancel do
+        port =
+          Helpers.start_kogen(context, [
+            "intent",
+            "refine",
+            "fixture",
+            hash(context),
+            request!(context)
+          ])
+
+        Helpers.wait_for_file!(marker)
+        {output, 3} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+        assert output =~ "environment/build_running"
+        Helpers.signal!(context, port, "INT")
+        {_output, 130} = Helpers.await_exit(port, "", 20_000)
+      else
+        {output, status} = refine(context)
+        assert status != 0, output
+      end
+
+      assert package(context) == before
+      assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
+      assert index(context) == index
+    end
+  end
+
+  test "SHP-11 failed approval revocation restores a read-only artifact and retains approval", %{
     suite: suite
   } do
-    context = Helpers.project!(suite, [], staged_intent: false)
-    on_exit(fn -> Helpers.cleanup_case(context) end)
+    context = approved_fixture!(suite)
     before = package(context)
-    requests = FakeProvider.provider_requests(context.server)
-    {output, 5} = refine(context)
-    assert output =~ "intent/refinement_approved"
-    File.rm!(Intent.approval_path(context.repo, "fixture"))
-    {output, 1} = refine(context, String.duplicate("0", 64))
-    assert output =~ "intent/refinement_stale"
+    approval = File.read!(Intent.approval_path(context.repo, "fixture"))
+    index = index(context)
+    marker = Path.join(context.root, "probe-started")
+    path = Intent.intent_md("fixture")
+
+    script!(context, [
+      {:function, "probe", %{"command" => "touch '#{marker}' && sleep 1"}},
+      submission([
+        %{"path" => path, "content" => String.replace(before[path], "# Preserve", "# Clarify")}
+      ])
+    ])
+
+    port =
+      Helpers.start_kogen(context, [
+        "intent",
+        "refine",
+        "fixture",
+        hash(context),
+        request!(context)
+      ])
+
+    Helpers.wait_for_file!(marker)
+    # The scratch candidate is already copied; the live destination becomes read-only
+    # before publication, which can still replace it through its writable directory.
+    File.chmod!(Path.join(context.repo, path), 0o444)
+    mode = File.stat!(Path.join(context.repo, path)).mode
+    [evidence] = Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*"))
+    File.mkdir!(Path.join(evidence, "revoked-approval.json"))
+    {output, status} = Helpers.await_exit(port, "", 20_000)
+    assert status != 0, output
     assert package(context) == before
-    assert FakeProvider.provider_requests(context.server) == requests
+    assert File.stat!(Path.join(context.repo, path)).mode == mode
+    assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
+    assert index(context) == index
+  end
+
+  test "SHP-11 changes to HEAD, raw approval or index prevent approved publication", %{
+    suite: suite
+  } do
+    for kind <- [:head, :approval, :index] do
+      context = approved_fixture!(suite)
+      before = package(context)
+      marker = Path.join(context.root, "probe-started")
+      path = Intent.intent_md("fixture")
+
+      script!(context, [
+        {:function, "probe", %{"command" => "touch '#{marker}' && sleep 1"}},
+        submission([
+          %{"path" => path, "content" => String.replace(before[path], "# Preserve", "# Clarify")}
+        ])
+      ])
+
+      port =
+        Helpers.start_kogen(context, [
+          "intent",
+          "refine",
+          "fixture",
+          hash(context),
+          request!(context)
+        ])
+
+      Helpers.wait_for_file!(marker)
+
+      case kind do
+        :head ->
+          Helpers.git!(context, ["commit", "--allow-empty", "-qm", "External HEAD"])
+
+        :approval ->
+          File.write!(
+            Intent.approval_path(context.repo, "fixture"),
+            File.read!(Intent.approval_path(context.repo, "fixture")) <> "\n"
+          )
+
+        :index ->
+          Helpers.git!(context, ["add", Intent.feature("fixture")])
+      end
+
+      approval = File.read!(Intent.approval_path(context.repo, "fixture"))
+      index = index(context)
+      {output, 1} = Helpers.await_exit(port, "", 20_000)
+      assert output =~ "intent/refinement_stale"
+      assert package(context) == before
+      assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
+      assert index(context) == index
+    end
   end
 
   test "SHP-11 an external edit while refining is preserved and prevents publication", %{
@@ -226,6 +434,19 @@ defmodule Kogen.Integration.RefinementTest do
     on_exit(fn -> Helpers.cleanup_case(context) end)
     File.rm!(Intent.approval_path(context.repo, "fixture"))
     context
+  end
+
+  defp approved_fixture!(suite) do
+    context = Helpers.project!(suite, [], staged_intent: false)
+    on_exit(fn -> Helpers.cleanup_case(context) end)
+    context
+  end
+
+  defp index(context) do
+    {path, 0} =
+      Helpers.git!(context, ["rev-parse", "--path-format=absolute", "--git-path", "index"])
+
+    File.read!(String.trim(path))
   end
 
   defp package(context),

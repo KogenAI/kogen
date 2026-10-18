@@ -1,5 +1,5 @@
 defmodule Kogen.Refine do
-  @moduledoc "Targeted corrections to existing, unapproved ready drafts (SHP-11)."
+  @moduledoc "Targeted corrections to existing ready packages, requiring fresh approval (SHP-11)."
   alias Kogen.{
     Bridge,
     Build,
@@ -23,7 +23,7 @@ defmodule Kogen.Refine do
     try do
       config = Config.load!(root)
       Intent.exists!(root, slug)
-      unapproved!(root, slug)
+      approval = approval_bytes(root, slug)
 
       if config.acceptance_run == nil or config.steps_dir == nil,
         do:
@@ -67,11 +67,22 @@ defmodule Kogen.Refine do
       baseline = Intent.baseline(root, slug, config)
       if Intent.hash(root, baseline) != expected, do: stale!()
 
+      if approval != nil do
+        unless match?({:ok, %{"sha256" => ^expected}}, JSON.decode(approval)), do: stale!()
+        Build.clean_paths!(root, slug)
+      end
+
       head =
         Git.head(root) ||
           Error.raise!("environment", "no_head", "commit the project before refining", 3)
 
       tree = Snapshot.tree(root, head, [])
+
+      index_path =
+        Git.ok!(root, ["rev-parse", "--path-format=absolute", "--git-path", "index"])
+        |> String.trim()
+
+      index = index_digest(index_path)
       ChatGPT.require_login!()
       Readiness.tools!(root, config)
       id = Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
@@ -89,6 +100,7 @@ defmodule Kogen.Refine do
       File.mkdir_p!(evidence)
       Bridge.progress("kogen: refinement evidence: #{evidence}")
       File.write!(Path.join(evidence, "request.md"), request)
+      if approval, do: File.write!(Path.join(evidence, "original-approval.json"), approval)
       save_files(evidence, "original", originals)
 
       state = %{
@@ -99,6 +111,9 @@ defmodule Kogen.Refine do
         expected: expected,
         head: head,
         tree: tree,
+        approval: approval,
+        index_path: index_path,
+        index: index,
         evidence: evidence,
         originals: originals,
         allowed: editable(root, slug, config, files)
@@ -151,25 +166,38 @@ defmodule Kogen.Refine do
     end
   end
 
-  defp unapproved!(root, slug) do
-    if Intent.approval(root, slug),
-      do:
-        Error.raise!(
-          "intent",
-          "refinement_approved",
-          "#{slug} already has an approval; refinement only corrects unapproved drafts. Preserve this package and use a new Intent for a changed request.",
-          5
-        )
+  defp approval_bytes(root, slug) do
+    case File.read(Intent.approval_path(root, slug)) do
+      {:ok, bytes} ->
+        bytes
+
+      {:error, :enoent} ->
+        nil
+
+      {:error, reason} ->
+        raise File.Error,
+          reason: reason,
+          action: "read approval",
+          path: Intent.approval_path(root, slug)
+    end
+  end
+
+  defp index_digest(path) do
+    case File.read(path) do
+      {:ok, bytes} -> :crypto.hash(:sha256, bytes)
+      {:error, :enoent} -> nil
+      {:error, reason} -> raise File.Error, reason: reason, action: "read index", path: path
+    end
   end
 
   defp publish!(s, changes) do
     save_files(s.evidence, "publish", changes)
+    save_files(s.evidence, "rollback", Map.take(s.originals, Map.keys(changes)))
 
     for {path, _} <- changes do
-      File.chmod!(
-        Path.join([s.evidence, "publish", path]),
-        File.stat!(Path.join(s.root, path)).mode
-      )
+      mode = File.stat!(Path.join(s.root, path)).mode
+      File.chmod!(Path.join([s.evidence, "publish", path]), mode)
+      File.chmod!(Path.join([s.evidence, "rollback", path]), mode)
     end
 
     Bridge.check_cancel()
@@ -184,26 +212,52 @@ defmodule Kogen.Refine do
         File.rename!(Path.join([s.evidence, "publish", path]), Path.join(s.root, path))
         Bridge.check_cancel()
       end
+
+      if s.approval do
+        if approval_bytes(s.root, s.slug) != s.approval or
+             index_digest(s.index_path) != s.index or Git.head(s.root) != s.head,
+           do: stale!()
+
+        File.rename!(
+          Intent.approval_path(s.root, s.slug),
+          Path.join(s.evidence, "revoked-approval.json")
+        )
+
+        Bridge.check_cancel()
+      end
     rescue
       error ->
         restore_published!(s, changes)
+        restore_approval!(s)
         reraise error, __STACKTRACE__
     catch
       {:cancel, signal} ->
         restore_published!(s, changes)
+        restore_approval!(s)
         throw({:cancel, signal})
     end
+  end
+
+  defp restore_approval!(%{approval: nil}), do: :ok
+
+  defp restore_approval!(s) do
+    archived = Path.join(s.evidence, "revoked-approval.json")
+
+    if approval_bytes(s.root, s.slug) == nil and File.read(archived) == {:ok, s.approval},
+      do: File.rename!(archived, Intent.approval_path(s.root, s.slug))
   end
 
   defp restore_published!(s, changes) do
     # Undo only our own completed replacements, never a subsequent external edit.
     for {path, content} <- changes,
+        regular_path?(s.root, path),
         File.read(Path.join(s.root, path)) == {:ok, content},
-        do: File.write!(Path.join(s.root, path), Map.fetch!(s.originals, path))
+        do: File.rename!(Path.join([s.evidence, "rollback", path]), Path.join(s.root, path))
   end
 
   defp freeze!(s) do
-    if Intent.approval(s.root, s.slug) != nil or Git.head(s.root) != s.head or
+    if approval_bytes(s.root, s.slug) != s.approval or index_digest(s.index_path) != s.index or
+         Git.head(s.root) != s.head or
          Intent.hash(s.root, Intent.baseline(s.root, s.slug, s.config)) != s.expected or
          Snapshot.tree(s.root, s.head, []) != s.tree,
        do: stale!()
@@ -469,7 +523,7 @@ defmodule Kogen.Refine do
   end
 
   defp instructions do
-    "Correct only the requested points in an existing ready, unapproved Intent. Read/probe as needed. Reuse all unchanged artifacts: submit_refinement contains only complete replacement contents of changed existing editable files, never the whole package. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package stays unchanged unless the full candidate is ready and its frozen hash/HEAD still match. End with submit_refinement."
+    "Correct only the requested points in an existing ready Intent. Read/probe as needed. Reuse all unchanged artifacts: submit_refinement contains only complete replacement contents of changed existing editable files, never the whole package. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package and approval stay unchanged unless the full candidate is ready and its frozen hash/HEAD/tree/index/approval still match. Successful correction revokes any old approval; the caller must explicitly approve the resulting full hash. End with submit_refinement."
   end
 
   defp submit_def do

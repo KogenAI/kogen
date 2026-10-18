@@ -48,10 +48,10 @@ module shaping {
   }
 
   // SHP-11: scratch corrections publish only ready, hash-bound changes to an
-  // unapproved ready draft. Failure/staleness leaves the original untouched.
+  // ready package. A matching approval is revoked on success; failure preserves it.
   action refineWith(expected: int, succeeds: bool): bool = all {
-    st == Shaped and ready and approval == -1,
-    if (expected == digest and succeeds)
+    Set(Shaped, Approved).contains(st) and ready,
+    if (expected == digest and (approval == -1 or approval == digest) and succeeds)
       setVars(Shaped, digest + 1, true, -1, startedDigest, "refine", attempts)
     else
       setVars(st, digest, ready, approval, startedDigest, "refine_refused", attempts),
@@ -100,10 +100,11 @@ module shaping {
   val NoApprovalWhileAsking = st == Asking implies approval == -1
   // AUT-2: a current approval implies the approved version passed readiness.
   val CurrentApprovalIsReady = (approval != -1 and approval == digest) implies ready
-  // AUT-2 / SHP-7: only the caller's approve (or a committed Build) changes the approval.
+  // AUT-2 / SHP-7: only the caller grants approval; refinement and commit can revoke it.
   // A regression guard on these actions; the evidence for AUT-2 and SHP-7 is their scenarios.
   val ApprovalOnlyByCaller =
-    approval != prevApproval implies Set("approve", "built").contains(lastAction)
+    approval != prevApproval implies
+      (lastAction == "approve" or (approval == -1 and Set("built", "refine").contains(lastAction)))
   // AUT-3: a Build runs only on the approved, current version.
   val BuildOnlyOnCurrentApproval =
     st == Building implies (startedDigest == approval and approval == digest and ready)
@@ -126,6 +127,16 @@ module shaping {
     init.then(setVars(Shaped, 1, true, -1, -1, "write", 1))
       .then(refineWith(0, true)).then(refineWith(1, false))
       .expect(st == Shaped and digest == 1 and ready and approval == -1)
+
+  run approvedRefinementRevokesApprovalTest =
+    init.then(setVars(Approved, 1, true, 1, -1, "approve", 1))
+      .then(refineWith(1, true)).then(start)
+      .expect(st == Shaped and digest == 2 and approval == -1 and lastAction == "start_refused")
+
+  run failedApprovedRefinementRetainsApprovalTest =
+    init.then(setVars(Approved, 1, true, 1, -1, "approve", 1))
+      .then(refineWith(0, true)).then(refineWith(1, false))
+      .expect(st == Approved and digest == 1 and approval == 1 and ready)
 
   run askThenWriteThenApproveTest =
     init.then(shapeAsk).then(

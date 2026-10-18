@@ -32,7 +32,7 @@ Run kogen <command> to see its subcommands and options.
 
 Commands:
   shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)
-  refine <slug> <sha256> <file|->  Correct existing files of an unapproved ready draft
+  refine <slug> <sha256> <file|->  Correct existing files; require fresh approval
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
 

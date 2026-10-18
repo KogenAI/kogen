@@ -28,6 +28,27 @@ Feature: Shaping
     Then the exit code is 5
     And stdout contains "intent/not_approved"
 
+  @SHP-11 @AUT-2 @model:shaping
+  Scenario: Correcting an approved package revokes approval and requires a fresh exact approval
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "refine-title"
+    When the caller refines "is-even" with its current baseline and stdin:
+      """
+      Clarify the existing title only.
+      """
+    Then the exit code is 0
+    And stdout contains "refined is-even"
+    And the file ".kogen/intents/is-even/intent.md" contains "# Clarify the is-even helper"
+    And the file ".kogen/intents/is-even/acceptance.feature" is unchanged
+    And the file "features/steps/is_even_steps.js" is unchanged
+    And the file ".kogen/local/approvals/is-even.json" does not exist
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 5
+    And stdout contains "intent/not_approved"
+    When the caller approves "is-even" with the hash from its review card
+    Then the exit code is 0
+    And stdout contains "approved is-even"
+
   @SHP-11 @model:shaping
   Scenario: An unsupported correction preserves the ready draft
     Given the Intent "is-even" from fixture "is-even" is shaped
