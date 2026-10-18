@@ -13,6 +13,65 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     {:ok, suite: suite}
   end
 
+  test "REV-2 review retains full source without replaying new files twice", %{suite: suite} do
+    before = "outside-diff-sentinel\n" <> String.duplicate("context\n", 20) <> "old marker\n"
+    after_text = String.replace(before, "old marker", "new marker")
+
+    additions = [
+      {:function, "write_file",
+       %{"path" => "new-source.txt", "content" => "new-source-sentinel\n"}},
+      {:function, "write_file", %{"path" => "existing-context.txt", "content" => after_text}},
+      {:function, "shell",
+       %{
+         "command" =>
+           "chmod 755 new-source.txt && printf '\\000\\001\\002' > new-data.bin && mv rename-from.txt rename-to.txt"
+       }},
+      {:function, "shell",
+       %{
+         "command" =>
+           "git init -q new-submodule && git -C new-submodule -c user.name=Fixture -c user.email=fixture@example.test -c commit.gpgsign=false commit --allow-empty -qm 'Nested fixture'"
+       }}
+    ]
+
+    context = fixture!(suite, additions ++ build_script())
+    File.write!(Path.join(context.repo, "existing-context.txt"), before)
+    File.write!(Path.join(context.repo, "rename-from.txt"), "renamed-source-sentinel\n")
+    Helpers.git!(context, ["add", "existing-context.txt", "rename-from.txt"])
+
+    Helpers.git!(context, [
+      "commit",
+      "--only",
+      "-qm",
+      "Add review context fixture",
+      "--",
+      "existing-context.txt",
+      "rename-from.txt"
+    ])
+
+    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status == 0, output
+    [review] = FakeProvider.review_requests(context.server)
+    material = hd(review.json["input"])["content"]
+    assert length(:binary.matches(material, "new-source-sentinel")) == 1
+    assert material =~ "100755"
+    assert material =~ "--- new-data.bin (added; mode 100644) (binary)"
+    assert material =~ "deleted file mode 100644"
+    assert material =~ "--- rename-from.txt (deleted)"
+    assert material =~ "--- rename-to.txt (added; mode 100644)\nrenamed-source-sentinel"
+
+    {submodule_output, 0} = Helpers.git!(context, ["-C", "new-submodule", "rev-parse", "HEAD"])
+    submodule_commit = String.trim(submodule_output)
+
+    assert material =~
+             "--- new-submodule (added; mode 160000)\nSubproject commit #{submodule_commit}"
+
+    refute material =~ "--- new-submodule (deleted)"
+    assert material =~ "-old marker"
+    assert material =~ "+new marker"
+    assert material =~ after_text
+    assert length(:binary.matches(material, "outside-diff-sentinel")) == 1
+  end
+
   for {stage, reason} <- [{"setup", "setup_failed"}, {"checks", "check_failing"}] do
     test "GIT-8 restores the saved index when startup #{stage} fails", %{suite: suite} do
       context = fixture!(suite, [])

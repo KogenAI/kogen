@@ -30,5 +30,15 @@ defmodule Kogen.Snapshot do
   end
 
   @doc "The unified diff between two trees."
-  def diff(root, a, b), do: Git.ok!(root, ["diff", "--no-color", "--no-ext-diff", a, b])
+  def diff(root, a, b, paths \\ :all)
+  def diff(_root, _a, _b, []), do: ""
+
+  def diff(root, a, b, paths) do
+    selection = if paths == :all, do: [], else: ["--" | Enum.map(paths, &":(literal)#{&1}")]
+
+    Git.ok!(
+      root,
+      ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", a, b] ++ selection
+    )
+  end
 end

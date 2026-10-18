@@ -1,7 +1,7 @@
 defmodule Kogen.Review do
   @moduledoc """
   The blocking review (chapter 06): after a green pass, a fresh request to `models.review` with
-  the Intent, the full diff against the start HEAD, the full text of every changed file and the
+  the Intent, the diff of existing/deleted paths against the start HEAD, the full text of every changed/added file and the
   check results, plus read-only file tools and `submit_review`. It never sees the builder's
   conversation. An invalid verdict goes back once; a second one ends the Build.
   """
@@ -202,13 +202,44 @@ defmodule Kogen.Review do
   defp material(b, pass) do
     files = Snapshot.changed(b.root, b.start, pass.tree)
 
+    original_paths =
+      b.root
+      |> Git.ok!(["ls-tree", "-r", "--name-only", "-z", b.start])
+      |> String.split("\0", trim: true)
+      |> MapSet.new()
+
+    existing = Enum.filter(files, &MapSet.member?(original_paths, &1))
+
+    entries =
+      b.root
+      |> Git.ok!(["ls-tree", "-r", "-z", pass.tree])
+      |> String.split("\0", trim: true)
+      |> Map.new(fn entry ->
+        [metadata, path] = String.split(entry, "\t", parts: 2)
+        [mode, _type, object] = String.split(metadata, " ")
+        {path, %{mode: mode, object: object}}
+      end)
+
     texts =
       Enum.map_join(files, "\n", fn p ->
-        case Git.run(b.root, ["show", "#{pass.tree}:#{p}"]) do
-          {text, 0} ->
-            if String.valid?(text) and not String.contains?(text, <<0>>),
-              do: "--- #{p}\n#{text}",
-              else: "--- #{p} (binary)"
+        case Map.fetch(entries, p) do
+          {:ok, %{mode: mode, object: object}} ->
+            heading =
+              "--- #{p}" <>
+                if(MapSet.member?(original_paths, p),
+                  do: "",
+                  else: " (added; mode #{mode})"
+                )
+
+            if mode == "160000" do
+              heading <> "\nSubproject commit #{object}"
+            else
+              text = Git.ok!(b.root, ["show", "#{pass.tree}:#{p}"])
+
+              if String.valid?(text) and not String.contains?(text, <<0>>),
+                do: heading <> "\n#{text}",
+                else: heading <> " (binary)"
+            end
 
           _ ->
             "--- #{p} (deleted)"
@@ -243,8 +274,12 @@ defmodule Kogen.Review do
 
     # Diff against the start HEAD #{String.slice(b.start, 0, 8)}
 
-    #{Snapshot.diff(b.root, b.start, pass.tree)}
+    # Diff of existing/deleted paths against start HEAD #{String.slice(b.start, 0, 8)}
+
+    #{Snapshot.diff(b.root, b.start, pass.tree, existing)}
     # Full text of every changed or added file
+
+    Newly added files appear here once, with their mode, instead of being repeated in the diff.
 
     #{texts}
     """
@@ -267,6 +302,8 @@ defmodule Kogen.Review do
   defp instructions do
     """
     You review code that another model wrote to implement an approved Intent in this repository. Every check already passed; your review decides whether the change is committed. You cannot run commands or edit files; you may read any file of the repository with read_file, list_files and search_text.
+
+    Complete current source is already supplied for every changed/added file. New files appear once with their modes; the diff covers existing/deleted paths. Read other files only to fill a context gap, and batch independent lookups.
 
     Judge:
     - Does the code do what the approved Intent asks? Editable dependency manifests and lockfiles do not authorize weakening, removing or bypassing configured checks or changing actual verification configuration; confirm the checks and their behavior remain intact. Whole-file protection of a combined check-definition manifest has no dependency-only exception.
