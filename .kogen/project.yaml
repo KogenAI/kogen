@@ -1,0 +1,36 @@
+version: 1
+commands:
+  setup:
+    - 'mix deps.get'
+    - '(cd spec && npm ci)'
+    - '(cd test/acceptance && npm ci)'
+    - 'sh packaging/package.sh'
+  fix:
+    - 'mix format'
+  checks:
+    - name: format
+      run: 'mix format --check-formatted'
+    - name: compile
+      run: 'mix compile --warnings-as-errors'
+    - name: test
+      run: 'mix test'
+    - name: go-test
+      run: '(cd cli && go test -race ./...)'
+    - name: cucumber
+      run: '(cd test/acceptance && npx cucumber-js --strict --tags "not @live" --require "steps/*.js" --require "support/*.js" ../../spec/features/04-building.feature)'
+  acceptance:
+    run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
+    steps_dir: 'features/steps'
+protect:
+  - '.formatter.exs'
+  - 'mix.exs'
+models:
+  shape:
+    model: gpt-6.1-sol
+    effort: high
+  build:
+    model: gpt-6.1-sol
+    effort: medium
+  review:
+    model: gpt-6.1-sol
+    effort: high

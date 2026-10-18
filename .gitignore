@@ -46,3 +46,4 @@ node_modules/
 # Editors and the operating system.
 /.elixir_ls/
 .DS_Store
+.kogen/local/

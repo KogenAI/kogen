@@ -27,7 +27,7 @@ export PATH="$HOME/.local/bin:$PATH"           # if install.sh says ~/.local/bin
 kogen provider login chatgpt                   # signs in through your browser
 ```
 
-Then, in a Git repository of your own with at least one commit. A Build needs a clean working tree, so keep the request file outside the repository, or commit it:
+Then, in a Git repository of your own with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
 
 ```sh
 kogen init                                     # finds and checks the project's commands, commits .kogen/project.yaml
@@ -35,6 +35,8 @@ kogen intent shape my-feature ../request.md    # the request, kept outside the r
 kogen intent approve my-feature                # shows the card; approve with the hash it prints
 kogen intent build my-feature                  # builds, verifies, reviews and commits
 ```
+
+For a generated project, commit the runnable scaffold first; `kogen init` then makes a separate `Add Kogen configuration` commit. A truly empty Git worktree can instead start with a configuration-only `Initial commit`; uncommitted application files must be committed before initialization. An uncommitted request belongs outside the repository.
 
 `kogen init` keeps only the checks that pass on your committed tree, and sets up acceptance with the Cucumber Kogen ships, or with the project's own; [docs/configuration.md](docs/configuration.md) explains `.kogen/project.yaml`. `kogen help` lists every command, and `kogen uninstall` removes the program.
 
