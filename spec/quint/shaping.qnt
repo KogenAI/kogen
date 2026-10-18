@@ -39,7 +39,7 @@ module shaping {
   }
 
   // SHP-4: the shaper writes the Intent files; readiness is whatever the checks say. A not-ready
-  // attempt goes back to the shaper (SHP-8), whose next attempt overwrites the files: at most 3 in a row.
+  // attempt goes back to the shaper (SHP-8), whose next attempt overlays corrections on the retained proposals: at most 3 in a row.
   action shapeWrite = all {
     Set(Absent, Asking, Observing).contains(st) or (st == Shaped and not(ready) and attempts < 3),
     nondet r = Set(true, false).oneOf()

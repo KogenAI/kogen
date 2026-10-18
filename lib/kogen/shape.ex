@@ -235,6 +235,8 @@ defmodule Kogen.Shape do
       tools: tools,
       started_at: t0,
       originals: %{},
+      proposed: %{},
+      declared_steps: [],
       ready: nil
     }
 
@@ -399,7 +401,10 @@ defmodule Kogen.Shape do
   defp submit(args, sh) do
     case validate(args, sh.root, sh.slug, sh.config) do
       {:error, problems} ->
-        {"invalid submission:\n" <> Enum.join(problems, "\n"), {:invalid, problems}, sh}
+        {"invalid submission:\n" <>
+           Enum.join(problems, "\n") <>
+           "\nNo proposals from this submission were retained; earlier proposals are unchanged.",
+         {:invalid, problems}, sh}
 
       {:ok, {:questions, _} = q} ->
         {"accepted", q, sh}
@@ -408,32 +413,97 @@ defmodule Kogen.Shape do
         {"blocked: required protected edits reported", blocked, sh}
 
       {:ok, {:files, files}} ->
-        sh = write_attempt(sh, files)
-        fix_attempt(sh, Enum.map(files, &elem(&1, 0)))
-        progress(sh, "kogen: checking readiness")
+        sh = %{sh | proposed: Map.merge(sh.proposed, Map.new(files))}
+        files = Enum.sort(Map.to_list(sh.proposed))
 
-        try do
-          if Readiness.current?(sh.root, sh.slug, sh.config, sh.ready) do
-            {"accepted: unchanged checked observations acknowledged", :ready, sh}
+        sh =
+          if Map.has_key?(sh.proposed, Intent.intent_md(sh.slug)) do
+            declared = Intent.read(sh.root, sh.slug, sh.proposed) |> Intent.step_files()
+            %{sh | declared_steps: Enum.uniq(sh.declared_steps ++ declared)}
           else
-            ready = Readiness.check!(sh.root, sh.slug, sh.config)
-            sh = %{sh | ready: ready}
-
-            if Readiness.failures?(ready),
-              do: {Readiness.acknowledgment(sh.slug, ready), :observations, sh},
-              else: {"accepted: the Intent is ready", :ready, sh}
+            sh
           end
-        rescue
-          e in Error ->
-            if e.reason in ["not_ready", "parse", "lint"] do
-              # Not-ready problems as they are; a lint or parse error with its own first line.
-              problems =
-                if e.reason == "not_ready", do: e.lines, else: [Error.message(e) | e.lines]
 
-              {"not ready:\n" <> Enum.join(problems, "\n"), {:invalid, problems}, sh}
+        case Intent.check(sh.root, sh.slug, sh.proposed) do
+          {:ok, intent, _} ->
+            problems = retained_artifact_problems(sh, intent, files)
+
+            if problems == [] do
+              check_submission(sh, files)
             else
-              reraise e, __STACKTRACE__
+              {Enum.join(problems, "\n"), {:invalid, problems}, sh}
             end
+
+          {_, problems} ->
+            {"invalid submission:\n" <>
+               Enum.join(problems, "\n") <>
+               "\nEarlier well-formed proposals are retained; submit only corrections.",
+             {:invalid, problems}, sh}
+        end
+    end
+  end
+
+  defp retained_artifact_problems(sh, intent, files) do
+    abandoned =
+      for {path, _} <- files,
+          (path in sh.declared_steps and Path.extname(path) == ".js" and
+             path not in Intent.step_files(intent)) or
+            (path == Intent.model_path(sh.slug) and path != model_path(intent)),
+          do: path
+
+    if abandoned == [],
+      do: [],
+      else: [
+        "proposed artifacts must remain declared: #{Enum.join(abandoned, ", ")}. Omission cannot delete proposals; include them or preserve and park the partial package and its owned new step files, then remove its empty Intent directory and use normal shaping again (same slug or a new one)."
+      ]
+  end
+
+  defp model_path(intent) do
+    case Intent.model(intent) do
+      %{path: path} -> path
+      _ -> nil
+    end
+  end
+
+  defp check_submission(sh, files) do
+    sh = write_attempt(sh, files)
+    fix_attempt(sh, Enum.map(files, &elem(&1, 0)))
+    progress(sh, "kogen: checking readiness")
+
+    try do
+      # Fixers may change submitted declarations. The final formatted package
+      # must retain the same executable artifacts before it can be certified.
+      case Intent.check(sh.root, sh.slug) do
+        {:ok, intent, _} ->
+          case retained_artifact_problems(sh, intent, files) do
+            [] -> :ok
+            problems -> Error.raise!("intent", "lint", "the Intent needs changes", 1, problems)
+          end
+
+        _ ->
+          :ok
+      end
+
+      if Readiness.current?(sh.root, sh.slug, sh.config, sh.ready) do
+        {"accepted: unchanged checked observations acknowledged", :ready, sh}
+      else
+        ready = Readiness.check!(sh.root, sh.slug, sh.config)
+        sh = %{sh | ready: ready}
+
+        if Readiness.failures?(ready),
+          do: {Readiness.acknowledgment(sh.slug, ready), :observations, sh},
+          else: {"accepted: the Intent is ready", :ready, sh}
+      end
+    rescue
+      e in Error ->
+        if e.reason in ["not_ready", "parse", "lint"] do
+          # Not-ready problems as they are; a lint or parse error with its own first line.
+          problems =
+            if e.reason == "not_ready", do: e.lines, else: [Error.message(e) | e.lines]
+
+          {"not ready:\n" <> Enum.join(problems, "\n"), {:invalid, problems}, sh}
+        else
+          reraise e, __STACKTRACE__
         end
     end
   end
@@ -448,13 +518,6 @@ defmodule Kogen.Shape do
           end
         end)
       end)
-
-    # Files of an earlier attempt that this one leaves out go back to how they were.
-    for {p, orig} <- originals, not List.keymember?(files, p, 0) do
-      if orig == :absent,
-        do: File.rm(Path.join(sh.root, p)),
-        else: File.write!(Path.join(sh.root, p), orig)
-    end
 
     for {p, content} <- files do
       File.mkdir_p!(Path.dirname(Path.join(sh.root, p)))
@@ -523,7 +586,7 @@ defmodule Kogen.Shape do
       "name" => "submit",
       "strict" => false,
       "description" =>
-        "End shaping with exactly one of questions, ready Intent files, or blocked. A blocked report names required edits to currently protected paths and is never authorization; it cannot be paired with another result.",
+        "End shaping with exactly one of questions, Intent files, or blocked. Within this run, well-formed file proposals accumulate: omitted paths retain earlier proposals; latest content wins. Submit only corrections on retries. A malformed or unsafe submission contributes no files. A blocked report is never authorization and cannot be paired with another result.",
       "parameters" => %{
         "type" => "object",
         "properties" => %{
@@ -621,7 +684,7 @@ defmodule Kogen.Shape do
           ]}
   end
 
-  defp validate(%{"files" => [_ | _] = files} = args, root, slug, config)
+  defp validate(%{"files" => [_ | _] = files} = args, _root, slug, config)
        when not is_map_key(args, "questions") and not is_map_key(args, "blocked") do
     own = for f <- ~w(intent.md acceptance.feature model.qnt), do: Intent.dir(slug) <> "/" <> f
     steps = config.steps_dir
@@ -657,15 +720,11 @@ defmodule Kogen.Shape do
       path_problems != [] ->
         {:error, path_problems}
 
-      not Map.has_key?(overlay, Intent.intent_md(slug)) or
-          not Map.has_key?(overlay, Intent.feature(slug)) ->
-        {:error, ["the files must include #{Intent.intent_md(slug)} and #{Intent.feature(slug)}"]}
+      map_size(overlay) != length(files) ->
+        {:error, ["file paths must be unique; no proposals from this submission were retained"]}
 
       true ->
-        case Intent.check(root, slug, overlay) do
-          {:ok, _, _} -> {:ok, {:files, Enum.sort(Map.to_list(overlay))}}
-          {_, problems} -> {:error, problems}
-        end
+        {:ok, {:files, Enum.sort(Map.to_list(overlay))}}
     end
   end
 
@@ -879,6 +938,8 @@ defmodule Kogen.Shape do
     2. `acceptance.feature`: Gherkin scenarios that fail now and pass once the feature is implemented. Every scenario needs a Then step; no @skip, @wip, @pending, @manual or @ignore tags. Expected values live in the feature file. Use only step sentences that the existing step files define or that step files you submit define.
 
     3. Step files under the configured steps folder: step definitions that exercise the real behavior (run the program, call the code or inspect its output). You may add new step files or edit existing ones; the caller reviews them before approving. List every step file the feature relies on in `Acceptance:`, right after the feature.
+
+    Within this conversation, well-formed file proposals accumulate: latest content for a path wins, and omitted paths retain earlier proposals. After lint, parse or readiness feedback, submit only corrected files; an unsafe or malformed mixed payload contributes no proposals. Submit full original content explicitly to revert an edit. Omission cannot delete a proposal. Previously declared proposed JavaScript steps must stay in Acceptance and a proposed model must stay declared. To discard an earlier new artifact, preserve and park the partial package and its exclusively owned new step files, remove the empty Intent directory, then use normal shaping again with the same slug or a new one. There is no proposal replay across separate shaping invocations.
 
     Kogen then checks the Intent: the rules above, the model, and a dry run of the acceptance command that must report every scenario exactly once as passed or failed (an undefined, pending or skipped step means not ready). Problems come back to you; fix them and submit again.
 

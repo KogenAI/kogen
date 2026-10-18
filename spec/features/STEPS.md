@@ -48,6 +48,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `init-corrects-dependency-protect` | first protects `.formatter.exs` and dependency-only `mix.exs`, then returns the valid formatter-only correction |
 | `init-proposes-setup` | answers it with setup `mkdir seeded`, `echo run >> runs.txt` and `true` |
 | `shape-ready-is-even` | reads two files, submits `is-even`, acknowledges unchanged baseline-red observations |
+| `shape-narrow-retry` | submits complete artifacts with a missing decision source, corrects only prose, then acknowledges unchanged red without losing feature/steps |
 | `shape-observed-repair` | submits a hook fixture defect, repairs it after observed feedback, then acknowledges legitimate product-red observations |
 | `refine-title` | submits only the existing Intent prose with a clarified title; all other artifacts are reused |
 | `refine-constraint` | reports that the correction needs an unsupported new step file, without changing the draft |

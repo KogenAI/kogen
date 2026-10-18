@@ -426,6 +426,14 @@ class FakeServers {
   shapeResponse(name, ordinal, record) {
     const files = intentFiles('is-even');
     switch (name) {
+      case 'shape-narrow-retry': {
+        if (ordinal === 1) {
+          files[0].content = files[0].content.replace('(source: request)', '');
+          return { items: [functionCall('submit', { files }, 'shape_initial')] };
+        }
+        files[0].content = files[0].content.replace('# Add an is-even helper', '# Clarify the is-even helper');
+        return { items: [functionCall('submit', { files: [files[0]] }, `shape_narrow_${ordinal}`)] };
+      }
       case 'shape-observed-repair':
         if (ordinal === 1) {
           const step = files.find(file => file.path.endsWith('_steps.js'));

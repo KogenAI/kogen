@@ -29,6 +29,21 @@ Feature: Shaping
     And stdout contains "Acceptance exit: 1"
     And stdout contains "Evidence: .kogen/local/readiness/is-even.json"
 
+  @SHP-4 @SHP-8 @model:shaping
+  Scenario: A narrow shaping correction retains earlier feature and step proposals
+    Given the fake ChatGPT server plays script "shape-narrow-retry"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add the existing is-even request and keep settled artifacts when correcting lint.
+      """
+    Then the exit code is 0
+    And request 2 contains "decision has no source"
+    And request 3 contains "Readiness observations"
+    And stdout contains "3 fail now"
+    And the file "features/steps/is_even_steps.js" contains "Given"
+    And the file ".kogen/local/approvals/is-even.json" does not exist
+    And the fake ChatGPT server received 3 requests
+
   @SHP-11 @CLI-1 @model:shaping
   Scenario: A targeted correction preserves unchanged artifacts and still requires approval
     Given the Intent "is-even" from fixture "is-even" is shaped

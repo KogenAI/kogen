@@ -11,6 +11,157 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     {:ok, suite: suite}
   end
 
+  test "SHP-4 narrow shaping corrections retain the model and step files already submitted",
+       %{suite: suite} do
+    context = fixture!(suite)
+    model_path = Intent.model_path("observed")
+
+    model =
+      "module observed {\n var count: int\n action init = count' = 0\n action step = count' = count + 1\n val Safety = count >= 0\n}\n"
+
+    proposed =
+      files("legitimate missing feature")
+      |> List.update_at(0, fn file ->
+        %{
+          file
+          | "content" =>
+              String.replace(
+                file["content"],
+                "Model: not applicable — a fixture without state",
+                "Model: #{model_path} invariants=Safety seed=7 samples=2 steps=2"
+              )
+        }
+      end)
+      |> Kernel.++([%{"path" => model_path, "content" => model}])
+
+    narrow = Enum.take(proposed, 2)
+    script!(context, [submit(proposed), submit(narrow), submit(narrow), submit(narrow)])
+    {output, 0} = shape(context)
+    assert output =~ "1 fail now"
+    assert File.read!(Path.join(context.repo, model_path)) == model
+
+    assert File.read!(Path.join(context.repo, "features/steps/observed_steps.js")) ==
+             Enum.at(proposed, 2)["content"]
+
+    assert executions(context) == 1
+    refute File.exists?(Intent.approval_path(context.repo, "observed"))
+  end
+
+  test "SHP-4 lint corrections keep earlier artifacts and malformed mixed payloads contribute nothing",
+       %{suite: suite} do
+    for invalid_kind <- [:unsafe, :duplicate] do
+      context = fixture!(suite)
+      proposed = files(nil)
+      intent = hd(proposed)
+
+      invalid = %{
+        intent
+        | "content" => intent["content"] <> "\n## Decisions\n- Keep the fixture.\n"
+      }
+
+      fixed = %{
+        invalid
+        | "content" =>
+            String.replace(
+              invalid["content"],
+              "- Keep the fixture.",
+              "- Keep the fixture. (source: request)"
+            )
+      }
+
+      step = Enum.at(proposed, 2)
+
+      poisoned = %{
+        step
+        | "content" => step["content"] <> "\nthrow new Error('unsafe payload leaked');\n"
+      }
+
+      script!(context, [
+        submit([invalid | tl(proposed)]),
+        submit(
+          if invalid_kind == :unsafe,
+            do: [poisoned, %{"path" => "../outside", "content" => "unsafe"}],
+            else: [poisoned, step]
+        ),
+        submit([fixed])
+      ])
+
+      {output, 0} = shape(context)
+      assert output =~ "1 pass now"
+      assert File.read!(Path.join(context.repo, step["path"])) == step["content"]
+      assert File.read!(Path.join(context.repo, intent["path"])) == fixed["content"]
+      refute File.exists?(Path.join(context.root, "outside"))
+      assert executions(context) == 1
+
+      assert Enum.any?(
+               FakeProvider.tool_outputs(context.server),
+               &String.contains?(&1, "decision has no source")
+             )
+    end
+  end
+
+  test "SHP-4 an earlier step cannot be silently abandoned outside the approval baseline", %{
+    suite: suite
+  } do
+    context = fixture!(suite)
+    proposed = files("legitimate missing feature")
+    old = Enum.at(proposed, 2)
+    replacement = %{old | "path" => "features/steps/replacement.js"}
+
+    changed_intent = %{
+      hd(proposed)
+      | "content" => String.replace(hd(proposed)["content"], old["path"], replacement["path"])
+    }
+
+    script!(context, [
+      submit(proposed),
+      submit([changed_intent, replacement]),
+      submit([changed_intent]),
+      submit([changed_intent])
+    ])
+
+    {output, 1} = shape(context)
+    assert output =~ "proposed artifacts must remain declared"
+    assert output =~ "same slug or a new one"
+    assert File.read!(Path.join(context.repo, old["path"])) == old["content"]
+    refute File.exists?(Path.join(context.repo, replacement["path"]))
+    refute File.exists?(Intent.approval_path(context.repo, "observed"))
+    assert executions(context) == 1
+  end
+
+  test "SHP-4 formatting cannot abandon a retained executable step outside the baseline", %{
+    suite: suite
+  } do
+    context = fixture!(suite)
+    config = Config.load!(context.repo)
+    proposed = files(nil)
+    step = Enum.at(proposed, 2)
+
+    formatter =
+      "const fs = require(\"node:fs\"); const path = #{JSON.encode!(Intent.intent_md("observed"))}; " <>
+        "fs.writeFileSync(path, fs.readFileSync(path, \"utf8\").replace(#{JSON.encode!("- #{step["path"]}\n")}, \"\"));"
+
+    File.write!(
+      Path.join(context.repo, Config.path()),
+      Config.render(%{
+        setup: [],
+        fix: ["node -e '#{formatter}'"],
+        checks: [],
+        protect: config.protect,
+        acceptance: %{run: config.acceptance_run, steps_dir: config.steps_dir}
+      })
+    )
+
+    script!(context, List.duplicate(submit(proposed), 3))
+    {output, status} = shape(context)
+    assert status == 1, output
+    assert output =~ "proposed artifacts must remain declared"
+    assert File.read!(Path.join(context.repo, step["path"])) == step["content"]
+    refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/observed.json"))
+    refute File.exists?(Intent.approval_path(context.repo, "observed"))
+    assert executions(context) == 0
+  end
+
   test "SHP-8 the final shaper sees a fixture failure and repairs it before ready", %{
     suite: suite
   } do
