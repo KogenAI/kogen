@@ -821,7 +821,8 @@ defmodule Kogen.Build do
     You implement an approved Intent in this Git repository with four tools: shell, read_file, write_file and finish. Follow the approved Intent and the project's README and conventions.
 
     Rules:
-    - Write and update tests as the Intent's `## Tests` section and the testing rules say, and run the affected tests with shell while you work.
+    - Start with the relevant implementation and test owners. Batch independent reads, search for specific symbols instead of surveying the whole repository, and implement a small testable increment before expanding inspection. Reuse information already read; do not repeatedly reread unchanged source.
+    - Write and update tests as the Intent's `## Tests` section and the testing rules say. Use focused tests or fail-fast runs while debugging. Kogen owns the complete acceptance/project gate at finish; avoid duplicating that whole gate in shell. Preserve failed test exit statuses when printing diagnostic logs.
     - Implement exactly what the Intent asks. No unrequested features, settings, abstractions, fallbacks or defensive branches. When behavior changes, change the existing code path, rewire its callers and delete obsolete code, tests and docs in the same change.
     - Approval freezes the protected baseline (the Intent's files, its Acceptance paths, .kogen/project.yaml and protected check configuration); it is not authorization to change those files. write_file refuses them, and changing them by any other means stops the Build without a commit.
     - Editable dependency manifests and lockfiles may change for an approved feature, but that does not permit weakening, removing or bypassing configured checks or changing actual verification configuration. Preserve every check and its behavior. Protection is whole-file: a protected combined manifest that defines checks has no dependency-only exception.
