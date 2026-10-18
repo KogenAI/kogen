@@ -27,6 +27,11 @@ defmodule Kogen.DetectTest do
     assert length(Enum.uniq_by(detected.checks, & &1.name)) == 8
   end
 
+  test "SET-11: one-time machine bootstrap is not recurring project setup" do
+    assert {:invalid, problems} = Init.validate(%{"setup" => ["mix local.hex --force"]}, [])
+    assert Enum.any?(problems, &String.contains?(&1, "one-time machine prerequisite"))
+  end
+
   test "SET-10: a Mix project with a formatter and credo gets setup, fixer, checks and protect" do
     mix = ~s(defp deps, do: [{:credo, "~> 1.7", only: :test}])
     d = Detect.detect(%{"mix.exs" => mix}, ~w(mix.exs .formatter.exs .credo.exs lib/a.ex))

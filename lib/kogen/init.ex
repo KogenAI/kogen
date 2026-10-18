@@ -263,7 +263,13 @@ defmodule Kogen.Init do
           reason != nil,
           do: "protect path #{path} is not eligible: #{reason}"
 
-    case p1 ++ p2 ++ p3 ++ p4 ++ p5 ++ p6 do
+    p7 =
+      for command <- setup,
+          Regex.match?(~r/(?:^|[;&]\s*)mix\s+local\.(?:hex|rebar)\b/, command),
+          do:
+            "setup command #{command} is a one-time machine prerequisite, not recurring project setup"
+
+    case p1 ++ p2 ++ p3 ++ p4 ++ p5 ++ p6 ++ p7 do
       [] -> {:ok, %{setup: setup, fix: fix, checks: checks, protect: protect}}
       problems -> {:invalid, problems}
     end
@@ -452,6 +458,9 @@ defmodule Kogen.Init do
     manifest may then be protected whole-file because it contains the actual check definition. Never \
     protect a lockfile or a manifest merely because setup, formatting, compilation, tests, vet or an \
     audit reads it. The caller can correct an ineligible path once; do not omit it silently.
+
+    Machine-wide bootstrap (such as mix local.hex or mix local.rebar) belongs in prerequisites, \
+    not recurring project setup.
 
     Propose only commands the sources name or Kogen detected. Kogen runs every command once on the \
     committed tree and keeps only those that pass, so do not leave a check out because it might \
