@@ -151,6 +151,90 @@ defmodule Kogen.Integration.ContractRegressionsTest do
     assert FakeProvider.provider_requests(context.server) == requests
   end
 
+  test "SHP-4 blocked submissions require an actual protected path and a reason", %{suite: suite} do
+    invalid = [
+      %{"blocked" => %{"paths" => [], "reason" => "required edit"}},
+      %{"blocked" => %{"paths" => ["README.md"], "reason" => "  "}},
+      %{"blocked" => %{"paths" => ["app.txt"], "reason" => "required edit"}}
+    ]
+
+    script =
+      Enum.flat_map(invalid, fn submission ->
+        [
+          {:function, "submit", submission},
+          {:function, "submit", %{"questions" => [%{"question" => "Continue?"}]}}
+        ]
+      end)
+
+    context = fixture!(suite, script)
+    request = Path.join(context.root, "request.txt")
+    File.write!(request, "Make a protected change.")
+
+    for {slug, expected} <-
+          Enum.zip(~w(bad-paths bad-reason unprotected), [
+            "blocked.paths must be a non-empty list",
+            "blocked.reason must be non-empty text",
+            "blocked path app.txt is not protected by the current contract"
+          ]) do
+      {output, status} = Helpers.run_kogen(context, ["intent", "shape", slug, request])
+      assert status == 5, output
+      assert output =~ "Continue?"
+
+      assert FakeProvider.tool_outputs(context.server)
+             |> Enum.any?(&String.contains?(&1, expected))
+
+      refute File.exists?(Path.join(context.repo, ".kogen/intents/#{slug}/intent.md"))
+      refute File.exists?(Path.join(context.repo, ".kogen/local/approvals/#{slug}.json"))
+    end
+  end
+
+  test "SHP-4 blocked reports recognize protected paths matched by a glob", %{suite: suite} do
+    submission = %{
+      "blocked" => %{
+        "paths" => ["settings/check.cfg"],
+        "reason" => "the requested verification definition cannot be changed in Build"
+      }
+    }
+
+    context = fixture!(suite, [{:function, "submit", submission}])
+    settings = Path.join(context.repo, "settings/check.cfg")
+    File.mkdir_p!(Path.dirname(settings))
+    File.write!(settings, "strict=true\n")
+    config = Config.load!(context.repo)
+
+    File.write!(
+      Path.join(context.repo, Config.path()),
+      Config.render(%{
+        setup: config.setup,
+        fix: config.fix,
+        checks: config.checks,
+        protect: ["settings/*.cfg"],
+        acceptance: %{run: config.acceptance_run, steps_dir: config.steps_dir}
+      })
+    )
+
+    Helpers.git!(context, ["add", "settings/check.cfg", Config.path()])
+    Helpers.git!(context, ["commit", "-qm", "Configure protected glob"])
+    request = Path.join(context.root, "request.txt")
+    File.write!(request, "Change the protected check definition.")
+
+    {output, status} = Helpers.run_kogen(context, ["intent", "shape", "glob-conflict", request])
+    assert status == 1, output
+
+    assert output =~
+             "shape/protected_conflict: required edits touch protected files: settings/check.cfg"
+
+    assert output =~ "the requested verification definition cannot be changed in Build"
+
+    assert output =~
+             "Next: revise the request, or review and commit .kogen/project.yaml outside Build, then shape again; preserve checks and actual check configuration. There is no protected-edit override."
+
+    assert length(FakeProvider.provider_requests(context.server)) == 2
+    refute File.exists?(Path.join(context.repo, ".kogen/intents/glob-conflict/intent.md"))
+    refute File.exists?(Path.join(context.repo, ".kogen/local/approvals/glob-conflict.json"))
+    refute File.dir?(Path.join(context.repo, ".kogen/local/runs"))
+  end
+
   test "REL-3 self-build gate runs the maintained suite and propagates its failure", %{
     suite: suite
   } do

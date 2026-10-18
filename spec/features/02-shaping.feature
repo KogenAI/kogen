@@ -80,6 +80,27 @@ Feature: Shaping
       | the project config sets "commands.acceptance.steps_dir" to "null" | 3 | environment/acceptance_unconfigured: set commands.acceptance in .kogen/project.yaml |
       | the Intent "is-even" from fixture "is-even" is shaped         | 5    | intent/exists: is-even is already shaped                                     |
 
+  @SHP-3 @SHP-4 @SHP-7
+  Scenario: A required protected edit is reported without creating an Intent or approval
+    Given the fake ChatGPT server plays script "shape-protected-conflict"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Change the protected check definition.
+      """
+    Then the exit code is 1
+    And stdout contains "shape/protected_conflict: required edits touch protected files: .style.cfg"
+    And stdout contains "the requested check definition must change"
+    And stdout contains "Next: revise the request, or review and commit .kogen/project.yaml outside Build, then shape again; preserve checks and actual check configuration. There is no protected-edit override."
+    And request 1 contains "blocked"
+    And request 1 contains "configured protect patterns"
+    And request 1 contains "paths currently matched by those patterns"
+    And request 1 contains "automatic baseline"
+    And request 1 contains "Approval freezes this baseline"
+    And request 1 offers exactly the tools "read_file, list_files, search_text, probe, submit"
+    And the file ".kogen/intents/is-even/intent.md" does not exist
+    And the file ".kogen/local/approvals/is-even.json" does not exist
+    And the fake ChatGPT server received 1 request
+
   @SHP-4
   Scenario: Three invalid submissions in a row stop shaping and write nothing
     Given the fake ChatGPT server plays script "shape-invalid-three-times"

@@ -93,6 +93,90 @@ defmodule Kogen.DetectTest do
            }
   end
 
+  test "SET-11: dependency-only manifests and lockfiles cannot be protected, but check definitions and settings can" do
+    cases = [
+      {"mix.exs",
+       "defmodule App.MixProject do\n  def project, do: [app: :app, deps: deps()]\n  defp deps, do: [{:ecto, \"~> 3.0\"}]\nend\n",
+       [], false},
+      {"cli/go.mod",
+       "module example.invalid/cli\n\ngo 1.27\n\nrequire example.invalid/lib v1.0.0\n", [],
+       false},
+      {"cli/go.sum", "example.invalid/lib v1.0.0 h1:abc\n", [], false},
+      {"mix.lock", "%{\"ecto\" => {:hex, :ecto, \"3.0\", \"checksum\"}}\n", [], false},
+      {"package-lock.json", "{\"lockfileVersion\": 3, \"packages\": {}}\n", [], false},
+      {"package.json", JSON.encode!(%{"scripts" => %{"lint" => "eslint ."}}),
+       [%{"name" => "lint", "run" => "npm run lint"}], true},
+      {"package.json", JSON.encode!(%{"eslintConfig" => %{"rules" => %{"eqeqeq" => "error"}}}),
+       [%{"name" => "lint", "run" => "npx eslint ."}], true},
+      {"mix.exs",
+       "def project, do: [aliases: [check: [\"format --check-formatted\", \"test\"]]]\n",
+       [%{"name" => "check", "run" => "mix check"}], true},
+      {"mix.exs",
+       "def project, do: [aliases: aliases()]\ndefp aliases, do: [check: [\"test\"]]\n",
+       [%{"name" => "check", "run" => "mix check"}], true},
+      {"mix.exs", "def project, do: [elixirc_options: [warnings_as_errors: true]]\n",
+       [%{"name" => "compile", "run" => "mix compile"}], true},
+      {"mix.exs", "# aliases: [check: [\"test\"]]\ndef project, do: [deps: []]\n",
+       [%{"name" => "check", "run" => "mix check"}], false},
+      {".formatter.exs", "[inputs: [\"{lib,test}/**/*.{ex,exs}\"]]\n", [], true}
+    ]
+
+    for {path, content, checks, eligible} <- cases do
+      args = %{"setup" => [], "fix" => [], "checks" => checks, "protect" => [path]}
+      tracked = %{tracked_paths: [path], contents: %{path => content}}
+
+      case {eligible, Init.validate(args, tracked)} do
+        {true, {:ok, %{protect: [^path]}}} ->
+          :ok
+
+        {false, {:invalid, problems}} ->
+          assert Enum.any?(
+                   problems,
+                   &String.starts_with?(&1, "protect path #{path} is not eligible:")
+                 )
+
+        result ->
+          flunk("unexpected validation for #{path}: #{inspect(result)}")
+      end
+    end
+  end
+
+  test "SET-11: protection validation includes detected checks when the proposal adds none" do
+    args = %{"checks" => [], "protect" => ["package.json"]}
+
+    context = %{
+      tracked_paths: ["package.json"],
+      contents: %{"package.json" => JSON.encode!(%{"scripts" => %{"test" => "node --test"}})},
+      detected_checks: [%{name: "test", run: "npm run test"}]
+    }
+
+    assert {:ok, %{protect: ["package.json"]}} = Init.validate(args, context)
+  end
+
+  test "SET-11: Mix test discovery and coverage settings are verification configuration" do
+    for key <- ~w(test_paths test_pattern test_load_filters test_ignore_filters test_coverage) do
+      assert {:ok, %{protect: ["mix.exs"]}} =
+               Init.validate(%{"protect" => ["mix.exs"]}, %{
+                 "mix.exs" => "def project, do: [#{key}: []]"
+               })
+    end
+  end
+
+  test "SET-11: the committed Mix test-selection settings are protected verification configuration" do
+    {manifest, 0} = System.cmd("git", ["show", "HEAD:mix.exs"])
+    assert manifest =~ "test_load_filters:"
+    assert manifest =~ "test_ignore_filters:"
+
+    context = %{
+      tracked_paths: ["mix.exs"],
+      contents: %{"mix.exs" => manifest},
+      detected_checks: [%{name: "test", run: "mix test"}]
+    }
+
+    assert {:ok, %{protect: ["mix.exs"]}} =
+             Init.validate(%{"checks" => [], "protect" => ["mix.exs"]}, context)
+  end
+
   test "SET-11: invalid names, duplicates, reserved names and untracked protect paths are problems" do
     args = %{
       "setup" => [""],

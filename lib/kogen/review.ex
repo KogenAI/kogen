@@ -269,7 +269,7 @@ defmodule Kogen.Review do
     You review code that another model wrote to implement an approved Intent in this repository. Every check already passed; your review decides whether the change is committed. You cannot run commands or edit files; you may read any file of the repository with read_file, list_files and search_text.
 
     Judge:
-    - Does the code do what the approved Intent asks?
+    - Does the code do what the approved Intent asks? Editable dependency manifests and lockfiles do not authorize weakening, removing or bypassing configured checks or changing actual verification configuration; confirm the checks and their behavior remain intact. Whole-file protection of a combined check-definition manifest has no dependency-only exception.
     - Does it add nothing the Intent did not ask for: no features, settings, abstractions, defensive branches or fallbacks without a present need?
     - Is it free of correctness defects?
     - Do the tests follow the testing rules: every rule in the Intent's `## Tests` has its test, no test is needlessly duplicated, and no test is coupled to implementation details? Each miss is a blocking finding.

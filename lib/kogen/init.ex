@@ -13,6 +13,7 @@ defmodule Kogen.Init do
   @sources ~w(README.md mix.exs package.json Makefile .tool-versions .gitlab-ci.yml)
   @next_acceptance "Next: set commands.acceptance in .kogen/project.yaml"
   @next_checks "Next: add the project's checks to commands.checks in .kogen/project.yaml"
+  @npm_placeholder ~s(echo "Error: no test specified" && exit 1)
 
   def run(dir) do
     root = Git.root!(dir)
@@ -85,10 +86,23 @@ defmodule Kogen.Init do
     tracked =
       root |> Git.ok!(["ls-tree", "-r", "--name-only", "HEAD"]) |> String.split("\n", trim: true)
 
-    detected =
-      Detect.detect(Map.new(~w(mix.exs package.json), &{&1, Git.show(root, head, &1)}), tracked)
+    sources =
+      tracked
+      |> Enum.filter(fn path ->
+        path in @sources or Regex.match?(~r{^\.github/workflows/[^/]+\.ya?ml$}, path)
+      end)
+      |> Map.new(&{&1, Git.show(root, head, &1)})
 
-    proposed = ask(root, head, detected, tracked)
+    manifests =
+      tracked
+      |> Enum.filter(
+        &(Path.basename(&1) in ~w(mix.exs package.json mix.lock package-lock.json npm-shrinkwrap.json go.mod go.sum))
+      )
+      |> Map.new(&{&1, Git.show(root, head, &1)})
+
+    detected = Detect.detect(manifests, tracked)
+
+    proposed = ask(detected, tracked, sources, manifests)
     clone = Kogen.tmp_path("kogen-init")
 
     result =
@@ -137,16 +151,15 @@ defmodule Kogen.Init do
 
   # ---- SET-11: one request to the shaping model ----
 
-  defp ask(root, head, detected, tracked) do
+  defp ask(detected, tracked, sources, manifests) do
     role = Config.default_models()["shape"]
     Bridge.progress("kogen: asking #{role.model}/#{role.effort} about the project's commands")
     t0 = System.monotonic_time(:millisecond)
 
-    ci =
-      Enum.filter(tracked, &Regex.match?(~r{^\.github/workflows/[^/]+\.ya?ml$}, &1))
+    ci = Enum.filter(tracked, &Regex.match?(~r{^\.github/workflows/[^/]+\.ya?ml$}, &1))
 
-    sources =
-      for path <- @sources ++ ci, path in tracked, text = Git.show(root, head, path), into: "" do
+    source_text =
+      for path <- @sources ++ ci, text = sources[path], is_binary(text), into: "" do
         "\n## File #{path}\n\n```\n#{Tools.cut(text)}\n```\n"
       end
 
@@ -156,11 +169,13 @@ defmodule Kogen.Init do
         "content" =>
           "# Detected\n\n" <>
             JSON.encode!(Map.take(detected, [:setup, :fix, :checks, :protect])) <>
-            "\n\n# Tracked files\n\n" <> Tools.cut(Enum.join(tracked, "\n")) <> "\n" <> sources
+            "\n\n# Tracked files\n\n" <>
+            Tools.cut(Enum.join(tracked, "\n")) <> "\n" <> source_text
       }
     ]
 
-    {proposal, usage} = converse(role, input, tracked, 1, Usage.zero())
+    validation = %{tracked_paths: tracked, contents: manifests, detected_checks: detected.checks}
+    {proposal, usage} = converse(role, input, validation, 1, Usage.zero())
 
     Bridge.progress(
       "kogen: init #{role.model}/#{role.effort} " <>
@@ -206,6 +221,13 @@ defmodule Kogen.Init do
 
   @doc "Validates a `submit_configuration` call's arguments (SET-11)."
   def validate(args, tracked) do
+    {tracked_paths, content} =
+      case tracked do
+        %{tracked_paths: paths, contents: contents} -> {paths, contents}
+        paths when is_list(paths) -> {paths, %{}}
+        contents when is_map(contents) -> {Map.keys(contents), contents}
+      end
+
     strings = fn key ->
       case Map.get(args, key, []) do
         list when is_list(list) ->
@@ -223,15 +245,147 @@ defmodule Kogen.Init do
     {protect, p3} = strings.("protect")
 
     p4 =
-      for path <- protect, path not in tracked, do: "protect path #{path} is not a tracked file"
+      for path <- protect,
+          path not in tracked_paths,
+          do: "protect path #{path} is not a tracked file"
 
     {checks, p5} = checks(Map.get(args, "checks", []))
+    detected_checks = if is_map(tracked), do: Map.get(tracked, :detected_checks, []), else: []
+    proposed_names = MapSet.new(checks, & &1.name)
 
-    case p1 ++ p2 ++ p3 ++ p4 ++ p5 do
+    effective_checks =
+      Enum.reject(detected_checks, &MapSet.member?(proposed_names, &1.name)) ++ checks
+
+    p6 =
+      for path <- protect,
+          path in tracked_paths,
+          reason = dependency_protection_problem(path, content[path], effective_checks),
+          reason != nil,
+          do: "protect path #{path} is not eligible: #{reason}"
+
+    case p1 ++ p2 ++ p3 ++ p4 ++ p5 ++ p6 do
       [] -> {:ok, %{setup: setup, fix: fix, checks: checks, protect: protect}}
       problems -> {:invalid, problems}
     end
   end
+
+  defp dependency_protection_problem(path, text, checks) do
+    basename = Path.basename(path)
+
+    cond do
+      basename in ["mix.lock", "package-lock.json", "npm-shrinkwrap.json", "go.sum"] ->
+        "dependency lockfiles are editable inputs, not verification definitions"
+
+      basename == "go.mod" ->
+        "Go module requirements are editable dependency metadata, not verification definitions"
+
+      basename in ["mix.exs", "package.json"] and is_binary(text) ->
+        explanation =
+          if basename == "mix.exs",
+            do:
+              "Mix project and dependency metadata is editable; verification definitions or embedded settings can be protected as a whole",
+            else:
+              "npm package and dependency metadata is editable; verification definitions or embedded settings can be protected as a whole"
+
+        if configured_verification_manifest?(path, text, checks), do: nil, else: explanation
+
+      basename in ["mix.exs", "package.json"] ->
+        "dependency manifest content is unavailable for verification-definition validation"
+
+      true ->
+        nil
+    end
+  end
+
+  defp configured_verification_manifest?(path, text, checks) do
+    case Path.basename(path) do
+      "mix.exs" ->
+        mix_verification?(text, checks)
+
+      "package.json" ->
+        with {:ok, package} when is_map(package) <- JSON.decode(text) do
+          scripts = Map.get(package, "scripts", %{})
+
+          Enum.any?(~w(eslintConfig prettier stylelint jest), &Map.has_key?(package, &1)) or
+            (is_map(scripts) and
+               Enum.any?(checks, fn %{run: run} ->
+                 case Regex.run(~r/\bnpm\s+(?:run\s+)?([a-zA-Z0-9:_-]+)\b/, run) do
+                   [_, script] ->
+                     is_binary(scripts[script]) and String.trim(scripts[script]) != "" and
+                       String.trim(scripts[script]) != @npm_placeholder
+
+                   _ ->
+                     false
+                 end
+               end))
+        else
+          _ -> false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  # Parse the committed Mix source without evaluating project code. Recognize inline
+  # project settings and the conventional zero-argument aliases helper; comments
+  # and unrelated dependency options are not verification definitions.
+  defp mix_verification?(text, checks) do
+    with {:ok, ast} <- Code.string_to_quoted(text) do
+      {_, definitions} =
+        Macro.prewalk(ast, %{}, fn
+          {kind, _, [{name, _, args}, [do: body]]} = node, acc
+          when kind in [:def, :defp] and args in [nil, []] ->
+            {node, Map.put(acc, name, body)}
+
+          node, acc ->
+            {node, acc}
+        end)
+
+      project = keyword_body(definitions[:project])
+
+      aliases =
+        case Keyword.get(project, :aliases) do
+          {name, _, args} when is_atom(name) and args in [nil, []] ->
+            keyword_body(definitions[name])
+
+          value ->
+            keyword_body(value)
+        end
+
+      alias_names = Enum.map(Keyword.keys(aliases), &Atom.to_string/1)
+
+      Enum.any?(
+        [
+          :elixirc_options,
+          :xref,
+          :dialyzer,
+          :credo,
+          :test_paths,
+          :test_pattern,
+          :test_load_filters,
+          :test_ignore_filters,
+          :test_coverage
+        ],
+        &Keyword.has_key?(project, &1)
+      ) or
+        Enum.any?(checks, fn %{run: run} ->
+          case Regex.run(~r/\bmix\s+([a-z][a-z0-9_.-]*)\b/, run) do
+            [_, name] -> name in alias_names
+            _ -> false
+          end
+        end)
+    else
+      _ -> false
+    end
+  end
+
+  defp keyword_body({:__block__, _, expressions}), do: keyword_body(List.last(expressions))
+
+  defp keyword_body(value) when is_list(value),
+    do: if(Keyword.keyword?(value), do: value, else: [])
+
+  defp keyword_body(_), do: []
 
   defp checks(list) when is_list(list) do
     {checks, problems} =
@@ -291,8 +445,13 @@ defmodule Kogen.Init do
     warnings as errors, linter, type checker, security or dependency audit, tests), named in \
     lowercase with dashes; not an aggregate alias or target that runs several of them, and nothing \
     that deploys, publishes or needs credentials;
-    - protect: tracked configuration files of those checks (linter rules, formatter settings, \
-    suppression files).
+    - protect: tracked definitions/settings of the checks (linter rules, formatter settings, \
+    suppression files), not dependency inputs. Mix projects, package.json, go.mod and lockfiles are \
+    editable dependency inputs unless the manifest itself defines verification settings or an executable configured check: \
+    for example npm scripts used by the configured checks or a Mix alias invoked by one. A combined \
+    manifest may then be protected whole-file because it contains the actual check definition. Never \
+    protect a lockfile or a manifest merely because setup, formatting, compilation, tests, vet or an \
+    audit reads it. The caller can correct an ineligible path once; do not omit it silently.
 
     Propose only commands the sources name or Kogen detected. Kogen runs every command once on the \
     committed tree and keeps only those that pass, so do not leave a check out because it might \
@@ -308,7 +467,7 @@ defmodule Kogen.Init do
       "name" => "submit_configuration",
       "strict" => false,
       "description" =>
-        "The project's setup commands, fixers, checks and protected check configuration.",
+        "The project's setup commands, fixers, checks and protected verification configuration; dependency-only manifests and lockfiles are ineligible.",
       "parameters" => %{
         "type" => "object",
         "properties" => %{

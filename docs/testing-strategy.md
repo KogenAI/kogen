@@ -72,6 +72,9 @@ Kogen's Build has no limits. If the harness abandons a run (for example, the hos
 - While editing: the focused tests for the code being changed.
 - **Routine gate, before an ordinary commit:** the unit tests (`mix test test/kogen`), the integration tests and scenarios of the behavior the change touches (the feature files whose clauses it changes, or that run the changed code), `spec/check.sh` when `spec/` changed, and `go test -race ./...` when `cli/` changed. A change to a default value or to documentation needs only what shows that value or text.
 - **Release gate:** `sh test/suite.sh` (every layer, every non-`@live` scenario) on macOS and Linux, then the live runs. Also run the full suite on both platforms after changes to packaging, processes, signals, locale or paths. A trial build for someone to try may ship after the routine gate; say what it has not been through.
+
+Direct external-agent repairs are permitted during development. Preserve original evidence, classify interrupted attempts as incomplete and independently verify repaired behavior. Trial builds do not replace the release gate or self-build qualification.
+
 - Live runs (the example app, then the external projects): before a release, or when the provider route, packaging or the Build journey changes.
 - Parallel scenarios retain independent homes, repos and ports. Cucumber’s existing scheduling support keeps login scenarios mutually exclusive around port 1455; other independent scenarios may run concurrently. Measure complete results and wall time, including setup, and preserve each failure.
 

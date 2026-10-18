@@ -410,6 +410,8 @@ class FakeServers {
     const config = { setup: [], fix: [], checks: [], protect: [] };
     if (name === 'init-proposes-docs-check') config.checks = [{ name: 'docs', run: 'node docs-check.js' }];
     if (name === 'init-invalid-twice') config.checks = [{ name: 'Docs Check', run: 'node docs-check.js' }];
+    if (name === 'init-corrects-dependency-protect' && ordinal === 1) config.protect = ['.formatter.exs', 'mix.exs'];
+    if (name === 'init-corrects-dependency-protect' && ordinal === 2) config.protect = ['.formatter.exs'];
     if (name === 'init-proposes-setup') config.setup = ['mkdir seeded', 'echo run >> runs.txt', 'true'];
     return { items: [functionCall('submit_configuration', config, `init_submit_${ordinal}`)] };
   }
@@ -438,6 +440,8 @@ class FakeServers {
           : { items: [functionCall('submit', { files: intentFiles('is-even', { undefinedStep: true }) }, `shape_not_ready_${ordinal}`)] };
       case 'shape-invalid-three-times':
         return { items: [functionCall('submit', { files: [{ path: '../forbidden.txt', content: 'no' }] }, `shape_invalid_${ordinal}`)] };
+      case 'shape-protected-conflict':
+        return { items: [functionCall('submit', { blocked: { paths: ['.style.cfg'], reason: 'the requested check definition must change' } }, `shape_blocked_${ordinal}`)] };
       case 'shape-failed-and-undefined-step':
         return { items: [functionCall('submit', { files: intentFiles('is-even', { undefinedStep: true, failedFirst: true }) }, `shape_mixed_${ordinal}`)] };
       case 'shape-undefined-step':

@@ -800,8 +800,10 @@ defmodule Kogen.Build do
 
     # Protected paths
 
-    These files are the approved acceptance baseline. write_file refuses them, and if any of them changes the Build stops at once without a commit:
+    These files are the approved acceptance baseline. Approval freezes these bytes; it is not an exception or authorization to change them. write_file refuses them, and if any of them changes the Build stops at once without a commit:
     #{Enum.map_join(b.baseline, "\n", &("- " <> &1))}
+
+    Dependency manifests and lockfiles that are not in this baseline remain editable inputs for approved implementation changes. Their editable portions do not authorize weakening, removing or bypassing a configured check or changing actual verification configuration. Preserve all configured checks, their commands and the behavior they verify. Protection is whole-file: if a combined check-definition manifest is listed above, it cannot be edited for dependencies either.
 
     # Files
 
@@ -816,7 +818,8 @@ defmodule Kogen.Build do
     Rules:
     - Write and update tests as the Intent's `## Tests` section and the testing rules say, and run the affected tests with shell while you work.
     - Implement exactly what the Intent asks. No unrequested features, settings, abstractions, fallbacks or defensive branches. When behavior changes, change the existing code path, rewire its callers and delete obsolete code, tests and docs in the same change.
-    - The protected paths (the Intent's files, its step files, .kogen/project.yaml and protected check configuration) must not change: write_file refuses them, and changing them by any other means stops the Build without a commit.
+    - Approval freezes the protected baseline (the Intent's files, its Acceptance paths, .kogen/project.yaml and protected check configuration); it is not authorization to change those files. write_file refuses them, and changing them by any other means stops the Build without a commit.
+    - Editable dependency manifests and lockfiles may change for an approved feature, but that does not permit weakening, removing or bypassing configured checks or changing actual verification configuration. Preserve every check and its behavior. Protection is whole-file: a protected combined manifest that defines checks has no dependency-only exception.
     - shell runs /bin/sh -c in the repository root with stdin closed, so a command that asks for input fails at once. Commands have no time limit. Start long-running commands (dev servers, watch modes) in the background with output to a log file (`cmd > log 2>&1 &`), read the log, and stop them with kill when done.
     - Do not commit, push, stash, reset or switch branches; Kogen commits after verification and review.
     - When the implementation is complete, call finish. Kogen runs the fixers, the acceptance scenarios, the model and every check, then a reviewer reviews the whole diff. Failures and review findings come back to you; fix them and call finish again. You cannot end the Build by giving up.

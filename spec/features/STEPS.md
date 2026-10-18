@@ -44,6 +44,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `init-proposes-nothing` | answers the `init` request (the one with the `submit_configuration` tool) with empty lists |
 | `init-proposes-docs-check` | answers it with the check `{name: docs, run: node docs-check.js}` |
 | `init-invalid-twice` | answers it twice with a check named `Docs Check` |
+| `init-corrects-dependency-protect` | first protects `.formatter.exs` and dependency-only `mix.exs`, then returns the valid formatter-only correction |
 | `init-proposes-setup` | answers it with setup `mkdir seeded`, `echo run >> runs.txt` and `true` |
 | `shape-ready-is-even` | reads two files, submits `is-even` |
 | `is-even-outline` Intent fixture | one Scenario Outline with three Examples rows for the review-card count |
@@ -51,6 +52,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `shape-asks-one-then-writes` | one question; after the answer, submits `is-even` citing `(source: answer 1)` |
 | `shape-asks-two-then-writes` | two questions; after both answers, submits `is-even` citing both answer numbers |
 | `shape-invalid-three-times` | three submissions with a forbidden path |
+| `shape-protected-conflict` | reports a required edit to the configured protected `.style.cfg` path |
 | `shape-edits-existing-step-file` | submits `is-even` with an edit to the existing `features/steps/calc_steps.js` |
 | `shape-not-ready-then-asks` | submits `is-even` with an undefined step; after the readiness feedback it asks one UI/UX question |
 | `shape-undefined-step`, `shape-failing-invariant` | valid format; readiness fails as named; the same files are submitted 3 times (SHP-4) |
@@ -191,6 +193,7 @@ One JavaScript regular expression per line.
 ^the\ fake\ ChatGPT\ server\ received\ (\d+)\ requests$
 ^the\ file\ "([^"]*)"\ contains:$
 ^the\ file\ "([^"]*)"\ contains\ "([^"]*)"$
+^the\ file\ "([^"]*)"\ does\ not\ contain\ "([^"]*)"$
 ^the\ file\ "([^"]*)"\ does\ not\ exist$
 ^the\ file\ "([^"]*)"\ exists$
 ^the\ file\ "([^"]*)"\ has\ (\d+)\ lines?$

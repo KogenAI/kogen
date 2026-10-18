@@ -99,6 +99,18 @@ Feature: Project setup
     And stdout contains "Acceptance: not configured: the runner check failed with status 1"
     And stdout contains "Next: set commands.acceptance in .kogen/project.yaml"
 
+  @SET-8 @SET-11
+  Scenario: Init asks once to remove dependency-only protection and keeps formatter protection
+    Given a Git project from fixture "ex-app"
+    And the caller is signed in to ChatGPT
+    And the fake ChatGPT server plays script "init-corrects-dependency-protect"
+    When the caller runs "kogen init"
+    Then the exit code is 0
+    And the fake ChatGPT server received 2 requests
+    And request 2 contains "protect path mix.exs is not eligible"
+    And the file ".kogen/project.yaml" contains "  - '.formatter.exs'"
+    And the file ".kogen/project.yaml" does not contain "mix.exs"
+
   @SET-11
   Scenario: Two invalid configuration replies end init without writing anything
     Given a Git project from fixture "notes"

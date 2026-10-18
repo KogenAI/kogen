@@ -8,7 +8,7 @@ Kogen takes one requested feature through five steps in your own Git repository:
 4. **Review**: a reviewer model reads the diff. Its review blocks the commit until it approves.
 5. **Commit**: one commit of exactly the verified and reviewed contents, with your own Git configuration.
 
-ChatGPT ("Sign in with ChatGPT", using your plan) is the only provider. Kogen is the small core the rest of Kogen is built with: further Kogen features are requested, shaped, built, verified and reviewed by Kogen itself.
+ChatGPT ("Sign in with ChatGPT", using your plan) is the only provider. Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
 
 ## Status
 
@@ -38,7 +38,7 @@ kogen intent build my-feature                  # builds, verifies, reviews and c
 
 For a generated project, commit the runnable scaffold first; `kogen init` then makes a separate `Add Kogen configuration` commit. A truly empty Git worktree can instead start with a configuration-only `Initial commit`; uncommitted application files must be committed before initialization. An uncommitted request belongs outside the repository.
 
-`kogen init` keeps only the checks that pass on your committed tree, and sets up acceptance with the Cucumber Kogen ships, or with the project's own; [docs/configuration.md](docs/configuration.md) explains `.kogen/project.yaml`. `kogen help` lists every command, and `kogen uninstall` removes the program.
+`kogen init` keeps only the checks that pass on your committed tree, and sets up acceptance with the Cucumber Kogen ships, or with the project's own; [docs/configuration.md](docs/configuration.md) explains `.kogen/project.yaml`. Dependency manifests and lockfiles (such as `mix.exs`, `package.json`, `go.mod` and their lockfiles) are editable inputs when they only describe project/dependency metadata. Dedicated formatter, linter and suppression settings remain protected. A combined manifest that defines a configured check, such as an npm check script or a Mix check alias, may be protected whole-file; it then has no dependency-only edit exception. If shaping reports a genuine conflict, revise the request, or review and commit `.kogen/project.yaml` outside Build and shape again. This manual review changes the approval baseline; it is not approval to edit a protected file in Build. Preserve checks and their actual configuration. `kogen help` lists every command, and `kogen uninstall` removes the program.
 
 ## Specification
 
@@ -71,10 +71,12 @@ Release checks:
 ```sh
 sh test/suite.sh                               # every deterministic layer and scenario; run on macOS and Linux
 sh test/live/real-use.sh example file://$PWD/dist/<archive>   # real use on the example app (REL-1)
-sh test/live/self-repo.sh /tmp/kogen-self && KOGEN_SELF_REPO=/tmp/kogen-self sh test/live/real-use.sh kogen file://$PWD/dist/<archive>   # Kogen builds a change to itself (REL-1)
+sh test/live/self-repo.sh /tmp/kogen-self && KOGEN_SELF_REPO=/tmp/kogen-self sh test/live/real-use.sh kogen file://$PWD/dist/<archive>   # installed self-hosting qualification attempt (REL-1)
 sh test/live/self-build-check.sh <run folder>/project      # REL-3 on what that run landed; real-use.sh prints the run folder
 sh examples/tiny_tasks-qualification/qualify.sh               # qualifies the example app's own checks
 ```
+
+During development, fix Kogen directly with an external coding agent when needed. Self-hosting is a qualification path, not a prerequisite for repairing the tool. Preserve failed-attempt evidence and verify the candidate independently. An uncommitted development build is not a qualified release; the release checks above still apply.
 
 The scenarios run Python from `.tool-versions`; set `KOGEN_TEST_PYTHON_BIN` to use another Python 3.13. `sh test/suite.sh` takes about two minutes with dependencies installed.
 

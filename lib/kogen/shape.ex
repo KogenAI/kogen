@@ -221,7 +221,11 @@ defmodule Kogen.Shape do
     role = config.models["shape"]
     t0 = System.monotonic_time(:millisecond)
     tools = Tools.defs(~w(read_file list_files search_text probe)) ++ [submit_def()]
-    input = [%{"role" => "user", "content" => context(root, slug, config, state)}]
+    protected_paths = Intent.protected(root, config)
+
+    input = [
+      %{"role" => "user", "content" => context(root, slug, config, state, protected_paths)}
+    ]
 
     sh = %{
       root: root,
@@ -268,6 +272,9 @@ defmodule Kogen.Shape do
         })
 
         print_questions(slug, Enum.with_index(questions, 1) |> Enum.map(fn {q, i} -> {i, q} end))
+
+      {:blocked, paths, reason} ->
+        print_blocked(paths, reason)
 
       :ready ->
         File.rm_rf!(state_dir)
@@ -338,6 +345,9 @@ defmodule Kogen.Shape do
       {:invalid, _} ->
         converse(sh, input, invalid + 1, usage)
 
+      {:blocked, paths, reason} ->
+        {{:blocked, paths, reason}, sh, usage}
+
       nil when calls == [] ->
         if invalid + 1 >= 3,
           do: {{:invalid, ["the shaper ended without calling submit"]}, sh, usage},
@@ -363,8 +373,8 @@ defmodule Kogen.Shape do
     end
   end
 
-  # A submission: questions, or files that pass the rules (SHP-5) and readiness (SHP-8).
-  # Files are written for the dry run; a later attempt replaces them.
+  # A submission: questions, files that pass readiness, or a truthful protected-conflict report.
+  # Blocked is a report only; it never authorizes an edit or writes submission files.
   defp submit(args, sh) do
     case validate(args, sh.root, sh.slug, sh.config) do
       {:error, problems} ->
@@ -372,6 +382,9 @@ defmodule Kogen.Shape do
 
       {:ok, {:questions, _} = q} ->
         {"accepted", q, sh}
+
+      {:ok, {:blocked, _paths, _reason} = blocked} ->
+        {"blocked: required protected edits reported", blocked, sh}
 
       {:ok, {:files, files}} ->
         sh = write_attempt(sh, files)
@@ -481,7 +494,7 @@ defmodule Kogen.Shape do
       "name" => "submit",
       "strict" => false,
       "description" =>
-        "End shaping: either questions for the caller about material UI/UX choices the request leaves open, or the Intent's files.",
+        "End shaping with exactly one of questions, ready Intent files, or blocked. A blocked report names required edits to currently protected paths and is never authorization; it cannot be paired with another result.",
       "parameters" => %{
         "type" => "object",
         "properties" => %{
@@ -516,6 +529,14 @@ defmodule Kogen.Shape do
               },
               "required" => ["path", "content"]
             }
+          },
+          "blocked" => %{
+            "type" => "object",
+            "properties" => %{
+              "paths" => %{"type" => "array", "items" => %{"type" => "string"}},
+              "reason" => %{"type" => "string"}
+            },
+            "required" => ["paths", "reason"]
           }
         }
       }
@@ -523,8 +544,41 @@ defmodule Kogen.Shape do
   end
 
   # SHP-4: questions, or files that make a valid Intent.
+  defp validate(%{"blocked" => blocked} = args, root, slug, config)
+       when not is_map_key(args, "questions") and not is_map_key(args, "files") do
+    paths = if is_map(blocked), do: blocked["paths"], else: nil
+    reason = if is_map(blocked), do: blocked["reason"], else: nil
+
+    problems =
+      cond do
+        not is_list(paths) or paths == [] ->
+          ["blocked.paths must be a non-empty list"]
+
+        not Enum.all?(paths, &(is_binary(&1) and String.trim(&1) != "")) ->
+          ["blocked.paths must contain non-empty paths"]
+
+        true ->
+          []
+      end ++
+        if(is_binary(reason) and String.trim(reason) != "",
+          do: [],
+          else: ["blocked.reason must be non-empty text"]
+        )
+
+    protected = Intent.baseline(root, slug, config)
+
+    problems =
+      problems ++
+        for path <- if(is_list(paths), do: paths, else: []),
+            is_binary(path) and String.trim(path) != "",
+            path not in protected,
+            do: "blocked path #{path} is not protected by the current contract"
+
+    if problems == [], do: {:ok, {:blocked, paths, reason}}, else: {:error, problems}
+  end
+
   defp validate(%{"questions" => [_ | _] = qs} = args, _root, _slug, _config)
-       when not is_map_key(args, "files") do
+       when not is_map_key(args, "files") and not is_map_key(args, "blocked") do
     if Enum.all?(
          qs,
          &(is_map(&1) and is_binary(&1["question"]) and String.trim(&1["question"]) != "" and
@@ -539,7 +593,7 @@ defmodule Kogen.Shape do
   end
 
   defp validate(%{"files" => [_ | _] = files} = args, root, slug, config)
-       when not is_map_key(args, "questions") do
+       when not is_map_key(args, "questions") and not is_map_key(args, "blocked") do
     own = for f <- ~w(intent.md acceptance.feature model.qnt), do: Intent.dir(slug) <> "/" <> f
     steps = config.steps_dir
 
@@ -587,7 +641,11 @@ defmodule Kogen.Shape do
   end
 
   defp validate(_, _, _, _),
-    do: {:error, ["submit takes either a non-empty questions list or a non-empty files list"]}
+    do:
+      {:error,
+       [
+         "submit takes exactly one of a non-empty questions list, a non-empty files list, or a blocked report"
+       ]}
 
   defp valid_options?(%{"options" => options}) when is_list(options) do
     Enum.all?(options, fn
@@ -602,6 +660,20 @@ defmodule Kogen.Shape do
   defp valid_options?(question), do: not Map.has_key?(question, "options")
 
   # ---- Output (SHP-8) ----
+
+  defp print_blocked(paths, reason) do
+    Bridge.puts(
+      "shape/protected_conflict: required edits touch protected files: #{Enum.join(paths, ", ")}"
+    )
+
+    Bridge.puts(reason)
+
+    Bridge.puts(
+      "Next: revise the request, or review and commit .kogen/project.yaml outside Build, then shape again; preserve checks and actual check configuration. There is no protected-edit override."
+    )
+
+    1
+  end
 
   defp print_ready(root, slug, ready, new_paths, usage_line) do
     steps =
@@ -635,9 +707,19 @@ defmodule Kogen.Shape do
 
   # ---- Prompt (SHP-3) ----
 
-  defp context(root, slug, config, state) do
+  defp context(root, slug, config, state, protected_paths) do
     files = Git.ok!(root, ["ls-files"])
     steps_dir = config.steps_dir
+    baseline = Intent.baseline(root, slug, config)
+
+    acceptance_paths =
+      if Intent.exists?(root, slug), do: Intent.read(root, slug).acceptance || [], else: []
+
+    automatic_baseline =
+      Enum.filter(baseline, fn path ->
+        path == Config.path() or path in acceptance_paths or
+          String.starts_with?(path, Intent.dir(slug) <> "/")
+      end)
 
     step_files =
       if steps_dir do
@@ -693,6 +775,14 @@ defmodule Kogen.Shape do
     checks: #{Enum.map_join(config.checks, ", ", fn {n, r} -> "#{n}: #{r}" end)}
     acceptance: #{config.acceptance_run}
       (it runs with KOGEN_ACCEPTANCE_FEATURES set to the Intent's feature path and KOGEN_ACCEPTANCE_REPORT to the report path)
+
+    # Protection contract
+
+    configured protect patterns: #{inspect(config.protect)}
+    paths currently matched by those patterns: #{inspect(protected_paths)}
+    automatic baseline: every file in `#{Intent.dir(slug)}/`, every path listed under the Intent's `Acceptance:` (including step files), and `.kogen/project.yaml`.
+    automatic paths currently present or listed: #{inspect(automatic_baseline)}
+    Approval freezes this baseline. It is not an exception or authorization to change a protected path. Inspect the implementation edits required to deliver the requested outcome; do not infer a conflict by scanning request prose. If a required protected edit cannot be avoided without changing the requested outcome, submit the exclusive `blocked` report with actual protected paths and a reason. Never submit a ready package conditional on a protected-edit approval mechanism: no such override exists.
 
     # Existing step files under #{steps_dir}
 
@@ -761,7 +851,7 @@ defmodule Kogen.Shape do
 
     Kogen then checks the Intent: the rules above, the model, and a dry run of the acceptance command that must report every scenario exactly once as passed or failed (an undefined, pending or skipped step means not ready). Problems come back to you; fix them and submit again.
 
-    End by calling `submit` exactly once with either `questions` or `files`, not both. If Kogen reports problems with a submission, fix them and submit again.
+    Inspect the required implementation edits, not arbitrary request wording. If a required edit cannot be avoided and touches a path protected by the current contract, end with `submit` containing only `blocked: {paths: ["relative/path"], reason: "why the requested change requires this edit"}`. A blocked report is not authorization, writes no new Intent or approval, and starts no Build. Do not offer conditional readiness or suggest a protected-edit approval. Otherwise end with `submit` exactly once using either `questions` or `files`, not both. If Kogen reports problems with a submission, fix them and submit again.
     """
   end
 end

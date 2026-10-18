@@ -383,6 +383,10 @@ function fileAssertions(world, label, args, attachment, actual) {
     assertContainsTemplate(world, fs.readFileSync(target, 'utf8'), args[1], value);
     return;
   }
+  if (label.includes(' does not contain ')) {
+    assert.ok(!fs.readFileSync(target, 'utf8').includes(args[1]), `${value} contains ${args[1]}`);
+    return;
+  }
   assert.fail(`file assertion is not implemented: ${label}`);
 }
 
