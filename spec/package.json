@@ -1,0 +1,17 @@
+{
+  "name": "kogen-spec-checks",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Offline well-formedness checks for the Kogen specification (no product code)",
+  "devDependencies": {
+    "@cucumber/gherkin": "42.0.1",
+    "@cucumber/messages": "34.2.1",
+    "@informalsystems/quint": "0.33.0"
+  },
+  "overrides": {
+    "adm-zip": "0.6.1"
+  },
+  "scripts": {
+    "check": "sh check.sh"
+  }
+}

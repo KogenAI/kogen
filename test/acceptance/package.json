@@ -1,0 +1,12 @@
+{
+  "name": "kogen-acceptance",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Kogen's deterministic acceptance suite: spec/features against the installed release (REL-4)",
+  "scripts": {
+    "test": "cucumber-js --parallel 8 --strict --tags \"not @live\" --require \"steps/*.js\" --require \"support/*.js\" --format progress ../../spec/features"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "13.3.0"
+  }
+}

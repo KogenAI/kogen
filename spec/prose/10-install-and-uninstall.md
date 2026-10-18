@@ -1,0 +1,15 @@
+# 10 Install and uninstall
+
+One `kogen` command per user from a per-platform archive, with no administrator rights, services or update checker; `kogen uninstall` removes what the installer placed.
+
+**INS-1 — Platforms.** macOS on Apple Silicon and Linux x86-64 with glibc. Supported versions are the ones release acceptance runs on, listed in the release README. Elsewhere `install.sh` prints `install: unsupported platform <os>-<arch>` (exit 1).
+
+**INS-2 — Archive.** `kogen-<version>-<target>.tar.gz` holds one folder `kogen-<version>-<target>/` with `install.sh`, `README.md`, `LICENSE`, `NOTICE`, `licenses/` (the licence texts of the bundled third-party software: Erlang/OTP, Elixir, Go, and every npm package with its licence in `licenses/npm-packages.md`), `TARGET`, `docs/testing-rules.md`, `docs/configuration.md`, `bin/kogen` (Go), `lib/release/` (the Elixir release with ERTS), `lib/quint/` (the Quint 0.33.0 `node_modules`) and `lib/cucumber/` (the `@cucumber/cucumber` 13.3.0 `node_modules`, SET-13). Each archive is built on its own target.
+
+**INS-3 — Runtime.** The installed command needs no Erlang, Elixir or Go; `bin/kogen` finds its release relative to its own resolved path, so it works through a symlink, from any directory, outside any source checkout. `git` must be installed; the installer says so if it is not.
+
+**INS-4 — Install.** `sh install.sh [--prefix <dir>]` (default `$HOME/.local`): copies `bin/`, `docs/`, `lib/`, `licenses/`, `README.md`, `LICENSE` and `NOTICE` to `<prefix>/lib/kogen/` (replacing an earlier install); if no `node` 22 or newer is on `PATH` (Quint needs 20, Cucumber 13.3.0 of the acceptance bridge 22), downloads the current Node LTS for the platform into `<prefix>/lib/kogen/node/`; records the absolute path of the Node Kogen will use (the one found or the one downloaded) in `<prefix>/lib/kogen/node-path`; links `<prefix>/bin/kogen` to `<prefix>/lib/kogen/bin/kogen`; runs `kogen version` from `/` and, if that fails, exits 1 with its output. Success prints (exit 0) `Add to PATH: export PATH="<prefix>/bin:$PATH"` when needed, then `Installed kogen <version> in <prefix>` as the last line, where `<version>` is the second word of `kogen version` (`<sha8>` or `dev+<hash8>`). It needs no root and touches nothing outside the prefix (no shell files).
+
+**INS-5 — Uninstall.** `kogen uninstall` removes `<prefix>/lib/kogen/` (including any Node it installed) and the `<prefix>/bin/kogen` link, and prints `Uninstalled kogen from <prefix>` and exactly `Kept your ChatGPT login; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id` (exit 0). It never touches projects or their `.kogen/` folders or other files under `~/.kogen`.
+
+Scenarios: `features/10-install-and-uninstall.feature`, on each platform, from an extracted archive with an isolated `HOME`.

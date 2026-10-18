@@ -1,0 +1,39 @@
+# 08 ChatGPT connection
+
+ChatGPT is the only provider. Kogen signs in with its own login flow, stores and refreshes its own credentials, streams responses with tool calls and usage, and reports provider problems precisely. It never borrows another tool's credentials, never falls back to a paid API key and never switches accounts. The route is OpenAI's official "Sign in with ChatGPT" plan usage for open-source apps, with dynamic client registration (developers.openai.com/siwc): authorization at `https://auth.openai.com/api/accounts/authorize`, tokens at `https://auth.openai.com/api/accounts/oauth/token`, inference at `https://api.openai.com/v1/responses`.
+
+**GPT-1 — Own login only.** Kogen uses only credentials from its own `kogen provider login chatgpt`. It never reads Codex, ChatGPT desktop, browser or Claude credential stores, and accepts no token from the environment or arguments.
+
+**GPT-2 — Login.** `kogen provider login chatgpt` runs the authorization-code flow with PKCE (S256), a fresh `state` and `nonce`, the scope `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct` and the resource `https://api.openai.com/v1`. The first login registers Kogen dynamically (`client_id=dynamic_agent_client`, `agent_name_hint=Kogen`, a stable per-machine `ext_agent_host_id`) and keeps the issued `oaiapp_…` client ID for later logins and refreshes. Kogen prints `Continue with ChatGPT` and the authorization URL, opens the browser (not when `KOGEN_NO_BROWSER=1`), and waits up to 300 seconds for the redirect on `http://127.0.0.1:1455/auth/callback`, owned by the `kogen` process, or for that redirect URL pasted on stdin (for machines whose browser is elsewhere). A redirect with the wrong `state` is ignored. If the granted scope lacks `chatgpt.tokens.use.direct`, the login fails with `provider/login_failed: ChatGPT plan usage was not granted; sign in again and allow it` and nothing is kept. Success prints `chatgpt signed in[ (<email>)]` (exit 0) and replaces any earlier login; `access_denied` and other failures print `provider/login_failed: <detail>` (exit 4).
+
+**GPT-3 — Storage.** Credentials (issued client ID, tokens, granted scope) live in `~/.kogen/credentials/chatgpt.json` (mode 0600, directory 0700), written atomically; the `ext_agent_host_id` lives in `~/.kogen/host-id`. The user signs in once per machine: every later command reuses these credentials, refreshes them (GPT-6) and saves each rotated refresh token, and a new login is needed only when a refresh fails for good. Kogen holds an exclusive lock on the credentials while it reads, refreshes and saves them: the lock file `~/.kogen/credentials/chatgpt.lock` is created exclusively (`O_EXCL`) and holds the pid; a process that finds it held waits, and a lock whose process is gone is removed. Under the lock Kogen re-reads `chatgpt.json` and uses a newer token if another process already refreshed.
+
+**GPT-4 — Status.** `kogen provider list` (the agreed provider status command) prints `chatgpt: signed in[ (<email>)]` only when `~/.kogen/credentials/chatgpt.json` contains the issued `client_id`, `refresh_token`, `access_token` and `expires_at`. A missing credentials file prints `chatgpt: not signed in`; a saved file missing any required value prints `chatgpt: saved login cannot be used; run kogen provider login chatgpt` (exit 0). It makes no request.
+
+**GPT-5 — Login required.** `init` (on a repository with commits), shaping and Builds refuse before any request when no credentials file exists: `provider/login: not signed in; run kogen provider login chatgpt`. A saved credentials file missing any required value in GPT-4 is refused as `provider/login: saved login cannot be used; run kogen provider login chatgpt`. Both exit 4.
+
+**GPT-6 — Refresh.** Kogen refreshes the access token (one hour) before it expires and once after a 401, with the issued client ID and without `scope`, saving the rotated refresh token before using the new access token (all of it under the GPT-3 lock). If the Responses API returns 401 and refresh fails, or the authorization server rejects the saved refresh token with `invalid_grant`, Kogen prints `provider/login: the ChatGPT sign-in was rejected; run kogen provider login chatgpt` (exit 4). Other failed proactive refreshes print `provider/login: the ChatGPT sign-in expired and could not be refreshed; run kogen provider login chatgpt` (exit 4).
+
+**GPT-7 — Streaming.** Every request is a `POST /v1/responses` with `store: false` and `stream: true`, the configured model and effort, the conversation and the tool definitions; Kogen assembles text, tool calls, the end of the response and usage. A stream that ends without its completion event is a transient failure. Each request carries the whole conversation: `previous_response_id` is not supported on this route. Nothing in Kogen relies on prompt caching. Measured cache hits on this route are sporadic.
+
+**GPT-8 — Errors and retries.**
+
+| Situation | Behavior | When it stops |
+| --- | --- | --- |
+| network error, 5xx, 429 that is not a usage limit, cut stream | retry the whole request, 3 attempts in total, waiting 2 s then 8 s; partial output is discarded | `provider/unavailable: ChatGPT did not answer after 3 attempts: <detail>` |
+| usage limit (`subscription_sharing_usage_limit_exceeded`) | no retry | `provider/usage_limit: ChatGPT usage limit reached[; it resets at <time>]` |
+| 401 | one refresh, one retry (GPT-6) | `provider/login: …` |
+| model not available to the account | no retry | `provider/model_unavailable: <model> is not available to this ChatGPT account` |
+| context too long | no retry | LOOP-9 in a Build; `shape/provider_failed` in shaping |
+| other 4xx | no retry | `provider/refused: ChatGPT refused the request: <status> <detail>` |
+| unreadable response | one retry | `provider/invalid_response: ChatGPT sent a response Kogen cannot read: <detail>` |
+
+All exit 4, except context exhaustion in a Build, which is LOOP-9 (exit 1). A retry never repeats a tool call: tools run only after a complete response. A provider failure ends a Build without a commit, edits left.
+
+**GPT-9 — Usage.** Kogen records model, effort and input, cached, output and reasoning tokens per request; the Build result and shaping output print totals.
+
+**GPT-10 — Secrets.** Tokens and authorization codes never appear on stdout or stderr, in run records, error messages, commands' environment or any argv.
+
+**GPT-11 — Test seams.** `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` replace the provider and authorization base URLs for tests and accept only `http://127.0.0.1:<port>` or `http://localhost:<port>`; any other value is `environment/invalid_test_seam: <NAME> must be http://127.0.0.1:<port> or http://localhost:<port>` (exit 3).
+
+Scenarios: `features/08-chatgpt.feature`.

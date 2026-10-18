@@ -1,0 +1,19 @@
+# 06 Reviewing
+
+After a green final pass and before any commit, a reviewer model reviews the code. Its review blocks: nothing is committed without an approving review of exactly the verified contents.
+
+**REV-1 — When.** A review runs after every green final pass and only then. A `changes` verdict sends the Build back to the builder; the repaired candidate is verified again and, when green, reviewed again. There is no limit on review rounds. Model: `build.qnt` `ReviewNeverOverridesChecks`.
+
+**REV-2 — What the reviewer reads.** The Intent's `intent.md`, `acceptance.feature` and `model.qnt`; the text of `docs/testing-rules.md` (SET-6); the root `README.md`; the full unified diff of the candidate against the HEAD the Build started from; the complete current text of every changed or added file (a deleted file appears through its diff); and the final pass's results (each check's name and status, the scenario count). It may read any other file of the repository with read-only tools (REV-3), for example a caller that should have been rewired or an old implementation that should have been removed. It does not get the builder's conversation: no plan, no tool calls, no tool results.
+
+**REV-3 — Who reviews.** `models.review` (default `gpt-6.1-sol`, effort `high`), in a fresh request with the read-only tools `read_file`, `list_files` and `search_text` (as in SHP-3) and `submit_review`. It cannot run commands or edit anything, and the builder never reviews its own work.
+
+**REV-4 — What it judges and returns.** The reviewer checks that the code does what the approved Intent asks; that it adds nothing the Intent did not ask for (features, settings, abstractions, defensive branches or fallbacks without a present need); that it has no correctness defects; and that it leaves no obsolete code path, dead code, unrewired caller or debugging output behind — in the requested change and its affected execution paths, including relevant unchanged callers. It also checks, from `docs/testing-rules.md`, three things that are blocking findings when they fail: every rule in the Intent's `## Tests` section has its test, and the test follows the table of section 2; no test is needlessly duplicated; no test is coupled to implementation details (section 4). It calls `submit_review` with `verdict` (`approve` or `changes`) and `findings`, each `{path, line, severity, message}` with `severity` `blocking` or `note`. Kogen accepts the verdict only when `changes` has at least one blocking finding, `approve` has none, and every `path` is a file of the start HEAD or of the candidate. A reply without a `submit_review` call counts as an invalid verdict. An invalid verdict goes back once with the problem; a second invalid verdict ends the Build with `candidate/review_invalid: the reviewer did not return a valid verdict; edits are left in place` (exit 1).
+
+**REV-5 — Effect.** `approve`: the Build commits (07). `changes`: the blocking findings become the next builder message as `review: <path>:<line>: <message>` lines. Notes never block.
+
+**REV-6 — Review cannot weaken checks.** The review never changes the baseline, the check selection or a check result. A finding that could only be satisfied by changing a protected file cannot be satisfied in this Build; the builder's attempt is refused (VER-8) and the caller decides (interrupt, then a new Intent).
+
+**REV-7 — Record and report.** Each review is saved as `.kogen/local/runs/<build-id>/review-<n>.json` (model, effort, usage, verdict, findings). A landed Build prints `review: approved[, <n> note(s)]` and one `  note: <path>:<line>: <message>` line per note (GIT-8).
+
+Scenarios: `features/06-reviewing.feature`. Model: `quint/build.qnt`.

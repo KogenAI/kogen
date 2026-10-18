@@ -1,0 +1,11 @@
+{
+  "name": "tiny-tasks-live-example",
+  "private": true,
+  "devDependencies": {
+    "@cucumber/cucumber": "13.3.0"
+  },
+  "scripts": {
+    "test": "cucumber-js --strict --require 'features/steps/*.js' features/bridge.feature"
+  },
+  "license": "Apache-2.0"
+}

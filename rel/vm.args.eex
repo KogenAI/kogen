@@ -1,0 +1,5 @@
+## The core's Erlang logger writes to stderr from boot on, so stdout carries only the protocol
+## (CLI-4). It is set here, not in ELIXIR_ERL_OPTIONS: the release script expands that variable
+## unquoted, and the shell would glob its brackets against the files of the current folder.
+## In this file # starts a comment; \# is a literal #.
+-kernel logger [{handler,default,logger_std_h,\#{config=>\#{type=>standard_error}}}]

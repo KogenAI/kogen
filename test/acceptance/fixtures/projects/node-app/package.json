@@ -1,0 +1,11 @@
+{
+  "name": "node-app",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "lint": "node lint.js"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "13.3.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "kogen-cucumber",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "The Cucumber version Kogen ships and runs acceptance with, on its own Node (SET-13)",
+  "dependencies": {
+    "@cucumber/cucumber": "13.3.0"
+  }
+}

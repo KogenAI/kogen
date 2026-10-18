@@ -1,0 +1,57 @@
+--- a/lib/tiny_tasks.ex
++++ b/lib/tiny_tasks.ex
+@@ -10,7 +10,21 @@
+     task
+   end
+ 
+-  def list do
+-    Store.read()
++  def list(open_only) do
++    tasks = Store.read()
++
++    if open_only do
++      Enum.filter(tasks, &(&1.status == "done"))
++    else
++      tasks
++    end
++  end
++
++  def complete(id) do
++    tasks = Store.read()
++    index = Enum.find_index(tasks, &(&1.id == id))
++    updated = List.update_at(tasks, index, &%{&1 | status: "done"})
++    Store.write(updated)
++    Enum.at(updated, index)
+   end
+ end
+--- a/lib/mix/tasks/todo/list.ex
++++ b/lib/mix/tasks/todo/list.ex
+@@ -4,10 +4,11 @@
+   @shortdoc "List tasks"
+ 
+   @impl Mix.Task
+-  def run(_args) do
++  def run(args) do
+     Mix.Task.run("app.start")
++    tasks = TinyTasks.list(args == ["--open"])
+ 
+-    case TinyTasks.list() do
++    case tasks do
+       [] -> Mix.shell().info("No tasks yet.")
+       tasks -> Enum.each(tasks, &print_task/1)
+     end
+--- /dev/null
++++ b/lib/mix/tasks/todo/complete.ex
+@@ -0,0 +1,12 @@
++defmodule Mix.Tasks.Todo.Complete do
++  use Mix.Task
++
++  @shortdoc "Complete a task"
++
++  @impl Mix.Task
++  def run([id]) do
++    Mix.Task.run("app.start")
++    task = TinyTasks.complete(String.to_integer(id))
++    Mix.shell().info("Completed task #{task.id}.")
++  end
++end

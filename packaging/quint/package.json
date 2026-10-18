@@ -1,0 +1,9 @@
+{
+  "name": "kogen-quint",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "The Quint version Kogen ships and runs with its own Node (VER-5)",
+  "dependencies": {
+    "@informalsystems/quint": "0.33.0"
+  }
+}
