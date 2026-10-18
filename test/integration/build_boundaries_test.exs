@@ -13,6 +13,150 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     {:ok, suite: suite}
   end
 
+  test "REV-5 reviewer repairs are verified and committed without returning to the builder", %{
+    suite: suite
+  } do
+    context =
+      fixture!(
+        suite,
+        Enum.take(build_script(), 2) ++
+          [
+            {:function, "write_file", %{"path" => "app.txt", "content" => "reviewer repair\n"}},
+            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
+          ]
+      )
+
+    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status == 0, output
+    assert git_value!(context, ["show", "HEAD:app.txt"]) == "reviewer repair"
+    assert result(context)["passes"] == 2
+    assert result(context)["reviews"] == 1
+
+    assert length(FakeProvider.provider_requests(context.server)) -
+             length(FakeProvider.review_requests(context.server)) == 3
+  end
+
+  test "REV-5 final verification failures return to the same reviewer context", %{suite: suite} do
+    context =
+      fixture!(
+        suite,
+        Enum.take(build_script(), 2) ++
+          [
+            {:function, "write_file", %{"path" => "app.txt", "content" => "broken\n"}},
+            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}},
+            {:function, "write_file", %{"path" => "app.txt", "content" => "reviewer repaired\n"}},
+            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
+          ]
+      )
+
+    configure_startup!(context, "checks", "! grep -qx broken app.txt", false)
+    {card, 5} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+    [_, hash] = Regex.run(~r/SHA-256: ([0-9a-f]{64})/, card)
+    {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash])
+
+    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status == 0, output
+    assert git_value!(context, ["show", "HEAD:app.txt"]) == "reviewer repaired"
+    assert result(context)["passes"] == 3
+    assert result(context)["reviews"] == 1
+    requests = FakeProvider.review_requests(context.server)
+    assert length(requests) == 4
+
+    assert Enum.any?(Enum.at(requests, 2).json["input"], fn item ->
+             String.contains?(item["content"] || "", "Final verification")
+           end)
+
+    assert Enum.any?(Enum.at(requests, 2).json["input"], &(&1["type"] == "function_call_output"))
+  end
+
+  test "REV-6 reviewer shell edits cannot change the approved baseline", %{suite: suite} do
+    context =
+      fixture!(
+        suite,
+        Enum.take(build_script(), 2) ++
+          [
+            {:function, "shell",
+             %{"command" => "printf changed > .kogen/intents/fixture/acceptance.feature"}},
+            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
+          ]
+      )
+
+    before = state(context)
+    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status == 1, output
+    assert output =~ "candidate/baseline_changed"
+    assert state(context) == before
+    assert result(context)["outcome"] == "baseline_changed"
+  end
+
+  test "REV-5 interrupted targeted repair reports pending review and changed verification", %{
+    suite: suite
+  } do
+    context =
+      fixture!(
+        suite,
+        Enum.take(build_script(), 2) ++
+          [
+            {:function, "write_file", %{"path" => "app.txt", "content" => "reviewer repair\n"}},
+            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}},
+            {:function, "shell", %{"command" => "touch .kogen/local/reviewer-waiting; sleep 600"}}
+          ]
+      )
+
+    configure_startup!(
+      context,
+      "checks",
+      "if grep -qx 'reviewer repair' app.txt && ! test -f .kogen/local/check-mutated; then printf 'check mutation\\n' > app.txt; touch .kogen/local/check-mutated; fi",
+      false
+    )
+
+    before = state(context)
+    port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
+    Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/reviewer-waiting"))
+    Helpers.signal!(context, port, "INT")
+    {output, status} = Helpers.await_exit(port, "", 15_000)
+
+    assert status == 130, output
+    assert state(context) == before
+    assert result(context)["outcome"] == "interrupted"
+    assert Enum.sort(result(context)["still_failing"]) == ["review", "verification"]
+    assert File.read!(Path.join(context.repo, "app.txt")) == "check mutation\n"
+    [review_path] = Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*/review-1.json"))
+    assert [%{"verdict" => "approve"}] = JSON.decode!(File.read!(review_path))["attempts"]
+  end
+
+  test "REV-5 unresolved substantive findings stop rather than start another builder round", %{
+    suite: suite
+  } do
+    context =
+      fixture!(
+        suite,
+        Enum.take(build_script(), 2) ++
+          [
+            {:function, "submit_review",
+             %{
+               "verdict" => "changes",
+               "findings" => [
+                 %{
+                   "path" => "app.txt",
+                   "line" => 1,
+                   "severity" => "blocking",
+                   "message" => "Required behavior cannot be repaired within this Intent."
+                 }
+               ]
+             }}
+          ]
+      )
+
+    before = state(context)
+    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status == 1, output
+    assert output =~ "candidate/review_blocked"
+    assert state(context) == before
+    assert result(context)["reviews"] == 1
+    assert result(context)["outcome"] == "review_blocked"
+  end
+
   test "REV-2 review retains full source without replaying new files twice", %{suite: suite} do
     before = "outside-diff-sentinel\n" <> String.duplicate("context\n", 20) <> "old marker\n"
     after_text = String.replace(before, "old marker", "new marker")

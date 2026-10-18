@@ -295,10 +295,7 @@ class FakeServers {
       this.mark('tool command running', { ...record, command });
       if (this.commandObserver) this.commandObserver(command, record);
     }
-    if (kind === 'build' && record.text.includes('refused: .kogen/intents/is-even/acceptance.feature')) {
-      this.mark('acceptance write result received', record);
-      if (this.script.name === 'build-review-demands-baseline-change') outcome.hang = 'acceptance write result received';
-    }
+
 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
     res.flushHeaders();
@@ -383,10 +380,7 @@ class FakeServers {
     return this.requests.some(request => request.kind === 'build' && request.text.includes(marker));
   }
 
-  builderFinishedAfter(marker) {
-    const feedback = this.requests.find(request => request.kind === 'build' && request.text.includes(marker));
-    return feedback && this.responseItems.some(item => item.kind === 'build' && item.requestOrder >= feedback.order && item.name === 'finish');
-  }
+
 
   scriptResponse(record, ordinal) {
     const name = this.script.name;
@@ -520,36 +514,13 @@ class FakeServers {
       return calls(correct);
     }
     if (name === 'build-then-500-always' && !this.hasToolOutput(record, 'write_file', value => value.path === 'calc.py')) return { items: [functionCall('write_file', wrong[0], 'provider_edit')] };
-    if (name === 'build-review-demands-baseline-change' && this.hasToolOutput(record, 'write_file', value => value.path === '.kogen/intents/is-even/acceptance.feature')) {
-      return { hang: 'acceptance write result received', items: [] };
-    }
-    if (name === 'build-review-demands-baseline-change' && record.text.includes('change the approved acceptance assertions')) {
-      return { items: [functionCall('write_file', { path: '.kogen/intents/is-even/acceptance.feature', content: 'changed' }, 'review_baseline_write')] };
-    }
     if (name === 'build-review-changes-then-fixed') {
-      const reviewFeedback = 'review: calc.py:3: is_even accepts floats; the Intent says non-integers raise TypeError';
-      if (record.text.includes('Verification pass ') && record.text.includes(' is not green.') || record.text.includes(reviewFeedback)) return calls(correct);
-      return calls(wrong);
+      const unchecked = correct.map(file => file.path === 'calc.py'
+        ? { ...file, content: file.content.replace('not isinstance(n, int) or isinstance(n, bool)', 'n == 1.5') } : file);
+      return calls(unchecked);
     }
     if (name === 'build-adds-unrequested-option-then-removes-it') {
-      const feedback = 'review: calc_config.py:1: not asked for by the Intent';
-      if (record.text.includes(feedback)) {
-        if (this.hasToolOutput(record, 'shell', value => value.command === 'rm -f calc_config.py')) return calls(correct);
-        return { items: [functionCall('shell', { command: 'rm -f calc_config.py' }, `remove_option_${ordinal}`), finish()] };
-      }
-      return { items: [
-        ...writeFiles(correct),
-        functionCall('write_file', { path: 'calc_config.py', content: 'OPTION = True\n' }, `add_option_${ordinal}`),
-        finish(),
-      ] };
-    }
-    if (name === 'build-leaves-old-helper-then-removes-it') {
-      const feedback = 'review: legacy_parity.py:1: obsolete parity helper; remove it';
-      if (record.text.includes(feedback)) {
-        if (this.hasToolOutput(record, 'shell', value => value.command === 'rm -f legacy_parity.py')) return calls(correct);
-        return { items: [functionCall('shell', { command: 'rm -f legacy_parity.py' }, `remove_helper_${ordinal}`), finish()] };
-      }
-      return calls(correct);
+      return { items: [...writeFiles(correct), functionCall('write_file', { path: 'calc_config.py', content: 'OPTION = True\n' }, `add_option_${ordinal}`), finish()] };
     }
     if (name === 'build-unformatted-then-formatted' && !record.text.includes('files changed while checks ran: calc.py')) {
       const list = correct.map(file => file.path === 'calc.py' ? { ...file, content: '# unformatted\n' + file.content } : file);
@@ -563,32 +534,41 @@ class FakeServers {
   reviewResponse(name, ordinal, record) {
     const submit = (verdict, findings, id) => functionCall('submit_review', { verdict, findings }, id);
     const approve = (id = `review_approve_${ordinal}`) => submit('approve', [{ path: 'calc.py', line: 12, severity: 'note', message: 'the docstring could name TypeError' }], id);
-    if (name === 'build-review-invalid-twice') {
-      return { items: [submit('invalid', [], `review_invalid_${ordinal}`)] };
+    const output = id => (record.body.input || []).some(item => item.type === 'function_call_output' && item.call_id === `call_${id}`);
+    if (name === 'build-review-invalid-twice') return { items: [submit('invalid', [], `review_invalid_${ordinal}`)] };
+    if (name === 'build-review-unresolved') {
+      return { items: [submit('changes', [{ path: 'calc.py', line: 1, severity: 'blocking', message: 'Required behavior cannot be repaired within the approved Intent.' }], 'review_blocked')] };
     }
     if (name === 'build-review-changes-then-fixed') {
-      const finding = 'review: calc.py:3: is_even accepts floats; the Intent says non-integers raise TypeError';
-      if (this.builderFinishedAfter(finding)) return { items: [approve()] };
-      return { items: [submit('changes', [{ path: 'calc.py', line: 3, severity: 'blocking', message: 'is_even accepts floats; the Intent says non-integers raise TypeError' }], 'review_changes')] };
+      if (output('review_direct_fix')) return { items: [approve()] };
+      return { items: [functionCall('write_file', correctFiles()[0], 'review_direct_fix')] };
+    }
+    if (name === 'build-review-repair-fails-once') {
+      if (record.text.includes('Final verification of your repairs failed.')) {
+        if (output('review_failed_fix_correct')) return { items: [approve()] };
+        return { items: [functionCall('write_file', correctFiles()[0], 'review_failed_fix_correct')] };
+      }
+      if (output('review_failed_fix_broken')) return { items: [approve()] };
+      return { items: [functionCall('write_file', wrongFiles()[0], 'review_failed_fix_broken')] };
     }
     if (name === 'build-adds-unrequested-option-then-removes-it') {
-      const finding = 'review: calc_config.py:1: not asked for by the Intent';
-      if (this.builderFinishedAfter(finding)) return { items: [approve()] };
-      return { items: [submit('changes', [{ path: 'calc_config.py', line: 1, severity: 'blocking', message: 'not asked for by the Intent' }], `review_option_changes_${ordinal}`)] };
+      if (output('review_remove_option')) return { items: [approve()] };
+      return { items: [functionCall('shell', { command: 'rm -f calc_config.py' }, 'review_remove_option')] };
     }
     if (name === 'build-leaves-old-helper-then-removes-it') {
-      const finding = 'review: legacy_parity.py:1: obsolete parity helper; remove it';
-      if (this.builderFinishedAfter(finding)) return { items: [approve()] };
+      if (output('review_remove_helper')) return { items: [approve()] };
       if (this.toolOutput(record, 'read_file', value => value.path === 'legacy_parity.py')) {
-        return { items: [submit('changes', [{ path: 'legacy_parity.py', line: 1, severity: 'blocking', message: 'obsolete parity helper; remove it' }], `review_legacy_changes_${ordinal}`)] };
+        return { items: [functionCall('shell', { command: 'rm -f legacy_parity.py' }, 'review_remove_helper')] };
       }
       return { items: [functionCall('read_file', { path: 'legacy_parity.py' }, 'read_legacy')] };
     }
     if (name === 'build-review-demands-baseline-change') {
-      return { items: [submit('changes', [{ path: '.kogen/intents/is-even/acceptance.feature', line: 1, severity: 'blocking', message: 'change the approved acceptance assertions' }], 'review_baseline_changes')] };
+      if (output('review_baseline_write')) return { items: [approve()] };
+      return { items: [functionCall('write_file', { path: '.kogen/intents/is-even/acceptance.feature', content: 'changed' }, 'review_baseline_write')] };
     }
     return { items: [approve()] };
   }
+
 
 }
 

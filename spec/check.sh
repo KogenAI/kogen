@@ -47,6 +47,7 @@ refute shaping.qnt 'st != Built' 7
 refute build.qnt 'phase != Done' 11
 refute build.qnt 'reason != "baseline_changed"' 11
 refute build.qnt 'reason != "review_invalid"' 11
+refute build.qnt 'reason != "review_blocked"' 11
 refute build.qnt 'reason != "head_moved"' 11
 refute build.qnt 'reason != "context_exhausted"' 11
 refute build.qnt 'reason != "provider"' 11

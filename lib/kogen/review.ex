@@ -2,53 +2,142 @@ defmodule Kogen.Review do
   @moduledoc """
   The blocking review (chapter 06): after a green pass, a fresh request to `models.review` with
   the Intent, the diff of existing/deleted paths against the start HEAD, the full text of every changed/added file and the
-  check results, plus read-only file tools and `submit_review`. It never sees the builder's
-  conversation. An invalid verdict goes back once; a second one ends the Build.
+  check results, with file/command tools for scoped repairs and `submit_review`. It never sees
+  the builder's conversation. Changed contents are verified externally; failures return to this
+  same reviewer conversation. An unresolved blocker ends the Build instead of restarting the builder.
   """
   alias Kogen.{Bridge, Build, Error, Git, Intent, Run, Shape, Snapshot, Tools, Usage}
 
-  def run(b, pass) do
+  def run(b, pass, verify) do
     n = b.review + 1
-    b = %{b | review: n}
+    b = Build.track(%{b | review: n})
     Bridge.progress("kogen: reviewing (review #{n})")
     role = b.config.models["review"]
     input = [%{"role" => "user", "content" => material(b, pass)}]
-    tools = Tools.defs(~w(read_file list_files search_text)) ++ [submit_def()]
-    {b, verdict, usage} = converse(b, role, input, tools, 0, Usage.zero())
-    review = Map.merge(verdict, %{n: n, verdict: verdict.verdict})
+    tools = Tools.defs(~w(read_file list_files search_text write_file shell)) ++ [submit_def()]
+    session = %{role: role, input: input, tools: tools, usage: Usage.zero(), attempts: []}
+    finish(b, pass, session, verify)
+  end
+
+  defp finish(b, pass, session, verify) do
+    n = b.review
+
+    {b, verdict, usage, input} =
+      converse(b, session.role, session.input, session.tools, 0, session.usage)
+
+    Build.baseline_intact!(b)
+    tree = Snapshot.tree(b.root, b.start, b.excluded)
+    review = Map.merge(verdict, %{n: n, tree: tree})
+    b = Build.track(%{b | last_review: review})
+
+    attempts =
+      session.attempts ++
+        [%{pass: pass.n, tree: tree, verdict: verdict.verdict, findings: verdict.findings}]
+
     blocking = Enum.count(verdict.findings, &(&1["severity"] == "blocking"))
     Bridge.progress("kogen: review #{n}: #{verdict.verdict}, #{blocking} blocking")
 
     Run.write(b.run, "review-#{n}.json", %{
-      "model" => role.model,
-      "effort" => role.effort,
+      "model" => session.role.model,
+      "effort" => session.role.effort,
       "usage" => usage,
       "verdict" => verdict.verdict,
-      "findings" => verdict.findings
+      "findings" => verdict.findings,
+      "tree" => tree,
+      "attempts" => attempts
     })
 
     Run.log(b.run, %{
       "event" => "review",
       "review" => n,
+      "attempt" => length(attempts),
       "pass" => pass.n,
+      "tree" => tree,
       "verdict" => verdict.verdict,
       "findings" => verdict.findings
     })
 
-    b = %{b | last_review: review}
-    {String.to_atom(verdict.verdict), b, review}
+    if verdict.verdict == "changes" do
+      lines =
+        for f <- verdict.findings,
+            f["severity"] == "blocking",
+            do: "review: #{f["path"]}:#{f["line"]}: #{f["message"]}"
+
+      throw(
+        {:failed, b,
+         %Error{
+           class: "candidate",
+           reason: "review_blocked",
+           detail:
+             "the reviewer could not resolve a substantive blocker within the approved Intent; edits are left in place",
+           lines: lines,
+           exit: 1
+         }}
+      )
+    end
+
+    {b, final_pass} =
+      if pass.green and tree == pass.tree do
+        {b, pass}
+      else
+        b = Build.track(%{b | last_review: %{review | verdict: "pending"}})
+        verify.(b)
+      end
+
+    if final_pass.green and final_pass.tree == tree do
+      {:approve, Build.track(%{b | last_review: review}), final_pass, review}
+    else
+      feedback =
+        if final_pass.green do
+          paths = Snapshot.changed(b.root, tree, final_pass.tree)
+
+          Bridge.progress(
+            "kogen: review #{n}: candidate changed after approval; inspecting changed paths"
+          )
+
+          "Candidate contents changed after your approval: #{Enum.join(paths, ", ")}. The new tree passed checks but has not been reviewed. Inspect these changes and submit_review for the current contents; do not restart the whole critique."
+        else
+          Bridge.progress(
+            "kogen: review #{n}: final verification failed; continuing targeted repairs"
+          )
+
+          "Final verification of your repairs failed. Fix these failures and regressions from your edits; do not restart a whole-change critique.\n" <>
+            Build.pass_feedback(b, final_pass, "submit_review")
+        end
+
+      b = Build.track(%{b | repairs: b.repairs + 1})
+
+      finish(
+        b,
+        final_pass,
+        %{
+          session
+          | input: input ++ [%{"role" => "user", "content" => feedback}],
+            usage: usage,
+            attempts: attempts
+        },
+        verify
+      )
+    end
   end
 
   defp converse(b, role, input, tools, invalid, usage) do
     resp = Build.request(b, "review", role, instructions(), input, tools)
     usage = Usage.add(usage, resp.usage)
-    b = %{b | usage: Usage.add(b.usage, resp.usage)}
+    b = Build.track(%{b | usage: Usage.add(b.usage, resp.usage)})
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &Shape.replay_item/1) |> Enum.reject(&is_nil/1))
-    ctx = %{root: b.root, protected: [], tools: ~w(read_file list_files search_text)}
+
+    ctx = %{
+      root: b.root,
+      protected: b.baseline,
+      tools: ~w(read_file list_files search_text write_file shell)
+    }
 
     {outputs, verdict} =
       Enum.reduce(calls, {[], nil}, fn call, {outs, verdict} ->
+        Bridge.check_cancel()
+
         cond do
           verdict != nil ->
             {outs ++ [Shape.output(call, "ignored: the review already has a verdict")], verdict}
@@ -69,8 +158,11 @@ defmodule Kogen.Review do
             Run.log(b.run, %{
               "event" => "review_tool_call",
               "name" => call["name"],
-              "arguments" => call["arguments"]
+              "arguments" => Run.cap(call["arguments"] || ""),
+              "result" => Run.cap(result)
             })
+
+            if call["name"] == "shell", do: Build.baseline_intact!(b)
 
             {outs ++ [Shape.output(call, result)], verdict}
         end
@@ -125,7 +217,7 @@ defmodule Kogen.Review do
         converse(b, role, input, tools, invalid, usage)
 
       v ->
-        {b, v, usage}
+        {b, v, usage, input}
     end
   end
 
@@ -272,7 +364,12 @@ defmodule Kogen.Review do
 
     #{results(pass)}
 
-    # Diff against the start HEAD #{String.slice(b.start, 0, 8)}
+    # Protected paths and configured commands
+
+    The approved baseline cannot change: #{Enum.join(b.baseline, ", ")}.
+    Fixers: #{Enum.join(b.config.fix, "; ")}.
+    Project checks: #{Enum.map_join(b.config.checks, "; ", fn {name, command} -> "#{name}: #{command}" end)}.
+    Acceptance: #{b.config.acceptance_run}.
 
     # Diff of existing/deleted paths against start HEAD #{String.slice(b.start, 0, 8)}
 
@@ -301,18 +398,22 @@ defmodule Kogen.Review do
 
   defp instructions do
     """
-    You review code that another model wrote to implement an approved Intent in this repository. Every check already passed; your review decides whether the change is committed. You cannot run commands or edit files; you may read any file of the repository with read_file, list_files and search_text.
+    You review code that another model wrote to implement an approved Intent in this repository. Every check already passed. Perform one cohesive review and directly repair supported defects within that Intent using read_file, list_files, search_text, write_file and shell. You are a reviewer and fixer, not a source of serial suggestions for another builder. You do not see the builder's conversation.
 
     Complete current source is already supplied for every changed/added file. New files appear once with their modes; the diff covers existing/deleted paths. Read other files only to fill a context gap, and batch independent lookups.
+
+    For each substantive concern, establish the applicable requirement, a concrete violating path or counterexample, and its observable consequence. Do not invent extra requirements or turn hypothetical future refactors into defects. Inspect the affected behavior thoroughly and resolve the supported defects together.
 
     Judge:
     - Does the code do what the approved Intent asks? Editable dependency manifests and lockfiles do not authorize weakening, removing or bypassing configured checks or changing actual verification configuration; confirm the checks and their behavior remain intact. Whole-file protection of a combined check-definition manifest has no dependency-only exception.
     - Does it add nothing the Intent did not ask for: no features, settings, abstractions, defensive branches or fallbacks without a present need?
     - Is it free of correctness defects?
-    - Do the tests follow the testing rules: every rule in the Intent's `## Tests` has its test, no test is needlessly duplicated, and no test is coupled to implementation details? Each miss is a blocking finding.
-    - Does it leave no obsolete code path, dead code, unrewired caller or debugging output behind, in the requested change and its affected execution paths, including relevant unchanged callers?
+    - Do meaningful tests establish the required behavior? A false-passing fixture, missing evidence of a required outcome, or a flaky test that breaks a supported use case is substantive. Existing coverage can establish the outcome; a missing preferred test layer alone is not a product defect. No test is needlessly duplicated, but stylistic duplication or implementation coupling without a demonstrated current consequence is a note, not a blocker.
+    - Does it leave obsolete behavior, unrewired callers or debugging output that affects the requested outcome? Remove trivial dead code while editing nearby code if useful; harmless cleanup by itself is not a delivery blocker.
 
-    Call submit_review once with verdict `approve` (no blocking findings) or `changes` (at least one blocking finding). Each finding is {path, line, severity: blocking or note, message}, with path a file of the repository. Use blocking only for problems that must be fixed before the commit; notes never block. The approved acceptance files cannot change in this Build, so never ask for that.
+    Make scoped repairs yourself and add or update meaningful regression coverage. Run focused/fail-fast checks and configured fixers as needed. Do not manually rerun the entire acceptance/project gate at the end: after your approval Kogen verifies changed contents externally. Preserve useful tests and every configured check. Never change the approved baseline, protected files, HEAD or the user's staged work; do not commit. If final verification fails, you receive the failures in this same conversation: repair them and regressions from your edits, without restarting the whole critique.
+
+    Call submit_review when the scoped review and repairs are complete: verdict `approve` has no unresolved substantive blockers; notes never block. Use `changes` only when a demonstrated substantive blocker cannot be repaired within the approved scope or constraints. It stops the Build with preserved work; it does not start another builder/reviewer cycle. Each finding is {path, line, severity: blocking or note, message}, with path a file of the repository. The approved acceptance files cannot change in this Build, so never ask for that.
     """
   end
 end

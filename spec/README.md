@@ -5,7 +5,7 @@ This specification describes Kogen. Kogen takes a requested feature through five
 1. **Shape.** Write the feature as short prose, Gherkin and Quint.
 2. **Build.** Implement it with Kogen's own model/tool loop.
 3. **Verify.** Run the acceptance scenarios against the real code, check the model and run the project's checks, repairing until they pass.
-4. **Review.** A reviewer model reviews the code. Its review blocks the commit until it approves.
+4. **Review and fix.** An independent reviewer repairs supported defects; changed contents receive external final verification. Unresolved substantive blockers stop with preserved work.
 5. **Commit.** Make one commit of exactly the verified and reviewed contents, signed or unsigned as the user's Git configuration says.
 
 Around these sit only the parts needed to use them: setup, the ChatGPT login and its status, the CLI, install and `kogen uninstall`. Callers are people at the command line or agents such as ChatGPT driving it.
@@ -76,7 +76,7 @@ None of this executes a scenario. Parsing features and matching step patterns on
 - **No time or token limit on Builds or commands.** Every command runs with stdin closed, so a prompt fails at once. The builder starts dev servers and watch modes in the background with output to a log file, reads them and stops them itself. Ctrl-C stops the Build, and every process group a Build started is terminated when the Build ends. Shaping probes keep their 5-minute bound (SHP-10).
 - **Testing rules:** `../docs/testing-rules.md` (outside `spec/`, shipped as `docs/testing-rules.md`) chooses the tests for every change, in Kogen's own code and in every product built with Kogen. The shaper, the builder and the reviewer each get its text (SET-6); the fixed test sequence is VER-13; the adoption steps for an existing project are SET-9; Kogen's own tests are REL-7.
 - **Interruption:** SIGINT, SIGTERM or SIGHUP (exit 130, 143, 129) stops the Build without a commit (and stops `shape` and `approve` the same way); so does the death of the `kogen` command, which the core sees as end of its stdin. The active command's process group gets SIGTERM, then SIGKILL after 5 seconds. Kogen makes no claim about processes that left the group.
-- **Review:** a fresh request to `models.review` with read-only file tools and `submit_review`. An invalid verdict is sent back once. There is no limit on review rounds.
+- **Review/fix:** one fresh conversation to `models.review`, with protected file writes, command execution and `submit_review`. Changed contents are verified externally; failures continue in the same reviewer context. Maintenance-only objections are notes. An unresolved substantive blocker stops rather than restarting the builder. An invalid verdict is sent back once.
 - **Install:** to `$HOME/.local` by default. If no Node 22 or newer exists, the current Node LTS is installed into Kogen's own folder; Quint 0.33.0 and Cucumber 13.3.0 ship in the archive.
 - **Uninstall:** removes the program and keeps `~/.kogen` (the login) and every project.
 - **Supported platforms:** macOS on Apple Silicon and Linux x86-64 with glibc, at the versions release acceptance runs on.

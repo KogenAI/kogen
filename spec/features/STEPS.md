@@ -14,11 +14,11 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 - **Initialized projects.** "the project is initialized" commits the configuration template unchanged and the `.kogen/local/` ignore line, as `kogen init` writes them in an empty repository without commits, without running `init` (whose own behavior chapter 01 tests); "and configured" then commits the fixture's configuration.
 - **Project configuration.** "the project config sets <key> to <value>" edits `.kogen/project.yaml` (the value is YAML) and commits the file, so it must come before an Intent is approved (the file is part of the approval). The steps "the acceptance command is replaced by fixture runner" and "records its environment" swap what the harness executes; they do not touch `.kogen/project.yaml`. "the readiness command is running" waits until the acceptance command of a readiness dry run has started.
 - **Process groups.** "the Build command's process group" is the group of the active command of the Build, of shaping or of approval; "processes started by the Build's commands" are the members of every process group the Build's commands ran in. The test records them when the commands start and checks them itself.
-- **Review requests.** "the review request" is the request with the `submit_review` tool; "review <n>" is the n-th one of the Build.
+- **Review requests.** "the review request" is the request with the `submit_review` tool; "review request <n>" is the n-th reviewer model request. An independent review stage retains its number through targeted verification repairs.
 - **Intent steps.** "the Intent is shaped" writes the fixture's Intent files; "is approved" also records an approval for their hash; "has landed" approves the Intent and builds it with script `build-correct-first-try`, so its commit exists and its approval is gone (GIT-8). "the hash of its acceptance baseline" is the hash that AUT-2 defines, computed by the step itself.
 - **Pause points.** `builder request in flight`, `tool command running` and `review approved` are points of the fake server's script. `git commit running` is reached when the Build's `git commit` has started and is held by the step "a pre-commit hook that sleeps for <n> seconds"; the test, not the server, waits for it.
 - **Live projects.** In the `@live` outline, "example" is the example app in `examples/` of the repository, copied into the run folder with a fixed baseline commit; "kogen" is the candidate Kogen source (REL-3); "external" is a real project kept outside the repository, run with its own settings file (`@external`, REL-2).
-- **Waiting.** "has sent the feedback of verification pass <n>" waits until the builder request carrying that pass's feedback reached the fake server.
+- **Waiting.** "has sent the feedback of verification pass <n>" waits until the builder request carrying that pass's feedback has reached the fake server.
 - **Tags.** `@live` scenarios are the real-use script, not the deterministic suite.
 
 ## Project fixtures
@@ -80,6 +80,8 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 One JavaScript regular expression per line.
 
 ```steps
+^no builder request was sent after review began$
+^the Build records (\d+) review stages? and (\d+) verification pass(?:es)?$
 ^a local Node distribution serves the real pinned Node and a newer non-LTS catalog entry$
 ^the installer downloaded the catalog and selected LTS archive from the local Node distribution$
 ^the installed Node reports the real fixture version$
@@ -183,7 +185,6 @@ One JavaScript regular expression per line.
 ^the\ fake\ ChatGPT\ authorization\ server\ is\ running$
 ^the\ fake\ ChatGPT\ server\ continues$
 ^the\ fake\ ChatGPT\ server\ has\ sent\ the\ feedback\ of\ verification\ pass\ (\d+)$
-^the\ fake\ ChatGPT\ server\ has\ sent\ the\ result\ of\ the\ builder's\ write_file\ on\ the\ acceptance\ feature$
 ^the\ fake\ ChatGPT\ server\ plays\ script\ "([^"]*)"$
 ^the\ fake\ ChatGPT\ server\ plays\ script\ "([^"]*)"\ pausing\ at\ "([^"]*)"$
 ^the\ fake\ ChatGPT\ server\ plays\ script\ "([^"]*)"\ with\ command\ "([^"]*)"$
@@ -233,7 +234,6 @@ One JavaScript regular expression per line.
 ^the\ recorded\ acceptance\ environment\ has\ KOGEN_ACCEPTANCE_REPORT\ inside\ "([^"]*)"$
 ^the\ release\ archive\ downloaded\ with\ curl\ and\ installed\ with\ install\.sh$
 ^the\ release\ archive\ for\ this\ platform,\ extracted\ with\ tar$
-^the\ request\ after\ review\ (\d+)\ contains\ "([^"]*)"$
 ^the\ request\ after\ verification\ pass\ (\d+)\ contains\ "([^"]*)"$
 ^the\ rest\ of\ stdout\ after\ a\ blank\ line\ is\ the\ help\ page\ "([^"]*)"\ from\ chapter\ (\d+)$
 ^the\ review\ request\ contains\ "([^"]*)"$

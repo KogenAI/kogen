@@ -1,8 +1,8 @@
 defmodule Kogen.Tools do
   @moduledoc """
   The model tools: the builder's `shell`, `read_file`, `write_file` (LOOP-3..5, LOOP-8) and the
-  read-only `read_file`, `list_files`, `search_text` of the shaper and the reviewer (SHP-3,
-  REV-3), plus the shaper's `probe` (SHP-10). A refused path is a tool result, not a failure.
+  read-only `read_file`, `list_files`, `search_text` of the shaper (SHP-3), the reviewer's
+  protected file/command tools (REV-3), plus the shaper's `probe` (SHP-10). A refused path is a tool result, not a failure.
   """
   alias Kogen.{Bridge, Git}
 

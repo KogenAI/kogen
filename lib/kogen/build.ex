@@ -2,9 +2,9 @@ defmodule Kogen.Build do
   @moduledoc """
   `kogen intent build <slug>` (chapters 03-07): start checks, then the
   builder conversation with `shell`, `read_file`, `write_file` and `finish`; after each round the
-  fixers and a verification pass; a green pass goes to the blocking review; an approved, still
-  identical candidate is committed. No time or token limit: a Build ends with a commit, an
-  integrity stop, a provider failure, context exhaustion, an invalid review or an interrupt.
+  fixers and a verification pass; a green pass goes to independent review/fix, followed by
+  external verification of repairs; an approved, verified, still identical candidate is committed. No time or token limit: a Build ends with a commit, an
+  integrity stop, a provider failure, context exhaustion, an invalid/unresolved review or an interrupt.
   """
   alias Kogen.{
     Bridge,
@@ -264,7 +264,8 @@ defmodule Kogen.Build do
   defp start_builder(b), do: loop(b, [%{"role" => "user", "content" => context(b)}])
 
   # The latest Build state, for the report of a Build that stops on an error or an interrupt.
-  defp track(b) do
+  @doc false
+  def track(b) do
     Process.put(:kogen_build, b)
     b
   end
@@ -359,10 +360,8 @@ defmodule Kogen.Build do
     if not pass.green do
       {%{b | repairs: b.repairs + 1}, pass_feedback(b, pass)}
     else
-      case Review.run(b, pass) do
-        {:approve, b, review} -> commit(track(b), pass, review)
-        {:changes, b, review} -> {track(%{b | repairs: b.repairs + 1}), review_feedback(review)}
-      end
+      {:approve, b, final_pass, review} = Review.run(b, pass, &verify/1)
+      commit(track(b), final_pass, review)
     end
   end
 
@@ -437,7 +436,8 @@ defmodule Kogen.Build do
     {track(%{b | last_pass: pass}), pass}
   end
 
-  defp pass_feedback(b, pass) do
+  @doc false
+  def pass_feedback(b, pass, completion \\ "finish") do
     acceptance =
       if pass.acceptance.problems == [],
         do: [],
@@ -465,7 +465,7 @@ defmodule Kogen.Build do
 
     Enum.join(
       [
-        "Verification pass #{pass.n} is not green. Fix the implementation (the approved acceptance files cannot change), then call finish again."
+        "Verification pass #{pass.n} is not green. Fix the implementation (the approved acceptance files cannot change), then call #{completion} again."
       ] ++
         acceptance ++ model ++ checks ++ moved,
       "\n"
@@ -474,24 +474,10 @@ defmodule Kogen.Build do
 
   defp indent(text), do: text |> String.split("\n") |> Enum.map_join("\n", &("  " <> &1))
 
-  defp review_feedback(review) do
-    lines =
-      for f <- review.findings,
-          f["severity"] == "blocking",
-          do: "review: #{f["path"]}:#{f["line"]}: #{f["message"]}"
-
-    Enum.join(
-      [
-        "Review #{review.n} asked for changes. Address each blocking finding, then call finish again."
-        | lines
-      ],
-      "\n"
-    )
-  end
-
   # VER-8: after every shell call, fixer and pass, the baseline must be as approved: the same
   # files (a new file in the Intent's folder or matching `protect` joins it) with the same bytes.
-  defp baseline_intact!(b) do
+  @doc false
+  def baseline_intact!(b) do
     now = Intent.baseline(b.root, b.slug, b.config)
     added = now -- b.baseline
 
@@ -710,6 +696,9 @@ defmodule Kogen.Build do
     still = (b.last_pass && b.last_pass.failing) || []
 
     still =
+      if b.last_pass && b.last_pass.moved != [], do: still ++ ["verification"], else: still
+
+    still =
       if b.last_review && b.last_review.verdict != "approve", do: still ++ ["review"], else: still
 
     edited = Snapshot.changed(b.root, b.start_tree, Snapshot.tree(b.root, b.start, b.excluded))
@@ -828,7 +817,7 @@ defmodule Kogen.Build do
     - Editable dependency manifests and lockfiles may change for an approved feature, but that does not permit weakening, removing or bypassing configured checks or changing actual verification configuration. Preserve every check and its behavior. Protection is whole-file: a protected combined manifest that defines checks has no dependency-only exception.
     - shell runs /bin/sh -c in the repository root with stdin closed, so a command that asks for input fails at once. Commands have no time limit. Start long-running commands (dev servers, watch modes) in the background with output to a log file (`cmd > log 2>&1 &`), read the log, and stop them with kill when done.
     - Do not commit, push, stash, reset or switch branches; Kogen commits after verification and review.
-    - When the implementation is complete, call finish. Kogen runs the fixers, the acceptance scenarios, the model and every check, then a reviewer reviews the whole diff. Failures and review findings come back to you; fix them and call finish again. You cannot end the Build by giving up.
+    - When the implementation is complete, call finish. Kogen runs the fixers, the acceptance scenarios, the model and every check. Verification failures come back to you; fix them and call finish again. After a green pass an independent reviewer investigates and repairs supported defects, then Kogen verifies any changed contents. You cannot end the Build by giving up.
     """
   end
 end

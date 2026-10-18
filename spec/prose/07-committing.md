@@ -25,6 +25,6 @@ landed is-even {sha8} (Build {id8})
   repairs: {n} · tokens: {n} · time: {dur}
 ```
 
-A Build that does not commit leaves the tree as it is, restores the index, and prints `building <slug>`, then `failed <slug>: <reason> (Build <id8>)` (or `stopped <slug>: interrupted (Build <id8>)`), the error line, and `  still failing: <names>` (when any, `review` included), `  edited: <path>, <path>, …`, `  run log: <abs path>`.
+A Build that does not commit leaves the tree as it is, restores the index, and prints `building <slug>`, then `failed <slug>: <reason> (Build <id8>)` (or `stopped <slug>: interrupted (Build <id8>)`), the error line, `  still failing: <names>` (when any, `review` included), `  edited: <path>, <path>, …` and `  run log: <abs path>`.
 
 Scenarios: `features/07-committing.feature`. Model: `quint/build.qnt`.

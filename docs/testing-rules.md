@@ -60,11 +60,9 @@ Shaping writes the Intent, its scenarios and its model by these principles. Each
 
 ## The reviewer
 
-The reviewer checks three things, and each failure is a blocking finding:
+The reviewer checks that meaningful tests establish each required outcome and makes scoped repairs. A false-passing fixture, missing evidence of required behavior, or flakiness that breaks a supported use case is substantive. Existing coverage may establish the outcome; a missing preferred layer alone is not an application defect.
 
-- every rule listed in the Intent's `## Tests` section has its test, and the test follows the table in section 2;
-- no test is needlessly duplicated;
-- no test is coupled to implementation details (section 4).
+Test duplication, implementation coupling and harmless cleanup are notes unless a concrete current consequence makes them substantive. They do not independently force another delivery cycle. Correct small issues within the review/fix stage when useful; do not remove useful tests or weaken configured checks to obtain a pass. Every blocker identifies its requirement, counterexample or violating path, and observable consequence. Kogen externally verifies changed final contents, returning failures to the same reviewer conversation.
 
 ## Adopting Kogen in an existing project
 

@@ -5,9 +5,9 @@
 // is green only when every check passed and nothing changed while it ran.
 // There is no time or token limit. A Build ends in exactly one of these ways (chapter 04):
 // commit (landed), baseline_changed, head_moved, hook_changed_commit, commit_failed,
-// context_exhausted, review_invalid, provider, interrupted.
+// context_exhausted, review_invalid, review_blocked, provider, interrupted.
 module build {
-  type Phase = Loop | Verifying | Reviewing | Committing | Done | Failed | Interrupted
+  type Phase = Loop | Verifying | Reviewing | RepairingReview | FinalVerifying | Committing | Done | Failed | Interrupted
 
   var phase: Phase
   var rounds: int           // builder rounds so far (unbounded)
@@ -63,15 +63,23 @@ module build {
     else move(Loop, cand, passVersion, reason),
   }
 
-  // REV-3..5: the reviewer judges exactly the green pass's candidate.
+  // REV-3..5: one independent reviewer may repair the candidate itself.
+  action reviewEdit = all {
+    Set(Reviewing, RepairingReview).contains(phase),
+    move(phase, cand + 1, passVersion, reason),
+  }
+
   action reviewWith(verdict: str): bool = all {
-    phase == Reviewing,
-    phase' = if (verdict == "approve") Committing
-             else if (verdict == "changes") Loop
+    Set(Reviewing, RepairingReview).contains(phase),
+    phase' = if (verdict == "approve") {
+               if (phase == Reviewing and cand == passVersion) Committing else FinalVerifying
+             }
+             else if (verdict == "changes") Failed
              else if (invalidReviews >= 1) Failed
-             else Reviewing,
-    reason' = if (verdict == "invalid" and invalidReviews >= 1) "review_invalid" else reason,
-    reviewedVersion' = if (verdict == "approve") passVersion else reviewedVersion,
+             else phase,
+    reason' = if (verdict == "changes") "review_blocked"
+              else if (verdict == "invalid" and invalidReviews >= 1) "review_invalid" else reason,
+    reviewedVersion' = if (verdict == "approve") cand else reviewedVersion,
     invalidReviews' = if (verdict == "invalid") invalidReviews + 1 else 0,
     rounds' = rounds, cand' = cand, passVersion' = passVersion, baselineIntact' = baselineIntact,
     headMoved' = headMoved, commits' = commits, committedVersion' = committedVersion,
@@ -80,6 +88,21 @@ module build {
   action review = all {
     nondet verdict = Set("approve", "changes", "invalid").oneOf()
     reviewWith(verdict),
+  }
+
+  // Final checks are external. Red/mutated contents stay with the same reviewer,
+  // never restarting the builder or silently using an older green pass.
+  action finalVerifyWith(outcome: str): bool = all {
+    phase == FinalVerifying,
+    if (not(baselineIntact)) move(Failed, cand, passVersion, "baseline_changed")
+    else if (outcome == "green") move(if (cand == reviewedVersion) Committing else Reviewing, cand, cand, reason)
+    else if (outcome == "mutated") move(RepairingReview, cand + 1, passVersion, reason)
+    else move(RepairingReview, cand, passVersion, reason),
+  }
+
+  action finalVerify = all {
+    nondet outcome = Set("green", "red", "mutated").oneOf()
+    finalVerifyWith(outcome),
   }
 
   // GIT-3..6: commit only the reviewed, verified candidate on the same HEAD. If the candidate
@@ -123,7 +146,7 @@ module build {
     },
   }
 
-  action step = any { modelTurn, verify, review, commit, world }
+  action step = any { modelTurn, verify, reviewEdit, review, finalVerify, commit, world }
 
   // ---- Invariants ----
   // GIT-3/6: a kept commit holds exactly the reviewed, green candidate; baseline intact; same HEAD.
@@ -137,10 +160,10 @@ module build {
   // VER-8: a changed baseline never reaches a commit.
   val BaselineChangeNeverCommits = not(baselineIntact) implies commits == 0
   // Chapter 04 / LOOP-7: a Build ends only in one of the listed ways;
-  // failing checks or reviews never end it by themselves.
+  // failing checks continue with their current repair owner; unresolved review blockers stop.
   val FailureReasons = terminal(phase) implies Set(
     "commit", "baseline_changed", "head_moved", "hook_changed_commit", "commit_failed",
-    "context_exhausted", "review_invalid", "provider", "interrupted").contains(reason)
+    "context_exhausted", "review_invalid", "review_blocked", "provider", "interrupted").contains(reason)
   val Safety = CommitOnlyWhenEligible and AtMostOneCommit and ReviewNeverOverridesChecks
     and BaselineChangeNeverCommits and FailureReasons
 
@@ -155,9 +178,28 @@ module build {
       .then(commitWith("ok"))
       .expect(phase == Done and commits == 1 and committedVersion == 2)
 
-  run reviewChangesGoBackToBuilderTest =
+  run unresolvedReviewStopsTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewWith("changes"))
-      .expect(phase == Loop and commits == 0 and reviewedVersion == -1)
+      .expect(phase == Failed and reason == "review_blocked" and commits == 0)
+
+  run reviewerRepairRequiresFinalVerificationTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
+      .expect(phase == FinalVerifying and passVersion == 2 and reviewedVersion == 3 and commits == 0)
+
+  run reviewerRepairVerifiedThenCommittedTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
+      .then(finalVerifyWith("green")).then(commitWith("ok"))
+      .expect(phase == Done and committedVersion == 3 and passVersion == 3 and reviewedVersion == 3)
+
+  run failedFinalVerificationStaysWithReviewerTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
+      .then(finalVerifyWith("red")).then(reviewWith("approve"))
+      .expect(phase == FinalVerifying and passVersion == 2 and commits == 0)
+
+  run changedAfterApprovalNeedsReviewTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
+      .then(move(FinalVerifying, 4, 2, "")).then(finalVerifyWith("green"))
+      .expect(phase == Reviewing and passVersion == 4 and reviewedVersion == 3 and commits == 0)
 
   run twoInvalidReviewsFailTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewWith("invalid")).then(reviewWith("invalid"))

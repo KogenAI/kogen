@@ -515,15 +515,7 @@ function afterRequestAssertions(world, label, args) {
     assert.ok(newText.some(text => text.includes(wanted)), `builder input added after pass ${pass} did not contain ${JSON.stringify(wanted)}; feedback item: ${JSON.stringify(newText.find(text => text.includes(marker)) || '')}`);
     return;
   }
-  const ordinal = Number(args[0]);
-  const wanted = args[1];
-  const review = world.server.requests.filter(request => request.kind === 'review')[ordinal - 1];
-  assert.ok(review, `no review request ${ordinal} was received`);
-  const next = world.server.requests.find(request => request.kind === 'build' && request.order > review.order);
-  assert.ok(next, `no builder request followed review ${ordinal}`);
-  const previous = world.server.requests.filter(request => request.kind === 'build' && request.order < next.order).at(-1);
-  const added = flatten(inputItemsAddedAfter(previous, next));
-  assert.ok(added.some(text => text.includes(wanted)), `new builder input after review ${ordinal} did not contain ${wanted}`);
+  assert.fail(`request feedback assertion is not implemented: ${label}`);
 }
 
 function toolResultAssertions(world, label, args) {
@@ -1516,10 +1508,7 @@ async function dispatchAssertions(world, label, args, attachment) {
     await waitForServerRequest(world, request => request.text.includes(`Verification pass ${n} is not green.`), Math.max(30000, n * 5000));
     return;
   }
-  if (label === 'the fake ChatGPT server has sent the result of the builder\'s write_file on the acceptance feature') {
-    await world.server.waitReached('acceptance write result received', 30000);
-    return;
-  }
+
   if (label.startsWith('the Build reaches ')) {
     await reachPause(world, args[0]);
     return;
@@ -1738,6 +1727,18 @@ async function dispatchAssertions(world, label, args, attachment) {
     return;
   }
   if (label.startsWith('request ')) return requestAssertions(world, label, args);
+  if (label === 'no builder request was sent after review began') {
+    const first = world.server.requests.find(request => request.kind === 'review');
+    assert.ok(first, 'no review request was received');
+    assert.ok(!world.server.requests.some(request => request.kind === 'build' && request.order > first.order), 'a new builder request followed review');
+    return;
+  }
+  if (label.startsWith('the Build records ')) {
+    const result = JSON.parse(fs.readFileSync(path.join(latestRunDir(world), 'result.json'), 'utf8'));
+    assert.equal(result.reviews, Number(args[0]));
+    assert.equal(result.passes, Number(args[1]));
+    return;
+  }
   if (label.startsWith('the review request')) return reviewAssertions(world, label, args);
   if (label.startsWith('the request after ')) return afterRequestAssertions(world, label, args);
   if (label.startsWith('the tool result for ')) return toolResultAssertions(world, label, args);

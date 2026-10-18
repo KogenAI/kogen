@@ -1,6 +1,6 @@
 # 04 Building
 
-A Build is Kogen's own model/tool loop: a builder conversation with four tools that edits the checkout until verification (05) is green and review (06) approves. There is no time or token limit on a Build; a Build ends in exactly one of these ways: `commit` (landed), `baseline_changed`, `head_moved`, `hook_changed_commit`, `commit_failed`, `context_exhausted`, `review_invalid`, `provider` or `interrupted`.
+A Build is Kogen's own model/tool loop: a builder conversation with four tools that edits the checkout until verification (05) is green and review (06) approves. There is no time or token limit on a Build; a Build ends in exactly one of these ways: `commit` (landed), `baseline_changed`, `head_moved`, `hook_changed_commit`, `commit_failed`, `context_exhausted`, `review_invalid`, `review_blocked`, `provider` or `interrupted`.
 
 **LOOP-1 — Build directly.** After preflight, the Build starts the builder conversation on `models.build` with the approved Intent and project context. There is no separate planning model request. The builder may plan its work within that conversation.
 
@@ -23,7 +23,7 @@ There is no patch tool.
 
 **LOOP-6 — Responses.** Each response is streamed (GPT-7); tool calls are assembled from their argument fragments and run in order. A call with invalid arguments or an unknown tool gets an error result; the Build goes on.
 
-**LOOP-7 — Finish.** A `finish` call, or a response without tool calls, ends the round: Kogen runs the fixers and verification (05), then review (06) after a green pass. Failing checks or a `changes` verdict become the next message and the builder continues. The builder cannot end the Build by giving up.
+**LOOP-7 — Finish.** A `finish` call, or a response without tool calls, ends the round: Kogen runs the fixers and verification (05), then review (06) after a green pass. Failing pre-review checks become the next builder message. A green candidate enters one independent review/fix stage (06); its repairs receive external final verification and failures remain with that reviewer. Unresolved substantive review blockers stop with preserved work instead of returning to the builder. The builder cannot end its own stage by giving up.
 
 **LOOP-8 — Output size.** A tool result given to the model is at most 16 KiB in all: the first 4 KiB, the marker `[... <n> bytes omitted ...]`, then the last bytes that still fit.
 

@@ -5,7 +5,7 @@ Kogen takes one requested feature through five steps in your own Git repository:
 1. **Shape**: a model writes the feature as short prose, executable Gherkin with step definitions, and a Quint model when the change has meaningful state. It asks you only about open UI/UX choices.
 2. **Build**: after you approve the exact files, Kogen's own model/tool loop implements it.
 3. **Verify**: the acceptance scenarios run against the real code, with the model check and the project's checks; failures go back to the builder until everything passes.
-4. **Review**: a reviewer model reads the diff. Its review blocks the commit until it approves.
+4. **Review and fix**: an independent reviewer investigates and repairs concrete defects. Kogen verifies changed final files; failures stay with that reviewer. Maintenance preferences are notes. An unresolved substantive blocker stops with preserved work instead of restarting the builder/review loop.
 5. **Commit**: one commit of exactly the verified and reviewed contents, with your own Git configuration.
 
 ChatGPT ("Sign in with ChatGPT", using your plan) is the only provider. Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
