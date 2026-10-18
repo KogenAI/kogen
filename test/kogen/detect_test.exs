@@ -3,6 +3,30 @@ defmodule Kogen.DetectTest do
 
   alias Kogen.{Detect, Init}
 
+  test "SET-10: root and cli Go modules get real Go checks without protecting manifests" do
+    for path <- ["go.mod", "cli/go.mod"] do
+      detected = Detect.detect(%{path => "module example.invalid/app\n\ngo 1.27\n"}, [path])
+      assert Enum.map(detected.checks, & &1.name) == ~w(go-format go-test go-vet go-build)
+      assert Enum.any?(detected.setup, &String.contains?(&1, "go mod download"))
+      assert Enum.any?(detected.checks, &String.contains?(&1.run, "go test ./..."))
+      assert detected.protect == []
+
+      assert Enum.all?(
+               detected.checks,
+               &(not String.contains?(&1.run, "cd cli") or path == "cli/go.mod")
+             )
+    end
+
+    detected =
+      Detect.detect(
+        %{"go.mod" => "module root", "cli/go.mod" => "module cli"},
+        ~w(go.mod cli/go.mod)
+      )
+
+    assert length(detected.checks) == 8
+    assert length(Enum.uniq_by(detected.checks, & &1.name)) == 8
+  end
+
   test "SET-10: a Mix project with a formatter and credo gets setup, fixer, checks and protect" do
     mix = ~s(defp deps, do: [{:credo, "~> 1.7", only: :test}])
     d = Detect.detect(%{"mix.exs" => mix}, ~w(mix.exs .formatter.exs .credo.exs lib/a.ex))

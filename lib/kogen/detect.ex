@@ -14,6 +14,7 @@ defmodule Kogen.Detect do
     %{setup: [], fix: [], checks: [], protect: [], runner: nil}
     |> mix(files["mix.exs"], &(&1 in tracked))
     |> npm(json(files["package.json"]), tracked)
+    |> go(files, tracked)
   end
 
   @doc """
@@ -88,6 +89,30 @@ defmodule Kogen.Detect do
         checks: checks,
         runner: runner
     }
+  end
+
+  # These are the two supported layouts, not arbitrary nested-module discovery.
+  defp go(detected, files, tracked) do
+    modules = Enum.filter(~w(go.mod cli/go.mod), &(&1 in tracked and is_binary(files[&1])))
+
+    Enum.reduce(modules, detected, fn manifest, result ->
+      nested = manifest == "cli/go.mod"
+      command = fn run -> if nested, do: "(cd cli && #{run})", else: run end
+      prefix = if length(modules) == 1, do: "go", else: if(nested, do: "go-cli", else: "go-root")
+
+      %{
+        result
+        | setup: result.setup ++ [command.("go mod download")],
+          checks:
+            result.checks ++
+              [
+                check(prefix <> "-format", command.(~s|test -z "$(gofmt -l .)"|)),
+                check(prefix <> "-test", command.("go test ./...")),
+                check(prefix <> "-vet", command.("go vet ./...")),
+                check(prefix <> "-build", command.("go build -o /dev/null ./..."))
+              ]
+      }
+    end)
   end
 
   defp check(name, run), do: %{name: name, run: run}

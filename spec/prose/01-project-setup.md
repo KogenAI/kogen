@@ -74,10 +74,11 @@ models:
 
 ## Configuring the project
 
-**SET-10 — Detection.** Deterministic, from the files at the root of the committed tree:
+**SET-10 — Detection.** Deterministic, from the committed root files and the supported `cli/go.mod` layout:
 
 - `mix.exs`: setup `mix deps.get`; checks `format` = `mix format --check-formatted` when `.formatter.exs` exists (then also fixer `mix format` and protect `.formatter.exs`), `compile` = `mix compile --warnings-as-errors`, `test` = `mix test`, and `credo` = `mix credo --strict` when `mix.exs` contains `:credo` (then protect `.credo.exs` when it exists).
 - `package.json`: setup `npm ci --no-audit --no-fund` when `package-lock.json` exists; one check per script named `test`, `lint`, `typecheck` or `check`, run as `npm run <script>`, named after the script, or `npm-<script>` when that name is taken. npm's placeholder `test` script (`echo "Error: no test specified" && exit 1`) is not a check.
+- `go.mod` or `cli/go.mod`: setup `go mod download`; checks `go-format` (no output from `gofmt -l .`), `go-test` (`go test ./...`), `go-vet` (`go vet ./...`) and `go-build` (`go build -o /dev/null ./...`). Commands for `cli/go.mod` run in `cli/`. When both modules exist, check prefixes are `go-root` and `go-cli` so names remain unique. Neither manifest nor its lockfile is protected. Other nested layouts remain available through the model proposal; this is not arbitrary module discovery.
 - An acceptance runner exists when `package.json` lists `@cucumber/cucumber` in `dependencies` or `devDependencies`. Its steps folder is the first of `features/steps` and `features/step_definitions` that exists, else `features/steps`.
 
 The acceptance command runs Cucumber on Kogen's own Node (`KOGEN_NODE`, LOOP-11). For an existing runner it is the project's own Cucumber:
