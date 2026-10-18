@@ -44,12 +44,12 @@ Invent no other input categories, failure modes or combinations. An existing tes
 
 1. During implementation: run the affected tests.
 2. Before a commit: run the configured fast regression suite and the change's acceptance scenarios.
-3. Before a release: run the agreed full suite and the supported-platform checks.
+3. Before a release: run the full suite and the supported-platform checks.
 4. Run live external-service tests only when changing that integration, or for release acceptance.
 
 ## 6. Specify the change so it can be built and tested
 
-Shaping writes the Intent, its scenarios and its model by these principles. Each one is a mistake that, left in a specification, made a correct Build impossible or let a wrong one pass.
+Shaping writes the Intent, its scenarios and its model by these principles. Each one prevents a mistake that, left in a specification, makes a correct Build impossible or lets a wrong one pass.
 
 - **Precise interfaces.** Name every interface the scenarios and tests call: the command, function or endpoint, its arguments, its output and error shapes, and exact formats. Where a real response has been observed (a probe, an external service), quote its exact shape, and make any fake serve that recorded shape.
 - **Consistent preconditions.** State the state each rule starts from. Where two rules touch the same files or state, say which one wins, with one example. Check cheap preconditions (setup, tools, a check that already fails on the unchanged tree) before expensive work. Every loop or retry without a limit names what makes it end, and fails fast when it cannot.

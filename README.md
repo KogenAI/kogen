@@ -12,7 +12,7 @@ ChatGPT ("Sign in with ChatGPT", using your plan) is the only provider. Kogen is
 
 ## Status
 
-Kogen is in active development. There is no published release yet: you build the release archive from this repository. It runs on macOS on Apple Silicon and on Linux x86-64 with glibc. Every change is checked by the deterministic suite on both platforms, and by real use: the installed release builds a feature in the example app in `examples/`, and Kogen builds a change to itself.
+Kogen is in active development. There is no published release yet: you build the release archive from this repository. It runs on macOS on Apple Silicon and on Linux x86-64 with glibc. Release qualification requires the deterministic suite on both platforms and real use: the installed candidate builds a feature in the example app in `examples/` and a change to Kogen itself. Uncommitted local builds remain development candidates until those gates pass.
 
 ## Getting started
 
@@ -101,4 +101,4 @@ contact@kogen.dev
 
 ## License
 
-Copyright 2026 Optimum Tech, LLC. Licensed under [Apache 2.0](LICENSE); see [NOTICE](NOTICE). The release archive bundles third-party software under its own licences: [packaging/licenses/](packaging/licenses/README.md).
+Copyright 2026 Optimum Tech, LLC. Licensed under [Apache 2.0](LICENSE); see [NOTICE](NOTICE). The release archive bundles third-party software under their own licences: [packaging/licenses/](packaging/licenses/README.md).

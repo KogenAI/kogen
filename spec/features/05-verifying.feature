@@ -104,7 +104,7 @@ Feature: Verifying and repair
   @VER-10
   Scenario: Ignored outputs are not part of the candidate or the commit
     Given the Intent "is-even" from fixture "is-even" is approved
-    And the fake ChatGPT server plays script "build-correct-first-try"
+    And the fake ChatGPT server plays script "build-runs-command" with command "mkdir -p __pycache__ && printf cache > __pycache__/fixture.pyc"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
     And the folder "__pycache__" exists

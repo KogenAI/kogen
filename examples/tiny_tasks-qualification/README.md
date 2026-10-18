@@ -7,8 +7,7 @@ cache already holds the pinned packages (`--prefer-offline` uses it); everything
 sh qualify.sh
 ```
 
-The script starts from a clean copy of `../tiny_tasks`, installs the pinned
-Cucumber lockfile, and runs format, ExUnit, and the bridge feature five times.
+The script starts from a clean copy of `../tiny_tasks`, installs the Cucumber packages pinned in the lockfile, and runs format, ExUnit, and the bridge feature five times.
 It then applies each patch to a fresh copy and runs
 [acceptance.feature](acceptance.feature) through the same step bridge. The three
 deliberately incorrect patches must fail at their contract assertion (the exact, ordered task list);

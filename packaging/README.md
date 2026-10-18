@@ -16,7 +16,7 @@ Supported platforms: macOS on Apple Silicon and Linux x86-64 with glibc, at the 
 
 ## Use
 
-In a Git repository with at least one commit. A Build needs a clean working tree, so keep the request file outside the repository, or commit it:
+In a Git repository with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
 
 ```sh
 kogen provider login chatgpt
@@ -30,4 +30,4 @@ Run `kogen help` for every command. `kogen uninstall` removes the program and ke
 
 ## License
 
-Kogen is licensed under the Apache License 2.0: see `LICENSE` and `NOTICE`. It bundles third-party software under its own licences: see `licenses/`.
+Kogen is licensed under the Apache License 2.0: see `LICENSE` and `NOTICE`. It bundles third-party software under their own licences: see `licenses/`.

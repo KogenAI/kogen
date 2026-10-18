@@ -1,6 +1,6 @@
 # Third-party licences
 
-Kogen's release archive bundles third-party software. Their licence texts ship in the archive's `licenses/` folder, and `install.sh` installs them with the program.
+Kogen's release archive bundles third-party software. The licence texts ship in the archive's `licenses/` folder, and `install.sh` installs them with the program.
 
 | Component | Version | How it is bundled | Licence | Source of these texts |
 | --- | --- | --- | --- | --- |

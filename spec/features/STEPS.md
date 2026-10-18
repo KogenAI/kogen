@@ -25,18 +25,19 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 
 | Name | Content |
 | --- | --- |
+| Intent `is-even-outline` | one Scenario Outline with three Examples rows for the review-card count |
 | `py-calc` | `README.md`, `calc.py` with `add`, `tests/test_calc.py` (unittest), `features/steps/calc_steps.js` (existing step definitions running `python3 -c`), `tools/format.py` (a formatter) and its rules `.style.cfg`, `.gitignore` with `__pycache__/`; one commit. "initialized and configured" sets `checks: [{name: test, run: python3 -m unittest}]`, the Cucumber acceptance runner, `steps_dir: features/steps`, `protect: [.style.cfg]`, and commits. |
 | `empty-repo` | `git init`, no commit. |
 | `notes` | `README.md` (plain notes), `CLAUDE.md`, `notes.txt`, `docs/index.md`; no build tool, no tests; one commit. |
 | `ex-app` | a Mix project without dependencies: `mix.exs`, `.formatter.exs`, `lib/ex_app.ex` (formatted, compiles with one unused-variable warning), `test/ex_app_test.exs` (passes), `.gitignore` with `/_build/` and `/deps/`; one commit. |
 | `node-app` | `package.json` with scripts `test` (`node --test`, passes) and `lint` (`node lint.js`, exits 2), devDependency `@cucumber/cucumber` 13.3.0 and its `package-lock.json`; `features/step_definitions/app_steps.js`; `docs-check.js` (exits 0) named in `README.md`; `.gitignore` with `node_modules/`; one commit. |
-| Intent `is-even` | title "Add an is-even helper"; scenarios Even numbers, Odd numbers, Non-integers; new step file `features/steps/is_even_steps.js`; no model; a `## Tests` section with two `unit` lines (as the chapter 02 example). Variants `is-even-*` break exactly the rule their name says (`is-even-no-tests` has no `## Tests` section). |
+| Intent `is-even` | title "Add an is-even helper"; scenarios Even numbers, Odd numbers, Non-integers; new step file `features/steps/is_even_steps.js`; no model; a `## Tests` section with two `unit` lines (as in the chapter 02 example). Variants `is-even-*` break exactly the rule their name says (`is-even-no-tests` has no `## Tests` section). |
 | Intent `counter-with-model` | a bounded counter with `model.qnt`, invariant `NeverNegative`, seed 7, 500 samples, 30 steps. |
 | Fixture runners | acceptance commands that emit the named defective report (`reports-undefined`, `reports-skipped`, `omits-one-scenario`, `reports-one-twice`, `writes-no-report`, `exits-1-all-passed`) and `hangs` (sleeps 600 seconds). |
 
 ## Fake ChatGPT server
 
-A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT-11). It records every request and plays a script of streamed responses (a script starts again for each new conversation) (text, fragmented tool calls, `submit` or `submit_review` calls, errors), optionally pausing at a named point until the test says "continues". Unless the name says otherwise, every `build-*` script answers each review with `approve` and the note `calc.py:12: the docstring could name TypeError`.
+A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT-11). It records every request and plays a script of streamed responses (text, fragmented tool calls, `submit` or `submit_review` calls, errors; a script starts again for each new conversation), optionally pausing at a named point until the test says "continues". Unless the name says otherwise, every `build-*` script answers each review with `approve` and the note `calc.py:12: the docstring could name TypeError`.
 
 | Script | Behavior |
 | --- | --- |
@@ -47,7 +48,6 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `init-corrects-dependency-protect` | first protects `.formatter.exs` and dependency-only `mix.exs`, then returns the valid formatter-only correction |
 | `init-proposes-setup` | answers it with setup `mkdir seeded`, `echo run >> runs.txt` and `true` |
 | `shape-ready-is-even` | reads two files, submits `is-even` |
-| `is-even-outline` Intent fixture | one Scenario Outline with three Examples rows for the review-card count |
 | `shape-asks-one`, `shape-asks-two` | submits one or two UI/UX questions |
 | `shape-asks-one-then-writes` | one question; after the answer, submits `is-even` citing `(source: answer 1)` |
 | `shape-asks-two-then-writes` | two questions; after both answers, submits `is-even` citing both answer numbers |
@@ -57,7 +57,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `shape-not-ready-then-asks` | submits `is-even` with an undefined step; after the readiness feedback it asks one UI/UX question |
 | `shape-undefined-step`, `shape-failing-invariant` | valid format; readiness fails as named; the same files are submitted 3 times (SHP-4) |
 | `shape-probes-then-writes` | `probe python3 -c 'print(1.5 % 2)'`, then submits `is-even` with the probe in `## Feasibility` |
-| `shape-probe-hangs-then-writes` | `probe sleep 600`, then submits `is-even` recording the timed-out probe. Its SHP-10 scenario uses a test-only Go driver around the actual installed core: verify its outgoing 300000 ms policy, contract only that execution request to 200 ms, and return the real production executor’s timeout result. Assert process-group death, scratch removal and continued shaping. This composes policy and real timeout-path evidence; it does not measure 300 seconds of elapsed time. |
+| `shape-probe-hangs-then-writes` | `probe sleep 600`, then submits `is-even` recording the timed-out probe. Its SHP-10 scenario uses a test-only Go driver around the actual installed core: it verifies the outgoing 300000 ms policy, shortens only that execution request's deadline to 200 ms, and returns the real production executor's timeout result. The scenario asserts process-group death, scratch removal and continued shaping. This composes policy and real timeout-path evidence; it does not measure 300 seconds of elapsed time. |
 | `build-correct-first-try` | correct implementation; `finish` |
 | `build-wrong-then-repair` | wrong `is_even`; after feedback, the correct one |
 | `build-wrong-forever` | always a wrong implementation of `calc.py` and `tests/test_calc.py` |
