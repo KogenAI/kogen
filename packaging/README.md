@@ -22,6 +22,7 @@ In a Git repository with at least one commit (a Build needs a clean working tree
 kogen provider login chatgpt
 cd my-project && kogen init        # finds and checks the project's commands, commits the configuration
 kogen intent shape my-feature ../request.md
+kogen intent refine my-feature <full-sha256-from-review-card> ../correction.md  # unapproved ready drafts; existing owned files only
 kogen intent approve my-feature    # read the card, then approve with its hash
 kogen intent build my-feature
 ```

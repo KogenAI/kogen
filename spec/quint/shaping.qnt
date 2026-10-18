@@ -47,6 +47,22 @@ module shaping {
     setVars(st, digest + 1, r, approval, startedDigest, "edit", 3),
   }
 
+  // SHP-11: scratch corrections publish only ready, hash-bound changes to an
+  // unapproved ready draft. Failure/staleness leaves the original untouched.
+  action refineWith(expected: int, succeeds: bool): bool = all {
+    st == Shaped and ready and approval == -1,
+    if (expected == digest and succeeds)
+      setVars(Shaped, digest + 1, true, -1, startedDigest, "refine", attempts)
+    else
+      setVars(st, digest, ready, approval, startedDigest, "refine_refused", attempts),
+  }
+
+  action refine = all {
+    nondet expected = 0.to(digest + 1).oneOf()
+    nondet succeeds = Set(true, false).oneOf()
+    refineWith(expected, succeeds),
+  }
+
   // AUT-2: the caller approves with a hash; only the current, ready version.
   action approve = all {
     Set(Shaped, Approved).contains(st),
@@ -77,7 +93,7 @@ module shaping {
       setVars(Approved, digest, ready, approval, -1, "build_failed", attempts),
   }
 
-  action step = any { shapeAsk, shapeWrite, edit, approve, start, buildEnds }
+  action step = any { shapeAsk, shapeWrite, edit, refine, approve, start, buildEnds }
 
   // ---- Invariants ----
   // SHP-6: while questions are pending, nothing is approved.
@@ -101,6 +117,16 @@ module shaping {
     and LandedHasNoApproval
 
   // ---- Tests (fixed traces) ----
+  run refinementStillNeedsExplicitApprovalTest =
+    init.then(setVars(Shaped, 1, true, -1, -1, "write", 1))
+      .then(refineWith(1, true)).then(start)
+      .expect(st == Shaped and digest == 2 and approval == -1 and lastAction == "start_refused")
+
+  run failedAndStaleRefinementPreserveDraftTest =
+    init.then(setVars(Shaped, 1, true, -1, -1, "write", 1))
+      .then(refineWith(0, true)).then(refineWith(1, false))
+      .expect(st == Shaped and digest == 1 and ready and approval == -1)
+
   run askThenWriteThenApproveTest =
     init.then(shapeAsk).then(
       all { st == Asking, setVars(Shaped, 1, true, -1, -1, "write", 1) }

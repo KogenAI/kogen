@@ -48,6 +48,8 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `init-corrects-dependency-protect` | first protects `.formatter.exs` and dependency-only `mix.exs`, then returns the valid formatter-only correction |
 | `init-proposes-setup` | answers it with setup `mkdir seeded`, `echo run >> runs.txt` and `true` |
 | `shape-ready-is-even` | reads two files, submits `is-even` |
+| `refine-title` | submits only the existing Intent prose with a clarified title; all other artifacts are reused |
+| `refine-constraint` | reports that the correction needs an unsupported new step file, without changing the draft |
 | `shape-asks-one`, `shape-asks-two` | submits one or two UI/UX questions |
 | `shape-asks-one-then-writes` | one question; after the answer, submits `is-even` citing `(source: answer 1)` |
 | `shape-asks-two-then-writes` | two questions; after both answers, submits `is-even` citing both answer numbers |
@@ -80,6 +82,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 One JavaScript regular expression per line.
 
 ```steps
+^the caller refines "([^"]*)" with its current baseline and stdin:$
 ^no builder request was sent after review began$
 ^the Build records (\d+) review stages? and (\d+) verification pass(?:es)?$
 ^a local Node distribution serves the real pinned Node and a newer non-LTS catalog entry$

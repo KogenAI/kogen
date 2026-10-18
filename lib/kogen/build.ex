@@ -52,7 +52,8 @@ defmodule Kogen.Build do
 
   # ---- Start checks (AUT-3..5, GIT-1) ----
 
-  defp lock!(root) do
+  @doc false
+  def lock!(root) do
     path = Path.join(root, ".kogen/local/build.lock")
 
     case Lock.acquire(path) do

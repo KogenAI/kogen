@@ -250,7 +250,7 @@ class FakeServers {
     }
     const body = await decodeRequest(req);
     const tools = (body.tools || []).map(tool => tool.name);
-    const kind = !Array.isArray(body.tools) ? 'unknown' : tools.includes('submit_configuration') ? 'init' : tools.includes('submit_review') ? 'review' : tools.includes('submit') ? 'shape' : 'build';
+    const kind = !Array.isArray(body.tools) ? 'unknown' : tools.includes('submit_configuration') ? 'init' : tools.includes('submit_review') ? 'review' : tools.includes('submit_refinement') ? 'refine' : tools.includes('submit') ? 'shape' : 'build';
     const record = { order: this.requests.length + 1, kind, body, tools, text: flatten(body).join('\n'), receivedAt: Date.now() };
     this.requests.push(record);
     for (const item of body.input || []) {
@@ -393,6 +393,11 @@ class FakeServers {
     if (name === 'stream-cut-then-ok' && this.requests.length === 1) return { cut: true };
 
     if (record.kind === 'init') return this.initResponse(name, ordinal);
+    if (record.kind === 'refine') {
+      if (name === 'refine-constraint') return { items: [functionCall('submit_refinement', { constraint: 'This correction needs a new step file; refinement changes existing files only.' }, 'refine_constraint')] };
+      const file = intentFiles('is-even').find(file => file.path.endsWith('/intent.md'));
+      return { items: [functionCall('submit_refinement', { files: [{ ...file, content: file.content.replace('# Add an is-even helper', '# Clarify the is-even helper') }] }, 'refine_title')] };
+    }
     if (record.kind === 'shape') return this.shapeResponse(name, ordinal, record);
     if (record.kind === 'review') return this.reviewResponse(name, ordinal, record);
     if (record.kind === 'build') return this.buildResponse(name, ordinal, record, args);

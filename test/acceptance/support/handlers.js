@@ -26,7 +26,7 @@ const {
 } = require('./fake-servers');
 
 const topHelp = `Commands:\n  init       Prepare this Git repository for Kogen\n  intent     Shape, approve and build an Intent\n  provider   Sign in to ChatGPT and show the login\n  uninstall  Remove the installed kogen\n  version    Show the Kogen version\n  help       List commands\n\nRun kogen <command> to see its subcommands and options.\n`;
-const intentHelp = `Usage: kogen intent <command> <slug> [arguments] [options]\n\nCommands:\n  shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)\n  approve <slug> [<hash>]   Show the review card, or approve the Intent\n  build <slug>              Build, verify, review and commit the approved Intent\n\nOptions:\n  --project <checkout>  Project checkout (default: current directory)\n  --by <name>           Approver (default: your Git identity)\n`;
+const intentHelp = `Usage: kogen intent <command> <slug> [arguments] [options]\n\nCommands:\n  shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)\n  refine <slug> <sha256> <file|->  Correct existing files of an unapproved ready draft\n  approve <slug> [<hash>]   Show the review card, or approve the Intent\n  build <slug>              Build, verify, review and commit the approved Intent\n\nOptions:\n  --project <checkout>  Project checkout (default: current directory)\n  --by <name>           Approver (default: your Git identity)\n`;
 const providerHelp = `Usage: kogen provider <command>\n\nCommands:\n  login chatgpt      Sign in with a ChatGPT account\n  list               Show whether Kogen is signed in\n\nLogins belong to this machine, never to a repo.\n`;
 
 function plainPattern(source) {
@@ -1037,6 +1037,11 @@ async function dispatch(world, pattern, values, attachment) {
     assert.ok(hash, 'the approval hash was not available');
     const approved = await runProduct(world, `kogen intent approve ${slug} ${hash}`, { cwd: world.project });
     world.lastResult = approved;
+    return;
+  }
+  if (label.startsWith('the caller refines ')) {
+    const slug = args[0];
+    await runProduct(world, `kogen intent refine ${slug} ${baselineHash(world, slug)} -`, { cwd: world.project, stdin: String(attachment ?? '') });
     return;
   }
   if (label === 'the caller is signed in to ChatGPT') {

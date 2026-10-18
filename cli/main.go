@@ -32,6 +32,7 @@ const intentPage = `Usage: kogen intent <command> <slug> [arguments] [options]
 
 Commands:
   shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)
+  refine <slug> <sha256> <file|->  Correct existing files of an unapproved ready draft
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
 
@@ -53,7 +54,7 @@ var pages = map[string]string{"top": topPage, "intent": intentPage, "provider": 
 
 // invocation is a parsed command line.
 type invocation struct {
-	command string // init, shape, approve, build, login, list, uninstall, version
+	command string // init, shape, refine, approve, build, login, list, uninstall, version
 	slug    string
 	file    string
 	hash    string
@@ -78,6 +79,7 @@ var leaves = map[string]spec{
 	"uninstall":      {path: "uninstall", command: "uninstall", page: "top"},
 	"version":        {path: "version", command: "version", page: "top"},
 	"intent shape":   {path: "intent shape", command: "shape", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<file|->"}},
+	"intent refine":  {path: "intent refine", command: "refine", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<sha256>", "<file|->"}},
 	"intent approve": {path: "intent approve", command: "approve", page: "intent", options: []string{"project", "by"}, positional: []string{"<slug>", "<hash>"}, optional: 1},
 	"intent build":   {path: "intent build", command: "build", page: "intent", options: []string{"project"}, positional: []string{"<slug>"}},
 	"provider login": {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
@@ -176,6 +178,11 @@ func parse(args []string) (*invocation, string, *usageError) {
 		}
 	case "shape":
 		inv.slug, inv.file = pos[0], pos[1]
+	case "refine":
+		inv.slug, inv.hash, inv.file = pos[0], pos[1], pos[2]
+		if len(inv.hash) != 64 || !hashRe.MatchString(inv.hash) {
+			return fail("<sha256> must be 64 lowercase hex characters")
+		}
 	case "build":
 		inv.slug = pos[0]
 	case "approve":
@@ -236,7 +243,7 @@ func main() {
 	}
 	run := map[string]any{"type": "run", "command": inv.command, "cwd": cwd, "install_root": root, "env": environ()}
 	switch inv.command {
-	case "shape", "approve", "build":
+	case "shape", "refine", "approve", "build":
 		if !slugRe.MatchString(inv.slug) || len(inv.slug) < 3 || len(inv.slug) > 48 {
 			fail(2, "intent/invalid_slug: Slug must be 3 to 48 characters and use lowercase letters, digits and dashes.")
 		}
@@ -254,7 +261,7 @@ func main() {
 		if inv.by != "" {
 			run["by"] = inv.by
 		}
-		if inv.command == "shape" {
+		if inv.command == "shape" || inv.command == "refine" {
 			run["input"] = readRequest(cwd, inv.file)
 			if inv.file != "-" {
 				run["input_path"] = absFrom(cwd, inv.file)
@@ -267,7 +274,7 @@ func main() {
 			fail(3, err)
 		}
 	}
-	if inv.command == "shape" || inv.command == "build" {
+	if inv.command == "shape" || inv.command == "refine" || inv.command == "build" {
 		if err := checkSeams(); err != "" {
 			fail(3, err)
 		}

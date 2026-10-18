@@ -4,10 +4,20 @@ defmodule Kogen.Approve do
   print the review card; with a hash that matches the acceptance baseline, reuse a passing card
   check for the same baseline hash and HEAD or check readiness again. Approval never starts a Build.
   """
-  alias Kogen.{Bridge, Config, Error, Git, Intent, Readiness}
+  alias Kogen.{Bridge, Build, Config, Error, Git, Intent, Lock, Readiness}
 
   def run(project, slug, hash, by) do
     root = Git.root!(project)
+    lock = Build.lock!(root)
+
+    try do
+      approve(root, slug, hash, by)
+    after
+      Lock.release(lock)
+    end
+  end
+
+  defp approve(root, slug, hash, by) do
     config = Config.load!(root)
     questions_pending!(root, slug)
     Intent.exists!(root, slug)

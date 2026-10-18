@@ -7,6 +7,7 @@ One `kogen` command for people and for coding agents that drive it: no TUI, no p
 ```
 kogen init
 kogen intent shape <slug> <file|->
+kogen intent refine <slug> <sha256> <file|->
 kogen intent approve <slug> [<hash>] [--by <name>]
 kogen intent build <slug>
 kogen provider login chatgpt
@@ -18,7 +19,7 @@ kogen help
 
 `intent` commands also take `--project <checkout>` (default: the working directory). No other command or option exists.
 
-**CLI-2 — Grammar.** `--name value` or `--name=value`; options anywhere after the command path; the last repeated option wins; `--` ends options; `-h` is the only short option; a lone `-` is a positional. `--help` or `-h` after a command path prints that path's existing help page (CLI-3), exit 0. `--version` prints the same version line as `kogen version` (CLI-10), exit 0. First match wins: `kogen` and `kogen help` print the top page and a group alone (`intent`, `provider`) its page (exit 0); otherwise `kogen help: unexpected argument '<token>'`, `kogen <group>: unknown command '<sub>'`, `kogen: unknown command '<x>'`, `kogen <path>: unknown option '<opt>'`, `kogen <path>: <opt> needs a value`, `kogen <path>: missing <name>`, `kogen <path>: unexpected argument '<arg>'`, `kogen provider <verb>: unknown provider '<p>' (supported: chatgpt)`, `kogen intent approve: <hash> must be 6 to 64 lowercase hex characters`. A usage error prints the message, an empty line and the page of the group meant (the top page outside groups), exit 2. A missing `--project` directory is `environment/project_unavailable: <path>` (exit 3).
+**CLI-2 — Grammar.** `--name value` or `--name=value`; options anywhere after the command path; the last repeated option wins; `--` ends options; `-h` is the only short option; a lone `-` is a positional. `--help` or `-h` after a command path prints that path's existing help page (CLI-3), exit 0. `--version` prints the same version line as `kogen version` (CLI-10), exit 0. First match wins: `kogen` and `kogen help` print the top page and a group alone (`intent`, `provider`) its page (exit 0); otherwise `kogen help: unexpected argument '<token>'`, `kogen <group>: unknown command '<sub>'`, `kogen: unknown command '<x>'`, `kogen <path>: unknown option '<opt>'`, `kogen <path>: <opt> needs a value`, `kogen <path>: missing <name>`, `kogen <path>: unexpected argument '<arg>'`, `kogen provider <verb>: unknown provider '<p>' (supported: chatgpt)`, `kogen intent approve: <hash> must be 6 to 64 lowercase hex characters`, `kogen intent refine: <sha256> must be 64 lowercase hex characters`. A usage error prints the message, an empty line and the page of the group meant (the top page outside groups), exit 2. A missing `--project` directory is `environment/project_unavailable: <path>` (exit 3).
 
 **CLI-3 — Help pages.** Byte-exact.
 
@@ -43,6 +44,7 @@ Usage: kogen intent <command> <slug> [arguments] [options]
 
 Commands:
   shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)
+  refine <slug> <sha256> <file|->  Correct existing files of an unapproved ready draft
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
 

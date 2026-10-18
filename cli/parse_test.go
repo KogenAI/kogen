@@ -32,6 +32,7 @@ Run kogen <command> to see its subcommands and options.
 
 Commands:
   shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)
+  refine <slug> <sha256> <file|->  Correct existing files of an unapproved ready draft
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
 
@@ -76,6 +77,7 @@ func TestParseCommandTreeCLI1(t *testing.T) {
 		want invocation
 	}{
 		{name: "init", args: []string{"init"}, want: invocation{command: "init"}},
+		{name: "refine", args: []string{"intent", "refine", "feature", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "request.md"}, want: invocation{command: "refine", slug: "feature", hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", file: "request.md"}},
 		{name: "shape", args: []string{"intent", "shape", "feature", "request.md"}, want: invocation{command: "shape", slug: "feature", file: "request.md"}},
 		{name: "approve without optional hash", args: []string{"intent", "approve", "feature"}, want: invocation{command: "approve", slug: "feature"}},
 		{name: "approve with optional hash", args: []string{"intent", "approve", "feature", "abcdef"}, want: invocation{command: "approve", slug: "feature", hash: "abcdef"}},
@@ -155,6 +157,7 @@ func TestParseGrammarCLI2(t *testing.T) {
 		{name: "list extra positional", args: []string{"provider", "list", "extra"}, msg: "kogen provider list: unexpected argument 'extra'", page: "provider"},
 		{name: "double dash makes option-looking token positional", args: []string{"intent", "build", "feature", "--", "--project"}, msg: "kogen intent build: unexpected argument '--project'", page: "intent"},
 		{name: "unknown provider", args: []string{"provider", "login", "grok"}, msg: "kogen provider login: unknown provider 'grok' (supported: chatgpt)", page: "provider"},
+		{name: "refine needs full hash", args: []string{"intent", "refine", "feature", "abcdef", "-"}, msg: "kogen intent refine: <sha256> must be 64 lowercase hex characters", page: "intent"},
 		{name: "hash too short", args: []string{"intent", "approve", "feature", "abcde"}, msg: "kogen intent approve: <hash> must be 6 to 64 lowercase hex characters", page: "intent"},
 		{name: "hash too long", args: []string{"intent", "approve", "feature", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"}, msg: "kogen intent approve: <hash> must be 6 to 64 lowercase hex characters", page: "intent"},
 		{name: "hash uppercase", args: []string{"intent", "approve", "feature", "ABCDEF"}, msg: "kogen intent approve: <hash> must be 6 to 64 lowercase hex characters", page: "intent"},
