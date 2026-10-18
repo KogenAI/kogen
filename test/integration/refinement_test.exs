@@ -11,6 +11,195 @@ defmodule Kogen.Integration.RefinementTest do
     {:ok, suite: suite}
   end
 
+  test "SHP-11 a narrow retry preserves all earlier well-formed proposals until merged readiness",
+       %{suite: suite} do
+    context = approved_fixture!(suite)
+    intent = Intent.intent_md("fixture")
+    feature = Intent.feature("fixture")
+    step = "features/steps/integration_steps.js"
+    model = ".kogen/intents/fixture/model.qnt"
+
+    File.write!(
+      Path.join(context.repo, model),
+      "module fixture {\n var count: int\n action init = count' = 0\n action step = count' = count + 1\n val Safety = count >= 0\n}\n"
+    )
+
+    original_intent =
+      File.read!(Path.join(context.repo, intent))
+      |> String.replace(
+        "Model: not applicable — no model for this fixture",
+        "Model: #{model} invariants=Safety seed=7 samples=10 steps=5"
+      )
+
+    File.write!(Path.join(context.repo, intent), original_intent)
+    {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)])
+    before = package(context)
+    approval = File.read!(Intent.approval_path(context.repo, "fixture"))
+    original_index = index(context)
+
+    pending_intent =
+      before[intent]
+      |> String.replace("# Preserve", "# Correct")
+      |> String.replace("invariants=Safety", "invariants =Safety")
+      |> Kernel.<>("\n## Decisions\n- Keep all corrected artifacts.\n")
+
+    corrected_intent =
+      pending_intent
+      |> String.replace("invariants =Safety", "invariants=Safety")
+      |> String.replace(
+        "- Keep all corrected artifacts.\n",
+        "- Keep all corrected artifacts. (source: request)\n"
+      )
+
+    proposals = %{
+      intent => pending_intent,
+      feature =>
+        String.replace(
+          before[feature],
+          "the acceptance check passes",
+          "the corrected acceptance check passes"
+        ),
+      step =>
+        String.replace(
+          before[step],
+          "the acceptance check passes",
+          "the corrected acceptance check passes"
+        ),
+      model => String.replace(before[model], "count + 1", "count + 2")
+    }
+
+    marker = Path.join(context.root, "lint-rejected")
+
+    script!(context, [
+      submission(
+        Enum.map(proposals, fn {path, content} -> %{"path" => path, "content" => content} end)
+      ),
+      {:function, "probe", %{"command" => "touch '#{marker}' && sleep 1"}},
+      submission([%{"path" => intent, "content" => corrected_intent}])
+    ])
+
+    port =
+      Helpers.start_kogen(context, [
+        "intent",
+        "refine",
+        "fixture",
+        hash(context),
+        request!(context)
+      ])
+
+    Helpers.wait_for_file!(marker)
+    assert package(context) == before
+    assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
+    assert index(context) == original_index
+
+    assert Enum.any?(
+             FakeProvider.tool_outputs(context.server),
+             &String.contains?(&1, "decision has no source")
+           )
+
+    assert Enum.any?(
+             FakeProvider.tool_outputs(context.server),
+             &String.contains?(&1, "model: the Model: line must be")
+           )
+
+    {output, 0} = Helpers.await_exit(port, "", 20_000)
+    assert output =~ "refined fixture"
+    assert package(context) == Map.merge(before, Map.put(proposals, intent, corrected_intent))
+    assert index(context) == original_index
+    refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+
+    [archived] =
+      Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/revoked-approval.json"))
+
+    assert File.read!(archived) == approval
+    {output, 5} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert output =~ "intent/not_approved"
+
+    evidence =
+      Path.join(context.repo, ".kogen/local/readiness/fixture.json")
+      |> File.read!()
+      |> JSON.decode!()
+
+    assert evidence["sha256"] == hash(context)
+  end
+
+  test "SHP-11 a mixed unsafe payload contributes no proposals to a later narrow retry", %{
+    suite: suite
+  } do
+    context = approved_fixture!(suite)
+    before = package(context)
+    intent = Intent.intent_md("fixture")
+    feature = Intent.feature("fixture")
+
+    updated =
+      String.replace(
+        before[feature],
+        "Feature: Integration fixture",
+        "Feature: Corrected fixture"
+      )
+
+    script!(context, [
+      submission([
+        %{
+          "path" => intent,
+          "content" => String.replace(before[intent], "# Preserve", "# Must never publish")
+        },
+        %{"path" => "app.txt", "content" => "unsafe"}
+      ]),
+      submission([%{"path" => feature, "content" => updated}])
+    ])
+
+    {output, 0} = refine(context)
+    assert output =~ "refined fixture"
+    assert package(context) == Map.put(before, feature, updated)
+    assert File.read!(Path.join(context.repo, "app.txt")) == "baseline\n"
+  end
+
+  test "SHP-11 later proposals replace a path and explicit original bytes revert it", %{
+    suite: suite
+  } do
+    context = approved_fixture!(suite)
+    before = package(context)
+    intent = Intent.intent_md("fixture")
+    feature = Intent.feature("fixture")
+    step = "features/steps/integration_steps.js"
+    pending = before[intent] <> "\n## Decisions\n- Retain the feature correction.\n"
+    latest = String.replace(pending, "# Preserve", "# Latest correction")
+
+    corrected =
+      String.replace(
+        latest,
+        "- Retain the feature correction.\n",
+        "- Retain the feature correction. (source: request)\n"
+      )
+
+    changed_feature =
+      String.replace(
+        before[feature],
+        "Feature: Integration fixture",
+        "Feature: Retained correction"
+      )
+
+    script!(context, [
+      submission([
+        %{"path" => intent, "content" => pending},
+        %{"path" => feature, "content" => changed_feature},
+        %{"path" => step, "content" => before[step] <> "\n// proposed helper\n"}
+      ]),
+      submission([
+        %{"path" => intent, "content" => latest},
+        %{"path" => step, "content" => before[step]}
+      ]),
+      submission([%{"path" => intent, "content" => corrected}])
+    ])
+
+    {output, 0} = refine(context)
+    assert output =~ "refined fixture"
+
+    assert package(context) ==
+             Map.merge(before, %{intent => corrected, feature => changed_feature})
+  end
+
   test "SHP-11 a delta changes one draft file, preserves other bytes and still needs approval", %{
     suite: suite
   } do

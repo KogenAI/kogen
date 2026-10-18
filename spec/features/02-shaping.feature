@@ -30,6 +30,25 @@ Feature: Shaping
     Then the exit code is 5
     And stdout contains "intent/not_approved"
 
+  @SHP-11 @model:shaping
+  Scenario: A narrow lint correction retains earlier proposed artifact edits in the same run
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "refine-narrow-retry"
+    When the caller refines "is-even" with its current baseline and stdin:
+      """
+      Correct the existing title and feature heading; retain both changes when fixing lint.
+      """
+    Then the exit code is 0
+    And stdout contains "refined is-even"
+    And the file ".kogen/intents/is-even/intent.md" contains "# Clarify the is-even helper"
+    And the file ".kogen/intents/is-even/acceptance.feature" contains "Feature: Corrected is_even"
+    And the file "features/steps/is_even_steps.js" is unchanged
+    And the file ".kogen/local/approvals/is-even.json" does not exist
+    And request 2 contains "decision has no source"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 5
+    And stdout contains "intent/not_approved"
+
   @SHP-11 @AUT-2 @model:shaping
   Scenario: Correcting an approved package revokes approval and requires a fresh exact approval
     Given the Intent "is-even" from fixture "is-even" is approved

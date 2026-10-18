@@ -396,6 +396,14 @@ class FakeServers {
     if (record.kind === 'refine') {
       if (name === 'refine-constraint') return { items: [functionCall('submit_refinement', { constraint: 'This correction needs a new step file; refinement changes existing files only.' }, 'refine_constraint')] };
       const file = intentFiles('is-even').find(file => file.path.endsWith('/intent.md'));
+      if (name === 'refine-narrow-retry') {
+        const corrected = { ...file, content: file.content.replace('# Add an is-even helper', '# Clarify the is-even helper') };
+        const feature = intentFiles('is-even').find(file => file.path.endsWith('/acceptance.feature'));
+        const files = ordinal === 1
+          ? [{ ...corrected, content: corrected.content.replace('(source: request)', '') }, { ...feature, content: feature.content.replace('Feature: calc.is_even', 'Feature: Corrected is_even') }]
+          : [corrected];
+        return { items: [functionCall('submit_refinement', { files }, `refine_retry_${ordinal}`)] };
+      }
       return { items: [functionCall('submit_refinement', { files: [{ ...file, content: file.content.replace('# Add an is-even helper', '# Clarify the is-even helper') }] }, 'refine_title')] };
     }
     if (record.kind === 'shape') return this.shapeResponse(name, ordinal, record);

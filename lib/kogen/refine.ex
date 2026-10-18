@@ -116,6 +116,7 @@ defmodule Kogen.Refine do
         index: index,
         evidence: evidence,
         originals: originals,
+        proposed: %{},
         allowed: editable(root, slug, config, files)
       }
 
@@ -339,18 +340,18 @@ defmodule Kogen.Refine do
     calls = for %{"type" => "function_call"} = call <- response.items, do: call
     ctx = %{root: s.scratch, protected: [], tools: ~w(read_file list_files search_text probe)}
 
-    {outputs, outcome} =
-      Enum.reduce(calls, {[], nil}, fn call, {outputs, outcome} ->
+    {outputs, outcome, s} =
+      Enum.reduce(calls, {[], nil, s}, fn call, {outputs, outcome, s} ->
         Bridge.check_cancel()
 
-        {text, next} =
+        {text, next, s} =
           cond do
-            outcome != nil -> {"ignored: only one submission counts", outcome}
+            outcome != nil -> {"ignored: only one submission counts", outcome, s}
             call["name"] == "submit_refinement" -> submit(s, Shape.decode(call))
-            true -> {Tools.run(call["name"], Shape.decode(call), ctx) |> Tools.cut(), nil}
+            true -> {Tools.run(call["name"], Shape.decode(call), ctx) |> Tools.cut(), nil, s}
           end
 
-        {outputs ++ [Shape.output(call, text)], next}
+        {outputs ++ [Shape.output(call, text)], next, s}
       end)
 
     input = input ++ replay ++ outputs
@@ -395,13 +396,13 @@ defmodule Kogen.Refine do
     end
   end
 
-  defp submit(_s, %{"constraint" => reason} = args)
+  defp submit(s, %{"constraint" => reason} = args)
        when map_size(args) == 1 and is_binary(reason) do
     if String.trim(reason) != "",
-      do: {"constraint recorded", {:constraint, reason}},
+      do: {"constraint recorded", {:constraint, reason}, s},
       else:
         {"invalid: constraint must explain the unsupported work",
-         {:invalid, "constraint must explain the unsupported work"}}
+         {:invalid, "constraint must explain the unsupported work"}, s}
   end
 
   defp submit(s, %{"files" => [_ | _] = files} = args) when map_size(args) == 1 do
@@ -412,7 +413,7 @@ defmodule Kogen.Refine do
     valid =
       Enum.all?(files, fn
         %{"path" => path, "content" => content} = file ->
-          map_size(file) == 2 and path in s.allowed and is_binary(content)
+          map_size(file) == 2 and is_binary(path) and path in s.allowed and is_binary(content)
 
         _ ->
           false
@@ -420,13 +421,15 @@ defmodule Kogen.Refine do
 
     if not valid do
       diagnostic =
-        "invalid: a path is not an exclusively owned editable draft file, or a change has invalid content/duplicate paths; no new/shared/protected paths"
+        "invalid: a path is not an exclusively owned editable draft file, or a change has invalid content/duplicate paths; no new/shared/protected paths. No proposals from this submission were retained; earlier proposals are unchanged."
 
       File.write!(Path.join(s.evidence, "diagnostic-#{attempt}.txt"), diagnostic)
-      {diagnostic, {:invalid, diagnostic}}
+      {diagnostic, {:invalid, diagnostic}, s}
     else
+      s = %{s | proposed: Map.merge(s.proposed, Map.new(files, &{&1["path"], &1["content"]}))}
+      paths = Map.keys(s.proposed)
       Git.ok!(s.scratch, ["read-tree", "--reset", "-u", s.tree])
-      changes = Map.new(files, &{&1["path"], &1["content"]})
+      changes = s.proposed
       for {path, content} <- changes, do: File.write!(Path.join(s.scratch, path), content)
       save_files(s.evidence, "candidate-#{attempt}", changes)
 
@@ -437,13 +440,17 @@ defmodule Kogen.Refine do
         end
 
         candidate = Intent.read(s.scratch, s.slug)
+        candidate_model = model_path(candidate)
 
         if candidate.acceptance != s.intent.acceptance or
-             model_path(candidate) != model_path(s.intent),
+             (candidate_model != nil and candidate_model != model_path(s.intent)),
            do:
              constraint!(
                "Refinement cannot add/remove Acceptance paths or change whether a model exists; it changes existing files only."
              )
+
+        # Unparseable Model metadata is a correctable lint failure, not proof of
+        # model removal. Readiness rejects it before any candidate can publish.
 
         tree = Snapshot.tree(s.scratch, s.head, [])
 
@@ -460,24 +467,28 @@ defmodule Kogen.Refine do
 
         changes = Map.new(paths, &{&1, File.read!(Path.join(s.scratch, &1))})
         save_files(s.evidence, "candidate-#{attempt}", changes)
-        {"accepted: merged draft is ready", {:ready, changes, ready}}
+        {"accepted: complete accumulated draft is ready", {:ready, changes, ready}, s}
       rescue
         e in Error ->
           diagnostic = Error.render(e)
           File.write!(Path.join(s.evidence, "diagnostic-#{attempt}.txt"), diagnostic)
 
           if e.reason == "refinement_constraint",
-            do: {diagnostic, {:constraint, e.detail}},
-            else: {"not ready:\n" <> diagnostic, {:invalid, diagnostic}}
+            do: {diagnostic, {:constraint, e.detail}, s},
+            else:
+              {"not ready:\n" <>
+                 diagnostic <>
+                 "\nWell-formed proposals are retained in this run; submit only corrections. Omitted paths retain their previous proposal, or the original if never proposed.",
+               {:invalid, diagnostic}, s}
       end
     end
   end
 
-  defp submit(_s, _args) do
+  defp submit(s, _args) do
     diagnostic =
-      "invalid: submit exactly files (changed existing files only) or constraint (why this correction needs unsupported work)"
+      "invalid: submit exactly files (changed existing files only) or constraint (why this correction needs unsupported work). No proposals from this submission were retained; earlier proposals are unchanged."
 
-    {diagnostic, {:invalid, diagnostic}}
+    {diagnostic, {:invalid, diagnostic}, s}
   end
 
   defp model_path(intent) do
@@ -508,7 +519,8 @@ defmodule Kogen.Refine do
     """
     # Correction requested
     #{request}
-    # Existing ready package (full contents; omitted files stay byte-identical)
+    # Original ready package (full contents)
+    Within this run, omitted paths retain earlier well-formed proposals; paths never proposed retain these original bytes. Submit original content explicitly to revert a proposal. Nothing is published until the complete accumulated candidate is ready.
     #{Enum.map_join(s.originals, "\n", fn {path, content} -> "--- #{path}\n#{content}" end)}
     # Exclusively owned editable files
     #{Enum.join(s.allowed, "\n")}
@@ -525,7 +537,7 @@ defmodule Kogen.Refine do
   end
 
   defp instructions do
-    "Correct only the requested points in an existing ready Intent. Read/probe as needed. Reuse all unchanged artifacts: submit_refinement contains only complete replacement contents of changed existing editable files, never the whole package. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package and approval stay unchanged unless the full candidate is ready and its frozen hash/HEAD/tree/index/approval still match. Successful correction revokes any old approval; the caller must explicitly approve the resulting full hash. End with submit_refinement."
+    "Correct only the requested points in an existing ready Intent. Read/probe as needed. Reuse all unchanged artifacts: submit_refinement contains only complete replacement contents of changed existing editable files, never the whole package. Well-formed proposals accumulate within this run: latest content for a path wins, omitted paths retain earlier proposed bytes, and explicit original content reverts a proposal. A malformed or unsafe submission contributes no paths. Each retry checks the complete accumulated candidate against the frozen original; nothing is published until all of it is ready. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package and approval stay unchanged unless the full candidate is ready and its frozen hash/HEAD/tree/index/approval still match. Successful correction revokes any old approval; the caller must explicitly approve the resulting full hash. End with submit_refinement."
   end
 
   defp submit_def do
@@ -534,7 +546,7 @@ defmodule Kogen.Refine do
       "name" => "submit_refinement",
       "strict" => false,
       "description" =>
-        "Submit only changed existing draft files, or an explicit unsupported-work constraint.",
+        "Submit changed existing files; well-formed proposals accumulate in this run and omitted paths retain earlier proposed bytes. Submit original content to revert. Or report an explicit unsupported-work constraint.",
       "parameters" => %{
         "type" => "object",
         "properties" => %{
