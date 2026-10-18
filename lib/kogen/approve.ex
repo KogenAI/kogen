@@ -115,6 +115,9 @@ defmodule Kogen.Approve do
       Bridge.puts("  - #{name}#{count} (#{status})")
     end)
 
+    observations = Readiness.observations(slug, ready)
+    if observations != "", do: Bridge.puts("\n" <> observations <> "\n")
+
     Bridge.puts("Files")
     for p <- baseline, do: Bridge.puts("  - #{p}")
     Bridge.puts("Approve with:")

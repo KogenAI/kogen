@@ -426,6 +426,12 @@ class FakeServers {
   shapeResponse(name, ordinal, record) {
     const files = intentFiles('is-even');
     switch (name) {
+      case 'shape-observed-repair':
+        if (ordinal === 1) {
+          const step = files.find(file => file.path.endsWith('_steps.js'));
+          step.content += "\nrequire('@cucumber/cucumber').Before(function () { throw new Error('unique fixture failure observation'); });\n";
+        }
+        return { items: [functionCall('submit', { files }, `shape_observation_${ordinal}`)] };
       case 'shape-asks-one':
         return { items: [functionCall('submit', { questions: [{ question: 'What should is_even do with a non-integer?', options: [{ label: 'raise TypeError', recommended: true }, { label: 'return False' }] }] }, `shape_q_${ordinal}`)] };
       case 'shape-asks-two':

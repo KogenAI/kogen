@@ -363,6 +363,9 @@ defmodule Kogen.Shape do
       {:invalid, _} ->
         converse(sh, input, invalid + 1, usage)
 
+      :observations ->
+        converse(sh, input, invalid, usage)
+
       {:blocked, paths, reason} ->
         {{:blocked, paths, reason}, sh, usage}
 
@@ -410,8 +413,16 @@ defmodule Kogen.Shape do
         progress(sh, "kogen: checking readiness")
 
         try do
-          ready = Readiness.check!(sh.root, sh.slug, sh.config)
-          {"accepted: the Intent is ready", :ready, %{sh | ready: ready}}
+          if Readiness.current?(sh.root, sh.slug, sh.config, sh.ready) do
+            {"accepted: unchanged checked observations acknowledged", :ready, sh}
+          else
+            ready = Readiness.check!(sh.root, sh.slug, sh.config)
+            sh = %{sh | ready: ready}
+
+            if Readiness.failures?(ready),
+              do: {Readiness.acknowledgment(sh.slug, ready), :observations, sh},
+              else: {"accepted: the Intent is ready", :ready, sh}
+          end
         rescue
           e in Error ->
             if e.reason in ["not_ready", "parse", "lint"] do
@@ -870,7 +881,7 @@ defmodule Kogen.Shape do
 
     Kogen then checks the Intent: the rules above, the model, and a dry run of the acceptance command that must report every scenario exactly once as passed or failed (an undefined, pending or skipped step means not ready). Problems come back to you; fix them and submit again.
 
-    Inspect the required implementation edits, not arbitrary request wording. If a required edit cannot be avoided and touches a path protected by the current contract, end with `submit` containing only `blocked: {paths: ["relative/path"], reason: "why the requested change requires this edit"}`. A blocked report is not authorization, writes no new Intent or approval, and starts no Build. Do not offer conditional readiness or suggest a protected-edit approval. Otherwise end with `submit` exactly once using either `questions` or `files`, not both. If Kogen reports problems with a submission, fix them and submit again.
+    Inspect the required implementation edits, not arbitrary request wording. If a required edit cannot be avoided and touches a path protected by the current contract, end with `submit` containing only `blocked: {paths: ["relative/path"], reason: "why the requested change requires this edit"}`. A blocked report is not authorization, writes no new Intent or approval, and starts no Build. Do not offer conditional readiness or suggest a protected-edit approval. Otherwise submit either `questions` or `files`, not both. If Kogen reports problems with a submission, fix them and submit again. Accounted baseline failures remain valid, but Kogen returns their actual observations before completion: inspect whether fixtures, inputs and commands reached intended behavior, using existing read/probe tools for uncertain assumptions. Repair demonstrated contract defects; otherwise resubmit unchanged to acknowledge legitimate missing-feature red without a second unchanged readiness run. Failures can mask later cases; do not promise all fixtures are correct.
     """
   end
 end

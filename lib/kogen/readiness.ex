@@ -118,7 +118,8 @@ defmodule Kogen.Readiness do
 
     with {:ok, text} <- File.read(readiness_path(root, slug)),
          {:ok, record} when is_map(record) <- JSON.decode(text),
-         true <- record["version"] == 1 and record["outcome"] == "ready",
+         true <- record["version"] == 2 and record["outcome"] == "ready",
+         true <- is_integer(record["acceptance_exit"]),
          true <- record["sha256"] == sha and record["head"] == head,
          true <- record["baseline"] == baseline,
          {:ok, intent, _} <- Intent.check(root, slug),
@@ -137,7 +138,9 @@ defmodule Kogen.Readiness do
              is_map(s) and s["status"] in ["passed", "failed"] and
                Map.drop(s, ["status", "detail"]) == json(e) and Map.has_key?(s, "detail") and
                (is_nil(s["detail"]) or is_binary(s["detail"]))
-           end) do
+           end),
+         true <-
+           Enum.any?(scenarios, &(&1["status"] == "failed")) or record["acceptance_exit"] == 0 do
       checked =
         Enum.zip_with(expected, scenarios, fn e, s ->
           Map.merge(e, %{status: s["status"], detail: s["detail"]})
@@ -147,6 +150,7 @@ defmodule Kogen.Readiness do
         intent: intent,
         model: Intent.model(intent),
         scenarios: checked,
+        acceptance_exit: record["acceptance_exit"],
         baseline: baseline,
         sha256: sha,
         head: head
@@ -163,6 +167,43 @@ defmodule Kogen.Readiness do
     {baseline, Intent.hash(root, baseline), Git.head(root)}
   end
 
+  @doc "Whether the complete checked baseline and HEAD still identify this readiness result."
+  def current?(root, slug, config, ready) when is_map(ready),
+    do: inputs(root, slug, config) == {ready.baseline, ready.sha256, ready.head}
+
+  def current?(_root, _slug, _config, _ready), do: false
+
+  def failures?(ready), do: Enum.any?(ready.scenarios, &(&1.status == "failed"))
+
+  @doc "The same bounded, actual failed-baseline observations for the model and approval card."
+  def observations(slug, ready, reference \\ nil) do
+    if failures?(ready) do
+      reference = reference || ".kogen/local/readiness/#{slug}.json"
+
+      details =
+        ready.scenarios
+        |> Enum.filter(&(&1.status == "failed"))
+        |> Enum.map_join("\n\n", fn s ->
+          "Scenario: #{s.name} (acceptance.feature line #{s.line})\n" <>
+            (s.detail || "The runner supplied no failure detail.")
+        end)
+
+      ("Readiness observations\n" <>
+         "Checked baseline: #{ready.sha256}\nHEAD: #{ready.head}\n" <>
+         "Acceptance exit: #{ready.acceptance_exit}\nEvidence: #{reference}\n" <>
+         details)
+      |> Kogen.Tools.cut()
+    else
+      ""
+    end
+  end
+
+  def acknowledgment(slug, ready, reference \\ nil) do
+    ("Inspect whether fixtures, inputs and commands reached the intended behavior, using the existing read/probe tools when needed. Repair demonstrated contract defects. Ordinary missing-feature red is valid: resubmit the unchanged complete candidate to acknowledge these observations without rerunning unchanged readiness. A failure can mask later cases; this is not proof that every fixture is correct.\n\n" <>
+       observations(slug, ready, reference))
+    |> Kogen.Tools.cut()
+  end
+
   @doc "Publishes the original successful evidence only when the complete checked inputs still match."
   def record_pass!(root, slug, config, ready) do
     unless inputs(root, slug, config) == {ready.baseline, ready.sha256, ready.head},
@@ -177,7 +218,7 @@ defmodule Kogen.Readiness do
     File.write!(
       path,
       JSON.encode!(%{
-        "version" => 1,
+        "version" => 2,
         "outcome" => "ready",
         "sha256" => ready.sha256,
         "head" => ready.head,
@@ -185,6 +226,7 @@ defmodule Kogen.Readiness do
         "title" => ready.intent.title,
         "model" => ready.model,
         "model_outcome" => if(ready.model == :none, do: "not_applicable", else: "passed"),
+        "acceptance_exit" => ready.acceptance_exit,
         "scenarios" => ready.scenarios
       }) <> "\n"
     )
@@ -268,6 +310,7 @@ defmodule Kogen.Readiness do
           intent: intent,
           model: model,
           scenarios: result.scenarios,
+          acceptance_exit: result.status,
           baseline: baseline,
           sha256: sha,
           head: head

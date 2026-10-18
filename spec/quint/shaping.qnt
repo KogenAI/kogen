@@ -7,10 +7,11 @@
 // for the current version. Only the caller approves and only the caller starts
 // a Build; the shaper can ask questions or write files, nothing else.
 module shaping {
-  type IntentState = Absent | Asking | Shaped | Approved | Building | Built
+  type IntentState = Absent | Asking | Observing | Shaped | Approved | Building | Built
 
   var st: IntentState
   var digest: int          // current content version (0 = no files)
+  var observedDigest: int  // exact complete baseline/HEAD whose failed observations were returned
   var ready: bool          // readiness of the current version
   var approval: int        // approved version, -1 = none
   var prevApproval: int    // approval before the last action
@@ -21,33 +22,50 @@ module shaping {
   action setVars(s, d, r, a, sd, act, at) = all {
     st' = s, digest' = d, ready' = r, approval' = a,
     prevApproval' = approval, startedDigest' = sd, lastAction' = act, attempts' = at,
+    observedDigest' = if (act == "write") (if (s == Observing) d else -1)
+      else if (act == "edit") -1 else observedDigest,
   }
 
   action init = all {
-    st' = Absent, digest' = 0, ready' = false, approval' = -1,
+    st' = Absent, digest' = 0, observedDigest' = -1, ready' = false, approval' = -1,
     prevApproval' = -1, startedDigest' = -1, lastAction' = "init", attempts' = 0,
   }
 
   // SHP-6: the shaper asks questions; nothing is written, nothing approved. After a not-ready
   // attempt (SHP-4) it may ask too; the files of that attempt stay.
   action shapeAsk = all {
-    Set(Absent, Asking).contains(st) or (st == Shaped and not(ready) and attempts < 3),
+    Set(Absent, Asking, Observing).contains(st) or (st == Shaped and not(ready) and attempts < 3),
     setVars(Asking, digest, ready, approval, startedDigest, "ask", attempts),
   }
 
   // SHP-4: the shaper writes the Intent files; readiness is whatever the checks say. A not-ready
   // attempt goes back to the shaper (SHP-8), whose next attempt overwrites the files: at most 3 in a row.
   action shapeWrite = all {
-    Set(Absent, Asking).contains(st) or (st == Shaped and not(ready) and attempts < 3),
+    Set(Absent, Asking, Observing).contains(st) or (st == Shaped and not(ready) and attempts < 3),
     nondet r = Set(true, false).oneOf()
-    setVars(Shaped, digest + 1, r, approval, startedDigest, "write", if (st == Shaped) attempts + 1 else 1),
+    nondet red = Set(true, false).oneOf()
+    setVars(if (r and red) Observing else Shaped, digest + 1, r, approval, startedDigest, "write", if (st == Shaped) attempts + 1 else 1),
   }
 
   // A manual edit of the Intent or its acceptance files (allowed before a Build).
   action edit = all {
-    Set(Shaped, Approved).contains(st),
+    Set(Shaped, Approved, Observing).contains(st),
     nondet r = Set(true, false).oneOf()
     setVars(st, digest + 1, r, approval, startedDigest, "edit", 3),
+  }
+
+  // SHP-8: unchanged acknowledgment follows actual observations; changed inputs cannot borrow them.
+  action acknowledgeWith(expected: int): bool = all {
+    st == Observing,
+    if (expected == digest and observedDigest == digest and ready)
+      setVars(Shaped, digest, ready, approval, startedDigest, "acknowledge", attempts)
+    else
+      setVars(st, digest, ready, approval, startedDigest, "ack_refused", attempts),
+  }
+
+  action acknowledge = all {
+    nondet expected = 0.to(digest + 1).oneOf()
+    acknowledgeWith(expected),
   }
 
   // SHP-11: scratch corrections publish only ready, hash-bound changes to an
@@ -96,7 +114,7 @@ module shaping {
       setVars(Approved, digest, ready, approval, -1, "build_failed", attempts),
   }
 
-  action step = any { shapeAsk, shapeWrite, edit, refine, approve, start, buildEnds }
+  action step = any { shapeAsk, shapeWrite, acknowledge, edit, refine, approve, start, buildEnds }
 
   // ---- Invariants ----
   // SHP-6: while questions are pending, nothing is approved.
@@ -116,11 +134,24 @@ module shaping {
   val OnlyExplicitStartBuilds = (st == Building and lastAction != "start") implies false
   // AUT-6 / GIT-8: a landed Build deletes the approval, so the Intent cannot be built again.
   val LandedHasNoApproval = st == Built implies (approval == -1 and startedDigest == -1)
-  val Safety = NoApprovalWhileAsking and CurrentApprovalIsReady
+  val AcknowledgmentUsesCurrentEvidence =
+    lastAction == "acknowledge" implies (st == Shaped and ready and observedDigest == digest)
+  val Safety = AcknowledgmentUsesCurrentEvidence and NoApprovalWhileAsking and CurrentApprovalIsReady
     and ApprovalOnlyByCaller and BuildOnlyOnCurrentApproval and OnlyExplicitStartBuilds
     and LandedHasNoApproval
 
   // ---- Tests (fixed traces) ----
+  run redNeedsCurrentObservationAcknowledgmentTest =
+    init.then(setVars(Observing, 1, true, -1, -1, "write", 1))
+      .then(acknowledgeWith(0)).then(acknowledgeWith(1)).then(start)
+      .expect(st == Shaped and ready and approval == -1 and lastAction == "start_refused")
+
+  run changedInputsCannotBorrowObservationsTest =
+    init.then(setVars(Observing, 1, true, -1, -1, "write", 1))
+      .then(setVars(Observing, 2, true, -1, -1, "edit", 1))
+      .then(acknowledgeWith(2))
+      .expect(st == Observing and observedDigest == -1 and lastAction == "ack_refused")
+
   run refinementStillNeedsExplicitApprovalTest =
     init.then(setVars(Shaped, 1, true, -1, -1, "write", 1))
       .then(refineWith(1, true)).then(start)
@@ -163,7 +194,7 @@ module shaping {
   run notReadyAttemptIsOverwrittenTest =
     init.then(all { setVars(Shaped, 1, false, -1, -1, "write", 1) })
       .then(shapeWrite)
-      .expect(st == Shaped and digest == 2 and attempts == 2)
+      .expect(Set(Shaped, Observing).contains(st) and digest == 2 and attempts == 2)
 
   run landedIntentCannotBeBuiltAgainTest =
     init.then(all { setVars(Built, 1, true, -1, -1, "built", 1) })

@@ -11,6 +11,24 @@ Feature: Shaping
     And the project is initialized and configured
     And the caller is signed in to ChatGPT
 
+  @SHP-8 @AUT-1 @model:shaping
+  Scenario: The final shaper repairs observed fixture failure then acknowledges legitimate product red
+    Given the fake ChatGPT server plays script "shape-observed-repair"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add the existing is-even request; inspect actual baseline observations before finishing.
+      """
+    Then the exit code is 0
+    And request 2 contains "unique fixture failure observation"
+    And request 3 contains "Readiness observations"
+    And stdout contains "3 fail now"
+    And the fake ChatGPT server received 3 requests
+    When the caller runs "kogen intent approve is-even"
+    Then the exit code is 5
+    And stdout contains "Readiness observations"
+    And stdout contains "Acceptance exit: 1"
+    And stdout contains "Evidence: .kogen/local/readiness/is-even.json"
+
   @SHP-11 @CLI-1 @model:shaping
   Scenario: A targeted correction preserves unchanged artifacts and still requires approval
     Given the Intent "is-even" from fixture "is-even" is shaped

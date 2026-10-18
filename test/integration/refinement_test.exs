@@ -227,6 +227,8 @@ defmodule Kogen.Integration.RefinementTest do
     # actual successful readiness, never rendered as though they were complete.
     for broken <- [
           Map.delete(evidence, "model_outcome"),
+          Map.delete(evidence, "acceptance_exit"),
+          Map.put(evidence, "acceptance_exit", 17),
           Map.put(evidence, "outcome", "failed"),
           Map.put(evidence, "model", %{}),
           Map.put(evidence, "scenarios", []),

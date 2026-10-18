@@ -1588,6 +1588,10 @@ async function dispatchAssertions(world, label, args, attachment) {
     assertContainsTemplate(world, actual().stdout, args[0], 'stdout');
     return;
   }
+  if (label === 'stdout contains:') {
+    assertContainsTemplate(world, actual().stdout, String(attachment ?? ''), 'stdout');
+    return;
+  }
   if (label.startsWith('stdout does not contain ')) {
     assert.ok(!actual().stdout.includes(args[0]), `stdout unexpectedly contained ${args[0]}`);
     return;

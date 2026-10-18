@@ -117,6 +117,7 @@ defmodule Kogen.Refine do
         evidence: evidence,
         originals: originals,
         proposed: %{},
+        observed: nil,
         allowed: editable(root, slug, config, files)
       }
 
@@ -124,7 +125,7 @@ defmodule Kogen.Refine do
         Git.ok!(root, ["clone", "--quiet", "--shared", "--no-checkout", "--", root, scratch])
         Tools.copy_tree(root, scratch)
         Git.ok!(scratch, ["read-tree", tree])
-        Readiness.check!(scratch, slug, config)
+        original_ready = Readiness.check!(scratch, slug, config)
 
         if Snapshot.tree(scratch, head, []) != tree,
           do:
@@ -132,7 +133,16 @@ defmodule Kogen.Refine do
               "Readiness changed project files; preserve the draft and resolve that before refining."
             )
 
-        state = Map.put(state, :intent, original)
+        original_reference = Path.join(evidence, "original-observations.txt")
+        original_observations = Readiness.observations(slug, original_ready, original_reference)
+        if original_observations != "", do: File.write!(original_reference, original_observations)
+
+        state =
+          state
+          |> Map.put(:intent, original)
+          |> Map.put(:original_observations, original_observations)
+          |> Map.put(:observed, if(Readiness.failures?(original_ready), do: original_ready))
+
         role = config.models["shape"]
         input = [%{"role" => "user", "content" => context(state, request)}]
         tools = Tools.defs(~w(read_file list_files search_text probe)) ++ [submit_def()]
@@ -360,6 +370,9 @@ defmodule Kogen.Refine do
       {:ready, files, ready} ->
         {files, ready, usage}
 
+      :observations ->
+        converse(s, role, tools, input, invalid, usage)
+
       {:constraint, reason} ->
         constraint!(reason)
 
@@ -457,7 +470,10 @@ defmodule Kogen.Refine do
         if Enum.any?(Snapshot.changed(s.scratch, s.tree, tree), &(&1 not in paths)),
           do: constraint!("A fixer changed files outside the submitted correction.")
 
-        ready = Readiness.check!(s.scratch, s.slug, s.config)
+        acknowledged = Readiness.current?(s.scratch, s.slug, s.config, s.observed)
+
+        ready =
+          if acknowledged, do: s.observed, else: Readiness.check!(s.scratch, s.slug, s.config)
 
         if Snapshot.tree(s.scratch, s.head, []) != tree,
           do:
@@ -467,7 +483,16 @@ defmodule Kogen.Refine do
 
         changes = Map.new(paths, &{&1, File.read!(Path.join(s.scratch, &1))})
         save_files(s.evidence, "candidate-#{attempt}", changes)
-        {"accepted: complete accumulated draft is ready", {:ready, changes, ready}, s}
+
+        if not acknowledged and Readiness.failures?(ready) do
+          reference = Path.join(s.evidence, "observations-#{attempt}.txt")
+          File.write!(reference, Readiness.observations(s.slug, ready, reference))
+
+          {Readiness.acknowledgment(s.slug, ready, reference), :observations,
+           %{s | observed: ready}}
+        else
+          {"accepted: complete accumulated draft is ready", {:ready, changes, ready}, s}
+        end
       rescue
         e in Error ->
           diagnostic = Error.render(e)
@@ -522,6 +547,8 @@ defmodule Kogen.Refine do
     # Original ready package (full contents)
     Within this run, omitted paths retain earlier well-formed proposals; paths never proposed retain these original bytes. Submit original content explicitly to revert a proposal. Nothing is published until the complete accumulated candidate is ready.
     #{Enum.map_join(s.originals, "\n", fn {path, content} -> "--- #{path}\n#{content}" end)}
+    # Original baseline observations
+    #{s.original_observations}
     # Exclusively owned editable files
     #{Enum.join(s.allowed, "\n")}
     # Protection and commands
@@ -537,7 +564,7 @@ defmodule Kogen.Refine do
   end
 
   defp instructions do
-    "Correct only the requested points in an existing ready Intent. Read/probe as needed. Reuse all unchanged artifacts: submit_refinement contains only complete replacement contents of changed existing editable files, never the whole package. Well-formed proposals accumulate within this run: latest content for a path wins, omitted paths retain earlier proposed bytes, and explicit original content reverts a proposal. A malformed or unsafe submission contributes no paths. Each retry checks the complete accumulated candidate against the frozen original; nothing is published until all of it is ready. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package and approval stay unchanged unless the full candidate is ready and its frozen hash/HEAD/tree/index/approval still match. Successful correction revokes any old approval; the caller must explicitly approve the resulting full hash. End with submit_refinement."
+    "Correct only the requested points in an existing ready Intent. Read/probe as needed. Reuse all unchanged artifacts: submit_refinement contains only complete replacement contents of changed existing editable files, never the whole package. Well-formed proposals accumulate within this run: latest content for a path wins, omitted paths retain earlier proposed bytes, and explicit original content reverts a proposal. A malformed or unsafe submission contributes no paths. Each retry checks the complete accumulated candidate against the frozen original; nothing is published until all of it is ready. Accounted red observations return for inspection in this same conversation: repair demonstrated contract defects using existing read/probe tools as needed, or resubmit the unchanged cumulative candidate to acknowledge valid missing-feature red without rerunning unchanged readiness. A changed candidate receives fresh observations. Failures can mask later cases; do not claim all fixtures are correct. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package and approval stay unchanged unless the full candidate is ready and its frozen hash/HEAD/tree/index/approval still match. Successful correction revokes any old approval; the caller must explicitly approve the resulting full hash. End with submit_refinement."
   end
 
   defp submit_def do

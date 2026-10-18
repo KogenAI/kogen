@@ -118,6 +118,7 @@ defmodule Kogen.Checks do
 
       pickles = for %{"pickle" => p} <- msgs, into: %{}, do: {p["id"], p}
       cases = for %{"testCase" => c} <- msgs, into: %{}, do: {c["id"], c}
+      hooks = for %{"hook" => h} <- msgs, into: %{}, do: {h["id"], h}
       started = for %{"testCaseStarted" => s} <- msgs, into: %{}, do: {s["id"], s["testCaseId"]}
 
       retried =
@@ -154,7 +155,7 @@ defmodule Kogen.Checks do
             # A case counts only when it finished and every one of its steps reported a result.
             {status, detail} =
               if complete,
-                do: case_status(tc, pickle, mine, lines),
+                do: case_status(tc, pickle, mine, lines, hooks),
                 else: {"report_invalid", "the report does not finish this scenario"}
 
             uri = pickle["uri"] |> Path.expand(root) |> Path.relative_to(root)
@@ -232,7 +233,7 @@ defmodule Kogen.Checks do
 
   @order ~w(UNKNOWN PASSED SKIPPED PENDING UNDEFINED AMBIGUOUS FAILED)
 
-  defp case_status(tc, pickle, results, lines) do
+  defp case_status(tc, pickle, results, lines, hooks) do
     worst =
       results
       |> Enum.map(fn {_, r} -> r["status"] end)
@@ -244,15 +245,15 @@ defmodule Kogen.Checks do
       case {worst, bad} do
         {"PASSED", _} -> nil
         {_, nil} -> nil
-        {_, {step_id, r}} -> step_detail(tc, pickle, step_id, r, lines)
+        {_, {step_id, r}} -> step_detail(tc, pickle, step_id, r, lines, hooks)
       end
 
     {String.downcase(worst), detail}
   end
 
-  defp step_detail(tc, pickle, step_id, result, lines) do
-    pickle_step_id =
-      Enum.find_value(tc["testSteps"], fn s -> if s["id"] == step_id, do: s["pickleStepId"] end)
+  defp step_detail(tc, pickle, step_id, result, lines, hooks \\ %{}) do
+    step = Enum.find(tc["testSteps"], &(&1["id"] == step_id)) || %{}
+    pickle_step_id = step["pickleStepId"]
 
     pstep = Enum.find(pickle["steps"] || [], &(&1["id"] == pickle_step_id))
 
@@ -262,12 +263,25 @@ defmodule Kogen.Checks do
           "acceptance.feature line #{line}: #{String.trim(kw)} #{pstep["text"]}"
 
         _ ->
-          "a hook"
+          case hooks[step["hookId"]] do
+            %{"sourceReference" => %{"uri" => uri, "location" => %{"line" => line}}} ->
+              "a hook at #{uri} line #{line}"
+
+            _ ->
+              "a hook (location not reported)"
+          end
       end
 
     msg = result["message"] || get_in(result, ["exception", "message"]) || ""
-    msg = msg |> String.split("\n") |> Enum.take(20) |> Enum.join("\n")
-    String.trim_trailing(where <> "\n" <> msg)
+    msg_lines = String.split(msg, "\n")
+    msg = Enum.take(msg_lines, 20) |> Enum.join("\n")
+
+    msg =
+      if length(msg_lines) > 20,
+        do: msg <> "\n[... #{length(msg_lines) - 20} lines omitted ...]",
+        else: msg
+
+    String.trim_trailing(where <> "\n" <> msg) |> Kogen.Tools.cut()
   end
 
   # Binding evidence must survive a failed assertion in the same scenario. Ordinary skipped

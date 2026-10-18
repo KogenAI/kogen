@@ -14,7 +14,7 @@ Feature: Approval and starting a Build
     Given the Intent "is-even" from fixture "is-even" is shaped
     When the caller runs "kogen intent approve is-even"
     Then the exit code is 5
-    And stdout is:
+    And stdout contains:
       """
       Intent: is-even — Add an is-even helper
       SHA-256: {sha256}
@@ -24,6 +24,15 @@ Feature: Approval and starting a Build
         - Even numbers (fails now)
         - Odd numbers (fails now)
         - Non-integers (fails now)
+      """
+    And stdout contains "Readiness observations"
+    And stdout contains "Checked baseline: {sha256}"
+    And stdout contains "Acceptance exit: 1"
+    And stdout contains "Scenario: Even numbers (acceptance.feature line 3)"
+    And stdout contains "acceptance.feature line 6: Then result is True"
+    And stdout contains "ImportError: cannot import name"
+    And stdout contains:
+      """
       Files
         - .kogen/intents/is-even/intent.md
         - .kogen/intents/is-even/acceptance.feature

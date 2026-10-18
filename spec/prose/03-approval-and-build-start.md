@@ -13,6 +13,14 @@ Acceptance
   - Even numbers (fails now)
   - Odd numbers (fails now)
   - Non-integers (fails now)
+
+Readiness observations
+Checked baseline: {sha256}
+HEAD: {checked-head}
+Acceptance exit: 1
+Evidence: .kogen/local/readiness/is-even.json
+{bounded actual failed-scenario details}
+
 Files
   - .kogen/intents/is-even/intent.md
   - .kogen/intents/is-even/acceptance.feature
@@ -26,6 +34,8 @@ Approve with:
 Each Scenario Outline appears once as `<outline name> (<n> examples) (<status>)`, where `<n>` is the number of its Examples rows and the status is `fails now` if any row fails or `passes now` if every row passes. Each ordinary Scenario appears once with its existing status.
 
 `Approver` is `--by` when given, otherwise `git var GIT_AUTHOR_IDENT`; with neither: `intent/approval_identity_unavailable: configure git user.name and user.email, or pass --by <name>` (exit 2). A not-ready Intent prints `intent/not_ready` (SHP-8, exit 1) and no card. An unknown slug is `intent/not_found: Intent does not exist` (exit 2). Pending questions: `intent/questions_pending: <slug> has <n> unanswered question(s); answer them with kogen intent shape <slug> <file|->` (exit 5).
+
+The card exposes the same checked readiness observations as the shaping/refinement conversation: actual failed scenario/step or hook/location, bounded error, acceptance exit, full baseline/hash/HEAD and evidence reference. Cached unchanged cards reuse those observations without execution; explicit truncation markers disclose omitted lines/bytes. Missing observation metadata in a legacy record is a normal cache miss. These observations do not classify every fixture as sound or require baseline green.
 
 **AUT-2 — Hash and approval.** The hash is the SHA-256 over the acceptance baseline (VER-1): for each file, sorted by path, `<path>\0<sha256 of its bytes>\n`. `kogen intent approve <slug> <hash>` takes 6–64 lowercase hex characters (else a usage error). A prefix that does not match prints `intent/hash_mismatch: <slug> is now <sha8>, not <prefix>; review it again with kogen intent approve <slug>` (exit 1). Successful stable shaping, published refinement or a fresh review card records complete readiness evidence under `.kogen/local/readiness/`, keyed by both the full baseline hash and `HEAD`. A matching hash approval skips readiness only when that complete successful record matches the current baseline hash and `HEAD`; when either differs, approval runs readiness again. A prefix that no longer matches the baseline is refused before readiness. A match writes `.kogen/local/approvals/<slug>.json` (`slug`, `sha256`, `approver`, `approved_at`) and prints `approved <slug> <sha8>` and `Next: kogen intent build <slug>` (exit 0). Approval shares the project lock with refinement and Build. Refinement of a matching approved package archives and revokes the old approval only on success (SHP-11); every refined package requires this fresh explicit approval. Approval never starts a Build; the shaping model can never create one. Evidence: the AUT-2 scenarios and the SHP-7 scenario.
 

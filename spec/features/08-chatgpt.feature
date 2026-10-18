@@ -164,11 +164,12 @@ Feature: ChatGPT connection
     And stdout contains "<line>"
     And the fake ChatGPT server received <requests> requests
 
+    # Successful red shaping uses two HTTP attempts plus one observation acknowledgment.
     Examples:
       | script             | exit | line                                                                             | requests |
       | 500-always         | 4    | provider/unavailable: ChatGPT did not answer after 3 attempts                   | 3        |
-      | stream-cut-then-ok | 0    | Next: kogen intent approve is-even                                               | 2        |
-      | 401-then-ok        | 0    | Next: kogen intent approve is-even                                               | 2        |
+      | stream-cut-then-ok | 0    | Next: kogen intent approve is-even                                               | 3        |
+      | 401-then-ok        | 0    | Next: kogen intent approve is-even                                               | 3        |
       | model-unavailable  | 4    | provider/model_unavailable: gpt-6.1-sol is not available to this ChatGPT account | 1        |
       | 400-bad-request    | 4    | provider/refused: ChatGPT refused the request: 400                               | 1        |
 

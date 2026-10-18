@@ -9,7 +9,7 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 - **Project.** "the project" is the most recent Git project a Given step created; relative paths are relative to its root; commands run there unless a step names a folder.
 - **Fixture installs.** Commands that install npm packages use the suite's own npm cache (`npm_config_cache`, offline first), so the fixtures' pinned Cucumber 13.3.0 needs no network.
 - **Kogen home.** "a clean Kogen home" gives every command an empty temporary `HOME` (`{home}`); no real credentials ever exist there.
-- **Placeholders in expected text.** `{sha8}`, `{sha256}`, `{id8}` lowercase hex of that length; `{build_id}` the last Build's id; `{n}` an integer; `{dur}` a duration like `6m12s`; `{model}`, `{effort}` configured values; `{ident}` `Name <email>`; `{url}` one URL; `{abs:<rel>}` the absolute path of `<rel>` in the project; `{home}`; `{path_node}` the absolute path of the `node` that the step "node 22 or newer is on PATH" put on `PATH`. All other text matches byte for byte; `stdout is:` compares all of stdout.
+- **Placeholders in expected text.** `{sha8}`, `{sha256}`, `{id8}` lowercase hex of that length; `{build_id}` the last Build's id; `{n}` an integer; `{dur}` a duration like `6m12s`; `{model}`, `{effort}` configured values; `{ident}` `Name <email>`; `{url}` one URL; `{abs:<rel>}` the absolute path of `<rel>` in the project; `{home}`; `{path_node}` the absolute path of the `node` that the step "node 22 or newer is on PATH" put on `PATH`. All other text matches byte for byte; `stdout is:` compares all of stdout; `stdout contains:` compares a multiline section, preserving placeholder identity checks.
 - **Signals.** "the kogen command" is the Go process (signalled like a terminal would); "the Kogen core" is its Elixir child.
 - **Initialized projects.** "the project is initialized" commits the configuration template unchanged and the `.kogen/local/` ignore line, as `kogen init` writes them in an empty repository without commits, without running `init` (whose own behavior chapter 01 tests); "and configured" then commits the fixture's configuration.
 - **Project configuration.** "the project config sets <key> to <value>" edits `.kogen/project.yaml` (the value is YAML) and commits the file, so it must come before an Intent is approved (the file is part of the approval). The steps "the acceptance command is replaced by fixture runner" and "records its environment" swap what the harness executes; they do not touch `.kogen/project.yaml`. "the readiness command is running" waits until the acceptance command of a readiness dry run has started.
@@ -47,7 +47,8 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `init-invalid-twice` | answers it twice with a check named `Docs Check` |
 | `init-corrects-dependency-protect` | first protects `.formatter.exs` and dependency-only `mix.exs`, then returns the valid formatter-only correction |
 | `init-proposes-setup` | answers it with setup `mkdir seeded`, `echo run >> runs.txt` and `true` |
-| `shape-ready-is-even` | reads two files, submits `is-even` |
+| `shape-ready-is-even` | reads two files, submits `is-even`, acknowledges unchanged baseline-red observations |
+| `shape-observed-repair` | submits a hook fixture defect, repairs it after observed feedback, then acknowledges legitimate product-red observations |
 | `refine-title` | submits only the existing Intent prose with a clarified title; all other artifacts are reused |
 | `refine-constraint` | reports that the correction needs an unsupported new step file, without changing the draft |
 | `shape-asks-one`, `shape-asks-two` | submits one or two UI/UX questions |
@@ -132,6 +133,7 @@ One JavaScript regular expression per line.
 ^stderr\ matches\ "([^"]*)"$
 ^stderr\ contains\ core\ log\ lines$
 ^stdout\ contains\ "([^"]*)"$
+^stdout\ contains:$
 ^stdout\ does\ not\ contain\ "([^"]*)"$
 ^stdout\ is:$
 ^stdout\ matches\ "([^"]*)"$
