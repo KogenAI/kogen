@@ -395,6 +395,20 @@ function requestAssertions(world, label, args) {
   const request = world.server.requests[ordinal - 1];
   assert.ok(request, `no request ${ordinal} was received`);
   const actualText = request.text;
+  if (label.includes(' has index-first source navigation for ')) {
+    const line = actualText.split('\n').find(line => line.startsWith('Context index: '));
+    assert.ok(line, 'missing source index');
+    const index = JSON.parse(line.slice('Context index: '.length));
+    const entry = index.entries.find(entry => entry.path === args[1]);
+    assert.ok(entry && entry.sha256 && entry.bytes && entry.signatures.length);
+    assert.equal(index.root, world.project);
+    assert.ok(index.revision.head && index.revision.tree);
+    assert.equal(entry.source, undefined);
+    assert.equal(entry.revision, undefined);
+    assert.ok(!actualText.includes('Excerpt: '));
+    assert.ok(!actualText.includes(fs.readFileSync(projectFile(world, args[1]), 'utf8')));
+    return;
+  }
   if (label.includes(' contains the text of the file ')) {
     const text = fs.readFileSync(projectFile(world, args[1]), 'utf8');
     assert.ok(actualText.includes(text), `request ${ordinal} did not contain ${args[1]}`);

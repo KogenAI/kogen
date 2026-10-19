@@ -139,7 +139,7 @@ Feature: Shaping
       Next: kogen intent approve is-even
       """
     And request 1 contains "Add calc.is_even(n). Non-integers raise TypeError."
-    And request 1 contains the text of the file "features/steps/calc_steps.js"
+    And request 1 has index-first source navigation for "features/steps/calc_steps.js"
     And request 1 contains "Use the narrowest test that exercises the rule"
     And request 1 contains "Existing code and tests are evidence of current behavior"
     And no Kogen process had the request text in its arguments

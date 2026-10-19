@@ -368,7 +368,7 @@ async function speedBoundary(mode) {
     const after = rootManifest(w), initial = suppliedText(records[0]), later = suppliedText(records.at(-1)), allOutputs = records.flatMap(outputs);
     const ixText = initial.match(/^Context index: (.+)$/m)?.[1];
     const ix = parseJSON(ixText), entries = ix?.entries || [];
-    const indexedRetrievable = ['src/unrelated.txt', 'features/steps/unrelated.js', ...(shape ? [] : [stepPath])].every(p => entries.some(e => e.path === p && e.sha256 === sha(fs.readFileSync(path.join(w.project, p))) && e.bytes === fs.statSync(path.join(w.project, p)).size && e.source && e.ownership)) && !!ix?.retrieval && ix?.revision?.head === head && entries.map(e => e.path).join('\n') === entries.map(e => e.path).sort().join('\n');
+    const indexedRetrievable = ['src/unrelated.txt', 'features/steps/unrelated.js', ...(shape ? [] : [stepPath])].every(p => entries.some(e => e.path === p && e.sha256 === sha(fs.readFileSync(path.join(w.project, p))) && e.bytes === fs.statSync(path.join(w.project, p)).size && sha(fs.readFileSync(e.source || path.join(ix.root, e.path))) === e.sha256 && e.ownership)) && !!ix?.retrieval && ix?.revision?.head === head && entries.map(e => e.path).join('\n') === entries.map(e => e.path).sort().join('\n');
     const objects = [...events(w), ...evidenceObjects(path.join(w.project, '.kogen/local/refinements'))];
     const original = objects.find(o => o.event === 'original_readiness');
     const originalRuns = ar.filter(k => k === 'original').length, originalModelRuns = mr.filter(k => k?.kind === 'original').length;

@@ -1,0 +1,1390 @@
+{
+  "scope": "Fresh deterministic initial rendering, exact retained KOGEN031 capture; no live model or transport",
+  "capture_sha256": "1ba9d0b42abb6ca476591197b4ea1dcea4de13e67cb9aaba6285d9aca201a0b8",
+  "capture_bytes": 5307,
+  "frozen_revision": {
+    "head": "b2c9876b27a99d19a82564821879dc42e83b03c1",
+    "tree": "11c0fae04a2720a1b1f45a250b15fce366c612a8"
+  },
+  "logical_root": "/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/faster-shaping-20261019/context-correction/qualification/frozen-b2-corpus",
+  "corpus_files": 254,
+  "corpus_hashes_preserved": true,
+  "index_signature_integrity": true,
+  "determinism": true,
+  "metrics": {
+    "rendered_context_bytes": {
+      "before": 852003,
+      "after": 114847
+    },
+    "serialized_input_bytes": {
+      "before": 894161,
+      "after": 123729
+    },
+    "full_provider_request_bytes": {
+      "before": 904521,
+      "after": 134089
+    },
+    "index_json_bytes": {
+      "before": 161948,
+      "after": 86663
+    },
+    "excerpt_header_count": {
+      "before": 219,
+      "after": 0
+    },
+    "excerpt_header_bytes": {
+      "before": 139713,
+      "after": 0
+    }
+  },
+  "optional_selection": {
+    "before": {
+      "bytes": 521721,
+      "static_selection_body_bytes": 521611,
+      "count": 219,
+      "paths": [
+        ".formatter.exs",
+        ".gitignore",
+        ".kogen/project.yaml",
+        "LICENSE",
+        "NOTICE",
+        "cli/go.mod",
+        "cli/main.go",
+        "cli/parse_test.go",
+        "cli/probe_deadline_test.go",
+        "cli/session.go",
+        "cli/session_test.go",
+        "config/config.exs",
+        "docs/configuration.md",
+        "docs/testing-rules.md",
+        "docs/testing-strategy.md",
+        "examples/README.md",
+        "examples/tiny_tasks-qualification/README.md",
+        "examples/tiny_tasks-qualification/qualify.sh",
+        "examples/tiny_tasks-qualification/reference.patch",
+        "examples/tiny_tasks-qualification/wrong-filter-direction.patch",
+        "examples/tiny_tasks-qualification/wrong-ignore-old-data.patch",
+        "examples/tiny_tasks-qualification/wrong-reverse-order.patch",
+        "examples/tiny_tasks/.formatter.exs",
+        "examples/tiny_tasks/.gitignore",
+        "examples/tiny_tasks/FEATURE-REQUEST.md",
+        "examples/tiny_tasks/README.md",
+        "examples/tiny_tasks/features/bridge.feature",
+        "examples/tiny_tasks/features/steps/todo_steps.js",
+        "examples/tiny_tasks/lib/mix/tasks/todo/add.ex",
+        "examples/tiny_tasks/lib/mix/tasks/todo/list.ex",
+        "examples/tiny_tasks/lib/tiny_tasks.ex",
+        "examples/tiny_tasks/lib/tiny_tasks/store.ex",
+        "examples/tiny_tasks/mix.exs",
+        "examples/tiny_tasks/package-lock.json",
+        "examples/tiny_tasks/package.json",
+        "examples/tiny_tasks/test/tiny_tasks_test.exs",
+        "features/steps/README.md",
+        "features/steps/faster_shaping_steps.js",
+        "features/steps/readiness_evidence_v2_steps.js",
+        "features/steps/resume_failed_builds_steps.js",
+        "features/steps/usable_check_protection_steps.js",
+        "lib/kogen.ex",
+        "lib/kogen/application.ex",
+        "lib/kogen/approve.ex",
+        "lib/kogen/bridge.ex",
+        "lib/kogen/build.ex",
+        "lib/kogen/chatgpt.ex",
+        "lib/kogen/checks.ex",
+        "lib/kogen/config.ex",
+        "lib/kogen/detect.ex",
+        "lib/kogen/error.ex",
+        "lib/kogen/gherkin.ex",
+        "lib/kogen/git.ex",
+        "lib/kogen/init.ex",
+        "lib/kogen/intent.ex",
+        "lib/kogen/lock.ex",
+        "lib/kogen/main.ex",
+        "lib/kogen/readiness.ex",
+        "lib/kogen/refine.ex",
+        "lib/kogen/review.ex",
+        "lib/kogen/run.ex",
+        "lib/kogen/shape.ex",
+        "lib/kogen/shape_batch.ex",
+        "lib/kogen/shape_context.ex",
+        "lib/kogen/shape_evidence.ex",
+        "lib/kogen/snapshot.ex",
+        "lib/kogen/tools.ex",
+        "lib/kogen/usage.ex",
+        "lib/kogen/yaml.ex",
+        "mix.exs",
+        "packaging/README.md",
+        "packaging/cucumber/package-lock.json",
+        "packaging/cucumber/package.json",
+        "packaging/install.sh",
+        "packaging/licenses/README.md",
+        "packaging/licenses/elixir/LICENSE",
+        "packaging/licenses/elixir/LICENSES/Apache-2.0.txt",
+        "packaging/licenses/elixir/LICENSES/LicenseRef-elixir-trademark-policy.txt",
+        "packaging/licenses/elixir/LICENSES/LicenseRef-scancode-unicode.txt",
+        "packaging/licenses/erlang-otp/LICENSE.txt",
+        "packaging/licenses/erlang-otp/LICENSES/BSD-2-Clause.txt",
+        "packaging/licenses/erlang-otp/LICENSES/BSD-3-Clause.txt",
+        "packaging/licenses/erlang-otp/LICENSES/LicenseRef-IETF-MIB.txt",
+        "packaging/licenses/erlang-otp/LICENSES/LicenseRef-RSA-PKCS3.txt",
+        "packaging/licenses/erlang-otp/LICENSES/LicenseRef-RSA-PKCS5v2-0.txt",
+        "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-ietf-trust.txt",
+        "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-ietf.txt",
+        "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-w3c-docs-19990405.txt",
+        "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-wxwindows-free-doc-3.txt",
+        "packaging/licenses/erlang-otp/LICENSES/MIT.txt",
+        "packaging/licenses/erlang-otp/LICENSES/SGI-B-2.0.txt",
+        "packaging/licenses/erlang-otp/LICENSES/W3C-19980720.txt",
+        "packaging/licenses/erlang-otp/components/asmjit-LICENSE.md",
+        "packaging/licenses/erlang-otp/components/pcre-LICENCE",
+        "packaging/licenses/erlang-otp/components/public_key-notices.md",
+        "packaging/licenses/erlang-otp/components/ryu-LICENSE-Apache2",
+        "packaging/licenses/erlang-otp/components/ryu-LICENSE-Boost",
+        "packaging/licenses/erlang-otp/components/zstd-COPYING",
+        "packaging/licenses/erlang-otp/components/zstd-LICENSE",
+        "packaging/licenses/go/LICENSE",
+        "packaging/licenses/go/PATENTS",
+        "packaging/licenses/npm/informalsystems__quint.txt",
+        "packaging/licenses/npm/isarray.txt",
+        "packaging/licenses/npm/seedrandom.txt",
+        "packaging/licenses/npm/spdx-exceptions.txt",
+        "packaging/licenses/npm/spdx-license-ids.txt",
+        "packaging/licenses/npm/sweet-monads__either.txt",
+        "packaging/licenses/npm/sweet-monads__maybe.txt",
+        "packaging/licenses/npm/teppeis__multimaps.txt",
+        "packaging/licenses/npm/tiny-case.txt",
+        "packaging/licenses/npm/type-fest.txt",
+        "packaging/licenses/npm/types__lodash.clonedeep.txt",
+        "packaging/licenses/openssl/LICENSE.txt",
+        "packaging/package.sh",
+        "packaging/quint/package-lock.json",
+        "packaging/quint/package.json",
+        "rel/vm.args.eex",
+        "spec/README.md",
+        "spec/check.sh",
+        "spec/features/01-project-setup.feature",
+        "spec/features/02-shaping.feature",
+        "spec/features/03-approval-and-build-start.feature",
+        "spec/features/04-building.feature",
+        "spec/features/05-verifying.feature",
+        "spec/features/06-reviewing.feature",
+        "spec/features/07-committing.feature",
+        "spec/features/08-chatgpt.feature",
+        "spec/features/09-cli-and-process.feature",
+        "spec/features/10-install-and-uninstall.feature",
+        "spec/features/STEPS.md",
+        "spec/package-lock.json",
+        "spec/package.json",
+        "spec/prose/01-project-setup.md",
+        "spec/prose/02-shaping.md",
+        "spec/prose/03-approval-and-build-start.md",
+        "spec/prose/04-building.md",
+        "spec/prose/05-verifying.md",
+        "spec/prose/06-reviewing.md",
+        "spec/prose/07-committing.md",
+        "spec/prose/08-chatgpt.md",
+        "spec/prose/09-cli-and-process.md",
+        "spec/prose/10-install-and-uninstall.md",
+        "spec/prose/11-release-acceptance.md",
+        "spec/quint/build.qnt",
+        "spec/quint/run_control.qnt",
+        "spec/quint/shaping.qnt",
+        "spec/tools/check.mjs",
+        "test/acceptance/README.md",
+        "test/acceptance/fixtures/intents/counter-with-model/counter_steps.js",
+        "test/acceptance/fixtures/intents/is-even-broken-gherkin/is_even_steps.js",
+        "test/acceptance/fixtures/intents/is-even-skip-tag/is_even_steps.js",
+        "test/acceptance/fixtures/intents/is-even-title-period/is_even_steps.js",
+        "test/acceptance/fixtures/intents/is-even-undefined-step/is_even_steps.js",
+        "test/acceptance/fixtures/intents/is-even-unsourced/is_even_steps.js",
+        "test/acceptance/fixtures/intents/is-even/is_even_steps.js",
+        "test/acceptance/fixtures/projects/ex-app/.formatter.exs",
+        "test/acceptance/fixtures/projects/ex-app/.gitignore",
+        "test/acceptance/fixtures/projects/ex-app/README.md",
+        "test/acceptance/fixtures/projects/ex-app/lib/ex_app.ex",
+        "test/acceptance/fixtures/projects/ex-app/mix.exs",
+        "test/acceptance/fixtures/projects/ex-app/test/ex_app_test.exs",
+        "test/acceptance/fixtures/projects/ex-app/test/test_helper.exs",
+        "test/acceptance/fixtures/projects/node-app/.gitignore",
+        "test/acceptance/fixtures/projects/node-app/README.md",
+        "test/acceptance/fixtures/projects/node-app/docs-check.js",
+        "test/acceptance/fixtures/projects/node-app/features/step_definitions/app_steps.js",
+        "test/acceptance/fixtures/projects/node-app/lint.js",
+        "test/acceptance/fixtures/projects/node-app/package-lock.json",
+        "test/acceptance/fixtures/projects/node-app/package.json",
+        "test/acceptance/fixtures/projects/node-app/test/basic.test.js",
+        "test/acceptance/fixtures/projects/notes/README.md",
+        "test/acceptance/fixtures/projects/notes/docs/index.md",
+        "test/acceptance/fixtures/projects/notes/notes.txt",
+        "test/acceptance/fixtures/projects/py-calc/.gitignore",
+        "test/acceptance/fixtures/projects/py-calc/.style.cfg",
+        "test/acceptance/fixtures/projects/py-calc/README.md",
+        "test/acceptance/fixtures/projects/py-calc/calc.py",
+        "test/acceptance/fixtures/projects/py-calc/features/calc.feature",
+        "test/acceptance/fixtures/projects/py-calc/features/steps/calc_steps.js",
+        "test/acceptance/fixtures/projects/py-calc/legacy_parity.py",
+        "test/acceptance/fixtures/projects/py-calc/tests/__init__.py",
+        "test/acceptance/fixtures/projects/py-calc/tests/test_calc.py",
+        "test/acceptance/fixtures/projects/py-calc/tools/format.py",
+        "test/acceptance/fixtures/runners/run.js",
+        "test/acceptance/package-lock.json",
+        "test/acceptance/package.json",
+        "test/acceptance/steps/steps.js",
+        "test/acceptance/support/fake-servers.js",
+        "test/acceptance/support/handlers.js",
+        "test/acceptance/support/hooks.js",
+        "test/acceptance/support/world.js",
+        "test/integration/build_boundaries_test.exs",
+        "test/integration/builder_blocker_test.exs",
+        "test/integration/contract_regressions_test.exs",
+        "test/integration/git_test.exs",
+        "test/integration/lock_test.exs",
+        "test/integration/provider_diagnostics_test.exs",
+        "test/integration/readiness_observations_test.exs",
+        "test/integration/refinement_test.exs",
+        "test/integration/release_behavior_test.exs",
+        "test/integration/shape_dispatch_test.exs",
+        "test/integration/shape_worker_bounds_test.exs",
+        "test/kogen/checks_test.exs",
+        "test/kogen/config_test.exs",
+        "test/kogen/detect_test.exs",
+        "test/kogen/gherkin_test.exs",
+        "test/kogen/intent_test.exs",
+        "test/kogen/run_test.exs",
+        "test/kogen/shape_speed_test.exs",
+        "test/kogen/yaml_test.exs",
+        "test/live/check-verify.sh",
+        "test/live/checked.sh",
+        "test/live/projects/example.sh",
+        "test/live/projects/kogen.sh",
+        "test/live/real-use.sh",
+        "test/live/self-build-check.sh",
+        "test/live/self-repo.sh",
+        "test/suite.sh",
+        "test/support/integration_helpers.ex"
+      ],
+      "ranges": [
+        {
+          "path": ".formatter.exs",
+          "start_line": 1,
+          "end_line": 5
+        },
+        {
+          "path": ".gitignore",
+          "start_line": 1,
+          "end_line": 50
+        },
+        {
+          "path": ".kogen/project.yaml",
+          "start_line": 1,
+          "end_line": 43
+        },
+        {
+          "path": "LICENSE",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "NOTICE",
+          "start_line": 1,
+          "end_line": 5
+        },
+        {
+          "path": "cli/go.mod",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "cli/main.go",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "cli/parse_test.go",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "cli/probe_deadline_test.go",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "cli/session.go",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "cli/session_test.go",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "config/config.exs",
+          "start_line": 1,
+          "end_line": 6
+        },
+        {
+          "path": "docs/configuration.md",
+          "start_line": 1,
+          "end_line": 63
+        },
+        {
+          "path": "docs/testing-rules.md",
+          "start_line": 1,
+          "end_line": 79
+        },
+        {
+          "path": "docs/testing-strategy.md",
+          "start_line": 1,
+          "end_line": 55
+        },
+        {
+          "path": "examples/README.md",
+          "start_line": 1,
+          "end_line": 13
+        },
+        {
+          "path": "examples/tiny_tasks-qualification/README.md",
+          "start_line": 1,
+          "end_line": 25
+        },
+        {
+          "path": "examples/tiny_tasks-qualification/qualify.sh",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "examples/tiny_tasks-qualification/reference.patch",
+          "start_line": 3,
+          "end_line": 58
+        },
+        {
+          "path": "examples/tiny_tasks-qualification/wrong-filter-direction.patch",
+          "start_line": 3,
+          "end_line": 58
+        },
+        {
+          "path": "examples/tiny_tasks-qualification/wrong-ignore-old-data.patch",
+          "start_line": 3,
+          "end_line": 59
+        },
+        {
+          "path": "examples/tiny_tasks-qualification/wrong-reverse-order.patch",
+          "start_line": 1,
+          "end_line": 58
+        },
+        {
+          "path": "examples/tiny_tasks/.formatter.exs",
+          "start_line": 1,
+          "end_line": 9
+        },
+        {
+          "path": "examples/tiny_tasks/.gitignore",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "examples/tiny_tasks/FEATURE-REQUEST.md",
+          "start_line": 1,
+          "end_line": 18
+        },
+        {
+          "path": "examples/tiny_tasks/README.md",
+          "start_line": 1,
+          "end_line": 64
+        },
+        {
+          "path": "examples/tiny_tasks/features/bridge.feature",
+          "start_line": 1,
+          "end_line": 14
+        },
+        {
+          "path": "examples/tiny_tasks/features/steps/todo_steps.js",
+          "start_line": 1,
+          "end_line": 68
+        },
+        {
+          "path": "examples/tiny_tasks/lib/mix/tasks/todo/add.ex",
+          "start_line": 5,
+          "end_line": 13
+        },
+        {
+          "path": "examples/tiny_tasks/lib/mix/tasks/todo/list.ex",
+          "start_line": 5,
+          "end_line": 20
+        },
+        {
+          "path": "examples/tiny_tasks/lib/tiny_tasks.ex",
+          "start_line": 1,
+          "end_line": 17
+        },
+        {
+          "path": "examples/tiny_tasks/lib/tiny_tasks/store.ex",
+          "start_line": 1,
+          "end_line": 46
+        },
+        {
+          "path": "examples/tiny_tasks/mix.exs",
+          "start_line": 1,
+          "end_line": 19
+        },
+        {
+          "path": "examples/tiny_tasks/package-lock.json",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "examples/tiny_tasks/package.json",
+          "start_line": 1,
+          "end_line": 12
+        },
+        {
+          "path": "examples/tiny_tasks/test/tiny_tasks_test.exs",
+          "start_line": 1,
+          "end_line": 36
+        },
+        {
+          "path": "features/steps/README.md",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "features/steps/faster_shaping_steps.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "features/steps/readiness_evidence_v2_steps.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "features/steps/resume_failed_builds_steps.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "features/steps/usable_check_protection_steps.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen.ex",
+          "start_line": 1,
+          "end_line": 24
+        },
+        {
+          "path": "lib/kogen/application.ex",
+          "start_line": 1,
+          "end_line": 13
+        },
+        {
+          "path": "lib/kogen/approve.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/bridge.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/build.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/chatgpt.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/checks.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/config.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/detect.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/error.ex",
+          "start_line": 1,
+          "end_line": 16
+        },
+        {
+          "path": "lib/kogen/gherkin.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/git.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/init.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/intent.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/lock.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/main.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/readiness.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/refine.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/review.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/run.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/shape.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/shape_batch.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/shape_context.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/shape_evidence.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/snapshot.ex",
+          "start_line": 1,
+          "end_line": 45
+        },
+        {
+          "path": "lib/kogen/tools.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "lib/kogen/usage.ex",
+          "start_line": 1,
+          "end_line": 12
+        },
+        {
+          "path": "lib/kogen/yaml.ex",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "mix.exs",
+          "start_line": 1,
+          "end_line": 38
+        },
+        {
+          "path": "packaging/README.md",
+          "start_line": 1,
+          "end_line": 35
+        },
+        {
+          "path": "packaging/cucumber/package-lock.json",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/cucumber/package.json",
+          "start_line": 1,
+          "end_line": 10
+        },
+        {
+          "path": "packaging/install.sh",
+          "start_line": 1,
+          "end_line": 55
+        },
+        {
+          "path": "packaging/licenses/README.md",
+          "start_line": 1,
+          "end_line": 16
+        },
+        {
+          "path": "packaging/licenses/elixir/LICENSE",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/elixir/LICENSES/Apache-2.0.txt",
+          "start_line": 1,
+          "end_line": 50
+        },
+        {
+          "path": "packaging/licenses/elixir/LICENSES/LicenseRef-elixir-trademark-policy.txt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/elixir/LICENSES/LicenseRef-scancode-unicode.txt",
+          "start_line": 1,
+          "end_line": 59
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSE.txt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/BSD-2-Clause.txt",
+          "start_line": 1,
+          "end_line": 22
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/BSD-3-Clause.txt",
+          "start_line": 1,
+          "end_line": 25
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-IETF-MIB.txt",
+          "start_line": 1,
+          "end_line": 10
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-RSA-PKCS3.txt",
+          "start_line": 1,
+          "end_line": 24
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-RSA-PKCS5v2-0.txt",
+          "start_line": 1,
+          "end_line": 18
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-ietf-trust.txt",
+          "start_line": 1,
+          "end_line": 52
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-ietf.txt",
+          "start_line": 1,
+          "end_line": 24
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-w3c-docs-19990405.txt",
+          "start_line": 2,
+          "end_line": 27
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-wxwindows-free-doc-3.txt",
+          "start_line": 1,
+          "end_line": 57
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/MIT.txt",
+          "start_line": 1,
+          "end_line": 17
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/SGI-B-2.0.txt",
+          "start_line": 1,
+          "end_line": 26
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/LICENSES/W3C-19980720.txt",
+          "start_line": 2,
+          "end_line": 56
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/components/asmjit-LICENSE.md",
+          "start_line": 1,
+          "end_line": 18
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/components/pcre-LICENCE",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/components/public_key-notices.md",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/components/ryu-LICENSE-Apache2",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/components/ryu-LICENSE-Boost",
+          "start_line": 1,
+          "end_line": 24
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/components/zstd-COPYING",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/erlang-otp/components/zstd-LICENSE",
+          "start_line": 2,
+          "end_line": 31
+        },
+        {
+          "path": "packaging/licenses/go/LICENSE",
+          "start_line": 1,
+          "end_line": 28
+        },
+        {
+          "path": "packaging/licenses/go/PATENTS",
+          "start_line": 1,
+          "end_line": 23
+        },
+        {
+          "path": "packaging/licenses/npm/informalsystems__quint.txt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/npm/isarray.txt",
+          "start_line": 1,
+          "end_line": 24
+        },
+        {
+          "path": "packaging/licenses/npm/seedrandom.txt",
+          "start_line": 1,
+          "end_line": 23
+        },
+        {
+          "path": "packaging/licenses/npm/spdx-exceptions.txt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/npm/spdx-license-ids.txt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/npm/sweet-monads__either.txt",
+          "start_line": 1,
+          "end_line": 24
+        },
+        {
+          "path": "packaging/licenses/npm/sweet-monads__maybe.txt",
+          "start_line": 1,
+          "end_line": 24
+        },
+        {
+          "path": "packaging/licenses/npm/teppeis__multimaps.txt",
+          "start_line": 1,
+          "end_line": 21
+        },
+        {
+          "path": "packaging/licenses/npm/tiny-case.txt",
+          "start_line": 1,
+          "end_line": 21
+        },
+        {
+          "path": "packaging/licenses/npm/type-fest.txt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/licenses/npm/types__lodash.clonedeep.txt",
+          "start_line": 1,
+          "end_line": 11
+        },
+        {
+          "path": "packaging/licenses/openssl/LICENSE.txt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/package.sh",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/quint/package-lock.json",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "packaging/quint/package.json",
+          "start_line": 1,
+          "end_line": 10
+        },
+        {
+          "path": "rel/vm.args.eex",
+          "start_line": 1,
+          "end_line": 6
+        },
+        {
+          "path": "spec/README.md",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/check.sh",
+          "start_line": 1,
+          "end_line": 65
+        },
+        {
+          "path": "spec/features/01-project-setup.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/02-shaping.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/03-approval-and-build-start.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/04-building.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/05-verifying.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/06-reviewing.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/07-committing.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/08-chatgpt.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/09-cli-and-process.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/10-install-and-uninstall.feature",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/features/STEPS.md",
+          "start_line": 1,
+          "end_line": 48
+        },
+        {
+          "path": "spec/package-lock.json",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/package.json",
+          "start_line": 1,
+          "end_line": 18
+        },
+        {
+          "path": "spec/prose/01-project-setup.md",
+          "start_line": 1,
+          "end_line": 62
+        },
+        {
+          "path": "spec/prose/02-shaping.md",
+          "start_line": 1,
+          "end_line": 42
+        },
+        {
+          "path": "spec/prose/03-approval-and-build-start.md",
+          "start_line": 1,
+          "end_line": 51
+        },
+        {
+          "path": "spec/prose/04-building.md",
+          "start_line": 1,
+          "end_line": 50
+        },
+        {
+          "path": "spec/prose/05-verifying.md",
+          "start_line": 1,
+          "end_line": 30
+        },
+        {
+          "path": "spec/prose/06-reviewing.md",
+          "start_line": 1,
+          "end_line": 20
+        },
+        {
+          "path": "spec/prose/07-committing.md",
+          "start_line": 1,
+          "end_line": 31
+        },
+        {
+          "path": "spec/prose/08-chatgpt.md",
+          "start_line": 1,
+          "end_line": 42
+        },
+        {
+          "path": "spec/prose/09-cli-and-process.md",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/prose/10-install-and-uninstall.md",
+          "start_line": 1,
+          "end_line": 16
+        },
+        {
+          "path": "spec/prose/11-release-acceptance.md",
+          "start_line": 1,
+          "end_line": 31
+        },
+        {
+          "path": "spec/quint/build.qnt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/quint/run_control.qnt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/quint/shaping.qnt",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "spec/tools/check.mjs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/acceptance/README.md",
+          "start_line": 1,
+          "end_line": 20
+        },
+        {
+          "path": "test/acceptance/fixtures/intents/counter-with-model/counter_steps.js",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/intents/is-even-broken-gherkin/is_even_steps.js",
+          "start_line": 1,
+          "end_line": 15
+        },
+        {
+          "path": "test/acceptance/fixtures/intents/is-even-skip-tag/is_even_steps.js",
+          "start_line": 1,
+          "end_line": 15
+        },
+        {
+          "path": "test/acceptance/fixtures/intents/is-even-title-period/is_even_steps.js",
+          "start_line": 1,
+          "end_line": 15
+        },
+        {
+          "path": "test/acceptance/fixtures/intents/is-even-undefined-step/is_even_steps.js",
+          "start_line": 1,
+          "end_line": 15
+        },
+        {
+          "path": "test/acceptance/fixtures/intents/is-even-unsourced/is_even_steps.js",
+          "start_line": 1,
+          "end_line": 15
+        },
+        {
+          "path": "test/acceptance/fixtures/intents/is-even/is_even_steps.js",
+          "start_line": 1,
+          "end_line": 16
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/ex-app/.formatter.exs",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/ex-app/.gitignore",
+          "start_line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/ex-app/README.md",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/ex-app/lib/ex_app.ex",
+          "start_line": 1,
+          "end_line": 7
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/ex-app/mix.exs",
+          "start_line": 1,
+          "end_line": 8
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/ex-app/test/ex_app_test.exs",
+          "start_line": 1,
+          "end_line": 8
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/ex-app/test/test_helper.exs",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/.gitignore",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/README.md",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/docs-check.js",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/features/step_definitions/app_steps.js",
+          "start_line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/lint.js",
+          "start_line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/package-lock.json",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/package.json",
+          "start_line": 4,
+          "end_line": 12
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/node-app/test/basic.test.js",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/notes/README.md",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/notes/docs/index.md",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/notes/notes.txt",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/.gitignore",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/.style.cfg",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/README.md",
+          "start_line": 1,
+          "end_line": 4
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/calc.py",
+          "start_line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/features/calc.feature",
+          "start_line": 1,
+          "end_line": 7
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/features/steps/calc_steps.js",
+          "start_line": 1,
+          "end_line": 15
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/legacy_parity.py",
+          "start_line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/tests/__init__.py",
+          "start_line": 1,
+          "end_line": 2
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/tests/test_calc.py",
+          "start_line": 1,
+          "end_line": 13
+        },
+        {
+          "path": "test/acceptance/fixtures/projects/py-calc/tools/format.py",
+          "start_line": 1,
+          "end_line": 8
+        },
+        {
+          "path": "test/acceptance/fixtures/runners/run.js",
+          "start_line": 1,
+          "end_line": 69
+        },
+        {
+          "path": "test/acceptance/package-lock.json",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/acceptance/package.json",
+          "start_line": 1,
+          "end_line": 13
+        },
+        {
+          "path": "test/acceptance/steps/steps.js",
+          "start_line": 1,
+          "end_line": 47
+        },
+        {
+          "path": "test/acceptance/support/fake-servers.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/acceptance/support/handlers.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/acceptance/support/hooks.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/acceptance/support/world.js",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/build_boundaries_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/builder_blocker_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/contract_regressions_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/git_test.exs",
+          "start_line": 1,
+          "end_line": 56
+        },
+        {
+          "path": "test/integration/lock_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/provider_diagnostics_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/readiness_observations_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/refinement_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/release_behavior_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/shape_dispatch_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/integration/shape_worker_bounds_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/kogen/checks_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/kogen/config_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/kogen/detect_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/kogen/gherkin_test.exs",
+          "start_line": 1,
+          "end_line": 72
+        },
+        {
+          "path": "test/kogen/intent_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/kogen/run_test.exs",
+          "start_line": 1,
+          "end_line": 51
+        },
+        {
+          "path": "test/kogen/shape_speed_test.exs",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/kogen/yaml_test.exs",
+          "start_line": 1,
+          "end_line": 35
+        },
+        {
+          "path": "test/live/check-verify.sh",
+          "start_line": 1,
+          "end_line": 22
+        },
+        {
+          "path": "test/live/checked.sh",
+          "start_line": 1,
+          "end_line": 23
+        },
+        {
+          "path": "test/live/projects/example.sh",
+          "start_line": 1,
+          "end_line": 78
+        },
+        {
+          "path": "test/live/projects/kogen.sh",
+          "start_line": 1,
+          "end_line": 44
+        },
+        {
+          "path": "test/live/real-use.sh",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/live/self-build-check.sh",
+          "start_line": 1,
+          "end_line": 45
+        },
+        {
+          "path": "test/live/self-repo.sh",
+          "start_line": 1,
+          "end_line": 19
+        },
+        {
+          "path": "test/suite.sh",
+          "start_line": 1,
+          "end_line": 80
+        },
+        {
+          "path": "test/support/integration_helpers.ex",
+          "start_line": 1,
+          "end_line": 80
+        }
+      ]
+    },
+    "after": {
+      "bytes": 0,
+      "static_selection_body_bytes": 0,
+      "count": 0,
+      "paths": [],
+      "ranges": []
+    }
+  },
+  "mandatory_scope": {
+    "request_full": true,
+    "readme_full": true,
+    "testing_rules_full": true,
+    "commands_full": true,
+    "protected_paths_present": true,
+    "approval_authority": true,
+    "no_settled_answers": true
+  },
+  "controls": "Same slug, config, empty settled answers, tools, initial history, instructions and logical root. Full README, request, testing rules, commands, protection and approval authority retained. Active Refine contracts and settled answers covered separately by native acceptance.",
+  "limitations": [
+    "UTF-8 bytes are not tokens; no speed, monetary, cache or quality claim.",
+    "Determinism is repeated byte identity within each VM, not cross-VM map serialization ordering.",
+    "Static selection telemetry is retained separately; b2 clamps excerpt bytes to source size, so it differs from actual rendered optional-body bytes.",
+    "Initial rendering only, not total conversation growth. Provider-known usage is unavailable: no provider call was made.",
+    "Historical trial: first call 243677 provider input tokens / 888012 serialized input bytes; later token counts 248139/253150/255711 are per call, not cumulative. Static included/omitted selection recurred each call; not total prompt size or new savings."
+  ],
+  "evidence": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/compact-context/review-verification"
+}

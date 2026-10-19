@@ -128,6 +128,7 @@ One JavaScript regular expression per line.
 ^no\ required\ scenario\ is\ pending,\ skipped,\ undefined\ or\ excluded\ and\ spec/check\.sh\ passes$
 ^no\ review\ request\ was\ sent$
 ^nothing\ is\ staged$
+^request\ (\d+)\ has\ index-first\ source\ navigation\ for\ "([^"]*)"$
 ^request\ (\d+)\ contains\ "([^"]*)"$
 ^request\ (\d+)\ contains\ the\ text\ of\ the\ file\ "([^"]*)"$
 ^request\ (\d+)\ offers\ exactly\ the\ tools\ "([^"]*)"$

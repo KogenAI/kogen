@@ -103,7 +103,7 @@ defmodule Kogen.Integration.ShapeDispatchTest do
     assert {:ok, _, _} = ShapeBatch.validate(%{"brief" => brief, "jobs" => [c.job]}, c.sh)
   end
 
-  test "context selects a later relevant window with exact frozen provenance", c do
+  test "context is index-first and explicit excerpts retain exact frozen provenance", c do
     path = "features/steps/source.js"
 
     bytes =
@@ -125,7 +125,22 @@ defmodule Kogen.Integration.ShapeDispatchTest do
     assert entry.source == Path.join(original_dir, path)
     assert entry.sha256 == ShapeContext.hash(bytes)
     assert text =~ "the literal needle is {string}"
-    assert text =~ ~s("start_line":97)
+    refute text =~ "Excerpt: "
+    assert index.root == c.root
+    ordinary = Enum.find(index.entries, &(&1.path == "image.bin"))
+    refute Map.has_key?(ordinary, :source)
+    refute Map.has_key?(ordinary, :revision)
+    excerpt = ShapeContext.excerpt(entry, bytes, ["literal needle"])
+    assert excerpt =~ ~s("start_line":97)
+    [header, _body] = String.split(excerpt, "\n", parts: 2)
+
+    assert header
+           |> String.replace_prefix("Excerpt: ", "")
+           |> JSON.decode!()
+           |> Map.keys()
+           |> Enum.sort() ==
+             ~w(end_line path sha256 start_line)
+
     assert Enum.any?(entry.signatures, &(&1.start_line == 101 and &1.end_line == 102))
     assert Enum.any?(index.entries, &(&1.path == "image.bin"))
 

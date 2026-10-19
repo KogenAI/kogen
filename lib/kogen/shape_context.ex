@@ -19,7 +19,7 @@ defmodule Kogen.ShapeContext do
 
   def hash(bytes), do: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
 
-  def index(root, slug, config, request, originals \\ %{}, opts \\ []) do
+  def index(root, slug, config, _request, originals \\ %{}, opts \\ []) do
     revision = revision(root)
 
     paths =
@@ -27,9 +27,6 @@ defmodule Kogen.ShapeContext do
       |> String.split("\0", trim: true)
       |> Enum.uniq()
       |> Enum.sort()
-
-    terms =
-      Regex.scan(~r/[a-zA-Z0-9_]{4,}/, String.downcase(request)) |> List.flatten() |> Enum.uniq()
 
     protected = Intent.protected(root, config)
 
@@ -46,7 +43,7 @@ defmodule Kogen.ShapeContext do
         signatures =
           if String.ends_with?(path, [".js", ".qnt", ".ex"]), do: signatures(bytes), else: []
 
-        %{
+        entry = %{
           path: path,
           sha256: hash(bytes),
           bytes: byte_size(bytes),
@@ -58,14 +55,12 @@ defmodule Kogen.ShapeContext do
               config.steps_dir && String.starts_with?(path, config.steps_dir <> "/") -> "shared"
               true -> "source"
             end,
-          signatures: signatures,
-          source:
-            if(Map.has_key?(originals, path) and opts[:original_dir],
-              do: Path.join(opts[:original_dir], path),
-              else: Path.join(root, path)
-            ),
-          revision: revision
+          signatures: signatures
         }
+
+        if Map.has_key?(originals, path) and opts[:original_dir],
+          do: Map.put(entry, :source, Path.join(opts[:original_dir], path)),
+          else: entry
       end
 
     signature_pages =
@@ -96,54 +91,21 @@ defmodule Kogen.ShapeContext do
 
     full_paths = Keyword.get(opts, :full_paths, ["README.md"])
 
-    excerpts =
-      for e <- entries,
-          e.path not in full_paths,
-          not String.ends_with?(e.path, ["intent.md", "acceptance.feature", "model.qnt"]),
-          bytes = Map.get_lazy(originals, e.path, fn -> File.read!(Path.join(root, e.path)) end),
-          String.valid?(bytes) and not String.contains?(bytes, <<0>>),
-          e.path in acceptance or relevant?(e.path <> "\n" <> bytes, terms) do
-        {e.path, excerpt(e, bytes, terms)}
-      end
-
     selection =
       Enum.map(entries, fn e ->
-        excerpt = List.keyfind(excerpts, e.path, 0)
-
-        included =
-          cond do
-            e.path in full_paths ->
-              e.bytes
-
-            excerpt ->
-              excerpt
-              |> elem(1)
-              |> String.split("\n", parts: 2)
-              |> List.last()
-              |> byte_size()
-              |> min(e.bytes)
-
-            true ->
-              0
-          end
+        included = if e.path in full_paths, do: e.bytes, else: 0
 
         %{
           path: e.path,
           sha256: e.sha256,
-          source: e.source,
           included_body_bytes: included,
           omitted_body_bytes: e.bytes - included,
           reason:
-            cond do
-              e.path in full_paths ->
-                "full authoritative contract; exact instructions/declarations win excerpt budget"
-
-              excerpt ->
-                "bounded request/Acceptance-relevant excerpt"
-
-              true ->
-                "index and exact retrieval only"
-            end
+            if(e.path in full_paths,
+              do:
+                "full authoritative contract; exact instructions/declarations win excerpt budget",
+              else: "index and exact retrieval only"
+            )
         }
       end)
 
@@ -154,6 +116,7 @@ defmodule Kogen.ShapeContext do
     })
 
     index = %{
+      root: root,
       revision: revision,
       entries: entries,
       directories:
@@ -165,8 +128,7 @@ defmodule Kogen.ShapeContext do
         "read_file exact bytes and line ranges; list_files directories; search_text exact signatures"
     }
 
-    {"Context index: " <>
-       JSON.encode!(index) <> "\n" <> Enum.map_join(excerpts, "\n", &elem(&1, 1)), index}
+    {"Context index: " <> JSON.encode!(index) <> "\n", index}
   end
 
   defp signatures(bytes) do
@@ -202,6 +164,7 @@ defmodule Kogen.ShapeContext do
 
   def excerpt(entry, bytes, terms \\ []) do
     lines = String.split(bytes, "\n")
+    lines = if List.last(lines) == "", do: Enum.drop(lines, -1), else: lines
     # Prefer an exact matching declaration/content window over an unrelated prefix.
     first = Enum.find_index(lines, &relevant?(&1, terms)) || 0
     start = max(0, first - 5)
@@ -218,7 +181,7 @@ defmodule Kogen.ShapeContext do
 
     "Excerpt: " <>
       JSON.encode!(
-        Map.merge(entry, %{
+        Map.merge(Map.take(entry, [:path, :sha256]), %{
           start_line: start + 1,
           end_line: start + max(0, length(String.split(text, "\n")) - 1)
         })

@@ -68,9 +68,14 @@ the original bridge owner alone runs probes, serially. Worker failure is not ret
 Workers cannot write, submit, approve or publish. A complete common brief and exact
 disjoint draft ownership are required before dispatch. Drift invalidates drafts.
 
-Native context uses deterministic indexes, hashes and bounded relevant excerpts;
+Native context is index-first: deterministic indexes and full hashes, with zero
+automatic optional source-body excerpts (including Acceptance steps and licences);
 `read_file`, `list_files` and `search_text` retrieve exact source bytes. Request,
-Q&A and authoritative contract details are not replaced by a summary. Refinement
+Q&A and authoritative contract details are complete, not replaced by a summary.
+Root and revision are shared once; ordinary exact paths resolve from root. Frozen
+originals and complete signature pages retain explicit retrieval references.
+Explicit excerpts have only path/hash/range headers and at most 80 lines/8192
+UTF-8 body bytes. This does not bound conversation growth or imply speed/cost savings. Refinement
 retains frozen originals in its evidence directory and cumulative proposals in
 scratch. Focused probes resolve named concrete uncertainties, not a manual replay
 of the entire acceptance suite immediately before the native readiness gate.
