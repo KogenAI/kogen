@@ -125,6 +125,25 @@ defmodule Kogen.Refine do
       try do
         Git.ok!(root, ["clone", "--quiet", "--shared", "--no-checkout", "--", root, scratch])
         Tools.copy_tree(root, scratch)
+        # The warm preparation clone has its own Git metadata. Keep the source's
+        # ignore rules here so local workspace warmth cannot become candidate
+        # inputs merely because clone did not copy info/exclude or local config.
+        # Final proof still materializes only the Snapshot, never this metadata.
+        exclude =
+          root
+          |> Git.ok!(["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"])
+          |> String.trim()
+
+        if File.regular?(exclude), do: File.cp!(exclude, Path.join(scratch, ".git/info/exclude"))
+
+        case Git.run(root, ["config", "--path", "--get", "core.excludesFile"]) do
+          {path, 0} ->
+            Git.ok!(scratch, ["config", "core.excludesFile", Path.expand(String.trim(path), root)])
+
+          {_, 1} ->
+            :ok
+        end
+
         Git.ok!(scratch, ["read-tree", tree])
         freeze!(state)
         cached = Readiness.cached(root, slug, config)
@@ -156,8 +175,8 @@ defmodule Kogen.Refine do
                 status: if(cached, do: "hit", else: "miss"),
                 reason:
                   if(cached,
-                    do: "valid complete version2 protected-baseline/HEAD evidence",
-                    else: "no valid complete version2 evidence; normal scratch path"
+                    do: "valid complete version3 protected-baseline/HEAD evidence",
+                    else: "no valid complete version3 evidence; normal scratch path"
                   ),
                 source: if(cached, do: "retained", else: "scratch"),
                 baseline: expected,
@@ -595,8 +614,6 @@ defmodule Kogen.Refine do
           if acknowledged do
             s.observed
           else
-            File.rm(Path.join(s.scratch, ".kogen/local/setup.json"))
-
             Kogen.ShapeEvidence.timed("readiness", fn ->
               Readiness.check!(s.scratch, s.slug, s.config)
             end)

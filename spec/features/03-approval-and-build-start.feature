@@ -92,34 +92,34 @@ Feature: Approval and starting a Build
     And the fake ChatGPT server received 0 requests
 
   @AUT-2
-  Scenario: Card and hash approval reuse complete readiness for the same baseline hash and HEAD
-    Given the project config sets "commands.setup" to "['mkdir -p .kogen/local; if [ -e .kogen/local/readiness-ran ]; then echo again > .kogen/local/readiness-result; else echo once > .kogen/local/readiness-result; fi; touch .kogen/local/readiness-ran']"
+  Scenario: Card and hash approval reuse complete readiness for the same clean candidate tree, baseline hash and HEAD
+    Given readiness setup records executions outside the checkout
     And the Intent "is-even" from fixture "is-even" is shaped
     When the caller noted the review card hash of "is-even"
     And the caller approves "is-even" with the noted hash
     Then the exit code is 0
-    And the file ".kogen/local/readiness-result" contains "once"
+    And readiness has executed 1 time
     And the file ".kogen/local/readiness/is-even.json" exists
 
   @AUT-2
   Scenario: A new HEAD makes approval rerun readiness
-    Given the project config sets "commands.setup" to "['mkdir -p .kogen/local; if [ -e .kogen/local/readiness-ran ]; then echo again > .kogen/local/readiness-result; else echo once > .kogen/local/readiness-result; fi; touch .kogen/local/readiness-ran']"
+    Given readiness setup records executions outside the checkout
     And the Intent "is-even" from fixture "is-even" is shaped
     When the caller noted the review card hash of "is-even"
     And another commit is made on HEAD
     And the caller approves "is-even" with the noted hash
     Then the exit code is 0
-    And the file ".kogen/local/readiness-result" contains "again"
+    And readiness has executed 2 times
 
   @AUT-2
   Scenario: A new baseline hash makes approval rerun readiness
-    Given the project config sets "commands.acceptance.run" to "'mkdir -p .kogen/local; if [ -e .kogen/local/readiness-ran ]; then echo again > .kogen/local/readiness-result; else echo once > .kogen/local/readiness-result; fi; touch .kogen/local/readiness-ran; node_modules/.bin/cucumber-js --strict --require ''features/steps/*.js'' --format message:$KOGEN_ACCEPTANCE_REPORT $KOGEN_ACCEPTANCE_FEATURES'"
+    Given readiness setup records executions outside the checkout
     And the Intent "is-even" from fixture "is-even" is shaped
     When the caller noted the review card hash of "is-even"
     And the file ".kogen/intents/is-even/acceptance.feature" is changed outside Kogen
     And the caller approves "is-even" with the hash of its acceptance baseline
     Then the exit code is 0
-    And the file ".kogen/local/readiness-result" contains "again"
+    And readiness has executed 2 times
 
   @AUT-2 @VER-1
   Scenario Outline: The hash covers every baseline file

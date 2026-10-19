@@ -6,7 +6,7 @@ defmodule Kogen.Readiness do
   scenario exactly once as passed or failed.
   Also the start checks shared with Builds: tools on PATH (LOOP-12) and setup (AUT-5).
   """
-  alias Kogen.{Bridge, Checks, Config, Error, Git, Intent, Run}
+  alias Kogen.{Bridge, Checks, Config, Error, Git, Intent, Run, Snapshot}
 
   @doc """
   Refuses when git or /bin/sh is missing, or with `configured: true` (a Build, after setup)
@@ -50,7 +50,7 @@ defmodule Kogen.Readiness do
 
   @doc """
   Runs `commands.setup` in order; refuses on the first failure (AUT-5). With `reuse: true`
-  (shaping, readiness, the approval card) it is skipped when it last passed for the same checkout
+  (warm shaping preparation) it is skipped when it last passed for the same checkout
   state (SET-7); a Build always runs it.
   """
   def setup!(root, %Config{setup: setup} = config, run \\ nil, opts \\ []) do
@@ -115,14 +115,14 @@ defmodule Kogen.Readiness do
 
   @doc "Loads complete successful evidence for the current full baseline and HEAD, or returns nil."
   def cached(root, slug, config) do
-    {baseline, sha, head} = inputs(root, slug, config)
+    {baseline, sha, head, tree} = inputs(root, slug, config)
 
     with {:ok, text} <- File.read(readiness_path(root, slug)),
          {:ok, record} when is_map(record) <- JSON.decode(text),
-         true <- record["version"] == 2 and record["outcome"] == "ready",
+         true <- record["version"] == 3 and record["outcome"] == "ready",
          true <- is_integer(record["acceptance_exit"]),
          true <- record["sha256"] == sha and record["head"] == head,
-         true <- record["baseline"] == baseline,
+         true <- record["baseline"] == baseline and record["candidate_tree"] == tree,
          {:ok, intent, _} <- Intent.check(root, slug),
          {:ok, feature} <- File.read(Path.join(root, Intent.feature(slug))),
          {:ok, expected} <- Kogen.Gherkin.parse(feature),
@@ -154,7 +154,8 @@ defmodule Kogen.Readiness do
         acceptance_exit: record["acceptance_exit"],
         baseline: baseline,
         sha256: sha,
-        head: head
+        head: head,
+        candidate_tree: tree
       }
     else
       _ -> nil
@@ -165,12 +166,15 @@ defmodule Kogen.Readiness do
 
   defp inputs(root, slug, config) do
     baseline = Intent.baseline(root, slug, config)
-    {baseline, Intent.hash(root, baseline), Git.head(root)}
+    head = Git.head(root)
+    {baseline, Intent.hash(root, baseline), head, Snapshot.tree(root, head, [])}
   end
 
   @doc "Whether the complete checked baseline and HEAD still identify this readiness result."
   def current?(root, slug, config, ready) when is_map(ready),
-    do: inputs(root, slug, config) == {ready.baseline, ready.sha256, ready.head}
+    do:
+      inputs(root, slug, config) ==
+        {ready.baseline, ready.sha256, ready.head, ready.candidate_tree}
 
   def current?(_root, _slug, _config, _ready), do: false
 
@@ -211,11 +215,12 @@ defmodule Kogen.Readiness do
 
   @doc "Publishes the original successful evidence only when the complete checked inputs still match."
   def record_pass!(root, slug, config, ready) do
-    unless inputs(root, slug, config) == {ready.baseline, ready.sha256, ready.head},
-      do:
-        Error.raise!("intent", "not_ready", "the Intent is not ready to build", 1, [
-          "readiness inputs changed during checking or publication"
-        ])
+    unless inputs(root, slug, config) ==
+             {ready.baseline, ready.sha256, ready.head, ready.candidate_tree},
+           do:
+             Error.raise!("intent", "not_ready", "the Intent is not ready to build", 1, [
+               "readiness inputs changed during checking or publication"
+             ])
 
     path = readiness_path(root, slug)
     File.mkdir_p!(Path.dirname(path))
@@ -223,7 +228,8 @@ defmodule Kogen.Readiness do
     File.write!(
       path,
       JSON.encode!(%{
-        "version" => 2,
+        "version" => 3,
+        "candidate_tree" => ready.candidate_tree,
         "outcome" => "ready",
         "sha256" => ready.sha256,
         "head" => ready.head,
@@ -235,6 +241,11 @@ defmodule Kogen.Readiness do
         "scenarios" => ready.scenarios
       }) <> "\n"
     )
+
+    unless current?(root, slug, config, ready) do
+      File.rm(path)
+      Error.raise!("intent", "not_ready", "readiness inputs changed during publication", 1)
+    end
   end
 
   defp readiness_path(root, slug),
@@ -246,8 +257,26 @@ defmodule Kogen.Readiness do
   """
   def check!(root, slug, %Config{} = config) do
     File.rm(readiness_path(root, slug))
-    {baseline, sha, head} = inputs(root, slug, config)
+    {baseline, sha, head, tree} = inputs(root, slug, config)
 
+    scratch = Kogen.tmp_path("kogen-readiness")
+
+    try do
+      guard = Snapshot.materialize(root, tree, scratch)
+      ready = check_clean!(scratch, slug, config, baseline, sha, head, tree)
+      mutations = Snapshot.mutations(scratch, guard)
+
+      if mutations != [],
+        do: Error.raise!("intent", "not_ready", "readiness changed candidate files", 1, mutations)
+
+      record_pass!(root, slug, config, ready)
+      ready
+    after
+      File.rm_rf(scratch)
+    end
+  end
+
+  defp check_clean!(root, slug, config, baseline, sha, head, tree) do
     intent =
       case Intent.check(root, slug) do
         {:ok, intent, _} ->
@@ -259,6 +288,8 @@ defmodule Kogen.Readiness do
         {:lint, problems} ->
           Error.raise!("intent", "lint", "the Intent needs changes", 1, problems)
       end
+
+    setup!(root, config)
 
     model = Intent.model(intent)
 
@@ -273,13 +304,15 @@ defmodule Kogen.Readiness do
           problems
       end
 
-    setup!(root, config, nil, reuse: true)
-
     report =
       Kogen.tmp_path("kogen-dry-run") <> ".ndjson"
 
-    result = Checks.acceptance(root, intent, config.acceptance_run, report)
-    File.rm(report)
+    result =
+      try do
+        Checks.acceptance(root, intent, config.acceptance_run, report)
+      after
+        File.rm(report)
+      end
 
     report_problems = for p <- result.problems, String.starts_with?(p, "report_"), do: p
 
@@ -311,18 +344,16 @@ defmodule Kogen.Readiness do
 
     case model_problems ++ dry_problems do
       [] ->
-        ready = %{
+        %{
           intent: intent,
           model: model,
           scenarios: result.scenarios,
           acceptance_exit: result.status,
           baseline: baseline,
           sha256: sha,
-          head: head
+          head: head,
+          candidate_tree: tree
         }
-
-        record_pass!(root, slug, config, ready)
-        ready
 
       problems ->
         Error.raise!(

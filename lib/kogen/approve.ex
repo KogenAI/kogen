@@ -38,7 +38,7 @@ defmodule Kogen.Approve do
     sha = Intent.hash(root, baseline)
     if hash && sha != before, do: mismatch!(slug, sha, hash)
 
-    if sha != ready.sha256 or baseline != ready.baseline or Git.head(root) != ready.head,
+    if not Readiness.current?(root, slug, config, ready),
       do: Error.raise!("intent", "not_ready", "readiness inputs changed; review again", 1)
 
     cond do
@@ -50,15 +50,44 @@ defmodule Kogen.Approve do
         File.mkdir_p!(Path.dirname(path))
         approved_at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
-        File.write!(
-          path,
-          JSON.encode!(%{
-            "slug" => slug,
-            "sha256" => sha,
-            "approver" => approver,
-            "approved_at" => approved_at
-          }) <> "\n"
-        )
+        previous = File.read(path)
+
+        try do
+          File.write!(
+            path,
+            JSON.encode!(%{
+              "slug" => slug,
+              "sha256" => sha,
+              "approver" => approver,
+              "approved_at" => approved_at
+            }) <> "\n"
+          )
+
+          unless Readiness.current?(root, slug, config, ready),
+            do:
+              Error.raise!(
+                "intent",
+                "not_ready",
+                "readiness inputs changed during approval publication",
+                1
+              )
+        rescue
+          error ->
+            case previous do
+              {:ok, bytes} -> File.write!(path, bytes)
+              {:error, :enoent} -> File.rm(path)
+            end
+
+            reraise error, __STACKTRACE__
+        catch
+          {:cancel, signal} ->
+            case previous do
+              {:ok, bytes} -> File.write!(path, bytes)
+              {:error, :enoent} -> File.rm(path)
+            end
+
+            throw({:cancel, signal})
+        end
 
         Bridge.puts("approved #{slug} #{String.slice(sha, 0, 8)}")
         Bridge.puts("Next: kogen intent build #{slug}")

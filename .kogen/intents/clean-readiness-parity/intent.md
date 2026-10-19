@@ -1,0 +1,38 @@
+# Align final readiness with clean Build inputs
+
+Slug: clean-readiness-parity
+Model: .kogen/intents/clean-readiness-parity/model.qnt invariants=SafePublication,ExactReuse,HonestOriginal seed=19 samples=100 steps=30
+Acceptance:
+- .kogen/intents/clean-readiness-parity/acceptance.feature
+- features/steps/clean_readiness_parity_steps.js
+
+Correct final candidate readiness on signed core c3ee2a8e3dfec33a7f25715757fa4b2e31fcb6ac. Shape, Refine and approval/card misses must use the existing Snapshot.tree/materialize mechanics and fresh verbatim declared setup in a clean disposable directory, not the working root or warm Refine preparation copy. Include tracked ignored inputs, exact bytes/modes/additions/deletions and usable synthetic local Git, without copying/linking ignored workspace dependency/build outputs. Caller environment, installed tools and declared services remain normal: this is not hermeticity. Shape's final formatted working files and Refine's complete accumulated formatted owned proposals must be exactly the inputs tested and published.
+
+Use readiness record version 3 with `candidate_tree` (the Snapshot tree identity) in addition to existing complete baseline/hash, HEAD, declarations and actual model/scenario/exit evidence. Version 3 denotes clean Snapshot proof; version2 and older records are normal misses, including Refine's original-ready precondition. Do not migrate warm evidence into clean evidence. A compatible exact unchanged clean record may be retained/reused; ignored untracked warmth alone does not change candidate identity, but nonignored additions, content changes, deletions, executable modes, tracked ignored changes, HEAD, protected baseline or declarations do. Recheck source identity around execution and publication, including approval publication; never certify root files with a stale Refine scratch fingerprint. Keep original-precondition retention distinct from fresh changed-candidate checking. A retained original record skips only original setup/model/acceptance, is described as retained evidence rather than current-environment proof, and grants no authority to changed candidates. No extra attestation layer or environment fingerprint.
+
+Guard raw scratch inputs using Snapshot mutation detection across setup/model/acceptance (including staged additions); reject mutations and preserve root inputs. Always clean disposable directories on success, failure and interruption. Keep raw caller index, HEAD, protected baseline, approval custody and Refine's original/rollback/freeze guarantees. SHP-8 still accepts fully accounted red after returning actual diagnostics for inspection; exact unchanged acknowledgement reuses that same clean observation, changed candidates receive fresh setup/readiness. No bootstrap/exception classifiers and no baseline-green requirement. Clean construction exposes missing prerequisites earlier, not universal fixture health.
+
+Keep Tools.probe/copy_tree and SHP-10 exploration warm; Refine may keep its warm preparation/read/probe context separate from final proof. Do not change canonical .kogen/project.yaml, .formatter.exs or mix.exs. Build verification is already clean: retain approval/Build separation, one reviewer, full exact-green commit gates, fail-fast/resume/custody and existing commit convention. No app source investigation or fixes, orchestration, command rewriting, new config, automatic approval, provider/model/default changes or generic cache framework.
+
+Align README.md, docs/configuration.md and affected maintained spec prose/Gherkin/Quint (SHP-8, SHP-11 and approval reuse) with these changed state semantics; preserve completed native history and prior evidence truthfully, without rewriting old runs as failures, purging evidence or inventing checks. Source findings are read-only at /Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/clean-readiness-parity-20261019/findings.md; app setup has a separate owner. Keep chronology in external evidence, not this Intent. Before native Build use exactly one coverage/fixture inspection and delegated caller approval; then normal native Build, single reviewer, final gates and signing. After signed packaging limit additional qualification to focused exact installed cold-negative/declared-setup/cache cases beyond necessary native gates; no extra critic or duplicate whole suite. External core fallback is only for a demonstrated self-hosting blocker with preserved evidence and root coordination. Record actual setup latency, failures and usage, not an assumed speed win.
+
+## Decisions
+- Keep existing CLI, card/hash approval and diagnostic flow; distinguish clean proof by minimal version3 candidate identity rather than new flags or configuration. (source: request)
+- Treat legacy original-precondition records as normal clean misses; compatible clean original evidence remains intentionally retained rather than fresh execution. (source: request)
+- Keep exploratory probes warm and final candidate proof clean, including Refine's accumulated proposals and exact unchanged red acknowledgement. (source: request)
+
+## Tests
+- Final Shape readiness cannot inherit undeclared ignored dependencies/builds, but declared setup regenerates them: fresh installed CLI cold-negative and declared local Node import scenarios (regression)
+- Refine final candidates run fresh clean setup independently of warm preparation and retained original proof: installed correction with accumulated proposals, inspected red acknowledgement and raw original/index/approval custody observations (scenario)
+- Card and hash-approval misses run clean proof and never silently approve/build: installed approval miss scenarios with real bundled Cucumber (scenario)
+- Compatible clean reuse requires exact candidate/baseline/declarations/HEAD; version2 misses, nonignored changes invalidate, ignored warmth does not: installed cache matrix and original-precondition hit/miss receipt checks (integration)
+- Publication and execution cannot certify mutated or different root inputs: installed scratch mutation and root-drift regressions; extend readiness/refinement tests for staged additions, mode/deletion drift and publication rollback (regression)
+- Materialization preserves exact tracked ignored inputs, bytes, modes, additions/deletions, Git and caller environment without changing caller index/HEAD: installed runner observations plus existing clean_snapshot_test.exs (integration)
+- Probes retain ignored dependency/build warmth without per-probe setup: installed Shape probe importing the warm modules and leaving original files intact (regression)
+- Accounted missing-feature red remains inspectable and exact unchanged acknowledgement does not repeat the gate: installed Shape/Refine red fixtures and existing readiness_observations_test.exs/compact acknowledgement scenarios (regression)
+- Approval custody, protected baseline, fail-fast/resume, one reviewer and exact-green Build gates remain unchanged: existing refinement_test.exs, build boundaries, fail-fast and resume suites (existing)
+
+## Feasibility
+- The first model probe was rejected before execution because its scratch file used an absolute /tmp path; no project file changed. (probe 1: no execution)
+- Quint 0.33 typechecked the relative scratch model and found no violation of SafePublication, ExactReuse and HonestOriginal in 100 samples of 30 steps using the TypeScript backend, seed 19. (probe 2: exit 0, 0.6 s)
+- A focused Elixir parser probe confirmed that spacing the harness inequality operators repairs the demonstrated parse ambiguity; it did not execute the acceptance suite. (probe 3: exit 0, 0.1 s)

@@ -675,8 +675,10 @@ defmodule Kogen.Integration.RefinementTest do
     config_path = Path.join(context.repo, Config.path())
     config = Config.load!(context.repo)
 
+    executions = Path.join(context.root, "runner-executions")
+
     command =
-      "printf 'run\\n' >> .kogen/local/runner-executions; " <>
+      "printf 'run\\n' >> #{executions}; " <>
         config.acceptance_run <>
         "; echo fresh runner failure; exit 17"
 
@@ -699,7 +701,7 @@ defmodule Kogen.Integration.RefinementTest do
       refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/fixture.json"))
       refute File.exists?(Intent.approval_path(context.repo, "fixture"))
 
-      assert File.read!(Path.join(context.repo, ".kogen/local/runner-executions")) ==
+      assert File.read!(executions) ==
                String.duplicate("run\n", n)
     end
   end
@@ -710,21 +712,125 @@ defmodule Kogen.Integration.RefinementTest do
     context = fixture!(suite)
     steps = Path.join(context.repo, "features/steps/integration_steps.js")
 
-    File.write!(
-      steps,
-      File.read!(steps) <>
-        """
-        const fs = require('node:fs');
-        fs.appendFileSync('.kogen/intents/fixture/intent.md', '\\n');
-        """
-    )
+    original_steps = File.read!(steps)
+    original = package(context)
+    original_index = index(context)
 
-    for _ <- 1..2 do
-      {output, 1} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
-      assert output =~ "readiness inputs changed"
-      refute output =~ "Approve with:"
-      refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/fixture.json"))
-      refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+    for mutation <- [
+          "fs.appendFileSync('.kogen/intents/fixture/intent.md', '\\n');",
+          "fs.writeFileSync('staged-input.txt', 'new'); require('node:child_process').execFileSync('git', ['add', 'staged-input.txt']);",
+          "fs.chmodSync('app.txt', 0o755);",
+          "fs.unlinkSync('app.txt');"
+        ] do
+      File.write!(steps, original_steps <> "\nconst fs = require('node:fs');\n" <> mutation)
+      before = package(context)
+
+      for _ <- 1..2 do
+        {output, 1} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+        assert output =~ "readiness changed candidate files"
+        assert package(context) == before
+        assert index(context) == original_index
+        assert File.read!(Path.join(context.repo, "app.txt")) == "baseline\n"
+        refute File.exists?(Path.join(context.repo, "staged-input.txt"))
+        refute output =~ "Approve with:"
+        refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/fixture.json"))
+        refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+      end
+    end
+
+    File.write!(steps, original_steps)
+    assert package(context) == original
+  end
+
+  test "approval publication drift restores exact prior approval without certifying changed inputs",
+       %{
+         suite: suite
+       } do
+    context = approved_fixture!(suite)
+    approval_path = Intent.approval_path(context.repo, "fixture")
+    previous = File.read!(approval_path) |> JSON.decode!() |> Map.put("custody", "original")
+    raw = JSON.encode!(previous) <> "\n"
+    File.write!(approval_path, raw)
+    original_index = index(context)
+    tools = Path.join(context.root, "tools")
+    File.mkdir_p!(tools)
+    git = System.find_executable("git")
+
+    # Trigger drift only once the new approval is visible. This deterministically
+    # exercises the post-publication identity check, not the pre-check guard.
+    File.write!(Path.join(tools, "git"), """
+    #!/bin/sh
+    if [ -f app.txt ] && [ -f '#{approval_path}' ] && ! grep -q custody '#{approval_path}'; then
+      printf 'external publication drift\\n' > '#{context.repo}/app.txt'
+    fi
+    exec '#{git}' "$@"
+    """)
+
+    File.chmod!(Path.join(tools, "git"), 0o755)
+
+    {output, status} =
+      Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)],
+        env: [{"PATH", tools <> ":" <> context.env["PATH"]}]
+      )
+
+    assert status == 1, output
+    assert output =~ "readiness inputs changed during approval publication"
+    refute output =~ "approved fixture"
+    assert File.read!(approval_path) == raw
+    assert File.read!(Path.join(context.repo, "app.txt")) == "external publication drift\n"
+    assert index(context) == original_index
+  end
+
+  test "SHP-11 local ignored warmth stays available to probes but out of final proof", %{
+    suite: suite
+  } do
+    for ignore <- [:info_exclude, :local_excludes_file] do
+      context = approved_fixture!(suite)
+
+      case ignore do
+        :info_exclude ->
+          File.write!(Path.join(context.repo, ".git/info/exclude"), "local-cache/\n")
+
+        :local_excludes_file ->
+          exclude = Path.join(context.root, "local-excludes")
+          File.write!(exclude, "local-cache/\n")
+          Helpers.git!(context, ["config", "core.excludesFile", exclude])
+      end
+
+      File.mkdir_p!(Path.join(context.repo, "local-cache"))
+      File.write!(Path.join(context.repo, "local-cache/warm.txt"), "workspace only\n")
+      steps = Path.join(context.repo, "features/steps/integration_steps.js")
+
+      File.write!(
+        steps,
+        File.read!(steps) <>
+          "\nrequire('node:assert/strict').equal(require('node:fs').existsSync('local-cache/warm.txt'), false);\n"
+      )
+
+      # Establish an exact original record with the cold-input assertion too.
+      {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)])
+      before = package(context)
+      original_index = index(context)
+      path = Intent.intent_md("fixture")
+      updated = String.replace(before[path], "# Preserve", "# Clarify")
+
+      script!(context, [
+        {:function, "probe", %{"command" => "cat local-cache/warm.txt"}},
+        submission([%{"path" => path, "content" => updated}])
+      ])
+
+      {output, status} = refine(context)
+      assert status == 0, output
+      assert package(context) == Map.put(before, path, updated)
+      assert index(context) == original_index
+      assert File.read!(Path.join(context.repo, "local-cache/warm.txt")) == "workspace only\n"
+      assert Enum.any?(FakeProvider.tool_outputs(context.server), &(&1 =~ "workspace only"))
+
+      record_path = Path.join(context.repo, ".kogen/local/readiness/fixture.json")
+      record = File.read!(record_path)
+      assert Enum.all?(JSON.decode!(record)["scenarios"], &(&1["status"] == "passed"))
+      {_, 5} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
+      assert File.read!(record_path) == record
     end
   end
 

@@ -85,6 +85,8 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 One JavaScript regular expression per line.
 
 ```steps
+^readiness setup records executions outside the checkout$
+^readiness has executed (\d+) times?$
 ^the original refinement readiness receipt has status "([^"]*)"$
 ^the caller refines "([^"]*)" with its current baseline and stdin:$
 ^no builder request was sent after review began$

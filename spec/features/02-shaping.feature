@@ -1,5 +1,5 @@
 # SHP-8/SHP-11: stable successful shaping and published refinement evidence is reusable
-# for the full protected baseline hash and HEAD; failed readiness is never reused.
+# for the version 3 Snapshot candidate tree, full protected baseline hash, declarations and HEAD; failed readiness is never reused.
 Feature: Shaping
   A request becomes a ready Intent (prose, Gherkin with step files, Quint
   when needed), or numbered questions about open UI/UX choices.
@@ -430,8 +430,8 @@ Feature: Shaping
     And the fake ChatGPT server received 0 requests
 
   @SET-7 @SHP-2
-  Scenario: Setup runs once for shaping and the approval card while the checkout is unchanged
-    Given the project config sets "commands.setup" to "['mkdir -p .kogen/local && echo ran >> .kogen/local/setup-runs']"
+  Scenario: Warm preparation and clean readiness run setup separately and the unchanged card reuses proof
+    Given readiness setup records executions outside the checkout
     And the fake ChatGPT server plays script "shape-ready-is-even"
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
@@ -440,7 +440,7 @@ Feature: Shaping
     Then the exit code is 0
     When the caller runs "kogen intent approve is-even"
     Then the exit code is 5
-    And the file ".kogen/local/setup-runs" has 1 line
+    And readiness has executed 2 times
 
   @SHP-2 @LOOP-12
   Scenario: A check written as a subshell passes the tool check before shaping

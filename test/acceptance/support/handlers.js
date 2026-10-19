@@ -969,6 +969,15 @@ async function dispatch(world, pattern, values, attachment) {
     await initProject(world, true);
     return;
   }
+  if (label === 'readiness setup records executions outside the checkout') {
+    world.readinessTrace = path.join(world.workspace, 'clean-readiness-executions');
+    setConfigKey(world, 'commands.setup', JSON.stringify([`printf 'run\\n' >> '${world.readinessTrace}'`]));
+    return;
+  }
+  if (label.startsWith('readiness has executed ')) {
+    assert.equal(fs.readFileSync(world.readinessTrace, 'utf8'), 'run\n'.repeat(Number(args[0])));
+    return;
+  }
   if (label.startsWith('the project config sets ')) {
     setConfigKey(world, args[0], args[1]);
     return;
