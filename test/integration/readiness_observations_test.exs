@@ -309,6 +309,8 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
       {:function, "probe", %{"command" => "touch '#{marker}' && sleep 1"}},
       {:function, "submit_refinement",
        %{"files" => [%{"path" => intent, "content" => corrected_intent}]}},
+      {:text, "The remaining red is legitimate missing-feature behavior."},
+      {:function, "submit_refinement", %{"files" => []}},
       {:function, "submit_refinement",
        %{"files" => [%{"path" => intent, "content" => corrected_intent}]}}
     ])
@@ -338,6 +340,23 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     refute File.exists?(Intent.approval_path(context.repo, "fixture"))
     feedback = FakeProvider.tool_outputs(context.server) |> Enum.join("\n")
     assert feedback =~ "unique refinement red observation"
+    refute feedback =~ "changed existing files only"
+    assert feedback =~ "nonempty files array"
+    assert feedback =~ "readiness acknowledgment"
+
+    retry_messages =
+      FakeProvider.provider_requests(context.server)
+      |> List.last()
+      |> Map.fetch!(:json)
+      |> Map.fetch!("input")
+      |> Enum.filter(&(&1["role"] == "user"))
+      |> Enum.map_join("\n", & &1["content"])
+
+    refute retry_messages =~ "Call submit_refinement with changed existing files"
+
+    assert retry_messages =~
+             "Call submit_refinement with a nonempty files array of complete existing owned artifact contents (edits or readiness acknowledgment), or constraint."
+
     {card, 5} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
     assert card =~ "unique refinement red observation"
     assert executions(context) - count == 2

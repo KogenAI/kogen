@@ -199,8 +199,12 @@ defmodule Kogen.Readiness do
     end
   end
 
+  def acknowledgment_guidance do
+    "After inspecting legitimate missing-feature red, resubmit the smallest eligible owned artifact with its exact current candidate whole body, including previously proposed corrections. The files array must be nonempty; if only one eligible large artifact exists, submit its entire body. Omitted well-formed proposals remain retained; do not retransmit large unchanged prose/helpers or restore original disk bytes for acknowledgment. Publication and acknowledgment concern the exact complete package; unchanged inputs reuse readiness, while changed candidates receive fresh checks."
+  end
+
   def acknowledgment(slug, ready, reference \\ nil) do
-    ("Inspect whether fixtures, inputs and commands reached the intended behavior, using the existing read/probe tools when needed. Repair demonstrated contract defects. Ordinary missing-feature red is valid: resubmit the unchanged complete candidate to acknowledge these observations without rerunning unchanged readiness. A failure can mask later cases; this is not proof that every fixture is correct.\n\n" <>
+    ("Inspect whether fixtures, inputs and commands reached the intended behavior, using the existing read/probe tools when needed. Repair demonstrated contract defects. #{acknowledgment_guidance()} A failure can mask later cases; this is not proof that every fixture is correct.\n\n" <>
        observations(slug, ready, reference))
     |> Kogen.Tools.cut()
   end

@@ -678,7 +678,7 @@ defmodule Kogen.Shape do
       "name" => "submit",
       "strict" => false,
       "description" =>
-        "End shaping with exactly one of questions, Intent files, or blocked. Within this run, well-formed file proposals accumulate: omitted paths retain earlier proposals; latest content wins. Submit only corrections on retries. A malformed or unsafe submission contributes no files. A blocked report is never authorization and cannot be paired with another result.",
+        "End shaping with exactly one of questions, Intent files, or blocked. Within this run, well-formed file proposals accumulate: omitted paths retain earlier proposals; latest content wins. Submit only corrections on editing retries. #{Readiness.acknowledgment_guidance()} A malformed or unsafe submission contributes no files. A blocked report is never authorization and cannot be paired with another result.",
       "parameters" => %{
         "type" => "object",
         "properties" => %{
@@ -705,6 +705,7 @@ defmodule Kogen.Shape do
           },
           "files" => %{
             "type" => "array",
+            "minItems" => 1,
             "items" => %{
               "type" => "object",
               "properties" => %{
@@ -1015,11 +1016,11 @@ defmodule Kogen.Shape do
 
     3. Step files under the configured steps folder: step definitions that exercise the real behavior (run the program, call the code or inspect its output). You may add new step files or edit existing ones; the caller reviews them before approving. List every step file the feature relies on in `Acceptance:`, right after the feature.
 
-    Within this conversation, well-formed file proposals accumulate: latest content for a path wins, and omitted paths retain earlier proposals. After lint, parse or readiness feedback, submit only corrected files; an unsafe or malformed mixed payload contributes no proposals. Submit full original content explicitly to revert an edit. Omission cannot delete a proposal. Previously declared proposed JavaScript steps must stay in Acceptance and a proposed model must stay declared. To discard an earlier new artifact, preserve and park the partial package and its exclusively owned new step files, remove the empty Intent directory, then use normal shaping again with the same slug or a new one. There is no proposal replay across separate shaping invocations.
+    Within this conversation, well-formed file proposals accumulate: latest content for a path wins, and omitted paths retain earlier proposals. For edits after lint, parse or readiness feedback, submit only corrected files; an unsafe or malformed mixed payload contributes no proposals. Submit full original content explicitly to revert an edit. Omission cannot delete a proposal. Previously declared proposed JavaScript steps must stay in Acceptance and a proposed model must stay declared. To discard an earlier new artifact, preserve and park the partial package and its exclusively owned new step files, remove the empty Intent directory, then use normal shaping again with the same slug or a new one. There is no proposal replay across separate shaping invocations.
 
     Kogen then checks the Intent: the rules above, the model, and a dry run of the acceptance command that must report every scenario exactly once as passed or failed (an undefined, pending or skipped step means not ready). Problems come back to you; fix them and submit again.
 
-    Inspect the required implementation edits, not arbitrary request wording. If a required edit cannot be avoided and touches a path protected by the current contract, end with `submit` containing only `blocked: {paths: ["relative/path"], reason: "why the requested change requires this edit"}`. A blocked report is not authorization, writes no new Intent or approval, and starts no Build. Do not offer conditional readiness or suggest a protected-edit approval. Otherwise submit either `questions` or `files`, not both. If Kogen reports problems with a submission, fix them and submit again. Accounted baseline failures remain valid, but Kogen returns their actual observations before completion: inspect whether fixtures, inputs and commands reached intended behavior, using existing read/probe tools for uncertain assumptions. Repair demonstrated contract defects; otherwise resubmit unchanged to acknowledge legitimate missing-feature red without a second unchanged readiness run. Failures can mask later cases; do not promise all fixtures are correct.
+    Inspect the required implementation edits, not arbitrary request wording. If a required edit cannot be avoided and touches a path protected by the current contract, end with `submit` containing only `blocked: {paths: ["relative/path"], reason: "why the requested change requires this edit"}`. A blocked report is not authorization, writes no new Intent or approval, and starts no Build. Do not offer conditional readiness or suggest a protected-edit approval. Otherwise submit either `questions` or `files`, not both. If Kogen reports problems with a submission, fix them and submit again. Accounted baseline failures remain valid, but Kogen returns their actual observations before completion: inspect whether fixtures, inputs and commands reached intended behavior, using existing read/probe tools for uncertain assumptions. Repair demonstrated contract defects. #{Readiness.acknowledgment_guidance()} Failures can mask later cases; do not promise all fixtures are correct.
     """
   end
 end
