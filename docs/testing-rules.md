@@ -20,6 +20,10 @@ Use this table. Use the narrowest test that exercises the rule. Add another laye
 | A refactor without behavior changes | The existing behavior tests pass unchanged. Add a test only for an identified gap. |
 | Copy, styling or documentation | Verify the changed output or appearance. No unit test unless executable behavior changes. |
 
+Native Kogen Build and review tools return text only. Reading an image file, printing its path or base64, or successfully capturing a screenshot does not deliver pixels to the model. Do not claim to have viewed or visually approved a PNG from those results.
+
+For programmatic UI evidence, exercise the actual browser DOM and interactions, and inspect accessible text, computed styles and layout measurements at the required viewports. Keep required real-browser behavior checks and requested artifact exports. Image exports are for a human or outside agent with pixel input to inspect; a saved capture or textual measurements do not complete a required pixel review. Report what was actually checked and what still needs outside pixel inspection. This guidance does not add image input or a browser tool to Kogen.
+
 Layers used in an Intent's `## Tests` section: `unit`, `integration`, `scenario`, `regression`, `existing` (an existing test already covers the rule).
 
 ## 3. Derive the cases from the contract
