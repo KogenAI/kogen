@@ -8,7 +8,8 @@ defmodule Kogen.Config do
             acceptance_run: nil,
             steps_dir: nil,
             protect: [],
-            models: %{}
+            models: %{},
+            shape_workers: %{enabled: false}
 
   @path ".kogen/project.yaml"
   def path, do: @path
@@ -142,6 +143,10 @@ defmodule Kogen.Config do
             {p, list} = strings(node, "protect")
             {p ++ probs, %{c | protect: list}}
 
+          "shape_workers" ->
+            {p, workers} = workers(node)
+            {p ++ probs, %{c | shape_workers: workers}}
+
           "models" ->
             {p, models} = models(node)
             {p ++ probs, %{c | models: models}}
@@ -266,6 +271,47 @@ defmodule Kogen.Config do
   end
 
   defp models(node), do: {[{line(node), "models must be a mapping"}], @default_models}
+
+  defp workers({:map, line, pairs}) do
+    {problems, result} =
+      Enum.reduce(pairs, {[], %{enabled: false}}, fn
+        {"enabled", _, {:scalar, _, value, :plain}}, {p, w}
+        when value in [true, false, "true", "false"] ->
+          {p, Map.put(w, :enabled, value in [true, "true"])}
+
+        {"enabled", l, _}, {p, w} ->
+          {[{l, "shape_workers.enabled must be a Boolean"} | p], w}
+
+        {role, l, node}, {p, w} when role in ~w(read probe draft) ->
+          case node do
+            {:map, _, kv} ->
+              m = string_at(kv, "model")
+              e = string_at(kv, "effort")
+
+              if is_binary(m) and String.trim(m) != "" and is_binary(e) and String.trim(e) != "" and
+                   Enum.all?(kv, fn {k, _, _} -> k in ~w(model effort) end),
+                 do: {p, Map.put(w, role, %{model: m, effort: e})},
+                 else: {[{l, "shape_workers.#{role} must be {model, effort} strings"} | p], w}
+
+            _ ->
+              {[{l, "shape_workers.#{role} must be {model, effort} strings"} | p], w}
+          end
+
+        {key, l, _}, {p, w} ->
+          {[{l, "unknown key #{key}"} | p], w}
+      end)
+
+    missing =
+      if result.enabled,
+        do: Enum.reject(~w(read probe draft), &Map.has_key?(result, &1)),
+        else: []
+
+    {problems ++
+       Enum.map(missing, &{line, "shape_workers.#{&1} requires explicit model and effort"}),
+     result}
+  end
+
+  defp workers(node), do: {[{line(node), "shape_workers must be a mapping"}], %{enabled: false}}
 
   defp strings({:seq, _, items}, name) do
     Enum.reduce(items, {[], []}, fn

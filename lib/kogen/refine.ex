@@ -98,6 +98,7 @@ defmodule Kogen.Refine do
 
       originals = Map.new(files, &{&1, File.read!(Path.join(root, &1))})
       File.mkdir_p!(evidence)
+      Kogen.ShapeEvidence.start(evidence)
       Bridge.progress("kogen: refinement evidence: #{evidence}")
       File.write!(Path.join(evidence, "request.md"), request)
       if approval, do: File.write!(Path.join(evidence, "original-approval.json"), approval)
@@ -125,13 +126,65 @@ defmodule Kogen.Refine do
         Git.ok!(root, ["clone", "--quiet", "--shared", "--no-checkout", "--", root, scratch])
         Tools.copy_tree(root, scratch)
         Git.ok!(scratch, ["read-tree", tree])
-        original_ready = Readiness.check!(scratch, slug, config)
+        freeze!(state)
+        cached = Readiness.cached(root, slug, config)
+
+        if cached do
+          File.cp!(
+            Path.join(root, ".kogen/local/readiness/#{slug}.json"),
+            Path.join(evidence, "retained-original-readiness.json")
+          )
+        end
+
+        before_counts =
+          Map.new(~w(setup acceptance quint), &{&1, Kogen.ShapeEvidence.count_value(&1)})
+
+        original_ready =
+          try do
+            cached ||
+              Kogen.ShapeEvidence.timed("readiness", fn ->
+                Readiness.check!(scratch, slug, config)
+              end)
+          after
+            counts =
+              Map.new(before_counts, fn {k, n} -> {k, Kogen.ShapeEvidence.count_value(k) - n} end)
+
+            File.write!(
+              Path.join(evidence, "original-readiness.json"),
+              JSON.encode!(%{
+                event: "original_readiness",
+                status: if(cached, do: "hit", else: "miss"),
+                reason:
+                  if(cached,
+                    do: "valid complete version2 protected-baseline/HEAD evidence",
+                    else: "no valid complete version2 evidence; normal scratch path"
+                  ),
+                source: if(cached, do: "retained", else: "scratch"),
+                baseline: expected,
+                head: head,
+                reference:
+                  if(cached,
+                    do: "retained-original-readiness.json",
+                    else: "original-observations.txt"
+                  ),
+                setup_executions: counts["setup"],
+                acceptance_executions: counts["acceptance"],
+                model_executions: counts["quint"],
+                avoided: %{setup: nil, acceptance: nil, model: nil, source_wall_ms: nil}
+              })
+            )
+          end
 
         if Snapshot.tree(scratch, head, []) != tree,
           do:
             constraint!(
               "Readiness changed project files; preserve the draft and resolve that before refining."
             )
+
+        File.write!(
+          Path.join(evidence, "original-readiness-observations.json"),
+          JSON.encode!(Map.drop(original_ready, [:intent]))
+        )
 
         original_reference = Path.join(evidence, "original-observations.txt")
         original_observations = Readiness.observations(slug, original_ready, original_reference)
@@ -181,6 +234,7 @@ defmodule Kogen.Refine do
           result!(state, "interrupted", %{signal: signal})
           throw({:cancel, signal})
       after
+        Kogen.ShapeEvidence.finish()
         File.rm_rf(scratch)
       end
     after
@@ -350,7 +404,48 @@ defmodule Kogen.Refine do
     freeze!(s)
     Bridge.progress("kogen: refining #{s.slug} #{role.model}/#{role.effort}")
     started = System.monotonic_time(:millisecond)
-    response = ChatGPT.respond(role, instructions(), input, tools)
+
+    manifest =
+      Enum.map(Enum.sort(s.originals), fn {p, c} ->
+        %{
+          path: p,
+          revision: %{head: s.head, tree: s.tree},
+          sha256: Kogen.ShapeContext.hash(c),
+          source: Path.join([s.evidence, "original", p]),
+          proposed:
+            if(Map.has_key?(s.proposed, p),
+              do: %{
+                sha256: Kogen.ShapeContext.hash(File.read!(Path.join(s.scratch, p))),
+                source: Path.join(s.scratch, p),
+                submitted_sha256: Kogen.ShapeContext.hash(s.proposed[p])
+              },
+              else: nil
+            )
+        }
+      end)
+
+    input =
+      input ++
+        [
+          %{
+            "role" => "user",
+            "content" => "Cumulative proposal/original manifest: " <> JSON.encode!(manifest)
+          }
+        ]
+
+    Kogen.ShapeContext.measure(input, manifest)
+
+    response =
+      Kogen.ShapeEvidence.provider(
+        "shape",
+        nil,
+        %{head: s.head, tree: s.tree},
+        "targeted refinement",
+        role,
+        fn ->
+          ChatGPT.respond(role, instructions() <> Kogen.ShapeContext.guidance(), input, tools)
+        end
+      )
 
     Bridge.progress(
       "kogen: refinement response #{Usage.line(response.usage)} wall_ms=#{System.monotonic_time(:millisecond) - started}"
@@ -367,9 +462,22 @@ defmodule Kogen.Refine do
 
         {text, next, s} =
           cond do
-            outcome != nil -> {"ignored: only one submission counts", outcome, s}
-            call["name"] == "submit_refinement" -> submit(s, Shape.decode(call))
-            true -> {Tools.run(call["name"], Shape.decode(call), ctx) |> Tools.cut(), nil, s}
+            outcome != nil ->
+              {"ignored: only one submission counts", outcome, s}
+
+            call["name"] == "submit_refinement" ->
+              submit(s, Shape.decode(call))
+
+            true ->
+              text =
+                if call["name"] == "probe",
+                  do:
+                    Kogen.ShapeEvidence.probe(fn ->
+                      Tools.run(call["name"], Shape.decode(call), ctx)
+                    end),
+                  else: Tools.run(call["name"], Shape.decode(call), ctx)
+
+              {text, nil, s}
           end
 
         {outputs ++ [Shape.output(call, text)], next, s}
@@ -484,7 +592,15 @@ defmodule Kogen.Refine do
         acknowledged = Readiness.current?(s.scratch, s.slug, s.config, s.observed)
 
         ready =
-          if acknowledged, do: s.observed, else: Readiness.check!(s.scratch, s.slug, s.config)
+          if acknowledged do
+            s.observed
+          else
+            File.rm(Path.join(s.scratch, ".kogen/local/setup.json"))
+
+            Kogen.ShapeEvidence.timed("readiness", fn ->
+              Readiness.check!(s.scratch, s.slug, s.config)
+            end)
+          end
 
         if Snapshot.tree(s.scratch, s.head, []) != tree,
           do:
@@ -552,19 +668,38 @@ defmodule Kogen.Refine do
       )
 
   defp context(s, request) do
+    {selected, _} =
+      Kogen.ShapeContext.index(s.root, s.slug, s.config, request, s.originals,
+        owned: s.allowed,
+        original_dir: Path.join(s.evidence, "original"),
+        full_paths: [
+          "README.md"
+          | Enum.filter(
+              Map.keys(s.originals),
+              &String.ends_with?(&1, ["intent.md", "acceptance.feature", "model.qnt"])
+            )
+        ]
+      )
+
     """
+    #{selected}
+    Full contract inclusions: original Intent prose, Gherkin and declared model preserve exact authority, irrespective of excerpt budget.
+
     # Correction requested
     #{request}
-    # Original ready package (full contents)
+    # Original authoritative contracts (full contents; other Acceptance sources are indexed above)
     Within this run, omitted paths retain earlier well-formed proposals; paths never proposed retain these original bytes. Submit original content explicitly to revert a proposal. Nothing is published until the complete accumulated candidate is ready.
-    #{Enum.map_join(s.originals, "\n", fn {path, content} -> "--- #{path}\n#{content}" end)}
+    #{Enum.map_join(Enum.sort(s.originals), "\n", fn {path, content} -> if String.ends_with?(path, ["intent.md", "acceptance.feature", "model.qnt"]), do: "--- #{path}\n#{content}", else: "" end)}
     # Original baseline observations
+    Exact retained readiness result: #{Path.join(s.evidence, "original-readiness-observations.json")}
     #{s.original_observations}
     # Exclusively owned editable files
     #{Enum.join(s.allowed, "\n")}
     # Protection and commands
     Configured protected files: #{inspect(Intent.protected(s.root, s.config))}
     No config, protected, shared or other Intent files may change. Existing Acceptance paths and model presence/path must remain unchanged.
+    Setup: #{inspect(s.config.setup)}
+    Checks: #{inspect(s.config.checks)}
     Fixers: #{inspect(s.config.fix)}
     Acceptance: #{s.config.acceptance_run}
     # Project README

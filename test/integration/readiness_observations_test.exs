@@ -333,14 +333,14 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     assert File.read!(Path.join(context.repo, intent)) == corrected_intent
     assert File.read!(Path.join(context.repo, feature)) == changed_feature
     assert File.read!(Path.join(context.repo, step)) == changed_step
-    assert executions(context) - count == 3
+    assert executions(context) - count == 2
     assert File.read!(String.trim(index_path)) == index
     refute File.exists?(Intent.approval_path(context.repo, "fixture"))
     feedback = FakeProvider.tool_outputs(context.server) |> Enum.join("\n")
     assert feedback =~ "unique refinement red observation"
     {card, 5} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
     assert card =~ "unique refinement red observation"
-    assert executions(context) - count == 3
+    assert executions(context) - count == 2
   end
 
   test "SHP-11 unchanged red from initial context acknowledges its existing check", %{

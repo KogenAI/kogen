@@ -89,7 +89,8 @@ defmodule Kogen.Readiness do
     for {cmd, i} <- Enum.with_index(setup, 1) do
       Bridge.progress("kogen: running setup-#{i}: #{cmd}")
       Run.log(run, %{"event" => "command", "name" => "setup-#{i}", "command" => cmd})
-      r = Bridge.exec(cmd, root)
+      Kogen.ShapeEvidence.count("setup")
+      r = Kogen.ShapeEvidence.timed("setup", fn -> Bridge.exec(cmd, root) end)
 
       Run.log(run, %{
         "event" => "command_result",

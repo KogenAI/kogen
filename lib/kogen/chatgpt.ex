@@ -395,7 +395,7 @@ defmodule Kogen.ChatGPT do
   effort. Returns `%{items: [...], usage: %{...}}`; raises `Kogen.Error` (class `provider`) on a
   provider failure, with reason `context_too_long` when the conversation no longer fits.
   """
-  def respond(%{model: model, effort: effort}, instructions, input, tools) do
+  def respond(%{model: model, effort: effort}, instructions, input, tools, opts \\ []) do
     body =
       %{
         "model" => model,
@@ -410,7 +410,32 @@ defmodule Kogen.ChatGPT do
       end)
       |> JSON.encode!()
 
-    attempt(body, model, 1, false, false)
+    if Keyword.get(opts, :single_attempt, false) do
+      case stream(body, access_token()) do
+        {:ok, result} ->
+          result
+
+        {:error, error} ->
+          classify(error, model)
+
+        {:unauthorized, error} ->
+          login_rejected!(diagnostics(error))
+
+        {:transient, %{detail: detail, provider_failure: diagnostics}} ->
+          raise with_diagnostics(
+                  %Error{class: "provider", reason: "unavailable", detail: detail, exit: 4},
+                  diagnostics
+                )
+
+        {:transient, detail} ->
+          Error.raise!("provider", "unavailable", detail, 4)
+
+        {:invalid, detail} ->
+          Error.raise!("provider", "invalid_response", detail, 4)
+      end
+    else
+      attempt(body, model, 1, false, false)
+    end
   end
 
   defp attempt(body, model, n, refreshed, retried_invalid) do
@@ -559,7 +584,10 @@ defmodule Kogen.ChatGPT do
 
   defp reset_text(t) when is_binary(t), do: "; it resets at " <> t
 
-  defp stream(body, token) do
+  defp stream(body, token),
+    do: Kogen.ShapeEvidence.transport(fn -> stream_request(body, token) end)
+
+  defp stream_request(body, token) do
     url = String.to_charlist(api_base() <> "/responses")
 
     headers = [
@@ -608,8 +636,18 @@ defmodule Kogen.ChatGPT do
 
   defp finish(acc) do
     items = acc.items |> Enum.sort() |> Enum.map(&elem(&1, 1))
-    {:ok, %{items: items, usage: usage(acc.usage)}}
+    {:ok, %{items: items, usage: usage(acc.usage), known_usage: known_usage(acc.usage)}}
   end
+
+  defp known_usage(nil), do: %{input: nil, cached: nil, output: nil, reasoning: nil}
+
+  defp known_usage(u),
+    do: %{
+      input: u["input_tokens"],
+      cached: get_in(u, ["input_tokens_details", "cached_tokens"]),
+      output: u["output_tokens"],
+      reasoning: get_in(u, ["output_tokens_details", "reasoning_tokens"])
+    }
 
   defp usage(u) do
     u = u || %{}

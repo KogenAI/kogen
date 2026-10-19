@@ -13,6 +13,7 @@ defmodule Kogen.Checks do
   `problems` is empty only when every expected scenario passed exactly once and the command exited 0.
   """
   def acceptance(root, %Intent{} = intent, command, report, opts \\ []) do
+    Kogen.ShapeEvidence.count("acceptance")
     {:ok, text} = File.read(Path.join(root, Intent.feature(intent.slug)))
     {:ok, expected} = Gherkin.parse(text)
     File.rm(report)
@@ -376,6 +377,7 @@ defmodule Kogen.Checks do
           "node" => node
         })
 
+        Kogen.ShapeEvidence.count("quint")
         r = Bridge.exec(q.(args), root)
 
         Run.log(opts[:run], %{

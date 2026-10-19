@@ -45,8 +45,8 @@ Feature: Shaping
     And the fake ChatGPT server received 3 requests
 
   @SHP-11 @CLI-1 @model:shaping
-  Scenario: A targeted correction preserves unchanged artifacts and still requires approval
-    Given the Intent "is-even" from fixture "is-even" is shaped
+  Scenario: A targeted correction reuses exact original evidence and still requires approval
+    Given the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "refine-title"
     When the caller refines "is-even" with its current baseline and stdin:
       """
@@ -59,6 +59,7 @@ Feature: Shaping
     And the file "features/steps/is_even_steps.js" is unchanged
     And the file ".kogen/local/approvals/is-even.json" does not exist
     And request 1 offers exactly the tools "read_file, list_files, search_text, probe, submit_refinement"
+    And the original refinement readiness receipt has status "hit"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 5
     And stdout contains "intent/not_approved"

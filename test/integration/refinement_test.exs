@@ -210,6 +210,21 @@ defmodule Kogen.Integration.RefinementTest do
     script!(context, [submission([%{"path" => path, "content" => updated}])])
     {output, status} = refine(context)
     assert status == 0, output
+
+    [receipt_path] =
+      Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/original-readiness.json"))
+
+    receipt = receipt_path |> File.read!() |> JSON.decode!()
+    assert receipt["status"] == "hit"
+    assert receipt["source"] == "retained"
+    assert receipt["setup_executions"] == 0
+    assert receipt["acceptance_executions"] == 0
+    assert receipt["model_executions"] == 0
+    retained = Path.join(Path.dirname(receipt_path), receipt["reference"])
+    retained_original = retained |> File.read!() |> JSON.decode!()
+    assert retained_original["sha256"] == receipt["baseline"]
+    assert retained_original["head"] == receipt["head"]
+    refute retained_original["sha256"] == hash(context)
     assert output =~ "refined fixture"
     assert package(context) == Map.put(before, path, updated)
     evidence_path = Path.join(context.repo, ".kogen/local/readiness/fixture.json")
@@ -625,27 +640,32 @@ defmodule Kogen.Integration.RefinementTest do
   test "SHP-11 interruption during a probe preserves the ready package and retained evidence", %{
     suite: suite
   } do
-    context = fixture!(suite)
-    before = package(context)
-    marker = Path.join(context.root, "probe-started")
-    script!(context, [{:function, "probe", %{"command" => "touch '#{marker}' && sleep 10"}}])
+    for {signal, expected} <- [{"INT", 130}, {"TERM", 143}, {"HUP", 129}] do
+      context = fixture!(suite)
+      before = package(context)
+      marker = Path.join(context.root, "probe-started")
+      script!(context, [{:function, "probe", %{"command" => "touch '#{marker}' && sleep 10"}}])
 
-    port =
-      Helpers.start_kogen(context, [
-        "intent",
-        "refine",
-        "fixture",
-        hash(context),
-        request!(context)
-      ])
+      port =
+        Helpers.start_kogen(context, [
+          "intent",
+          "refine",
+          "fixture",
+          hash(context),
+          request!(context)
+        ])
 
-    Helpers.wait_for_file!(marker)
-    Helpers.signal!(context, port, "INT")
-    {_output, status} = Helpers.await_exit(port, "", 20_000)
-    assert status == 130
-    assert package(context) == before
-    [evidence] = Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/result.json"))
-    assert File.read!(evidence) =~ "interrupted"
+      Helpers.wait_for_file!(marker)
+      Helpers.signal!(context, port, signal)
+      {_output, status} = Helpers.await_exit(port, "", 20_000)
+      assert status == expected
+      assert package(context) == before
+
+      [evidence] =
+        Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/result.json"))
+
+      assert File.read!(evidence) =~ "interrupted"
+    end
   end
 
   test "a runner failure after passing scenarios never supplies reusable readiness", %{

@@ -1039,6 +1039,12 @@ async function dispatch(world, pattern, values, attachment) {
     world.lastResult = approved;
     return;
   }
+  if (label.startsWith('the original refinement readiness receipt has status ')) {
+    const base = path.join(world.project, '.kogen/local/refinements');
+    const receipts = fs.readdirSync(base).map(id => path.join(base, id, 'original-readiness.json')).filter(p => fs.existsSync(p)).map(p => JSON.parse(fs.readFileSync(p, 'utf8')));
+    assert.ok(receipts.some(r => r.status === args[0] && r.source === 'retained' && r.setup_executions === 0 && r.acceptance_executions === 0 && r.model_executions === 0));
+    return;
+  }
   if (label.startsWith('the caller refines ')) {
     const slug = args[0];
     await runProduct(world, `kogen intent refine ${slug} ${baselineHash(world, slug)} -`, { cwd: world.project, stdin: String(attachment ?? '') });

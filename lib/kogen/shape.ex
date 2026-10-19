@@ -8,52 +8,62 @@ defmodule Kogen.Shape do
 
   def run(project, slug, input, input_path \\ nil) do
     root = Git.root!(project)
-    config = Config.load!(root)
+    Kogen.ShapeEvidence.start(Path.join(root, ".kogen/local/shaping/#{slug}"))
 
-    if config.acceptance_run == nil or config.steps_dir == nil,
-      do:
+    try do
+      config = Config.load!(root)
+
+      if config.acceptance_run == nil or config.steps_dir == nil,
+        do:
+          Error.raise!(
+            "environment",
+            "acceptance_unconfigured",
+            "set commands.acceptance in .kogen/project.yaml",
+            3
+          )
+
+      Readiness.tools!(root, config)
+      ChatGPT.require_login!()
+      state_dir = Path.join(root, ".kogen/local/shaping/#{slug}")
+      state = read_state(state_dir)
+
+      if path = untracked_request_path(root, input_path),
+        do: Bridge.puts("note: #{path} is untracked; commit or move it before kogen intent build")
+
+      if state == nil and File.exists?(Path.join(root, Intent.dir(slug))) do
         Error.raise!(
-          "environment",
-          "acceptance_unconfigured",
-          "set commands.acceptance in .kogen/project.yaml",
-          3
+          "intent",
+          "exists",
+          "#{slug} is already shaped; edit its files, or delete .kogen/intents/#{slug}/ and shape again",
+          5
         )
-
-    Readiness.tools!(root, config)
-    ChatGPT.require_login!()
-    state_dir = Path.join(root, ".kogen/local/shaping/#{slug}")
-    state = read_state(state_dir)
-
-    if path = untracked_request_path(root, input_path),
-      do: Bridge.puts("note: #{path} is untracked; commit or move it before kogen intent build")
-
-    if state == nil and File.exists?(Path.join(root, Intent.dir(slug))) do
-      Error.raise!(
-        "intent",
-        "exists",
-        "#{slug} is already shaped; edit its files, or delete .kogen/intents/#{slug}/ and shape again",
-        5
-      )
-    end
-
-    state =
-      case state do
-        nil -> %{"request" => input, "rounds" => []}
-        pending -> answer(pending, input)
       end
 
-    case unanswered(state) do
-      [] ->
-        if config.checks == [],
-          do: Bridge.progress("warning: commands.checks is empty; Builds will not run your tests")
+      state =
+        case state do
+          nil -> %{"request" => input, "rounds" => []}
+          pending -> answer(pending, input)
+        end
 
-        Readiness.setup!(root, config, nil, reuse: true)
-        Readiness.runner!(root, config)
-        shape(root, slug, config, state, state_dir, input_path)
+      case unanswered(state) do
+        [] ->
+          if config.checks == [],
+            do:
+              Bridge.progress("warning: commands.checks is empty; Builds will not run your tests")
 
-      missing ->
-        save_state(state_dir, state)
-        print_questions(slug, missing)
+          Kogen.ShapeEvidence.timed("setup", fn ->
+            Readiness.setup!(root, config, nil, reuse: true)
+          end)
+
+          Kogen.ShapeEvidence.timed("preparation", fn -> Readiness.runner!(root, config) end)
+          shape(root, slug, config, state, state_dir, input_path)
+
+        missing ->
+          save_state(state_dir, state)
+          print_questions(slug, missing)
+      end
+    after
+      Kogen.ShapeEvidence.finish()
     end
   end
 
@@ -220,7 +230,12 @@ defmodule Kogen.Shape do
   defp shape(root, slug, config, state, state_dir, input_path) do
     role = config.models["shape"]
     t0 = System.monotonic_time(:millisecond)
-    tools = Tools.defs(~w(read_file list_files search_text probe)) ++ [submit_def()]
+
+    tools =
+      Tools.defs(~w(read_file list_files search_text probe)) ++
+        [submit_def()] ++
+        if(config.shape_workers.enabled, do: [Kogen.ShapeBatch.definition()], else: [])
+
     protected_paths = Intent.protected(root, config)
 
     input = [
@@ -280,7 +295,7 @@ defmodule Kogen.Shape do
 
       :ready ->
         Readiness.record_pass!(root, slug, config, sh.ready)
-        File.rm_rf!(state_dir)
+        File.rm(Path.join(state_dir, "state.json"))
         new_paths = for {p, :absent} <- sh.originals, do: p
         print_ready(root, slug, sh.ready, new_paths, usage_line)
     end
@@ -315,7 +330,63 @@ defmodule Kogen.Shape do
     sh = Map.update(sh, :requests, 1, &(&1 + 1))
     Bridge.progress("kogen: shaping (request #{sh.requests}, #{elapsed_seconds(sh)} s)")
     t0 = System.monotonic_time(:millisecond)
-    resp = ChatGPT.respond(sh.role, instructions(), input, sh.tools)
+
+    manifest =
+      Enum.map(Enum.sort(sh.proposed), fn {p, c} ->
+        destination = Path.join([sh.root, ".kogen/local/shaping", sh.slug, "proposed", p])
+        File.mkdir_p!(Path.dirname(destination))
+        File.write!(destination, c)
+
+        %{
+          path: p,
+          sha256: Kogen.ShapeContext.hash(c),
+          source: destination,
+          revision: Kogen.ShapeContext.revision(sh.root)
+        }
+      end)
+
+    originals =
+      Enum.map(Enum.sort(sh.originals), fn {p, c} ->
+        if c == :absent do
+          %{path: p, source: "original absence", sha256: nil}
+        else
+          destination = Path.join([sh.root, ".kogen/local/shaping", sh.slug, "original", p])
+          File.mkdir_p!(Path.dirname(destination))
+          File.write!(destination, c)
+          %{path: p, source: destination, sha256: Kogen.ShapeContext.hash(c)}
+        end
+      end)
+
+    manifest = %{proposed: manifest, originals: originals}
+
+    input =
+      input ++
+        [
+          %{
+            "role" => "user",
+            "content" => "Cumulative proposal manifest: " <> JSON.encode!(manifest)
+          }
+        ]
+
+    Kogen.ShapeContext.measure(input, manifest)
+
+    resp =
+      Kogen.ShapeEvidence.provider(
+        "shape",
+        nil,
+        Kogen.ShapeContext.revision(sh.root),
+        "main shaping",
+        sh.role,
+        fn ->
+          ChatGPT.respond(
+            sh.role,
+            instructions() <> Kogen.ShapeContext.guidance(),
+            input,
+            sh.tools
+          )
+        end
+      )
+
     wall = System.monotonic_time(:millisecond) - t0
     progress(sh, "kogen: shape response #{Usage.line(resp.usage)} wall_ms=#{wall}")
     usage = Usage.add(usage, resp.usage)
@@ -329,6 +400,14 @@ defmodule Kogen.Shape do
           result != nil ->
             {outs ++ [output(call, "ignored: only one submit counts per response")], result, sh}
 
+          call["name"] == "shape_batch" and sh.config.shape_workers.enabled ->
+            result =
+              if Map.get(sh, :batch_used, false),
+                do: %{status: "refused", reason: "one batch per conversation", jobs: []},
+                else: Kogen.ShapeBatch.run(decode(call), sh)
+
+            {outs ++ [output(call, JSON.encode!(result))], nil, Map.put(sh, :batch_used, true)}
+
           call["name"] == "submit" ->
             {text, result, sh} = submit(decode(call), sh)
             {outs ++ [output(call, text)], result, sh}
@@ -337,7 +416,11 @@ defmodule Kogen.Shape do
             if call["name"] == "probe",
               do: progress(sh, "kogen: probe: #{decode(call)["command"]}")
 
-            tool_result = Tools.run(call["name"], decode(call), ctx)
+            tool_result =
+              if call["name"] == "probe",
+                do:
+                  Kogen.ShapeEvidence.probe(fn -> Tools.run(call["name"], decode(call), ctx) end),
+                else: Tools.run(call["name"], decode(call), ctx)
 
             if call["name"] == "probe" do
               summary =
@@ -352,7 +435,7 @@ defmodule Kogen.Shape do
               progress(sh, "kogen: probe result: #{summary}")
             end
 
-            {outs ++ [output(call, Tools.cut(tool_result))], nil, sh}
+            {outs ++ [output(call, tool_result)], nil, sh}
         end
       end)
 
@@ -487,11 +570,20 @@ defmodule Kogen.Shape do
       if Readiness.current?(sh.root, sh.slug, sh.config, sh.ready) do
         {"accepted: unchanged checked observations acknowledged", :ready, sh}
       else
-        ready = Readiness.check!(sh.root, sh.slug, sh.config)
+        ready =
+          Kogen.ShapeEvidence.timed("readiness", fn ->
+            Readiness.check!(sh.root, sh.slug, sh.config)
+          end)
+
         sh = %{sh | ready: ready}
 
+        reference =
+          Path.join([sh.root, ".kogen/local/shaping", sh.slug, "observations-#{sh.requests}.txt"])
+
+        File.write!(reference, Readiness.observations(sh.slug, ready, reference))
+
         if Readiness.failures?(ready),
-          do: {Readiness.acknowledgment(sh.slug, ready), :observations, sh},
+          do: {Readiness.acknowledgment(sh.slug, ready, reference), :observations, sh},
           else: {"accepted: the Intent is ready", :ready, sh}
       end
     rescue
@@ -796,7 +888,7 @@ defmodule Kogen.Shape do
   # ---- Prompt (SHP-3) ----
 
   defp context(root, slug, config, state, protected_paths) do
-    files = Git.ok!(root, ["ls-files"])
+    {selected, _} = Kogen.ShapeContext.index(root, slug, config, state["request"])
     steps_dir = config.steps_dir
     baseline = Intent.baseline(root, slug, config)
 
@@ -808,17 +900,6 @@ defmodule Kogen.Shape do
         path == Config.path() or path in acceptance_paths or
           String.starts_with?(path, Intent.dir(slug) <> "/")
       end)
-
-    step_files =
-      if steps_dir do
-        Git.ok!(root, ["ls-files", "--cached", "--others", "--exclude-standard", "--", steps_dir])
-        |> String.split("\n", trim: true)
-        |> Enum.map_join("\n", fn p ->
-          "--- #{p}\n" <> (File.read(Path.join(root, p)) |> elem(1))
-        end)
-      else
-        ""
-      end
 
     rounds =
       Enum.with_index(state["rounds"], 1)
@@ -872,13 +953,8 @@ defmodule Kogen.Shape do
     automatic paths currently present or listed: #{inspect(automatic_baseline)}
     Approval freezes this baseline. It is not an exception or authorization to change a protected path. Inspect the implementation edits required to deliver the requested outcome; do not infer a conflict by scanning request prose. If a required protected edit cannot be avoided without changing the requested outcome, submit the exclusive `blocked` report with actual protected paths and a reason. Never submit a ready package conditional on a protected-edit approval mechanism: no such override exists.
 
-    # Existing step files under #{steps_dir}
-
-    #{if step_files == "", do: "(none)", else: step_files}
-
-    # Tracked files
-
-    #{files}
+    Full contract inclusions: exact request, Q&A, README, testing rules and protection/automatic baseline are authoritative and are not clipped.
+    #{selected}
     """
   end
 
