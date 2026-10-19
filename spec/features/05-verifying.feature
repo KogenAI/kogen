@@ -1,5 +1,7 @@
 Feature: Verifying and repair
-  Green comes only from fresh setup and executed checks on exact clean candidate inputs; failures go back to the builder;
+  Green comes only from fresh setup and all required executed checks on exact clean candidate inputs;
+  verification stops between items at the first red, naming later items as not run because an earlier item failed;
+  failures go back to the current repair owner;
   the approved acceptance baseline cannot be weakened.
 
   Background:

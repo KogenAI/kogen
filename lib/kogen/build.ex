@@ -637,44 +637,76 @@ defmodule Kogen.Build do
     report = Path.join(b.run.dir, "acceptance-#{n}.ndjson")
     scratch = Kogen.tmp_path("kogen-verify")
 
-    {acceptance, model, checks, scratch_moved} =
+    {evidence, not_run, scratch_moved} =
       try do
         input = Snapshot.materialize(b.root, before, scratch)
         File.mkdir_p!(Path.join(scratch, ".kogen/local"))
-        setup = clean_setup(b, scratch)
 
-        {acceptance, model, checks} =
-          if setup == [] do
-            acceptance =
-              Checks.acceptance(scratch, b.intent, b.config.acceptance_run, report, run: b.run)
+        items =
+          Enum.with_index(b.config.setup, 1)
+          |> Enum.map(fn {cmd, i} -> {"setup-#{i}", {:setup, cmd}} end)
 
-            model =
-              case b.model do
-                :none -> :none
-                m -> Checks.model(scratch, m, run: b.run)
+        items =
+          items ++
+            [{"acceptance", :acceptance}] ++
+            if(b.model == :none, do: [], else: [{"model", :model}]) ++
+            Enum.map(b.config.checks, fn {name, cmd} -> {name, {:check, cmd}} end)
+
+        {evidence, not_run} =
+          Enum.reduce(
+            items,
+            {%{
+               acceptance: :not_run,
+               model: if(b.model == :none, do: :none, else: :not_run),
+               checks: [],
+               setup: []
+             }, []},
+            fn {name, item}, {e, skipped} ->
+              if skipped != [] or e[:red] do
+                {e, skipped ++ [name]}
+              else
+                case item do
+                  :acceptance ->
+                    r =
+                      Checks.acceptance(scratch, b.intent, b.config.acceptance_run, report,
+                        run: b.run
+                      )
+
+                    {%{e | acceptance: r} |> Map.put(:red, r.problems != []), skipped}
+
+                  :model ->
+                    r = Checks.model(scratch, b.model, run: b.run)
+                    {%{e | model: r} |> Map.put(:red, match?({:failed, _}, r)), skipped}
+
+                  {kind, cmd} ->
+                    if kind == :setup do
+                      Bridge.progress("kogen: running #{name}: #{cmd}")
+                      Kogen.ShapeEvidence.count("setup")
+                    end
+
+                    r = verification_command(b, scratch, name, cmd)
+                    key = if kind == :setup, do: :setup, else: :checks
+                    {Map.update!(e, key, &(&1 ++ [r])) |> Map.put(:red, r.status != 0), skipped}
+                end
               end
+            end
+          )
 
-            checks =
-              for {name, cmd} <- b.config.checks, do: verification_command(b, scratch, name, cmd)
-
-            {acceptance, model, checks}
-          else
-            {%{problems: [], status: 0, scenarios: [], passed: 0}, :none, setup}
-          end
-
-        {acceptance, model, checks, Snapshot.mutations(scratch, input)}
+        {evidence, not_run, Snapshot.mutations(scratch, input)}
       after
         File.rm_rf!(scratch)
       end
+
+    %{acceptance: acceptance, model: model, checks: checks, setup: setup} = evidence
 
     baseline_intact!(b)
     after_tree = Snapshot.tree(b.root, b.start, b.excluded)
     moved = Enum.uniq(scratch_moved ++ Snapshot.changed(b.root, before, after_tree))
 
     failing =
-      if(acceptance.problems == [], do: [], else: ["acceptance"]) ++
+      if(is_map(acceptance) and acceptance.problems != [], do: ["acceptance"], else: []) ++
         if(match?({:failed, _}, model), do: ["model"], else: []) ++
-        for(c <- checks, c.status != 0, do: c.name)
+        for(c <- setup ++ checks, c.status != 0, do: c.name)
 
     pass = %{
       n: n,
@@ -683,9 +715,11 @@ defmodule Kogen.Build do
       acceptance: acceptance,
       model: model,
       checks: checks,
+      setup: setup,
+      not_run: not_run,
       moved: moved,
       failing: failing,
-      green: failing == [] and moved == []
+      green: not evidence.red and not_run == [] and failing == [] and moved == []
     }
 
     Bridge.progress(
@@ -694,7 +728,7 @@ defmodule Kogen.Build do
           pass.green -> "all checks passed"
           failing != [] -> "#{Enum.join(failing, ", ")} failed"
           true -> "files changed while the checks ran: #{Enum.join(moved, ", ")}"
-        end
+        end <> not_run_summary(not_run)
     )
 
     Run.log(b.run, %{
@@ -702,6 +736,7 @@ defmodule Kogen.Build do
       "pass" => n,
       "green" => pass.green,
       "failing" => failing,
+      "not_run" => not_run,
       "files_changed_while_checks_ran" => moved
     })
 
@@ -722,19 +757,15 @@ defmodule Kogen.Build do
     %{name: name, command: cmd, status: r.status, output: r.output}
   end
 
-  defp clean_setup(b, root) do
-    Enum.reduce_while(Enum.with_index(b.config.setup, 1), [], fn {cmd, i}, _ ->
-      Bridge.progress("kogen: running setup-#{i}: #{cmd}")
-      Kogen.ShapeEvidence.count("setup")
-      r = verification_command(b, root, "setup-#{i}", cmd)
-      if r.status == 0, do: {:cont, []}, else: {:halt, [r]}
-    end)
-  end
+  defp not_run_summary([]), do: ""
+
+  defp not_run_summary(names),
+    do: "; not run because an earlier item failed: " <> Enum.join(names, ", ")
 
   @doc false
   def pass_feedback(b, pass, completion \\ "finish") do
     acceptance =
-      if pass.acceptance.problems == [],
+      if pass.acceptance == :not_run or pass.acceptance.problems == [],
         do: [],
         else: [
           "acceptance (#{b.config.acceptance_run}): failed, exit status #{pass.acceptance.status}"
@@ -748,7 +779,7 @@ defmodule Kogen.Build do
       end
 
     checks =
-      for c <- pass.checks, c.status != 0 do
+      for c <- Map.get(pass, :setup, []) ++ pass.checks, c.status != 0 do
         "check #{c.name} (#{c.command}): failed, exit status #{c.status}\n" <>
           indent(Checks.tail(c.output, 60))
       end
@@ -762,7 +793,14 @@ defmodule Kogen.Build do
       [
         "Verification pass #{pass.n} is not green. Fix the implementation (the approved acceptance files cannot change), then call #{completion} again."
       ] ++
-        acceptance ++ model ++ checks ++ moved,
+        acceptance ++
+        model ++
+        checks ++
+        moved ++
+        if(Map.get(pass, :not_run, []) == [],
+          do: [],
+          else: [String.trim_leading(not_run_summary(pass.not_run), "; ")]
+        ),
       "\n"
     )
   end
@@ -1007,9 +1045,14 @@ defmodule Kogen.Build do
     still =
       if b.last_review && b.last_review.verdict != "approve", do: still ++ ["review"], else: still
 
+    not_run = if b.last_pass, do: Map.get(b.last_pass, :not_run, []), else: []
+
     edited = Snapshot.changed(b.root, b.start_tree, Snapshot.tree(b.root, b.start, b.excluded))
 
     if report do
+      if not_run != [],
+        do: Bridge.puts("  " <> String.trim_leading(not_run_summary(not_run), "; "))
+
       if still != [], do: Bridge.puts("  still failing: #{Enum.join(still, ", ")}")
       if edited != [], do: Bridge.puts("  edited: #{Enum.join(edited, ", ")}")
       Bridge.puts("  run log: #{b.run.log}")
@@ -1044,6 +1087,7 @@ defmodule Kogen.Build do
         "outcome" => outcome,
         "start_head" => b.start,
         "passes" => b.pass,
+        "not_run" => if(b.last_pass, do: Map.get(b.last_pass, :not_run, []), else: []),
         "reviews" => b.review,
         "repairs" => b.repairs,
         "usage" => b.usage,

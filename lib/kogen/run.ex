@@ -81,7 +81,10 @@ defmodule Kogen.Run do
       b.intent.root == b.root and b.intent.slug == b.slug and
       is_binary(b.intent.title) and is_binary(b.intent.text) and
       b.model == Kogen.Intent.model(b.intent) and b.model != nil and
-      valid_pass?(b.last_pass) and valid_review?(b.last_review) and
+      valid_pass?(b.last_pass) and
+      (b.last_pass == nil or not b.last_pass.green or
+         complete_pass?(b.last_pass, b.config, b.intent, b.model)) and
+      valid_review?(b.last_review) and
       is_map(b[:baseline_digests]) and is_list(b[:baseline]) and
       Kogen.Config.path() in b.baseline and
       Enum.all?(b.baseline, &(is_binary(&1) and Map.has_key?(b.baseline_digests, &1))) and
@@ -97,6 +100,8 @@ defmodule Kogen.Run do
             &(is_integer(usage[&1]) and usage[&1] >= 0)
           )
       end) and valid_continuation?(b[:continuation]) and
+      (not Map.has_key?(b.continuation, :pass) or not b.continuation.pass.green or
+         complete_pass?(b.continuation.pass, b.config, b.intent, b.model)) and
       (b.continuation.stage != :landed or
          (is_map(b.last_pass) and is_map(b.last_review) and b.last_pass.green and
             b.last_review.verdict == "approve" and b.last_review[:tree] == b.last_pass.tree)) and
@@ -112,14 +117,45 @@ defmodule Kogen.Run do
 
   defp valid_pass?(pass) do
     is_map(pass) and pass[:clean] == true and is_integer(pass[:n]) and is_boolean(pass[:green]) and
-      is_binary(pass[:tree]) and is_map(pass[:acceptance]) and
-      is_list(pass.acceptance[:scenarios]) and is_integer(pass.acceptance[:passed]) and
-      is_integer(pass.acceptance[:status]) and is_list(pass.acceptance[:problems]) and
+      is_binary(pass[:tree]) and
+      (pass[:acceptance] == :not_run or
+         (is_map(pass[:acceptance]) and is_list(pass.acceptance[:scenarios]) and
+            is_integer(pass.acceptance[:passed]) and is_integer(pass.acceptance[:status]) and
+            is_list(pass.acceptance[:problems]))) and
       Map.has_key?(pass, :model) and is_list(pass[:checks]) and
       Enum.all?(pass.checks, fn check ->
         is_map(check) and is_binary(check[:name]) and is_binary(check[:command]) and
           is_integer(check[:status]) and is_binary(check[:output])
-      end) and is_list(pass[:moved]) and is_list(pass[:failing])
+      end) and is_list(pass[:moved]) and is_list(pass[:failing]) and
+      (not Map.has_key?(pass, :not_run) or
+         (is_list(pass.not_run) and Enum.all?(pass.not_run, &is_binary/1)))
+  end
+
+  @doc false
+  def complete_pass?(pass, config, intent, model) do
+    with %{clean: true, green: true, moved: [], failing: [], acceptance: acceptance} <- pass,
+         true <- Map.get(pass, :not_run, []) == [],
+         %{status: 0, problems: [], scenarios: scenarios} <- acceptance,
+         {:ok, expected} <-
+           Kogen.Gherkin.parse(
+             File.read!(Path.join(intent.root, Kogen.Intent.feature(intent.slug)))
+           ) do
+      # Old clean passes recorded setup failures in checks, but no successful setup list.
+      Enum.map(scenarios, &{&1.line, &1.name, &1.status}) ==
+        Enum.map(expected, &{&1.line, &1.name, "passed"}) and
+        acceptance.passed == length(expected) and
+        pass.model == if(model == :none, do: :none, else: {:ok, []}) and
+        Enum.map(pass.checks, &{&1.name, &1.command, &1.status}) ==
+          Enum.map(config.checks, fn {name, cmd} -> {name, cmd, 0} end) and
+        ((not Map.has_key?(pass, :setup) and not Map.has_key?(pass, :not_run)) or
+           Enum.map(pass.setup, &{&1.name, &1.command, &1.status}) ==
+             Enum.with_index(config.setup, 1)
+             |> Enum.map(fn {cmd, i} -> {"setup-#{i}", cmd, 0} end))
+    else
+      _ -> false
+    end
+  rescue
+    _ -> false
   end
 
   defp valid_review?(nil), do: true

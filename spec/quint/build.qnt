@@ -71,10 +71,11 @@ module build {
     blockerWith(valid),
   }
 
-  // VER-6/7/9: fixers ran; now the checks. VER-8: a changed baseline stops the Build at once.
+  // VER-6/7/9: fixers ran; ordered items stop on first red. Partial means
+  // executed failure plus later not-run obligations, never a clean green version. VER-8: a changed baseline stops the Build at once.
   action verify = all {
     phase == Verifying,
-    nondet outcome = Set("green", "red", "mutated", "setup_failed", "workspace_only").oneOf()
+    nondet outcome = Set("green", "red", "mutated", "setup_failed", "partial", "workspace_only").oneOf()
     if (not(baselineIntact)) move(Failed, cand, cleanPassVersion, "baseline_changed")
     else if (outcome == "green") move(Reviewing, cand, cand, reason)            // REV-1
     else if (outcome == "mutated") move(Loop, cand + 1, cleanPassVersion, reason)
@@ -119,7 +120,7 @@ module build {
   }
 
   action finalVerify = all {
-    nondet outcome = Set("green", "red", "mutated", "setup_failed", "workspace_only").oneOf()
+    nondet outcome = Set("green", "red", "mutated", "setup_failed", "partial", "workspace_only").oneOf()
     finalVerifyWith(outcome),
   }
 
@@ -221,6 +222,12 @@ module build {
       .then(reviewWith("approve"))
       .then(commitWith("ok"))
       .expect(phase == Done and commits == 1 and committedVersion == 2)
+
+  // A stopped partial pass cannot authorize review/commit or replace prior clean evidence.
+  run partialFinalPassStaysWithReviewerTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
+      .then(finalVerifyWith("partial"))
+      .expect(phase == RepairingReview and cleanPassVersion == 2 and cand == 3 and commits == 0)
 
   run unresolvedReviewStopsTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewWith("changes"))
