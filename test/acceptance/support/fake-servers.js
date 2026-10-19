@@ -571,6 +571,7 @@ class FakeServers {
     const output = id => (record.body.input || []).some(item => item.type === 'function_call_output' && item.call_id === `call_${id}`);
     if (name === 'build-review-invalid-twice') return { items: [submit('invalid', [], `review_invalid_${ordinal}`)] };
     if (name === 'build-review-unresolved') {
+      if (record.text.includes('The caller explicitly resumed this blocked Build.')) return { items: [approve()] };
       return { items: [submit('changes', [{ path: 'calc.py', line: 1, severity: 'blocking', message: 'Required behavior cannot be repaired within the approved Intent.' }], 'review_blocked')] };
     }
     if (name === 'build-review-changes-then-fixed') {

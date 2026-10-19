@@ -727,6 +727,7 @@ function saveBuildStart(world, raw, cwd) {
 }
 
 async function runProduct(world, command, options = {}) {
+  if (command.includes('{build_id}')) command = command.replaceAll('{build_id}', resolveBuildId(world));
   const cwd = options.cwd || world.project || world.archiveDir || world.workspace;
   const shape = command.match(/^kogen\s+intent\s+shape\s+(\S+)/);
   if (shape) world.intentSlug = shape[1];

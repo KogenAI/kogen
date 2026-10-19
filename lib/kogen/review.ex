@@ -22,11 +22,61 @@ defmodule Kogen.Review do
   def resume(b, verify) do
     c = b.continuation
 
-    if c.stage == :review_verify do
-      evaluate(b, c.pass, c.session, verify, c.verdict, c.usage, c.input, c.tree)
-    else
-      finish(b, c.pass, c.session, verify)
+    cond do
+      c.stage == :review_retry_verify ->
+        retry_verification(b, c, verify)
+
+      c.stage == :review_verify and c.verdict.verdict == "changes" ->
+        # An explicit resume reopens the blocker, not its terminal verdict.
+        b = Build.track(%{b | last_review: %{b.last_review | verdict: "pending"}})
+        b = Build.save(b, Map.put(c, :stage, :review_retry_verify))
+        retry_verification(b, b.continuation, verify)
+
+      c.stage == :review_verify ->
+        evaluate(b, c.pass, c.session, verify, c.verdict, c.usage, c.input, c.tree)
+
+      true ->
+        finish(b, c.pass, c.session, verify)
     end
+  end
+
+  defp retry_verification(b, c, verify) do
+    {b, pass} = verify.(b)
+
+    attempts =
+      c.session.attempts ++
+        [
+          %{
+            pass: c.pass.n,
+            tree: c.tree,
+            verdict: c.verdict.verdict,
+            findings: c.verdict.findings
+          }
+        ]
+
+    feedback = """
+    The caller explicitly resumed this blocked Build. Continue as the same independent
+    reviewer for targeted clearance or scoped repair, not a new whole-change critique.
+    The original blocking finding remains unresolved until your new explicit decision:
+    #{JSON.encode!(c.verdict.findings)}
+    Earlier green evidence and approval do not clear this blocker. Fresh verification:
+    #{if pass.green, do: results(pass), else: Build.pass_feedback(b, pass, "submit_review")}
+    Use the actual results, including failures and unrun items. Do not infer an operator
+    explanation. Submit changes if unresolved, or explicitly approve after resolving it;
+    edits still require ordinary external exact verification before commit.
+    """
+
+    finish(
+      b,
+      pass,
+      %{
+        c.session
+        | input: c.input ++ [%{"role" => "user", "content" => feedback}],
+          usage: c.usage,
+          attempts: attempts
+      },
+      verify
+    )
   end
 
   defp finish(b, pass, session, verify) do
@@ -445,7 +495,7 @@ defmodule Kogen.Review do
 
   defp instructions do
     """
-    You review code that another model wrote to implement an approved Intent in this repository. Every check already passed. Perform one cohesive review and directly repair supported defects within that Intent using read_file, list_files, search_text, write_file and shell. You are a reviewer and fixer, not a source of serial suggestions for another builder. You do not see the builder's conversation.
+    You review code that another model wrote to implement an approved Intent in this repository. The initial independent review follows a green pass; continued targeted requests may instead contain fresh red or unrun results, which supersede earlier green evidence. Perform one cohesive review and directly repair supported defects within that Intent using read_file, list_files, search_text, write_file and shell. You are a reviewer and fixer, not a source of serial suggestions for another builder. You do not see the builder's conversation.
 
     Complete current source is already supplied for every changed/added file. New files appear once with their modes; the diff covers existing/deleted paths. Read other files only to fill a context gap, and batch independent lookups.
 

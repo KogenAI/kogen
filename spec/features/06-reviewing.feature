@@ -105,3 +105,15 @@ Feature: Reviewing
     And no builder request was sent after review began
     And the Build records 1 review stage and 1 verification pass
     And HEAD is unchanged
+
+  @LOOP-10 @REV-5 @REV-6 @REV-7 @model:build
+  Scenario: Explicit resume reopens the blocker under the saved independent reviewer
+    Given the fake ChatGPT server plays script "build-review-unresolved"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 1
+    And stdout contains "candidate/review_blocked"
+    When the caller runs "kogen intent resume {build_id}"
+    Then the exit code is 0
+    And no builder request was sent after review began
+    And stdout contains "review: approved"
+    And HEAD has 1 new commit

@@ -9,7 +9,7 @@
 // commit (landed), baseline_changed, head_moved, hook_changed_commit, commit_failed,
 // context_exhausted, review_invalid, review_blocked, build_blocked, provider, interrupted.
 module build {
-  type Phase = Loop | Verifying | Reviewing | RepairingReview | FinalVerifying | Committing | Done | Failed | Interrupted
+  type Phase = Loop | Verifying | RetryVerifying | Reviewing | RepairingReview | FinalVerifying | Committing | Done | Failed | Interrupted
 
   var stoppedPhase: Phase
   var phase: Phase
@@ -175,6 +175,52 @@ module build {
     move(stoppedPhase, cand, cleanPassVersion, ""),
   }
 
+  // Explicit blocked reopening invalidates both old approval and evidence.
+  action reopenBlocked = all {
+    phase == Failed, reason == "review_blocked",
+    baselineIntact, not(headMoved), commits == 0,
+    stoppedPhase' = phase, phase' = RetryVerifying,
+    cleanPassVersion' = -1, reviewedVersion' = -1, reason' = "",
+    rounds' = rounds, cand' = cand, invalidReviews' = invalidReviews,
+    baselineIntact' = baselineIntact, headMoved' = headMoved,
+    commits' = commits, committedVersion' = committedVersion,
+  }
+
+  action retryVerifyWith(outcome: str): bool = all {
+    phase == RetryVerifying,
+    if (not(baselineIntact)) move(Failed, cand, -1, "baseline_changed")
+    // Exact completed green retry evidence is reusable, but still needs a new decision.
+    else move(if (outcome == "green") Reviewing else RepairingReview, cand, if (outcome == "green") cand else -1, ""),
+  }
+
+  action retryVerify = all {
+    nondet outcome = Set("green", "red", "setup_failed", "partial").oneOf()
+    retryVerifyWith(outcome),
+  }
+
+  run blockedReopenInvalidatesApprovalTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewWith("approve"))
+      .then(move(RepairingReview, 2, 2, "")).then(reviewWith("changes"))
+      .then(reopenBlocked)
+      .expect(phase == RetryVerifying and reviewedVersion == -1 and cleanPassVersion == -1 and cand == 2)
+
+  run blockedFreshRedStillNeedsVerificationTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewWith("changes"))
+      .then(reopenBlocked).then(retryVerifyWith("red")).then(reviewWith("approve"))
+      .expect(phase == FinalVerifying and cleanPassVersion == -1 and commits == 0)
+
+  run blockedFreshGreenNeedsNewDecisionTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewWith("changes"))
+      .then(reopenBlocked).then(retryVerifyWith("green"))
+      .expect(phase == Reviewing and reviewedVersion == -1 and commits == 0)
+
+  run blockedFreshGreenNewApprovalCommitsTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewWith("changes"))
+      .then(reopenBlocked).then(retryVerifyWith("green")).then(reviewWith("approve"))
+      .expect(phase == Committing and reviewedVersion == 2 and cleanPassVersion == 2 and commits == 0)
+      .then(commitWith("ok"))
+      .expect(phase == Done and commits == 1)
+
   run resumeReviewerTest = init.then(move(Reviewing, 2, 2, ""))
     .then(move(Failed, 2, 2, "provider")).then(resume)
     .expect(phase == Reviewing and cleanPassVersion == 2 and cand == 2 and commits == 0)
@@ -182,7 +228,7 @@ module build {
   run resumeBuilderTest = init.then(move(Failed, 0, -1, "provider")).then(resume)
     .expect(phase == Loop and commits == 0)
 
-  action step = any { resume, modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
+  action step = any { reopenBlocked, retryVerify, resume, modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
 
   // ---- Invariants ----
   // GIT-3/6: a kept commit holds exactly the reviewed, green candidate; baseline intact; same HEAD.

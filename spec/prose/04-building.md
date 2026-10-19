@@ -45,7 +45,13 @@ uncertain tool or commit execution may be refused with inspection instructions.
 Checkpoint publication precedes requests and side effects and follows durable completion.
 Complete replay input includes tool results, not merely diagnostic log tails. Resume retains
 the phase and repair owner, including the same independent review conversation and external
-verification of repairs. Only completed exact clean green evidence need not run twice. Pre-repair version 1 workspace evidence is incompatible and refused; incomplete verification reruns fresh setup and checks under its saved repair owner. Each resumed
+verification of repairs. Only completed exact clean green evidence need not run twice, except when explicitly
+reopening `candidate/review_blocked`: that retry invalidates earlier approval/evidence,
+runs fresh setup and the ordinary fail-fast complete gate, and gives actual red/unrun or
+green results plus the original finding to the saved independent reviewer. It never
+restarts the builder or creates a new critic. Incomplete retry verification restarts setup;
+completed exact retry evidence survives a failed/interrupted provider request but cannot
+replace a new decision. Retained compatible version 2 checkpoints follow the same path. Pre-repair version 1 workspace evidence is incompatible and refused; incomplete verification reruns fresh setup and checks under its saved repair owner. Each resumed
 attempt has parent/root lineage and its own outcome; prior artifacts remain byte-for-byte.
 Known usage and counters accumulate; incomplete requests have unknown usage, never invented
 tokens. Measured request intervals exclude stopped downtime. Credentials and the caller's

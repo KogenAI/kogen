@@ -171,7 +171,7 @@ defmodule Kogen.Run do
     do: valid_input?(input) and (is_nil(finish) or is_map(finish))
 
   defp valid_continuation?(%{stage: stage, pass: pass, session: session} = c)
-       when stage in [:review, :review_verify] do
+       when stage in [:review, :review_verify, :review_retry_verify] do
     is_map(pass) and valid_pass?(pass) and
       is_map(session) and valid_input?(session[:input]) and is_list(session[:attempts]) and
       is_map(session[:role]) and is_binary(session.role[:model]) and

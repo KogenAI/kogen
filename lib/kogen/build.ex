@@ -193,7 +193,7 @@ defmodule Kogen.Build do
 
             loop(b, c.input ++ [output])
 
-          stage when stage in [:review, :review_verify] ->
+          stage when stage in [:review, :review_verify, :review_retry_verify] ->
             {:approve, b, pass, review} = Review.resume(b, &verify/1)
             commit(b, pass, review)
         end

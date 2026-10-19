@@ -104,6 +104,110 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     assert git_value!(context, ["show", "HEAD:app.txt"]) == "reviewer repair"
   end
 
+  for retry_outcome <- [:green, :setup_red] do
+    test "blocked #{retry_outcome} retry provider failure retains fresh evidence and the saved reviewer",
+         %{
+           suite: suite
+         } do
+      finding = %{
+        "path" => "app.txt",
+        "line" => 1,
+        "severity" => "blocking",
+        "message" => "Original unresolved requirement"
+      }
+
+      context =
+        fixture!(
+          suite,
+          Enum.take(build_script(), 2) ++
+            [
+              {:function, "submit_review", %{"verdict" => "changes", "findings" => [finding]}},
+              {:http, 400, %{"error" => %{"message" => "continued request failed"}}},
+              {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
+            ]
+        )
+
+      trace = Path.join(context.root, "retry-setup-trace")
+      red = Path.join(context.root, "retry-setup-red")
+      quote = &Kogen.Init.shell_quote/1
+
+      configure_startup!(
+        context,
+        "setup",
+        "echo setup >> #{quote.(trace)}; if test -f #{quote.(red)}; then echo retry-setup-failure; exit 23; fi",
+        false
+      )
+
+      {output, 1} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+      assert output =~ "review_blocked"
+      original_dir = Path.dirname(Helpers.run_log(context))
+      original = File.read!(Path.join(original_dir, "checkpoint.json"))
+
+      File.write!(trace, "")
+      if unquote(retry_outcome) == :setup_red, do: File.write!(red, "red")
+
+      {output, status} =
+        Helpers.run_kogen(context, ["intent", "resume", Path.basename(original_dir)])
+
+      assert status != 0, output
+
+      [child_dir] =
+        Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*")) -- [original_dir]
+
+      child_result = JSON.decode!(File.read!(Path.join(child_dir, "result.json")))
+      assert child_result["passes"] == 2
+      assert File.read!(trace) == "setup\n"
+      assert child_result["unknown_requests"] == 1
+      assert "review" in child_result["still_failing"]
+      child_checkpoint = File.read!(Path.join(child_dir, "checkpoint.json"))
+      assert {:ok, _, saved} = Kogen.Run.decode_checkpoint(child_checkpoint)
+      assert saved.continuation.stage == :review
+
+      if unquote(retry_outcome) == :setup_red do
+        assert saved.continuation.pass.green == false
+        assert saved.continuation.pass.not_run == ["acceptance"]
+        assert [%{status: 23}] = saved.continuation.pass.setup
+        File.rm!(red)
+      else
+        assert saved.continuation.pass.green
+      end
+
+      {output, status} =
+        Helpers.run_kogen(context, ["intent", "resume", Path.basename(child_dir)])
+
+      assert status == 0, output
+
+      [final_dir] =
+        Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*")) -- [original_dir, child_dir]
+
+      final_result = JSON.decode!(File.read!(Path.join(final_dir, "result.json")))
+      assert final_result["passes"] == if(unquote(retry_outcome) == :green, do: 2, else: 3)
+
+      assert File.read!(trace) ==
+               if(unquote(retry_outcome) == :green, do: "setup\n", else: "setup\nsetup\n")
+
+      assert final_result["unknown_requests"] == 1
+      assert final_result["usage"]["input"] == child_result["usage"]["input"] + 1
+      assert File.read!(Path.join(child_dir, "checkpoint.json")) == child_checkpoint
+      assert final_result["reviews"] == 1
+      assert File.read!(Path.join(original_dir, "checkpoint.json")) == original
+      [initial, failed, continued] = FakeProvider.review_requests(context.server)
+      assert failed.json["input"] == continued.json["input"]
+
+      assert Enum.take(continued.json["input"], length(initial.json["input"])) ==
+               initial.json["input"]
+
+      assert JSON.encode!(continued.json["input"]) =~ finding["message"]
+
+      if unquote(retry_outcome) == :setup_red do
+        feedback = List.last(continued.json["input"])["content"]
+        assert feedback =~ "retry-setup-failure"
+        assert feedback =~ "exit status 23"
+        assert feedback =~ "not run because an earlier item failed: acceptance"
+      end
+    end
+  end
+
   test "pre-clean checkpoints cannot authorize resume", %{suite: suite} do
     context = fixture!(suite, Enum.take(build_script(), 2))
     {_, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])

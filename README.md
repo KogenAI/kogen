@@ -11,7 +11,10 @@ Kogen takes one requested feature through five steps in your own Git repository:
 To explicitly continue a stopped checkpoint-capable Build in the same checkout, run
 `kogen intent resume <build-id> [--project <checkout>]`. Resume keeps the candidate and
 saved builder or independent reviewer conversation, and reuses only exact completed
-green evidence. Each attempt gets a new run with lineage and cumulative known usage;
+green evidence. Explicit resume of `candidate/review_blocked` instead runs fresh setup
+and the complete verification gate, returning the original finding and actual results to
+the same saved reviewer for a new decision. Earlier approval cannot clear that blocker;
+unresolved retries stop until another explicit resume. Each attempt gets a new run with lineage and cumulative known usage;
 prior failed results remain unchanged. Missing/legacy checkpoints are unsupported.
 Unsafe drift or uncertain executed tools/commits are refused without changing files,
 index, HEAD or approval: inspect the named fact and correct it, or obtain fresh approval
