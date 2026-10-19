@@ -100,7 +100,17 @@ module run_control {
            if (signal == NoSignal) committed else (signal == CoreCrash and c), code, ""),
   }
 
-  action step = any { start, runCommand, commandEnds, builderKillsBackground, interrupt, finish, terminate, stopDone }
+  // LOOP-10: an explicit resumed attempt acquires the same ordinary lock.
+  // Checkpoint authority/candidate validation is modelled in build.qnt.
+  action resume = all {
+    status == Ended, lock == Free, running == 0, not(committed),
+    setAll(Running, LiveHolder, 1, NoSignal, false, 0, false, -1, ""),
+  }
+
+  run explicitResumeTest = setAll(Ended, Free, 0, SigInt, false, 0, false, 130, "")
+    .then(resume).expect(status == Running and lock == LiveHolder and running == 1)
+
+  action step = any { resume, start, runCommand, commandEnds, builderKillsBackground, interrupt, finish, terminate, stopDone }
 
   // ---- Invariants ----
   // LOOP-5 / CLI-7: when a Build ends, normally or interrupted, no recorded process group has a live process.

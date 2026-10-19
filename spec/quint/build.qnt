@@ -9,6 +9,7 @@
 module build {
   type Phase = Loop | Verifying | Reviewing | RepairingReview | FinalVerifying | Committing | Done | Failed | Interrupted
 
+  var stoppedPhase: Phase
   var phase: Phase
   var rounds: int           // builder rounds so far (unbounded)
   var cand: int             // candidate version
@@ -22,7 +23,7 @@ module build {
   var reason: str
 
   action init = all {
-    phase' = Loop, rounds' = 0, cand' = 0, passVersion' = -1, reviewedVersion' = -1,
+    stoppedPhase' = Loop, phase' = Loop, rounds' = 0, cand' = 0, passVersion' = -1, reviewedVersion' = -1,
     invalidReviews' = 0, baselineIntact' = true, headMoved' = false,
     commits' = 0, committedVersion' = -1, reason' = "",
   }
@@ -31,7 +32,7 @@ module build {
 
   // Set the phase, candidate and pass; everything else unchanged.
   action move(p: Phase, c: int, pv: int, r: str): bool = all {
-    phase' = p, cand' = c, passVersion' = pv, reason' = r,
+    stoppedPhase' = phase, phase' = p, cand' = c, passVersion' = pv, reason' = r,
     rounds' = rounds, reviewedVersion' = reviewedVersion, invalidReviews' = invalidReviews,
     baselineIntact' = baselineIntact, headMoved' = headMoved,
     commits' = commits, committedVersion' = committedVersion,
@@ -42,7 +43,7 @@ module build {
     phase == Loop,
     nondet k = 1.to(20).oneOf()
     all {
-      phase' = if (k >= 18) Failed else if (k >= 14) Verifying else Loop,
+      stoppedPhase' = phase, phase' = if (k >= 18) Failed else if (k >= 14) Verifying else Loop,
       reason' = if (k == 18) "provider" else if (k == 19) "baseline_changed" else if (k == 20) "context_exhausted" else reason,
       // VER-8: a command that changed the baseline stops the Build at once.
       baselineIntact' = if (k == 19) false else baselineIntact,
@@ -86,7 +87,7 @@ module build {
 
   action reviewWith(verdict: str): bool = all {
     Set(Reviewing, RepairingReview).contains(phase),
-    phase' = if (verdict == "approve") {
+    stoppedPhase' = phase, phase' = if (verdict == "approve") {
                if (phase == Reviewing and cand == passVersion) Committing else FinalVerifying
              }
              else if (verdict == "changes") Failed
@@ -133,7 +134,7 @@ module build {
     else if (outcome == "hook_changed_commit") move(Failed, cand + 1, passVersion, "hook_changed_commit")
     else if (outcome == "commit_failed") move(Failed, cand, passVersion, "commit_failed")
     else all {
-      phase' = Done, commits' = commits + 1, committedVersion' = cand, reason' = "commit",
+      stoppedPhase' = phase, phase' = Done, commits' = commits + 1, committedVersion' = cand, reason' = "commit",
       rounds' = rounds, cand' = cand, passVersion' = passVersion, reviewedVersion' = reviewedVersion,
       invalidReviews' = invalidReviews, baselineIntact' = baselineIntact, headMoved' = headMoved,
     },
@@ -151,7 +152,7 @@ module build {
     not(terminal(phase)),
     nondet k = 1.to(40).oneOf()
     all {
-      phase' = if (k == 4) Interrupted else phase,
+      stoppedPhase' = phase, phase' = if (k == 4) Interrupted else phase,
       reason' = if (k == 4) "interrupted" else reason,
       headMoved' = (headMoved or k == 1),
       baselineIntact' = (baselineIntact and k != 3),
@@ -161,7 +162,24 @@ module build {
     },
   }
 
-  action step = any { modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
+  // LOOP-10: validated continuation preserves owner and exact evidence. Unsafe
+  // checkpoints refuse observationally; no edit/tool effect is replayed here.
+  action resume = all {
+    Set(Failed, Interrupted).contains(phase),
+    Set("provider", "interrupted").contains(reason),
+    baselineIntact, not(headMoved), commits == 0,
+    not(terminal(stoppedPhase)),
+    move(stoppedPhase, cand, passVersion, ""),
+  }
+
+  run resumeReviewerTest = init.then(move(Reviewing, 2, 2, ""))
+    .then(move(Failed, 2, 2, "provider")).then(resume)
+    .expect(phase == Reviewing and passVersion == 2 and cand == 2 and commits == 0)
+
+  run resumeBuilderTest = init.then(move(Failed, 0, -1, "provider")).then(resume)
+    .expect(phase == Loop and commits == 0)
+
+  action step = any { resume, modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
 
   // ---- Invariants ----
   // GIT-3/6: a kept commit holds exactly the reviewed, green candidate; baseline intact; same HEAD.
@@ -231,7 +249,7 @@ module build {
 
   run changedBaselineStopsAtVerificationTest =
     init.then(all {
-      phase' = Verifying, rounds' = 1, cand' = 1, passVersion' = -1, reviewedVersion' = -1,
+      stoppedPhase' = phase, phase' = Verifying, rounds' = 1, cand' = 1, passVersion' = -1, reviewedVersion' = -1,
       invalidReviews' = 0, baselineIntact' = false, headMoved' = false,
       commits' = 0, committedVersion' = -1, reason' = "",
     }).then(verify)

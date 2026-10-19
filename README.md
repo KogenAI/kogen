@@ -8,6 +8,16 @@ Kogen takes one requested feature through five steps in your own Git repository:
 4. **Review and fix**: an independent reviewer investigates and repairs concrete defects. Kogen verifies changed final files; failures stay with that reviewer. Maintenance preferences are notes. An unresolved substantive blocker stops with preserved work instead of restarting the builder/review loop.
 5. **Commit**: one commit of exactly the verified and reviewed contents, with your own Git configuration.
 
+To explicitly continue a stopped checkpoint-capable Build in the same checkout, run
+`kogen intent resume <build-id> [--project <checkout>]`. Resume keeps the candidate and
+saved builder or independent reviewer conversation, and reuses only exact completed
+green evidence. Each attempt gets a new run with lineage and cumulative known usage;
+prior failed results remain unchanged. Missing/legacy checkpoints are unsupported.
+Unsafe drift or uncertain executed tools/commits are refused without changing files,
+index, HEAD or approval: inspect the named fact and correct it, or obtain fresh approval
+for a new Build. A landed Build is an explicit successful no-op identifying its commit.
+Resume is not automatic recovery or reapproval of a protected-contract blocker.
+
 A builder that observes a contradiction in protected fixtures can report it and stop with `candidate/build_blocked`. The report is labelled builder-reported, with evidence retained alongside the candidate, original index and approval; it does not authorize edits or skip successful checks. Ordinary implementation failures continue through repair.
 
 ChatGPT ("Sign in with ChatGPT", using your plan) is the only provider. Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.

@@ -35,6 +35,7 @@ Commands:
   refine <slug> <sha256> <file|->  Correct existing files; require fresh approval
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
+  resume <build-id>         Continue a stopped Build in this checkout
 
 Options:
   --project <checkout>  Project checkout (default: current directory)
@@ -81,6 +82,7 @@ var leaves = map[string]spec{
 	"intent shape":   {path: "intent shape", command: "shape", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<file|->"}},
 	"intent refine":  {path: "intent refine", command: "refine", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<sha256>", "<file|->"}},
 	"intent approve": {path: "intent approve", command: "approve", page: "intent", options: []string{"project", "by"}, positional: []string{"<slug>", "<hash>"}, optional: 1},
+	"intent resume":  {path: "intent resume", command: "resume", page: "intent", options: []string{"project"}, positional: []string{"<build-id>"}},
 	"intent build":   {path: "intent build", command: "build", page: "intent", options: []string{"project"}, positional: []string{"<slug>"}},
 	"provider login": {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
 	"provider list":  {path: "provider list", command: "list", page: "provider"},
@@ -183,7 +185,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 		if len(inv.hash) != 64 || !hashRe.MatchString(inv.hash) {
 			return fail("<sha256> must be 64 lowercase hex characters")
 		}
-	case "build":
+	case "build", "resume":
 		inv.slug = pos[0]
 	case "approve":
 		inv.slug = pos[0]
@@ -243,8 +245,8 @@ func main() {
 	}
 	run := map[string]any{"type": "run", "command": inv.command, "cwd": cwd, "install_root": root, "env": environ()}
 	switch inv.command {
-	case "shape", "refine", "approve", "build":
-		if !slugRe.MatchString(inv.slug) || len(inv.slug) < 3 || len(inv.slug) > 48 {
+	case "shape", "refine", "approve", "build", "resume":
+		if inv.command != "resume" && (!slugRe.MatchString(inv.slug) || len(inv.slug) < 3 || len(inv.slug) > 48) {
 			fail(2, "intent/invalid_slug: Slug must be 3 to 48 characters and use lowercase letters, digits and dashes.")
 		}
 		project := cwd
@@ -274,7 +276,7 @@ func main() {
 			fail(3, err)
 		}
 	}
-	if inv.command == "shape" || inv.command == "refine" || inv.command == "build" {
+	if inv.command == "shape" || inv.command == "refine" || inv.command == "build" || inv.command == "resume" {
 		if err := checkSeams(); err != "" {
 			fail(3, err)
 		}

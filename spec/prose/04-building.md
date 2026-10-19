@@ -30,7 +30,27 @@ There is no patch tool.
 
 **LOOP-9 — Context exhaustion.** When the provider reports that the conversation no longer fits the model's context, the Build ends with `candidate/context_exhausted: the conversation no longer fits <model>'s context; edits are left in place` (exit 1).
 
-**LOOP-10 — Run record.** Each Build writes `.kogen/local/runs/<build-id>/log.jsonl` (requests with model, effort, usage and `wall_ms`; tool calls and results, at most 1 MiB each; verification passes; reviews; the outcome) and `result.json`. Credentials never appear (GPT-10). Request-start notices name the role/model/effort on stderr; response notices report usage and wall time without copying response content.
+**LOOP-10 — Run record.** Each Build attempt writes `.kogen/local/runs/<build-id>/log.jsonl` (requests with model, effort, usage and `wall_ms`; tool calls and results, at most 1 MiB each; verification passes; reviews; the outcome) and `result.json`. Credentials never appear (GPT-10). Request-start notices name the role/model/effort on stderr; response notices report usage and wall time without copying response content.
+
+Continuation is explicit: `kogen intent resume <build-id> [--project <checkout>]` acquires
+the ordinary Build lock and reads an atomically published version 1 `checkpoint.json`.
+It validates checkout identity, original HEAD, exact approval, complete protected
+baseline/configuration, candidate bytes/modes/additions/deletions, excluded Intent custody
+and index before model calls or mutations. Original staged owned acceptance remains valid.
+Unsafe/damaged/incompatible state is `candidate/resume_refused` (1); missing/legacy state
+is `candidate/resume_unsupported` (1), with ID and inspection/correction/fresh-approval guidance.
+No files, index, HEAD, approval or prior evidence are repaired on refusal. An exact already
+landed commit is a successful no-op, not another commit. Pending effects are never replayed;
+uncertain tool or commit execution may be refused with inspection instructions.
+Checkpoint publication precedes requests and side effects and follows durable completion.
+Complete replay input includes tool results, not merely diagnostic log tails. Resume retains
+the phase and repair owner, including the same independent review conversation and external
+verification of repairs. Completed exact green evidence need not run twice. Each resumed
+attempt has parent/root lineage and its own outcome; prior artifacts remain byte-for-byte.
+Known usage and counters accumulate; incomplete requests have unknown usage, never invented
+tokens. Measured request intervals exclude stopped downtime. Credentials and the caller's
+entire environment are never checkpointed. Protected-contract blockers require normal
+correction and fresh approval, not continuation against changed authority.
 
 **LOOP-11 — Environment.** Setup, `shell` calls, fixers, checks, the acceptance command and Quint run with stdin closed, without a time limit, and with the caller's environment unchanged except for the two acceptance variables of VER-3, plus `KOGEN_NODE` (the absolute path of Kogen's own Node, INS-4), `KOGEN_CUCUMBER` (the `node_modules` folder of the Cucumber Kogen ships, INS-2), which the acceptance commands of SET-10 use, and `KOGEN_QUINT` (Kogen's Quint `cli.js`, which a shaping probe runs with `KOGEN_NODE` to check a model before submitting, SHP-10); Kogen adds nothing else, and never its credentials. A real `shell` call of the installed default configuration succeeds.
 

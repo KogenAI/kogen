@@ -10,6 +10,7 @@ kogen intent shape <slug> <file|->
 kogen intent refine <slug> <sha256> <file|->
 kogen intent approve <slug> [<hash>] [--by <name>]
 kogen intent build <slug>
+kogen intent resume <build-id>
 kogen provider login chatgpt
 kogen provider list
 kogen uninstall
@@ -47,6 +48,7 @@ Commands:
   refine <slug> <sha256> <file|->  Correct existing files; require fresh approval
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
+  resume <build-id>         Continue a stopped Build in this checkout
 
 Options:
   --project <checkout>  Project checkout (default: current directory)
@@ -79,3 +81,5 @@ Logins belong to this machine, never to a repo.
 **CLI-10 — Version.** `kogen version` prints `kogen <sha8> (<YYYY-MM-DD>)` — the commit the release was built from and its date — anywhere, without login. A release built from source that is not exactly a commit (a tree with uncommitted changes, or source outside any commit) prints `kogen dev+<hash8> (<YYYY-MM-DD>, uncommitted source)`, where `<hash8>` is the first 8 hex digits of the SHA-256 over, for each source file sorted by path, `<path>\0<sha256 of its bytes>\n`; the source files are `mix.exs`, `LICENSE`, `NOTICE`, `config/`, `lib/`, `rel/`, `cli/`, `packaging/` and `docs/`.
 
 Scenarios: `features/09-cli-and-process.feature`. Model: `quint/run_control.qnt`.
+
+Explicit continuation uses `kogen intent resume <build-id> [--project <checkout>]`; it shares the Build bridge and repository lock (LOOP-10).

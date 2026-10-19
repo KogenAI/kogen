@@ -19,14 +19,49 @@ defmodule Kogen.Review do
     finish(b, pass, session, verify)
   end
 
+  def resume(b, verify) do
+    c = b.continuation
+
+    if c.stage == :review_verify do
+      evaluate(b, c.pass, c.session, verify, c.verdict, c.usage, c.input, c.tree)
+    else
+      finish(b, c.pass, c.session, verify)
+    end
+  end
+
   defp finish(b, pass, session, verify) do
-    n = b.review
+    b = Build.save(b, %{stage: :review, pass: pass, session: session})
 
     {b, verdict, usage, input} =
       converse(b, session.role, session.input, session.tools, 0, session.usage)
 
+    evaluate(
+      b,
+      pass,
+      session,
+      verify,
+      verdict,
+      usage,
+      input,
+      Snapshot.tree(b.root, b.start, b.excluded)
+    )
+  end
+
+  defp evaluate(b, pass, session, verify, verdict, usage, input, tree) do
+    n = b.review
+
+    b =
+      Build.save(b, %{
+        stage: :review_verify,
+        pass: pass,
+        session: session,
+        verdict: verdict,
+        usage: usage,
+        input: input,
+        tree: tree
+      })
+
     Build.baseline_intact!(b)
-    tree = Snapshot.tree(b.root, b.start, b.excluded)
     review = Map.merge(verdict, %{n: n, tree: tree})
     b = Build.track(%{b | last_review: review})
 
@@ -122,9 +157,12 @@ defmodule Kogen.Review do
   end
 
   defp converse(b, role, input, tools, invalid, usage) do
+    c = b.continuation
+    session = %{c.session | input: input, usage: usage}
+    b = Build.save(b, %{stage: :review, pass: c.pass, session: session})
     resp = Build.request(b, "review", role, instructions(), input, tools)
     usage = Usage.add(usage, resp.usage)
-    b = Build.track(%{b | usage: Usage.add(b.usage, resp.usage)})
+    b = Build.track(b)
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &Shape.replay_item/1) |> Enum.reject(&is_nil/1))
 
@@ -137,6 +175,8 @@ defmodule Kogen.Review do
     {outputs, verdict} =
       Enum.reduce(calls, {[], nil}, fn call, {outs, verdict} ->
         Bridge.check_cancel()
+
+        Build.save(b, %{stage: :tool, owner: :reviewer, input: input ++ outs})
 
         cond do
           verdict != nil ->
@@ -160,6 +200,13 @@ defmodule Kogen.Review do
               "name" => call["name"],
               "arguments" => Run.cap(call["arguments"] || ""),
               "result" => Run.cap(result)
+            })
+
+            Build.save(b, %{
+              stage: :tool,
+              owner: :reviewer,
+              input: input ++ outs,
+              completed: %{call: call, result: result}
             })
 
             if call["name"] == "shell", do: Build.baseline_intact!(b)

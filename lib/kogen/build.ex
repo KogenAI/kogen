@@ -50,6 +50,184 @@ defmodule Kogen.Build do
     end
   end
 
+  def resume(project, id) do
+    Process.delete(:kogen_build)
+    root = Git.root!(project)
+    lock = lock!(root)
+
+    try do
+      resume_locked(root, id)
+    after
+      Lock.release(lock)
+    end
+  end
+
+  defp refuse!(id, reason, kind \\ "resume_refused") do
+    Error.raise!(
+      "candidate",
+      kind,
+      "Build #{id}: #{reason}; inspect the checkpoint and checkout, correct drift or obtain fresh approval for a new Build",
+      1
+    )
+  end
+
+  defp resume_locked(root, id) do
+    unless Regex.match?(~r/^[a-f0-9]{8}$/, id),
+      do: refuse!(id, "unknown checkpoint", "resume_unsupported")
+
+    path = Path.join(root, ".kogen/local/runs/#{id}/checkpoint.json")
+
+    bytes =
+      case File.read(path) do
+        {:ok, bytes} -> bytes
+        _ -> refuse!(id, "absent or legacy checkpoint", "resume_unsupported")
+      end
+
+    {doc, b} =
+      case Run.decode_checkpoint(bytes) do
+        {:ok, doc, b} -> {doc, b}
+        {:error, why} -> refuse!(id, why)
+      end
+
+    unless b.root == root and doc["identity"] == identity(root),
+      do: refuse!(id, "another checkout identity")
+
+    git_index =
+      Path.join(Git.ok!(root, ["rev-parse", "--absolute-git-dir"]) |> String.trim(), "index")
+
+    unless b.run.id == id and b.run.dir == Path.dirname(path) and
+             b.run.log == Path.join(b.run.dir, "log.jsonl") and b.git_index == git_index,
+           do: refuse!(id, "checkpoint run/index paths changed")
+
+    if b.continuation.stage == :landed and Git.head(root) == b.continuation.commit do
+      commit = b.continuation.commit
+
+      unless String.trim(Git.ok!(root, ["rev-parse", "#{commit}^"])) == b.start and
+               String.trim(Git.ok!(root, ["rev-parse", "#{commit}^{tree}"])) == b.last_pass.tree and
+               b.last_review.tree == b.last_pass.tree and b.last_pass.green,
+             do: refuse!(id, "already-landed commit provenance changed")
+
+      Bridge.puts("Build #{id} already landed #{b.continuation.commit}")
+      0
+    else
+      unless Git.head(root) == b.start,
+        do: refuse!(id, "HEAD moved or uncertain commit; inspect git log")
+
+      if b.continuation.stage in [:tool, :commit, :startup],
+        do:
+          refuse!(
+            id,
+            "uncertain #{b.continuation.stage} boundary; inspect effects before starting a freshly approved Build"
+          )
+
+      if b.blocker,
+        do: refuse!(id, "protected-contract blocker requires correction and fresh approval")
+
+      unless File.read(Intent.approval_path(root, b.slug)) ==
+               {:ok, Base.decode64!(doc["approval"])},
+             do: refuse!(id, "approval changed")
+
+      for p <- b.baseline do
+        unless file_digest(root, p) == b.baseline_digests[p],
+          do: refuse!(id, "baseline changed: #{p}")
+      end
+
+      unless Config.load!(root) == b.config and
+               Intent.baseline(root, b.slug, b.config) == b.baseline,
+             do: refuse!(id, "baseline/configuration changed")
+
+      saved_index = Base.decode64!(doc["index"])
+
+      unless File.read(b.git_index) == {:ok, saved_index},
+        do: refuse!(id, "index/staged custody changed")
+
+      original_index = Path.join(b.run.dir, "index-at-start")
+
+      unless File.read(original_index) == {:ok, saved_index},
+        do: refuse!(id, "original index backup missing or damaged: #{original_index}")
+
+      candidate = Snapshot.tree(root, b.start, [])
+
+      unless candidate == doc["candidate"] do
+        paths = Snapshot.changed(root, doc["candidate"], candidate)
+
+        refuse!(
+          id,
+          "candidate contents/modes or unrelated paths changed: #{Enum.join(paths, ", ")}"
+        )
+      end
+
+      run = Run.start(root)
+      File.write!(Path.join(run.dir, "index-at-start"), saved_index)
+
+      b = %{
+        b
+        | run: run,
+          parent: id,
+          root_run: b.root_run || id,
+          t0: System.monotonic_time(:millisecond),
+          attempt_usage: Usage.zero()
+      }
+
+      Bridge.puts("resuming Build #{id} as #{run.id} (root #{b.root_run})")
+      Run.log(run, %{"event" => "resume", "parent" => id, "root" => b.root_run})
+      Process.put(:kogen_build, b)
+      save(b, b.continuation)
+      build_started(b)
+
+      try do
+        ChatGPT.require_login!()
+
+        case b.continuation.stage do
+          :builder ->
+            builder_turn(b, b.continuation.input)
+
+          :builder_verify ->
+            c = b.continuation
+            {b, feedback} = round_end(b)
+
+            output =
+              if c.finish,
+                do: Shape.output(c.finish, feedback),
+                else: %{"role" => "user", "content" => feedback}
+
+            loop(b, c.input ++ [output])
+
+          stage when stage in [:review, :review_verify] ->
+            {:approve, b, pass, review} = Review.resume(b, &verify/1)
+            commit(b, pass, review)
+        end
+      rescue
+        e in Error -> stopped(Process.get(:kogen_build), e)
+      catch
+        {:cancel, sig} -> interrupted(Process.get(:kogen_build), sig)
+        {:failed, b, e} -> stopped(b, e)
+        {:landed, code} -> code
+      end
+    end
+  end
+
+  defp identity(root) do
+    stat = File.stat!(root)
+    "#{root}:#{stat.major_device}:#{stat.inode}"
+  end
+
+  @doc false
+  def save(b, continuation) do
+    b = track(%{b | continuation: continuation})
+
+    Run.checkpoint(b.run, %{
+      "version" => 1,
+      "identity" => identity(b.root),
+      "candidate" => Snapshot.tree(b.root, b.start, []),
+      "index" => Base.encode64(File.read!(b.git_index)),
+      "approval" => b.approval_bytes,
+      "state" => Base.encode64(:erlang.term_to_binary(b))
+    })
+
+    b
+  end
+
   # ---- Start checks (AUT-3..5, GIT-1) ----
 
   @doc false
@@ -172,18 +350,20 @@ defmodule Kogen.Build do
       repairs: 0,
       last_pass: nil,
       last_review: nil,
-      blocker: nil
+      blocker: nil,
+      continuation: %{stage: :startup},
+      approval_bytes: Base.encode64(File.read!(Intent.approval_path(root, slug))),
+      parent: nil,
+      root_run: nil,
+      model_active_ms: 0,
+      unknown_requests: 0,
+      attempt_usage: Usage.zero()
     }
 
-    Bridge.send_msg(%{
-      "type" => "build_started",
-      "root" => root,
-      "start_head" => start,
-      "run_log" => run.log
-    })
+    build_started(b)
 
     Run.log(run, %{"event" => "start", "slug" => slug, "start_head" => start, "approved" => sha})
-    track(b)
+    save(b, b.continuation)
 
     try do
       commit_msg_hook!(root, intent.title, slug)
@@ -201,6 +381,15 @@ defmodule Kogen.Build do
       {:failed, b, e} -> stopped(b, e)
       {:landed, code} -> code
     end
+  end
+
+  defp build_started(b) do
+    Bridge.send_msg(%{
+      "type" => "build_started",
+      "root" => b.root,
+      "start_head" => b.start,
+      "run_log" => b.run.log
+    })
   end
 
   # AUT-5: the user's commit-msg hook judges the commit message before any model time is spent.
@@ -272,6 +461,15 @@ defmodule Kogen.Build do
   # The latest Build state, for the report of a Build that stops on an error or an interrupt.
   @doc false
   def track(b) do
+    old = Process.get(:kogen_build)
+
+    b =
+      if old && old.run.id == b.run.id do
+        Map.merge(b, Map.take(old, [:model_active_ms, :unknown_requests, :attempt_usage, :usage]))
+      else
+        b
+      end
+
     Process.put(:kogen_build, b)
     b
   end
@@ -283,6 +481,7 @@ defmodule Kogen.Build do
   end
 
   defp builder_turn(b, input) do
+    b = save(b, %{stage: :builder, input: input})
     role = b.config.models["build"]
 
     resp =
@@ -295,7 +494,7 @@ defmodule Kogen.Build do
         Tools.defs(~w(shell read_file write_file finish report_blocker))
       )
 
-    b = track(%{b | usage: Usage.add(b.usage, resp.usage)})
+    b = track(b)
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &Shape.replay_item/1) |> Enum.reject(&is_nil/1))
     ctx = %{root: b.root, protected: b.baseline, tools: ~w(shell read_file write_file)}
@@ -304,6 +503,8 @@ defmodule Kogen.Build do
       Enum.reduce(calls, {[], nil}, fn call, {outs, finish} ->
         Bridge.check_cancel()
         args = Shape.decode(call)
+
+        save(b, %{stage: :tool, owner: :builder, input: input ++ outs})
 
         result =
           case call["name"] do
@@ -320,6 +521,13 @@ defmodule Kogen.Build do
           "result" => if(result == :finish, do: "finish", else: Run.cap(result))
         })
 
+        save(b, %{
+          stage: :tool,
+          owner: :builder,
+          input: input ++ outs,
+          completed: %{call: call, result: result}
+        })
+
         if call["name"] == "shell", do: baseline_intact!(b)
 
         case result do
@@ -329,6 +537,7 @@ defmodule Kogen.Build do
       end)
 
     if finish != nil or calls == [] do
+      b = save(b, %{stage: :builder_verify, input: input ++ outputs, finish: finish})
       {b, feedback} = round_end(b)
       input = input ++ outputs
 
@@ -587,6 +796,7 @@ defmodule Kogen.Build do
       # Something changed after the reviewed pass: verify and review again.
       verify_and_review(b)
     else
+      b = save(b, %{stage: :commit, tree: pass.tree})
       Git.ok!(b.root, ["read-tree", pass.tree])
       msg = Path.join(b.run.dir, "commit-message.txt")
       File.write!(msg, commit_message(b.intent.title, b.slug))
@@ -656,6 +866,7 @@ defmodule Kogen.Build do
     Bridge.check_cancel()
     Process.delete(:kogen_committing)
     File.rm(Intent.approval_path(b.root, b.slug))
+    b = save(b, %{stage: :landed, commit: new})
     sha8 = String.slice(new, 0, 8)
     notes = for f <- review.findings, f["severity"] == "note", do: f
     Run.log(b.run, %{"event" => "outcome", "outcome" => "landed", "commit" => new})
@@ -788,6 +999,7 @@ defmodule Kogen.Build do
         else: extra
 
     Run.write(b.run, "result.json", result(b, reason, extra))
+    save(b, b.continuation)
   end
 
   defp result(b, outcome, extra) do
@@ -800,7 +1012,12 @@ defmodule Kogen.Build do
         "passes" => b.pass,
         "reviews" => b.review,
         "repairs" => b.repairs,
-        "usage" => b.usage
+        "usage" => b.usage,
+        "model_active_ms" => b.model_active_ms,
+        "unknown_requests" => b.unknown_requests,
+        "attempt_usage" => b.attempt_usage,
+        "resumed_from" => b.parent,
+        "root_build" => b.root_run
       },
       extra
     )
@@ -813,8 +1030,21 @@ defmodule Kogen.Build do
     Bridge.check_cancel()
     t0 = System.monotonic_time(:millisecond)
     Bridge.progress("kogen: #{role_name} request #{role.model}/#{role.effort}")
+    Process.put(:kogen_build, %{b | unknown_requests: b.unknown_requests + 1})
+    b = save(Process.get(:kogen_build), b.continuation)
     resp = ChatGPT.respond(role, instructions, input, tools)
     wall = System.monotonic_time(:millisecond) - t0
+
+    Process.put(:kogen_build, %{
+      b
+      | unknown_requests: b.unknown_requests - 1,
+        model_active_ms: b.model_active_ms + wall,
+        attempt_usage: Usage.add(b.attempt_usage, resp.usage),
+        usage: Usage.add(b.usage, resp.usage)
+    })
+
+    b = Process.get(:kogen_build)
+    save(b, %{stage: :tool, owner: role_name, response: resp.items})
     Bridge.progress("kogen: #{role_name} response #{Usage.line(resp.usage)} wall_ms=#{wall}")
 
     Run.log(b.run, %{

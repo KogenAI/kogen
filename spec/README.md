@@ -85,3 +85,15 @@ None of this executes a scenario. Parsing features and matching step patterns on
 ## Where this lives
 
 This folder is `spec/` of the Kogen repository, next to the supervised Mix app and the Go command under `cli/`.
+
+### Continuation trace
+
+LOOP-10 continuation uses the CLI-1 command and AUT-4 lock. The maintained
+`04-building.feature` unknown-checkpoint scenario and installed resume Intent
+scenarios exercise the real CLI; `build_boundaries_test.exs` covers pending final
+verification and same-reviewer custody, `builder_blocker_test.exs` covers refusal
+of protected contradictions, and `run_test.exs` covers decode/publication.
+`build.qnt` includes explicit builder/reviewer resume tests without resetting
+candidate or green evidence; `run_control.qnt` includes lock reacquisition after
+an ended attempt. Existing Safety invariants and non-vacuity counterexamples
+continue to cover commit eligibility, independent review and live-owner refusal.

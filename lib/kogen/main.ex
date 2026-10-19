@@ -76,5 +76,7 @@ defmodule Kogen.Main do
   defp dispatch(%{"command" => "approve"} = r),
     do: Kogen.Approve.run(r["project"], r["slug"], r["hash"], r["by"])
 
+  defp dispatch(%{"command" => "resume"} = r), do: Kogen.Build.resume(r["project"], r["slug"])
+
   defp dispatch(%{"command" => "build"} = r), do: Kogen.Build.run(r["project"], r["slug"])
 end

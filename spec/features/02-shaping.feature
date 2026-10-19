@@ -383,6 +383,7 @@ Feature: Shaping
     And stdout is:
       """
       provider/usage_limit: ChatGPT usage limit reached; it resets at 2030-01-01T00:00:00Z
+        provider failure: {"code":"subscription_sharing_usage_limit_exceeded","http_status":429}
       shape/provider_failed: shaping stopped on a provider error that retrying cannot fix; the failed request wrote no files. Fix the account, then rerun kogen intent shape is-even - with the original request on stdin (or the same answers if questions are pending).
       """
     And the folder ".kogen/intents/is-even" does not exist

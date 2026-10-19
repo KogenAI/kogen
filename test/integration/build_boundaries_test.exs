@@ -69,6 +69,145 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     assert Enum.any?(Enum.at(requests, 2).json["input"], &(&1["type"] == "function_call_output"))
   end
 
+  test "resuming pending reviewer verification keeps repairs with the reviewer", %{suite: suite} do
+    context =
+      fixture!(
+        suite,
+        Enum.take(build_script(), 2) ++
+          [
+            {:function, "write_file", %{"path" => "app.txt", "content" => "reviewer repair\n"}},
+            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
+          ]
+      )
+
+    configure_startup!(
+      context,
+      "checks",
+      "if grep -qx 'reviewer repair' app.txt && ! test -f .kogen/local/paused; then touch .kogen/local/paused; sleep 600; fi",
+      false
+    )
+
+    port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
+    Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/paused"))
+    Helpers.signal!(context, port, "INT")
+    {output, 130} = Helpers.await_exit(port, "", 15_000)
+    assert output =~ "interrupted"
+    log = Helpers.run_log(context)
+    id = Path.basename(Path.dirname(log))
+    original = File.read!(Path.join(Path.dirname(log), "result.json"))
+    requests = length(FakeProvider.provider_requests(context.server))
+    {output, status} = Helpers.run_kogen(context, ["intent", "resume", id])
+    assert status == 0, output
+    assert output =~ "resuming Build #{id}"
+    assert length(FakeProvider.provider_requests(context.server)) == requests
+    assert File.read!(Path.join(Path.dirname(log), "result.json")) == original
+    assert git_value!(context, ["show", "HEAD:app.txt"]) == "reviewer repair"
+  end
+
+  test "resume refuses damaged index custody, configuration and required saved state before effects",
+       %{
+         suite: suite
+       } do
+    context = fixture!(suite, Enum.take(build_script(), 2))
+    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status != 0, output
+    run_dir = context |> Helpers.run_log() |> Path.dirname()
+    id = Path.basename(run_dir)
+    checkpoint = Path.join(run_dir, "checkpoint.json")
+    index_backup = Path.join(run_dir, "index-at-start")
+    config = Path.join(context.repo, ".kogen/project.yaml")
+    saved = Map.new([checkpoint, index_backup, config], &{&1, File.read!(&1)})
+    doc = JSON.decode!(saved[checkpoint])
+    b = :erlang.binary_to_term(Base.decode64!(doc["state"]))
+    broken = Map.put(doc, "state", Base.encode64(:erlang.term_to_binary(Map.delete(b, :phase))))
+    custody = fn -> {git_value!(context, ["rev-parse", "HEAD"]), File.read!(b.git_index)} end
+
+    for {path, bytes, fact} <- [
+          {index_backup, "damaged original index", "index"},
+          {config, "version: [invalid", ".kogen/project.yaml"},
+          {checkpoint, JSON.encode!(broken), "checkpoint"}
+        ] do
+      File.write!(path, bytes)
+      before = custody.()
+      candidate = File.read!(Path.join(context.repo, "app.txt"))
+      approval = File.read!(Path.join(context.repo, ".kogen/local/approvals/fixture.json"))
+      evidence = Map.new(File.ls!(run_dir), &{&1, File.read!(Path.join(run_dir, &1))})
+      runs = File.ls!(Path.dirname(run_dir))
+      requests = length(FakeProvider.provider_requests(context.server))
+      {output, status} = Helpers.run_kogen(context, ["intent", "resume", id])
+      assert status == 1, output
+      assert output =~ "candidate/resume_refused"
+      assert output =~ fact
+      assert custody.() == before
+      assert File.read!(Path.join(context.repo, "app.txt")) == candidate
+
+      assert File.read!(Path.join(context.repo, ".kogen/local/approvals/fixture.json")) ==
+               approval
+
+      assert Map.new(File.ls!(run_dir), &{&1, File.read!(Path.join(run_dir, &1))}) == evidence
+      assert File.ls!(Path.dirname(run_dir)) == runs
+      assert length(FakeProvider.provider_requests(context.server)) == requests
+      File.write!(path, saved[path])
+    end
+  end
+
+  test "a core death during resumed commit reports the created commit and cannot commit again", %{
+    suite: suite
+  } do
+    context =
+      fixture!(
+        suite,
+        Enum.take(build_script(), 2) ++
+          [
+            {:http, 400, %{"error" => %{"code" => "invalid_request_error", "message" => "stop"}}},
+            List.last(build_script())
+          ]
+      )
+
+    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status != 0, output
+    run_dir = context |> Helpers.run_log() |> Path.dirname()
+    id = Path.basename(run_dir)
+    start = git_value!(context, ["rev-parse", "HEAD"])
+    core = Path.join(suite.prefix, "lib/kogen/lib/release/bin/kogen")
+    real = core <> ".resume-real"
+    pid_file = Path.join(context.root, "core-pid")
+    quote = &Kogen.Init.shell_quote/1
+    File.rename!(core, real)
+
+    try do
+      File.write!(
+        core,
+        "#!/bin/sh\nprintf '%s\\n' \"$$\" > #{quote.(pid_file)}\nexport RELEASE_PROG=kogen\nexec #{quote.(real)} \"$@\"\n"
+      )
+
+      File.chmod!(core, 0o755)
+      hooks = context |> Helpers.write_hook!("exit 0\n") |> Path.dirname()
+      postcommit = Path.join(hooks, "post-commit")
+      File.write!(postcommit, "#!/bin/sh\nkill -KILL \"$(cat #{quote.(pid_file)})\"\n")
+      File.chmod!(postcommit, 0o755)
+      {output, status} = Helpers.run_kogen(context, ["intent", "resume", id])
+      assert status == 70, output
+      head = git_value!(context, ["rev-parse", "HEAD"])
+      assert head != start
+      assert output =~ "after creating commit #{String.slice(head, 0, 8)}"
+      assert output =~ "inspect it with git show"
+      assert output =~ "run log:"
+      assert git_value!(context, ["rev-list", "--count", "#{start}..HEAD"]) == "1"
+      [child] = File.ls!(Path.dirname(run_dir)) -- [id]
+      requests = length(FakeProvider.provider_requests(context.server))
+      {output, status} = Helpers.run_kogen(context, ["intent", "resume", child])
+      assert status == 1, output
+      assert output =~ "candidate/resume_refused"
+      assert output =~ "commit"
+      assert git_value!(context, ["rev-parse", "HEAD"]) == head
+      assert length(FakeProvider.provider_requests(context.server)) == requests
+    after
+      File.rm!(core)
+      File.rename!(real, core)
+    end
+  end
+
   test "REV-6 reviewer shell edits cannot change the approved baseline", %{suite: suite} do
     context =
       fixture!(

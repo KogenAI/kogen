@@ -153,3 +153,12 @@ Feature: Building
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
     And stderr contains "kogen: checking quint before the Build changes anything"
+
+  @LOOP-10
+  Scenario: An unknown Build cannot fabricate a continuation
+    When the caller runs "kogen intent resume 00000000"
+    Then the exit code is 1
+    And stdout contains "candidate/resume_unsupported"
+    And stdout contains "checkpoint"
+    And HEAD is unchanged
+    And the fake ChatGPT server received 0 requests

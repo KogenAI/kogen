@@ -78,6 +78,15 @@ defmodule Kogen.Integration.BuilderBlockerTest do
            )
 
     assert File.read!(Helpers.run_log(context)) =~ "builder_blocker"
+    id = Path.basename(Path.dirname(Helpers.run_log(context)))
+    requests = length(FakeProvider.provider_requests(context.server))
+    candidate = File.read!(Path.join(context.repo, "app.txt"))
+    {resumed, code} = Helpers.run_kogen(context, ["intent", "resume", id])
+    assert code == 1, resumed
+    assert resumed =~ "candidate/resume_refused"
+    assert authority(context) == before
+    assert File.read!(Path.join(context.repo, "app.txt")) == candidate
+    assert length(FakeProvider.provider_requests(context.server)) == requests
   end
 
   test "LOOP-7 malformed, empty and unprotected blocker reports return feedback and grant no writes",

@@ -35,6 +35,7 @@ Commands:
   refine <slug> <sha256> <file|->  Correct existing files; require fresh approval
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
+  resume <build-id>         Continue a stopped Build in this checkout
 
 Options:
   --project <checkout>  Project checkout (default: current directory)
@@ -173,5 +174,17 @@ func TestParseGrammarCLI2(t *testing.T) {
 				t.Fatalf("parse(%q) error = (%q, page %q), want (%q, page %q)", tt.args, err.msg, err.page, tt.msg, tt.page)
 			}
 		})
+	}
+}
+
+func TestResumeGrammar(t *testing.T) {
+	inv, _, err := parse([]string{"intent", "resume", "1de86a76", "--project", "/checkout"})
+	if err != nil || inv.command != "resume" || inv.slug != "1de86a76" || inv.project != "/checkout" {
+		t.Fatalf("resume: %+v %v", inv, err)
+	}
+	for _, args := range [][]string{{"intent", "resume"}, {"intent", "resume", "abc", "extra"}, {"intent", "resume", "abc", "--by", "other"}} {
+		if _, _, err := parse(args); err == nil {
+			t.Fatalf("accepted %v", args)
+		}
 	}
 }
