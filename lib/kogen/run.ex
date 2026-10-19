@@ -42,7 +42,7 @@ defmodule Kogen.Run do
   def decode_checkpoint(bytes) do
     for module <- Application.spec(:kogen, :modules) || [], do: Code.ensure_loaded(module)
 
-    with {:ok, %{"version" => 1, "state" => state} = doc} <- JSON.decode(bytes),
+    with {:ok, %{"version" => 2, "state" => state} = doc} <- JSON.decode(bytes),
          true <- is_binary(state),
          {:ok, binary} <- Base.decode64(state) do
       try do
@@ -57,7 +57,7 @@ defmodule Kogen.Run do
         _ -> {:error, "damaged checkpoint state"}
       end
     else
-      {:ok, %{"version" => version}} when version != 1 ->
+      {:ok, %{"version" => version}} when version != 2 ->
         {:error, "incompatible checkpoint version #{inspect(version)}"}
 
       _ ->
@@ -111,7 +111,7 @@ defmodule Kogen.Run do
   defp valid_pass?(nil), do: true
 
   defp valid_pass?(pass) do
-    is_map(pass) and is_integer(pass[:n]) and is_boolean(pass[:green]) and
+    is_map(pass) and pass[:clean] == true and is_integer(pass[:n]) and is_boolean(pass[:green]) and
       is_binary(pass[:tree]) and is_map(pass[:acceptance]) and
       is_list(pass.acceptance[:scenarios]) and is_integer(pass.acceptance[:passed]) and
       is_integer(pass.acceptance[:status]) and is_list(pass.acceptance[:problems]) and

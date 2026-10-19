@@ -5,7 +5,7 @@
 ```yaml
 version: 1
 commands:
-  setup:                # run before readiness dry runs and before each Build, in order
+  setup:                # run before readiness dry runs and before each Build and each fresh clean candidate verification pass, in order
     - 'mix deps.get'
   fix:                  # deterministic fixers, run once after each builder round
     - 'mix format'

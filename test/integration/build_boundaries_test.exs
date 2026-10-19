@@ -83,7 +83,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     configure_startup!(
       context,
       "checks",
-      "if grep -qx 'reviewer repair' app.txt && ! test -f .kogen/local/paused; then touch .kogen/local/paused; sleep 600; fi",
+      "if grep -qx 'reviewer repair' app.txt && ! test -f #{context.repo}/.kogen/local/paused; then touch #{context.repo}/.kogen/local/paused; sleep 600; fi",
       false
     )
 
@@ -102,6 +102,107 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     assert length(FakeProvider.provider_requests(context.server)) == requests
     assert File.read!(Path.join(Path.dirname(log), "result.json")) == original
     assert git_value!(context, ["show", "HEAD:app.txt"]) == "reviewer repair"
+  end
+
+  test "pre-clean checkpoints cannot authorize resume", %{suite: suite} do
+    context = fixture!(suite, Enum.take(build_script(), 2))
+    {_, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert status != 0
+    run_dir = context |> Helpers.run_log() |> Path.dirname()
+    path = Path.join(run_dir, "checkpoint.json")
+    doc = JSON.decode!(File.read!(path))
+    File.write!(path, JSON.encode!(Map.put(doc, "version", 1)))
+    before = state(context)
+    requests = length(FakeProvider.provider_requests(context.server))
+    {output, status} = Helpers.run_kogen(context, ["intent", "resume", Path.basename(run_dir)])
+    assert status == 1, output
+    assert output =~ "incompatible checkpoint version 1"
+    assert state(context) == before
+    assert length(FakeProvider.provider_requests(context.server)) == requests
+  end
+
+  for stage <- ["setup", "checks"] do
+    test "clean #{stage} input mutations cannot certify the workspace", %{suite: suite} do
+      context =
+        fixture!(suite, [
+          {:function, "write_file", %{"path" => "app.txt", "content" => "candidate\n"}},
+          {:function, "finish", %{"summary" => "done"}},
+          {:function, "shell", %{"command" => "touch .kogen/local/repair-waiting; sleep 600"}}
+        ])
+
+      configure_startup!(
+        context,
+        unquote(stage),
+        "if grep -qx candidate app.txt; then printf 'mutated\\n' > app.txt; fi",
+        false
+      )
+
+      before = state(context)
+      port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
+      Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/repair-waiting"))
+      Helpers.signal!(context, port, "INT")
+      {output, 130} = Helpers.await_exit(port, "", 15_000)
+      assert output =~ "interrupted"
+      assert state(context) == before
+      assert File.read!(Path.join(context.repo, "app.txt")) == "candidate\n"
+      assert "verification" in result(context)["still_failing"]
+
+      assert Enum.any?(
+               FakeProvider.tool_outputs(context.server),
+               &String.contains?(&1, "files changed while checks ran: app.txt")
+             )
+    end
+  end
+
+  test "clean setup failure returns command output without a partial green pass", %{suite: suite} do
+    context =
+      fixture!(suite, [
+        {:function, "write_file", %{"path" => "app.txt", "content" => "candidate\n"}},
+        {:function, "finish", %{"summary" => "done"}},
+        {:function, "shell", %{"command" => "touch .kogen/local/repair-waiting; sleep 600"}}
+      ])
+
+    configure_startup!(
+      context,
+      "setup",
+      "if grep -qx candidate app.txt; then echo clean-setup-failure; exit 17; fi",
+      false
+    )
+
+    port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
+    Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/repair-waiting"))
+    Helpers.signal!(context, port, "INT")
+    {_, 130} = Helpers.await_exit(port, "", 15_000)
+    assert result(context)["still_failing"] == ["setup-1"]
+
+    assert Enum.any?(FakeProvider.tool_outputs(context.server), fn text ->
+             text =~ "exit status 17" and text =~ "clean-setup-failure"
+           end)
+  end
+
+  test "workspace drift during clean checks cannot certify a pass", %{suite: suite} do
+    context =
+      fixture!(suite, [
+        {:function, "write_file", %{"path" => "app.txt", "content" => "candidate\n"}},
+        {:function, "finish", %{"summary" => "done"}},
+        {:function, "shell", %{"command" => "touch .kogen/local/repair-waiting; sleep 600"}}
+      ])
+
+    configure_startup!(
+      context,
+      "checks",
+      "if grep -qx candidate app.txt; then printf 'drift\\n' > #{context.repo}/app.txt; fi",
+      false
+    )
+
+    before = state(context)
+    port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
+    Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/repair-waiting"))
+    Helpers.signal!(context, port, "INT")
+    {_, 130} = Helpers.await_exit(port, "", 15_000)
+    assert state(context) == before
+    assert File.read!(Path.join(context.repo, "app.txt")) == "drift\n"
+    assert "verification" in result(context)["still_failing"]
   end
 
   test "resume refuses damaged index custody, configuration and required saved state before effects",
@@ -259,7 +360,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     assert state(context) == before
     assert result(context)["outcome"] == "interrupted"
     assert Enum.sort(result(context)["still_failing"]) == ["review", "verification"]
-    assert File.read!(Path.join(context.repo, "app.txt")) == "check mutation\n"
+    assert File.read!(Path.join(context.repo, "app.txt")) == "reviewer repair\n"
     [review_path] = Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*/review-1.json"))
     assert [%{"verdict" => "approve"}] = JSON.decode!(File.read!(review_path))["attempts"]
   end

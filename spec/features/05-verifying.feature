@@ -1,5 +1,5 @@
 Feature: Verifying and repair
-  Green comes only from executed checks; failures go back to the builder;
+  Green comes only from fresh setup and executed checks on exact clean candidate inputs; failures go back to the builder;
   the approved acceptance baseline cannot be weakened.
 
   Background:
@@ -93,7 +93,7 @@ Feature: Verifying and repair
     And the exit code is 0
 
   @VER-9 @model:build
-  Scenario: A check that rewrites source makes the pass not green
+  Scenario: A clean scratch check that rewrites source makes the pass not green
     Given the project config sets "commands.checks" to "[{name: fmt, run: python3 tools/format.py --write}]"
     And the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-unformatted-then-formatted"
@@ -102,7 +102,7 @@ Feature: Verifying and repair
     And the exit code is 0
 
   @VER-10
-  Scenario: Ignored outputs are not part of the candidate or the commit
+  Scenario: Workspace ignored outputs remain untouched and are not candidate inputs or commit members
     Given the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-runs-command" with command "mkdir -p __pycache__ && printf cache > __pycache__/fixture.pyc"
     When the caller runs "kogen intent build is-even"

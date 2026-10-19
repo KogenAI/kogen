@@ -3,7 +3,7 @@ const path = require('node:path');
 
 const feature = process.env.KOGEN_ACCEPTANCE_FEATURES;
 const report = process.env.KOGEN_ACCEPTANCE_REPORT;
-const mode = process.argv[2];
+const mode = process.env.KOGEN_TEST_ACCEPTANCE_MODE || process.argv[2];
 if (!feature || !report) process.exit(2);
 if (mode === 'hangs') {
   const { spawnSync } = require('node:child_process');
@@ -12,9 +12,10 @@ if (mode === 'hangs') {
   fs.writeFileSync(process.env.KOGEN_ACCEPTANCE_RUNNING_PID, `${process.pid} ${process.ppid} ${group.stdout.trim()}\n`);
   setInterval(() => {}, 600000);
 } else if (mode === 'record') {
-  fs.mkdirSync('.kogen/local', { recursive: true });
-  fs.writeFileSync('.kogen/local/acceptance-env.json', JSON.stringify({ features: feature, report }));
-  const child = require('node:child_process').spawnSync('node_modules/.bin/cucumber-js', [
+  fs.mkdirSync(path.dirname(report), { recursive: true });
+  fs.writeFileSync(path.join(path.dirname(report), 'acceptance-env.json'), JSON.stringify({ features: feature, report }));
+  const child = require('node:child_process').spawnSync(process.env.KOGEN_NODE, [
+    path.join(process.env.KOGEN_CUCUMBER, '@cucumber/cucumber/bin/cucumber.js'),
     '--strict', '--require', 'features/steps/*.js', '--format', `message:${report}`, feature,
   ], { encoding: 'utf8' });
   process.stdout.write(child.stdout || '');

@@ -217,7 +217,7 @@ defmodule Kogen.Build do
     b = track(%{b | continuation: continuation})
 
     Run.checkpoint(b.run, %{
-      "version" => 1,
+      "version" => 2,
       "identity" => identity(b.root),
       "candidate" => Snapshot.tree(b.root, b.start, []),
       "index" => Base.encode64(File.read!(b.git_index)),
@@ -635,32 +635,41 @@ defmodule Kogen.Build do
     Bridge.progress("kogen: verifying (pass #{n})")
     before = Snapshot.tree(b.root, b.start, b.excluded)
     report = Path.join(b.run.dir, "acceptance-#{n}.ndjson")
-    acceptance = Checks.acceptance(b.root, b.intent, b.config.acceptance_run, report, run: b.run)
+    scratch = Kogen.tmp_path("kogen-verify")
 
-    model =
-      case b.model do
-        :none -> :none
-        m -> Checks.model(b.root, m, run: b.run)
+    {acceptance, model, checks, scratch_moved} =
+      try do
+        input = Snapshot.materialize(b.root, before, scratch)
+        File.mkdir_p!(Path.join(scratch, ".kogen/local"))
+        setup = clean_setup(b, scratch)
+
+        {acceptance, model, checks} =
+          if setup == [] do
+            acceptance =
+              Checks.acceptance(scratch, b.intent, b.config.acceptance_run, report, run: b.run)
+
+            model =
+              case b.model do
+                :none -> :none
+                m -> Checks.model(scratch, m, run: b.run)
+              end
+
+            checks =
+              for {name, cmd} <- b.config.checks, do: verification_command(b, scratch, name, cmd)
+
+            {acceptance, model, checks}
+          else
+            {%{problems: [], status: 0, scenarios: [], passed: 0}, :none, setup}
+          end
+
+        {acceptance, model, checks, Snapshot.mutations(scratch, input)}
+      after
+        File.rm_rf!(scratch)
       end
 
-    checks =
-      for {name, cmd} <- b.config.checks do
-        Run.log(b.run, %{"event" => "command", "name" => name, "command" => cmd})
-        r = Bridge.exec(cmd, b.root)
-
-        Run.log(b.run, %{
-          "event" => "command_result",
-          "name" => name,
-          "status" => r.status,
-          "output" => Run.cap(r.output)
-        })
-
-        %{name: name, command: cmd, status: r.status, output: r.output}
-      end
-
-    after_tree = Snapshot.tree(b.root, b.start, b.excluded)
     baseline_intact!(b)
-    moved = if before == after_tree, do: [], else: Snapshot.changed(b.root, before, after_tree)
+    after_tree = Snapshot.tree(b.root, b.start, b.excluded)
+    moved = Enum.uniq(scratch_moved ++ Snapshot.changed(b.root, before, after_tree))
 
     failing =
       if(acceptance.problems == [], do: [], else: ["acceptance"]) ++
@@ -669,7 +678,8 @@ defmodule Kogen.Build do
 
     pass = %{
       n: n,
-      tree: after_tree,
+      tree: before,
+      clean: true,
       acceptance: acceptance,
       model: model,
       checks: checks,
@@ -696,6 +706,29 @@ defmodule Kogen.Build do
     })
 
     {track(%{b | last_pass: pass}), pass}
+  end
+
+  defp verification_command(b, root, name, cmd) do
+    Run.log(b.run, %{"event" => "command", "name" => name, "command" => cmd, "cwd" => root})
+    r = Bridge.exec(cmd, root)
+
+    Run.log(b.run, %{
+      "event" => "command_result",
+      "name" => name,
+      "status" => r.status,
+      "output" => Run.cap(r.output)
+    })
+
+    %{name: name, command: cmd, status: r.status, output: r.output}
+  end
+
+  defp clean_setup(b, root) do
+    Enum.reduce_while(Enum.with_index(b.config.setup, 1), [], fn {cmd, i}, _ ->
+      Bridge.progress("kogen: running setup-#{i}: #{cmd}")
+      Kogen.ShapeEvidence.count("setup")
+      r = verification_command(b, root, "setup-#{i}", cmd)
+      if r.status == 0, do: {:cont, []}, else: {:halt, [r]}
+    end)
   end
 
   @doc false
@@ -792,7 +825,8 @@ defmodule Kogen.Build do
     baseline_intact!(b)
     head_intact!(b)
 
-    if Snapshot.tree(b.root, b.start, b.excluded) != pass.tree do
+    if not (pass.green and pass.clean and review.tree == pass.tree) or
+         Snapshot.tree(b.root, b.start, b.excluded) != pass.tree do
       # Something changed after the reviewed pass: verify and review again.
       verify_and_review(b)
     else

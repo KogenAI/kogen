@@ -92,7 +92,7 @@ function configText() {
     "  fix: ['true']",
     '  checks: [{name: test, run: "python3 -m unittest"}]',
     '  acceptance:',
-    '    run: \'node_modules/.bin/cucumber-js --strict --require "features/steps/*.js" --format message:$KOGEN_ACCEPTANCE_REPORT $KOGEN_ACCEPTANCE_FEATURES\'',
+    '    run: \'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "${KOGEN_TEST_ACCEPTANCE_RUNNER:-$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js}" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"\'',
     '    steps_dir: features/steps',
     'protect: [.style.cfg]',
     'models:',
@@ -129,17 +129,10 @@ function setConfigKey(world, key, value) {
 }
 
 function installAcceptanceRunner(world, mode) {
-  const modules = projectFile(world, 'node_modules');
-  fs.rmSync(modules, { recursive: true, force: true });
-  mkdirp(path.join(modules, '.bin'));
-  fs.symlinkSync(path.join(ACCEPTANCE, 'node_modules/@cucumber'), path.join(modules, '@cucumber'), 'dir');
-  const runner = path.join(modules, '.bin/cucumber-js');
-  const realCucumber = path.join(ACCEPTANCE, 'node_modules/.bin/cucumber-js');
-  const fixtureRunner = path.join(ACCEPTANCE, 'fixtures/runners/run.js');
-  const source = `#!/usr/bin/env node\nconst fs = require('node:fs');
-const http = require('node:http');\nconst { spawnSync } = require('node:child_process');\nconst mode = ${JSON.stringify(mode)};\nif (mode === 'record') {\n  fs.mkdirSync('.kogen/local', { recursive: true });\n  fs.writeFileSync('.kogen/local/acceptance-env.json', JSON.stringify({ features: process.env.KOGEN_ACCEPTANCE_FEATURES, report: process.env.KOGEN_ACCEPTANCE_REPORT }));\n}\nconst script = mode === 'record' ? ${JSON.stringify(realCucumber)} : ${JSON.stringify(fixtureRunner)};\nconst args = mode === 'record' ? process.argv.slice(2) : [script, mode, ...process.argv.slice(2)];\nconst result = spawnSync(process.execPath, mode === 'record' ? [script, ...args] : args, { stdio: 'inherit' });\nprocess.exit(result.status === null ? 1 : result.status);\n`;
-  fs.writeFileSync(runner, source, { mode: 0o755 });
-  fs.chmodSync(runner, 0o755);
+  // The configured command declares this test runtime; no ignored workspace runner
+  // is smuggled into clean verification. The default remains installed Cucumber.
+  world.extraEnv.KOGEN_TEST_ACCEPTANCE_RUNNER = path.join(ACCEPTANCE, 'fixtures/runners/run.js');
+  world.extraEnv.KOGEN_TEST_ACCEPTANCE_MODE = mode;
 }
 
 function currentBaselineFiles(world, slug) {
@@ -757,11 +750,8 @@ async function initProject(world, configure) {
   const initCommit = world.git(world.project, ['commit', '-q', '-m', 'Add Kogen configuration']);
   assert.equal(initCommit.status, 0, initCommit.stderr || initCommit.stdout);
   if (configure) {
-    // Only the hand-configured fixture uses the harness's project-local runner. A real init
-    // must see the project's original dependency state and select its own bridge.
-    const modules = projectFile(world, 'node_modules');
-    fs.rmSync(modules, { recursive: true, force: true });
-    fs.symlinkSync(path.join(ACCEPTANCE, 'node_modules'), modules, 'dir');
+    // Hand-configured fixtures declare the installed runner, just as a real init
+    // can select Kogen's bridge without depending on workspace node_modules.
     fs.writeFileSync(projectFile(world, '.kogen/project.yaml'), configText());
     git(world, ['add', '--', '.kogen/project.yaml']);
     const commit = world.git(world.project, ['commit', '-q', '-m', 'Configure acceptance checks']);
@@ -1790,7 +1780,7 @@ async function dispatchAssertions(world, label, args, attachment) {
     return;
   }
   if (label.startsWith('the recorded acceptance environment has ')) {
-    const env = JSON.parse(fs.readFileSync(projectFile(world, '.kogen/local/acceptance-env.json'), 'utf8'));
+    const env = JSON.parse(fs.readFileSync(path.join(latestRunDir(world), 'acceptance-env.json'), 'utf8'));
     if (label.includes('KOGEN_ACCEPTANCE_FEATURES')) assert.equal(env.features, args[0]);
     else {
       assert.ok(pathInside(projectFile(world, args[0]), path.resolve(env.report)), `${env.report} is outside ${args[0]}`);

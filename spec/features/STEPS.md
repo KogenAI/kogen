@@ -283,3 +283,5 @@ One JavaScript regular expression per line.
 ^the run log shows Quint ran with the Node recorded in the installation's node-path file$
 ^the fake authorization server grants only "([^"]*)"$
 ```
+
+Verification vocabulary: a green pass means completed fresh setup, acceptance, model and configured checks on exact disposable candidate inputs, with stable scratch inputs and workspace. It never means successful workspace-only commands.

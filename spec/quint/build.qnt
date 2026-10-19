@@ -2,7 +2,9 @@
 // Abstraction: the candidate is a version number that changes whenever the
 // project files change (builder edits, check mutations). The checkout is the Build's alone
 // while it runs (GIT-1); a change that still appears there simply changes the candidate. A pass
-// is green only when every check passed and nothing changed while it ran.
+// is green only when fresh candidate-only setup and every check passed and both
+// scratch inputs and workspace stayed stable. Workspace-only or interrupted evidence
+// cannot yield a cleanPassVersion; checkpoint version 2 preserves this provenance.
 // There is no time or token limit. A Build ends in exactly one of these ways (chapter 04):
 // commit (landed), baseline_changed, head_moved, hook_changed_commit, commit_failed,
 // context_exhausted, review_invalid, review_blocked, build_blocked, provider, interrupted.
@@ -13,7 +15,7 @@ module build {
   var phase: Phase
   var rounds: int           // builder rounds so far (unbounded)
   var cand: int             // candidate version
-  var passVersion: int      // candidate version of the last green pass, -1 = none
+  var cleanPassVersion: int      // candidate version of the last green pass, -1 = none
   var reviewedVersion: int  // candidate version the reviewer approved, -1 = none
   var invalidReviews: int
   var baselineIntact: bool  // acceptance baseline unchanged since approval
@@ -23,7 +25,7 @@ module build {
   var reason: str
 
   action init = all {
-    stoppedPhase' = Loop, phase' = Loop, rounds' = 0, cand' = 0, passVersion' = -1, reviewedVersion' = -1,
+    stoppedPhase' = Loop, phase' = Loop, rounds' = 0, cand' = 0, cleanPassVersion' = -1, reviewedVersion' = -1,
     invalidReviews' = 0, baselineIntact' = true, headMoved' = false,
     commits' = 0, committedVersion' = -1, reason' = "",
   }
@@ -32,7 +34,7 @@ module build {
 
   // Set the phase, candidate and pass; everything else unchanged.
   action move(p: Phase, c: int, pv: int, r: str): bool = all {
-    stoppedPhase' = phase, phase' = p, cand' = c, passVersion' = pv, reason' = r,
+    stoppedPhase' = phase, phase' = p, cand' = c, cleanPassVersion' = pv, reason' = r,
     rounds' = rounds, reviewedVersion' = reviewedVersion, invalidReviews' = invalidReviews,
     baselineIntact' = baselineIntact, headMoved' = headMoved,
     commits' = commits, committedVersion' = committedVersion,
@@ -49,7 +51,7 @@ module build {
       baselineIntact' = if (k == 19) false else baselineIntact,
       cand' = if (k <= 8 or k == 19) cand + 1 else cand,
       rounds' = rounds + 1,
-      passVersion' = passVersion, reviewedVersion' = reviewedVersion, invalidReviews' = invalidReviews,
+      cleanPassVersion' = cleanPassVersion, reviewedVersion' = reviewedVersion, invalidReviews' = invalidReviews,
       headMoved' = headMoved, commits' = commits, committedVersion' = committedVersion,
     },
   }
@@ -58,10 +60,10 @@ module build {
   // the exact envelope/current protected paths/evidence. Existing guards take priority.
   action blockerWith(valid: bool): bool = all {
     phase == Loop,
-    if (not(valid)) move(Loop, cand, passVersion, reason)
-    else if (not(baselineIntact)) move(Failed, cand, passVersion, "baseline_changed")
-    else if (headMoved) move(Failed, cand, passVersion, "head_moved")
-    else move(Failed, cand, passVersion, "build_blocked"),
+    if (not(valid)) move(Loop, cand, cleanPassVersion, reason)
+    else if (not(baselineIntact)) move(Failed, cand, cleanPassVersion, "baseline_changed")
+    else if (headMoved) move(Failed, cand, cleanPassVersion, "head_moved")
+    else move(Failed, cand, cleanPassVersion, "build_blocked"),
   }
 
   action blocker = all {
@@ -72,23 +74,23 @@ module build {
   // VER-6/7/9: fixers ran; now the checks. VER-8: a changed baseline stops the Build at once.
   action verify = all {
     phase == Verifying,
-    nondet outcome = Set("green", "red", "mutated").oneOf()
-    if (not(baselineIntact)) move(Failed, cand, passVersion, "baseline_changed")
+    nondet outcome = Set("green", "red", "mutated", "setup_failed", "workspace_only").oneOf()
+    if (not(baselineIntact)) move(Failed, cand, cleanPassVersion, "baseline_changed")
     else if (outcome == "green") move(Reviewing, cand, cand, reason)            // REV-1
-    else if (outcome == "mutated") move(Loop, cand + 1, passVersion, reason)
-    else move(Loop, cand, passVersion, reason),
+    else if (outcome == "mutated") move(Loop, cand + 1, cleanPassVersion, reason)
+    else move(Loop, cand, cleanPassVersion, reason),
   }
 
   // REV-3..5: one independent reviewer may repair the candidate itself.
   action reviewEdit = all {
     Set(Reviewing, RepairingReview).contains(phase),
-    move(phase, cand + 1, passVersion, reason),
+    move(phase, cand + 1, cleanPassVersion, reason),
   }
 
   action reviewWith(verdict: str): bool = all {
     Set(Reviewing, RepairingReview).contains(phase),
     stoppedPhase' = phase, phase' = if (verdict == "approve") {
-               if (phase == Reviewing and cand == passVersion) Committing else FinalVerifying
+               if (phase == Reviewing and cand == cleanPassVersion) Committing else FinalVerifying
              }
              else if (verdict == "changes") Failed
              else if (invalidReviews >= 1) Failed
@@ -97,7 +99,7 @@ module build {
               else if (verdict == "invalid" and invalidReviews >= 1) "review_invalid" else reason,
     reviewedVersion' = if (verdict == "approve") cand else reviewedVersion,
     invalidReviews' = if (verdict == "invalid") invalidReviews + 1 else 0,
-    rounds' = rounds, cand' = cand, passVersion' = passVersion, baselineIntact' = baselineIntact,
+    rounds' = rounds, cand' = cand, cleanPassVersion' = cleanPassVersion, baselineIntact' = baselineIntact,
     headMoved' = headMoved, commits' = commits, committedVersion' = committedVersion,
   }
 
@@ -110,14 +112,14 @@ module build {
   // never restarting the builder or silently using an older green pass.
   action finalVerifyWith(outcome: str): bool = all {
     phase == FinalVerifying,
-    if (not(baselineIntact)) move(Failed, cand, passVersion, "baseline_changed")
+    if (not(baselineIntact)) move(Failed, cand, cleanPassVersion, "baseline_changed")
     else if (outcome == "green") move(if (cand == reviewedVersion) Committing else Reviewing, cand, cand, reason)
-    else if (outcome == "mutated") move(RepairingReview, cand + 1, passVersion, reason)
-    else move(RepairingReview, cand, passVersion, reason),
+    else if (outcome == "mutated") move(RepairingReview, cand + 1, cleanPassVersion, reason)
+    else move(RepairingReview, cand, cleanPassVersion, reason),
   }
 
   action finalVerify = all {
-    nondet outcome = Set("green", "red", "mutated").oneOf()
+    nondet outcome = Set("green", "red", "mutated", "setup_failed", "workspace_only").oneOf()
     finalVerifyWith(outcome),
   }
 
@@ -128,14 +130,14 @@ module build {
   // created but stays only in the reflog.
   action commitWith(outcome: str): bool = all {
     phase == Committing,
-    if (not(baselineIntact)) move(Failed, cand, passVersion, "baseline_changed")
-    else if (headMoved) move(Failed, cand, passVersion, "head_moved")
-    else if (cand != passVersion or reviewedVersion != passVersion) move(Verifying, cand, passVersion, reason)
-    else if (outcome == "hook_changed_commit") move(Failed, cand + 1, passVersion, "hook_changed_commit")
-    else if (outcome == "commit_failed") move(Failed, cand, passVersion, "commit_failed")
+    if (not(baselineIntact)) move(Failed, cand, cleanPassVersion, "baseline_changed")
+    else if (headMoved) move(Failed, cand, cleanPassVersion, "head_moved")
+    else if (cand != cleanPassVersion or reviewedVersion != cleanPassVersion) move(Verifying, cand, cleanPassVersion, reason)
+    else if (outcome == "hook_changed_commit") move(Failed, cand + 1, cleanPassVersion, "hook_changed_commit")
+    else if (outcome == "commit_failed") move(Failed, cand, cleanPassVersion, "commit_failed")
     else all {
       stoppedPhase' = phase, phase' = Done, commits' = commits + 1, committedVersion' = cand, reason' = "commit",
-      rounds' = rounds, cand' = cand, passVersion' = passVersion, reviewedVersion' = reviewedVersion,
+      rounds' = rounds, cand' = cand, cleanPassVersion' = cleanPassVersion, reviewedVersion' = reviewedVersion,
       invalidReviews' = invalidReviews, baselineIntact' = baselineIntact, headMoved' = headMoved,
     },
   }
@@ -157,7 +159,7 @@ module build {
       headMoved' = (headMoved or k == 1),
       baselineIntact' = (baselineIntact and k != 3),
       cand' = if (k == 2 or k == 3) cand + 1 else cand,
-      rounds' = rounds, passVersion' = passVersion, reviewedVersion' = reviewedVersion,
+      rounds' = rounds, cleanPassVersion' = cleanPassVersion, reviewedVersion' = reviewedVersion,
       invalidReviews' = invalidReviews, commits' = commits, committedVersion' = committedVersion,
     },
   }
@@ -169,12 +171,12 @@ module build {
     Set("provider", "interrupted").contains(reason),
     baselineIntact, not(headMoved), commits == 0,
     not(terminal(stoppedPhase)),
-    move(stoppedPhase, cand, passVersion, ""),
+    move(stoppedPhase, cand, cleanPassVersion, ""),
   }
 
   run resumeReviewerTest = init.then(move(Reviewing, 2, 2, ""))
     .then(move(Failed, 2, 2, "provider")).then(resume)
-    .expect(phase == Reviewing and passVersion == 2 and cand == 2 and commits == 0)
+    .expect(phase == Reviewing and cleanPassVersion == 2 and cand == 2 and commits == 0)
 
   run resumeBuilderTest = init.then(move(Failed, 0, -1, "provider")).then(resume)
     .expect(phase == Loop and commits == 0)
@@ -184,12 +186,12 @@ module build {
   // ---- Invariants ----
   // GIT-3/6: a kept commit holds exactly the reviewed, green candidate; baseline intact; same HEAD.
   val CommitOnlyWhenEligible = phase == Done implies
-    (commits == 1 and committedVersion == passVersion and committedVersion == reviewedVersion
+    (commits == 1 and committedVersion == cleanPassVersion and committedVersion == reviewedVersion
      and baselineIntact and not(headMoved))
   // GIT-7: at most one commit; none unless Done.
   val AtMostOneCommit = commits <= 1 and (phase != Done implies commits == 0)
   // REV-1/6: the commit step is reached only with an approving review of the latest green pass.
-  val ReviewNeverOverridesChecks = phase == Committing implies reviewedVersion == passVersion
+  val ReviewNeverOverridesChecks = phase == Committing implies reviewedVersion == cleanPassVersion
   // VER-8: a changed baseline never reaches a commit.
   val BaselineChangeNeverCommits = not(baselineIntact) implies commits == 0
   // Chapter 04 / LOOP-7: a Build ends only in one of the listed ways;
@@ -226,22 +228,22 @@ module build {
 
   run reviewerRepairRequiresFinalVerificationTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
-      .expect(phase == FinalVerifying and passVersion == 2 and reviewedVersion == 3 and commits == 0)
+      .expect(phase == FinalVerifying and cleanPassVersion == 2 and reviewedVersion == 3 and commits == 0)
 
   run reviewerRepairVerifiedThenCommittedTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
       .then(finalVerifyWith("green")).then(commitWith("ok"))
-      .expect(phase == Done and committedVersion == 3 and passVersion == 3 and reviewedVersion == 3)
+      .expect(phase == Done and committedVersion == 3 and cleanPassVersion == 3 and reviewedVersion == 3)
 
   run failedFinalVerificationStaysWithReviewerTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
       .then(finalVerifyWith("red")).then(reviewWith("approve"))
-      .expect(phase == FinalVerifying and passVersion == 2 and commits == 0)
+      .expect(phase == FinalVerifying and cleanPassVersion == 2 and commits == 0)
 
   run changedAfterApprovalNeedsReviewTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(reviewWith("approve"))
       .then(move(FinalVerifying, 4, 2, "")).then(finalVerifyWith("green"))
-      .expect(phase == Reviewing and passVersion == 4 and reviewedVersion == 3 and commits == 0)
+      .expect(phase == Reviewing and cleanPassVersion == 4 and reviewedVersion == 3 and commits == 0)
 
   run twoInvalidReviewsFailTest =
     init.then(move(Reviewing, 2, 2, "")).then(reviewWith("invalid")).then(reviewWith("invalid"))
@@ -249,7 +251,7 @@ module build {
 
   run changedBaselineStopsAtVerificationTest =
     init.then(all {
-      stoppedPhase' = phase, phase' = Verifying, rounds' = 1, cand' = 1, passVersion' = -1, reviewedVersion' = -1,
+      stoppedPhase' = phase, phase' = Verifying, rounds' = 1, cand' = 1, cleanPassVersion' = -1, reviewedVersion' = -1,
       invalidReviews' = 0, baselineIntact' = false, headMoved' = false,
       commits' = 0, committedVersion' = -1, reason' = "",
     }).then(verify)

@@ -1,6 +1,6 @@
 Feature: Reviewing
   After a green pass, one independent reviewer inspects and repairs the code.
-  Changed final contents must pass external verification before a commit.
+  Changed final contents must pass fresh clean candidate setup and external verification before a commit.
   Verification failures stay in that reviewer conversation.
 
   Background:
