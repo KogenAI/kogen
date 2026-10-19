@@ -1,0 +1,97 @@
+{
+  "source_receipt": ".kogen/local/runs/23128af8/log.jsonl",
+  "run": "23128af8",
+  "scope": "Kogen verification pass 1 before independent review documentation edits; not a release qualification or a claim about subsequent final contents",
+  "commands": [
+    {
+      "name": "setup-1",
+      "command": "mix deps.get",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:03:32.125483Z",
+      "finished_at": "2026-10-19T15:03:33.720675Z",
+      "status": 0,
+      "output": "Resolving Hex dependencies...\nResolution completed in 0.013s\nUnchanged:\n  stream_data 1.4.0\n* Getting stream_data (Hex package)\nYou have added/upgraded packages you could sponsor, run `mix hex.sponsor` to learn more\n"
+    },
+    {
+      "name": "setup-2",
+      "command": "(cd spec && npm ci)",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:03:33.721168Z",
+      "finished_at": "2026-10-19T15:03:35.478418Z",
+      "status": 0,
+      "output": "\nadded 81 packages, and audited 82 packages in 2s\n\n4 packages are looking for funding\n  run `npm fund` for details\n\nfound 0 vulnerabilities\nnpm warn install-scripts 1 package has install scripts not yet covered by allowScripts:\nnpm warn install-scripts   protobufjs@7.6.6 (postinstall: node scripts/postinstall)\nnpm warn install-scripts\nnpm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.\n"
+    },
+    {
+      "name": "setup-3",
+      "command": "(cd test/acceptance && npm ci)",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:03:35.478657Z",
+      "finished_at": "2026-10-19T15:03:36.417445Z",
+      "status": 0,
+      "output": "\nadded 84 packages, and audited 85 packages in 865ms\n\n22 packages are looking for funding\n  run `npm fund` for details\n\nfound 0 vulnerabilities\n"
+    },
+    {
+      "name": "setup-4",
+      "command": "sh packaging/package.sh",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:03:36.424195Z",
+      "finished_at": "2026-10-19T15:03:51.079654Z",
+      "status": 0,
+      "output": "Compiling 28 files (.ex)\nGenerated kogen app\n* skipping runtime configuration (config/runtime.exs not found)\n* creating dist/kogen-8cdfa50f-darwin-arm64/lib/release/releases/0.1.0/vm.args\n/private/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25/dist/kogen-8cdfa50f-darwin-arm64.tar.gz\n"
+    },
+    {
+      "name": "acceptance",
+      "command": "NODE_PATH=\"$KOGEN_CUCUMBER\" \"$KOGEN_NODE\" \"$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js\" --strict --require 'features/steps/*.js' --format \"message:$KOGEN_ACCEPTANCE_REPORT\" \"$KOGEN_ACCEPTANCE_FEATURES\"",
+      "cwd": null,
+      "started_at": "2026-10-19T15:03:51.083448Z",
+      "finished_at": "2026-10-19T15:04:14.347361Z",
+      "status": 0,
+      "output": "............\n\n6 hooks (6 passed)\n3 scenarios (3 passed)\n6 steps (6 passed)\n0m 23.008s (0m 23.022s executing your code)\n"
+    },
+    {
+      "name": "format",
+      "command": "mix format --check-formatted",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:04:14.351641Z",
+      "finished_at": "2026-10-19T15:04:14.692192Z",
+      "status": 0,
+      "output": ""
+    },
+    {
+      "name": "compile",
+      "command": "mix compile --warnings-as-errors",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:04:14.692425Z",
+      "finished_at": "2026-10-19T15:04:16.710704Z",
+      "status": 0,
+      "output": "Compiling 28 files (.ex)\nGenerated kogen app\n"
+    },
+    {
+      "name": "test",
+      "command": "mix test",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:04:16.711263Z",
+      "finished_at": "2026-10-19T15:07:23.482276Z",
+      "status": 0,
+      "output": "==> stream_data\nCompiling 3 files (.ex)\nGenerated stream_data app\n==> kogen\nCompiling 28 files (.ex)\nGenerated kogen app\nRunning ExUnit with seed: 85677, max_cases: 4\n\n...............................................................................................................................................\nFinished in 183.9 seconds (181.9s async, 2.0s sync)\n\nResult: 143 passed (3 properties, 140 tests)\n"
+    },
+    {
+      "name": "go-test",
+      "command": "(cd cli && go test -race ./...)",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:07:23.483004Z",
+      "finished_at": "2026-10-19T15:07:38.050133Z",
+      "status": 0,
+      "output": "ok  \tkogen\t13.606s\n"
+    },
+    {
+      "name": "cucumber",
+      "command": "(cd test/acceptance && npx cucumber-js --strict --tags \"not @live\" --require \"steps/*.js\" --require \"support/*.js\" ../../spec/features/04-building.feature)",
+      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "started_at": "2026-10-19T15:07:38.050560Z",
+      "finished_at": "2026-10-19T15:09:20.690174Z",
+      "status": 0,
+      "output": ".................................................................................................................................................................................................................\n\n3 hooks (3 passed)\n14 scenarios (14 passed)\n206 steps (206 passed)\n1m 42.018s (1m 41.985s executing your code)\n"
+    }
+  ]
+}

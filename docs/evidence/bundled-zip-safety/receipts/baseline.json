@@ -1,0 +1,9 @@
+{
+  "head": "43c423fc3a1c27f809327fa1c0619fde62810ae1",
+  "files": {
+    "packaging/quint/package.json": "c2a7a1e267e18adf546ec13113dd01f976032d981ebc503360b6a6ad2915b639",
+    "packaging/quint/package-lock.json": "c520b98a437e6182d43ac9272ff57915752fbdda022bef335307b132585bdae8",
+    "spec/package.json": "beb979fe2d707c7c6f9043f2e6e831e095fa0449d4730dc0c1d3ba2bd4511a2f",
+    "spec/package-lock.json": "938d609f3363f6b33983c50f6d6a79357898fd3f21915a1582a420854cef9f1c"
+  }
+}

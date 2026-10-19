@@ -5,5 +5,8 @@
   "description": "The Quint version Kogen ships and runs with its own Node (VER-5)",
   "dependencies": {
     "@informalsystems/quint": "0.33.0"
+  },
+  "overrides": {
+    "adm-zip": "0.6.1"
   }
 }

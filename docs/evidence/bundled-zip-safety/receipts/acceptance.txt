@@ -1,0 +1,6 @@
+.......
+
+1 hook (1 passed)
+3 scenarios (3 passed)
+6 steps (6 passed)
+0m 30.720s (0m 30.713s executing your code)

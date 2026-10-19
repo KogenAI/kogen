@@ -1,0 +1,94 @@
+{
+  "sources": [
+    {
+      "file": "advisory-GHSA-p634-w6r4-rjp2.json",
+      "url": "https://api.github.com/advisories/GHSA-p634-w6r4-rjp2",
+      "sha256": "06cd0f6372c44607894ea92475b347b7c265fc8e367a83bfaca63bc923110866",
+      "retrieved_at": "2026-10-19T15:01:03.831330+00:00"
+    },
+    {
+      "file": "advisory-GHSA-c6fg-446q-cg94.json",
+      "url": "https://api.github.com/advisories/GHSA-c6fg-446q-cg94",
+      "sha256": "da27176a3f96a2d19f3fa5ed3588a721443d46d74ee81ae7d60879fdf6eef76a",
+      "retrieved_at": "2026-10-19T15:01:04.598862+00:00"
+    },
+    {
+      "file": "advisory-GHSA-8238-w5pm-2374.json",
+      "url": "https://api.github.com/advisories/GHSA-8238-w5pm-2374",
+      "sha256": "c0fc22832202950fc36977c28bfb6f43830ead1df45d6f61fac002019f02ed34",
+      "retrieved_at": "2026-10-19T15:01:05.362159+00:00"
+    },
+    {
+      "file": "advisory-GHSA-rcw4-f5rp-g42v.json",
+      "url": "https://api.github.com/advisories/GHSA-rcw4-f5rp-g42v",
+      "sha256": "c8206846341440b21f296ae576213cfa15001e5c601d3fc3ec35bcaf22a051bd",
+      "retrieved_at": "2026-10-19T15:01:06.095685+00:00"
+    },
+    {
+      "file": "advisory-GHSA-j5f4-cc29-5x44.json",
+      "url": "https://api.github.com/advisories/GHSA-j5f4-cc29-5x44",
+      "sha256": "4cd707d80285fa1ab85b9eb7d501366b40744a49f135b3f8fd6561a8136f972a",
+      "retrieved_at": "2026-10-19T15:01:06.842626+00:00"
+    },
+    {
+      "file": "advisory-GHSA-7q85-xj36-vmfc.json",
+      "url": "https://api.github.com/advisories/GHSA-7q85-xj36-vmfc",
+      "sha256": "0a79fcb9dbe8c050bc5995e44ad7cfc56f121ffe6b267035d4b665f8ab3d28b8",
+      "retrieved_at": "2026-10-19T15:01:07.649176+00:00"
+    },
+    {
+      "file": "advisory-GHSA-vwc7-r8mq-g2x9.json",
+      "url": "https://api.github.com/advisories/GHSA-vwc7-r8mq-g2x9",
+      "sha256": "b59880af57d5d93f5335f1a0ee0265bcc1a673d5c309f8870a5940b224e14ae9",
+      "retrieved_at": "2026-10-19T15:01:08.456394+00:00"
+    },
+    {
+      "file": "advisory-GHSA-xcpc-8h2w-3j85.json",
+      "url": "https://api.github.com/advisories/GHSA-xcpc-8h2w-3j85",
+      "sha256": "3eb000f8a05e8caa83faf64502876ebb8e1e31e7babfa80327e3cc2279f1d92c",
+      "retrieved_at": "2026-10-19T15:01:09.206816+00:00"
+    },
+    {
+      "file": "adm-zip-0.6.1-metadata.json",
+      "url": "https://registry.npmjs.org/adm-zip/0.6.1",
+      "sha256": "0ccd7ef398b320f9742659f722632f4c7d8e0ccbf8870e3a655feafeae2e20f7",
+      "retrieved_at": "2026-10-19T15:01:10.273043+00:00"
+    },
+    {
+      "file": "quint-0.33.0-metadata.json",
+      "url": "https://registry.npmjs.org/@informalsystems%2Fquint/0.33.0",
+      "sha256": "42185329b7854552c5dd8ef4aaa9b875a17e6818694eb2ac956cbb0db8bf0d73",
+      "retrieved_at": "2026-10-19T15:01:11.072636+00:00"
+    },
+    {
+      "file": "quint-latest-metadata.json",
+      "url": "https://registry.npmjs.org/@informalsystems%2Fquint/latest",
+      "sha256": "42185329b7854552c5dd8ef4aaa9b875a17e6818694eb2ac956cbb0db8bf0d73",
+      "retrieved_at": "2026-10-19T15:01:11.831783+00:00"
+    },
+    {
+      "file": "adm-zip-0.6.1-release.json",
+      "url": "https://api.github.com/repos/cthackers/adm-zip/releases/tags/v0.6.1",
+      "sha256": "31387ba503b991303ff332527f7a6ff751754adc75da1121e34e96476131d186",
+      "retrieved_at": "2026-10-19T15:01:12.415453+00:00"
+    },
+    {
+      "file": "adm-zip-0.6.0-to-0.6.1.json",
+      "url": "https://api.github.com/repos/cthackers/adm-zip/compare/v0.6.0...v0.6.1",
+      "sha256": "75815062cd78707d28da89720cfb5a4405823fd9e6a4d2a0ca615a1854ab62b0",
+      "retrieved_at": "2026-10-19T15:01:14.197051+00:00"
+    },
+    {
+      "file": "adm-zip-v0.6.1-utils.js",
+      "url": "https://raw.githubusercontent.com/cthackers/adm-zip/v0.6.1/util/utils.js",
+      "sha256": "4767587fd6a8f7b8a2b59f5e2253b2b21e8cfe5148c58587f5d54dfee74573cc",
+      "retrieved_at": "2026-10-19T15:01:15.012250+00:00"
+    },
+    {
+      "file": "quint-v0.33.0-binaryManager.ts",
+      "url": "https://raw.githubusercontent.com/quint-co/quint/v0.33.0/quint/src/rust/binaryManager.ts",
+      "sha256": "623bf7df78511a7f9a6eedb6780828c86a56561a7f576bc3e8db610750112312",
+      "retrieved_at": "2026-10-19T15:01:15.715383+00:00"
+    }
+  ]
+}
