@@ -714,13 +714,15 @@ defmodule Kogen.Build do
 
   # ---- Ends without a commit (GIT-8, CLI-7) ----
 
-  defp stopped(b, %Error{class: "provider", reason: "context_too_long"}) do
+  defp stopped(b, %Error{class: "provider", reason: "context_too_long"} = e) do
     model = b.config.models["build"].model
 
     stopped(b, %Error{
       class: "candidate",
       reason: "context_exhausted",
       detail: "the conversation no longer fits #{model}'s context; edits are left in place",
+      lines: e.lines,
+      provider_failure: e.provider_failure,
       exit: 1
     })
   end
@@ -729,7 +731,7 @@ defmodule Kogen.Build do
     report = b.phase != :startup
     if report, do: Bridge.puts("failed #{b.slug}: #{e.reason} (Build #{b.run.id})")
     Bridge.out(Error.render(e))
-    details(b, e.reason, report)
+    details(b, e.reason, report, e.provider_failure)
     e.exit
   end
 
@@ -750,7 +752,7 @@ defmodule Kogen.Build do
     Kogen.Main.signal_exit(sig)
   end
 
-  defp details(b, reason, report \\ true) do
+  defp details(b, reason, report \\ true, provider_failure \\ nil) do
     File.cp!(Path.join(b.run.dir, "index-at-start"), b.git_index)
     still = (b.last_pass && b.last_pass.failing) || []
 
@@ -768,10 +770,23 @@ defmodule Kogen.Build do
       Bridge.puts("  run log: #{b.run.log}")
     end
 
-    Run.log(b.run, %{"event" => "outcome", "outcome" => reason})
+    outcome = %{"event" => "outcome", "outcome" => reason}
+
+    outcome =
+      if provider_failure,
+        do: Map.put(outcome, "provider_failure", provider_failure),
+        else: outcome
+
+    Run.log(b.run, outcome)
 
     extra = %{"edited" => edited, "still_failing" => still}
     extra = if b.blocker, do: Map.put(extra, "blocker", b.blocker), else: extra
+
+    extra =
+      if provider_failure,
+        do: Map.put(extra, "provider_failure", provider_failure),
+        else: extra
+
     Run.write(b.run, "result.json", result(b, reason, extra))
   end
 

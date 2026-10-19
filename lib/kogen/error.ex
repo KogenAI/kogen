@@ -1,6 +1,6 @@
 defmodule Kogen.Error do
   @moduledoc "A refusal or failure reported as `<class>/<reason>: <detail>` (CLI-6)."
-  defexception [:class, :reason, :detail, lines: [], exit: 1]
+  defexception [:class, :reason, :detail, lines: [], exit: 1, provider_failure: nil]
 
   @impl true
   def message(e), do: "#{e.class}/#{e.reason}: #{e.detail}"

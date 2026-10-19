@@ -28,6 +28,8 @@ ChatGPT is the only provider. Kogen signs in with its own login flow, stores and
 | other 4xx | no retry | `provider/refused: ChatGPT refused the request: <status> <detail>` |
 | unreadable response | one retry | `provider/invalid_response: ChatGPT sent a response Kogen cannot read: <detail>` |
 
+Provider failures retain an allowlisted diagnostic map `provider_failure`: string `code` and error `type`, the enclosing SSE `event_kind` when supplied, and numeric `http_status` when known. Unknown codes remain diagnostic data and follow the same existing fallback classification; retaining them never adds a retry or changes the 2 s/8 s backoff, attempt count or exit. A final exhausted transient retains its last failure fields. Missing or nonstring fields are omitted safely, rather than copying malformed payloads. The existing error rendering adds a `provider failure: <JSON>` line; Build results, existing outcome log events and refinement failure results retain the same map, including when Build context exhaustion wraps the provider error. A flat SSE `error` frame's `type` names its event kind, not an error subtype; `response.incomplete`'s synthetic internal marker is not a provider code. No raw stream/event body, prompt, request payload, authentication field or credential is added to these diagnostics.
+
 All exit 4, except context exhaustion in a Build, which is LOOP-9 (exit 1). A retry never repeats a tool call: tools run only after a complete response. A provider failure ends a Build without a commit, edits left.
 
 **GPT-9 — Usage.** Kogen records model, effort and input, cached, output and reasoning tokens per request; the Build result and shaping output print totals.

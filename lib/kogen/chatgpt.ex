@@ -376,13 +376,16 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp login_rejected! do
-    Error.raise!(
-      "provider",
-      "login",
-      "the ChatGPT sign-in was rejected; run kogen provider login chatgpt",
-      4
-    )
+  defp login_rejected!(diagnostics \\ %{}) do
+    raise with_diagnostics(
+            %Error{
+              class: "provider",
+              reason: "login",
+              detail: "the ChatGPT sign-in was rejected; run kogen provider login chatgpt",
+              exit: 4
+            },
+            diagnostics
+          )
   end
 
   # ---- Requests (GPT-7, GPT-8, GPT-9) ----
@@ -417,24 +420,38 @@ defmodule Kogen.ChatGPT do
       {:ok, result} ->
         result
 
-      {:unauthorized, _} when not refreshed ->
-        refreshed(token, :after_401)
+      {:unauthorized, error} when not refreshed ->
+        try do
+          refreshed(token, :after_401)
+        rescue
+          e in Error -> reraise with_diagnostics(e, diagnostics(error)), __STACKTRACE__
+        end
+
         attempt(body, model, n, true, retried_invalid)
 
-      {:unauthorized, _} ->
-        login_rejected!()
+      {:unauthorized, error} ->
+        login_rejected!(diagnostics(error))
 
       {:transient, _detail} when n < 3 ->
         pause(if n == 1, do: 2_000, else: 8_000)
         attempt(body, model, n + 1, refreshed, retried_invalid)
 
       {:transient, detail} ->
-        Error.raise!(
-          "provider",
-          "unavailable",
-          "ChatGPT did not answer after 3 attempts: #{detail}",
-          4
-        )
+        {message, diagnostics} =
+          case detail do
+            %{detail: message, provider_failure: diagnostics} -> {message, diagnostics}
+            message -> {message, %{}}
+          end
+
+        raise with_diagnostics(
+                %Error{
+                  class: "provider",
+                  reason: "unavailable",
+                  detail: "ChatGPT did not answer after 3 attempts: #{message}",
+                  exit: 4
+                },
+                diagnostics
+              )
 
       {:invalid, _detail} when not retried_invalid ->
         attempt(body, model, n, refreshed, true)
@@ -460,8 +477,42 @@ defmodule Kogen.ChatGPT do
     end
   end
 
+  defp diagnostics(error) do
+    # response.incomplete's code is a local fallback marker, not a provider field.
+    for {key, value} <- [
+          code: if(error[:event_kind] == "response.incomplete", do: nil, else: error[:code]),
+          type: error[:type],
+          event_kind: error[:event_kind],
+          http_status: error[:status]
+        ],
+        (key == :http_status and is_integer(value)) or
+          (key != :http_status and is_binary(value) and value != ""),
+        into: %{},
+        do: {Atom.to_string(key), value}
+  end
+
+  defp with_diagnostics(error, diagnostics) when map_size(diagnostics) == 0, do: error
+
+  defp with_diagnostics(error, diagnostics),
+    do: %{
+      error
+      | provider_failure: diagnostics,
+        lines: error.lines ++ ["provider failure: " <> JSON.encode!(diagnostics)]
+    }
+
+  defp text(value) when is_binary(value), do: value
+  defp text(_), do: ""
+
+  defp classify(error, model) do
+    try do
+      classify_error(error, model)
+    rescue
+      e in Error -> reraise with_diagnostics(e, diagnostics(error)), __STACKTRACE__
+    end
+  end
+
   # A request error that retrying cannot fix.
-  defp classify(
+  defp classify_error(
          %{status: status, code: code, param: param, message: message, resets_at: resets_at},
          model
        ) do
@@ -612,25 +663,32 @@ defmodule Kogen.ChatGPT do
   defp apply_event("response.incomplete", ev, acc),
     do: %{
       acc
-      | failure: %{
-          "code" => "incomplete",
-          "message" => inspect(get_in(ev, ["response", "incomplete_details"]))
-        }
+      | failure:
+          {%{
+             "code" => "incomplete",
+             "message" => inspect(get_in(ev, ["response", "incomplete_details"]))
+           }, "response.incomplete"}
     }
 
   defp apply_event("response.failed", ev, acc),
-    do: %{acc | failure: get_in(ev, ["response", "error"]) || %{}}
+    do: %{acc | failure: {get_in(ev, ["response", "error"]) || %{}, "response.failed"}}
 
-  defp apply_event("error", ev, acc), do: %{acc | failure: ev["error"] || ev}
+  defp apply_event("error", ev, acc),
+    do: %{acc | failure: {ev["error"] || Map.delete(ev, "type"), "error"}}
+
   defp apply_event(_type, _ev, acc), do: acc
 
   # A failure reported inside the stream.
-  defp failure(f) do
+  defp failure({f, event_kind}) do
+    f = if is_map(f), do: f, else: %{}
+
     error = %{
       status: "stream",
       code: f["code"],
+      type: f["type"],
+      event_kind: event_kind,
       param: f["param"],
-      message: f["message"] || "",
+      message: text(f["message"]),
       resets_at: f["resets_at"]
     }
 
@@ -641,7 +699,8 @@ defmodule Kogen.ChatGPT do
         "subscription_sharing_usage_unavailable",
         "subscription_sharing_user_unavailable"
       ] ->
-        {:transient, "#{f["code"]}: #{f["message"]}"}
+        {:transient,
+         %{detail: "#{f["code"]}: #{text(f["message"])}", provider_failure: diagnostics(error)}}
 
       true ->
         {:error, error}
@@ -651,14 +710,15 @@ defmodule Kogen.ChatGPT do
   defp http_error(status, body) do
     {err, detail} =
       case JSON.decode(body) do
-        {:ok, %{"error" => %{} = e}} -> {e, e["message"] || e["code"] || ""}
-        {:ok, %{"detail" => d}} -> {%{}, to_string(d)}
+        {:ok, %{"error" => %{} = e}} -> {e, text(e["message"] || e["code"])}
+        {:ok, %{"detail" => d}} -> {%{}, text(d)}
         _ -> {%{}, String.slice(body, 0, 200)}
       end
 
     error = %{
       status: status,
       code: err["code"],
+      type: err["type"],
       param: err["param"],
       message: detail,
       resets_at: err["resets_at"]
@@ -666,13 +726,17 @@ defmodule Kogen.ChatGPT do
 
     cond do
       status == 401 ->
-        {:unauthorized, detail}
+        {:unauthorized, error}
 
       err["code"] == "subscription_sharing_usage_limit_exceeded" ->
         {:error, error}
 
       status == 429 or status >= 500 ->
-        {:transient, "HTTP #{status} #{detail}" |> String.trim_trailing()}
+        {:transient,
+         %{
+           detail: "HTTP #{status} #{detail}" |> String.trim_trailing(),
+           provider_failure: diagnostics(error)
+         }}
 
       true ->
         {:error, error}

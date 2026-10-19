@@ -174,6 +174,7 @@ defmodule Kogen.Integration.FakeProvider do
   end
 
   defp provider_action({:items, items}, _index), do: {:sse, items}
+  defp provider_action({:events, events}, _index), do: {:events, events}
 
   defp refused_body do
     %{"error" => %{"message" => "scripted provider refusal", "code" => "invalid_request_error"}}
@@ -181,6 +182,11 @@ defmodule Kogen.Integration.FakeProvider do
 
   defp send_response(socket, {:json, status, body}) do
     send_http(socket, status, "application/json", JSON.encode!(body))
+  end
+
+  defp send_response(socket, {:events, events}) do
+    body = Enum.map_join(events, "", &("data: " <> JSON.encode!(&1) <> "\n\n"))
+    send_http(socket, 200, "text/event-stream", body)
   end
 
   defp send_response(socket, {:sse, items}) do

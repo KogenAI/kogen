@@ -163,7 +163,18 @@ defmodule Kogen.Refine do
         0
       rescue
         e ->
-          result!(state, "failed", %{error: Exception.message(e)})
+          extra = %{error: Exception.message(e)}
+
+          extra =
+            case e do
+              %Error{provider_failure: diagnostics} when is_map(diagnostics) ->
+                Map.put(extra, :provider_failure, diagnostics)
+
+              _ ->
+                extra
+            end
+
+          result!(state, "failed", extra)
           reraise e, __STACKTRACE__
       catch
         {:cancel, signal} ->
