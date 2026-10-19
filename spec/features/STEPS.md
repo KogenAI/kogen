@@ -208,7 +208,6 @@ One JavaScript regular expression per line.
 ^the\ file\ "([^"]*)"\ does\ not\ contain\ "([^"]*)"$
 ^the\ file\ "([^"]*)"\ does\ not\ exist$
 ^the\ file\ "([^"]*)"\ exists$
-^the\ file\ "([^"]*)"\ has\ (\d+)\ lines?$
 ^the\ file\ "([^"]*)"\ has\ mode\ "([^"]*)"$
 ^the\ file\ "([^"]*)"\ holds\ a\ ChatGPT\ token\ "([^"]*)"$
 ^the\ file\ "([^"]*)"\ is\ a\ symlink\ into\ "([^"]*)"$
