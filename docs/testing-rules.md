@@ -66,7 +66,11 @@ Shaping writes the Intent, its scenarios and its model by these principles. Each
 
 The reviewer checks that meaningful tests establish each required outcome and makes scoped repairs. A false-passing fixture, missing evidence of required behavior, or flakiness that breaks a supported use case is substantive. Existing coverage may establish the outcome; a missing preferred layer alone is not an application defect.
 
-Test duplication, implementation coupling and harmless cleanup are notes unless a concrete current consequence makes them substantive. They do not independently force another delivery cycle. Correct small issues within the review/fix stage when useful; do not remove useful tests or weaken configured checks to obtain a pass. Every blocker identifies its requirement, counterexample or violating path, and observable consequence. Kogen externally verifies changed final contents, returning failures to the same reviewer conversation.
+Review is against the approved Intent and explicit existing project conventions, including documented requirements without a deterministic tool rule. Delegate mechanical formatting and style to the existing configured formatters, linters, checks and fixers, preserving their checks and settings. Repair demonstrated current correctness, safety, scope and meaningful-test defects and violations of those requirements or conventions. Every substantive concern identifies its applicable requirement, concrete counterexample or violating path, and observable consequence.
+
+Do not make preference-only renamings, rearrangements, abstraction changes, speculative refactors or harmless nearby dead-code cleanup. Minimal incidental changes necessary for a demonstrated repair or configured style or project requirement are allowed; proximity or personal preference alone is not justification. Test duplication and implementation coupling are notes unless a demonstrated current consequence makes them substantive. Harmless preferences may be nonblocking notes, never required edits. Approving unchanged correct code is success, with no edit quota.
+
+Make scoped repairs and add or update useful regression coverage; do not remove useful tests or weaken configured checks to obtain a pass. Kogen externally verifies changed final contents, returning failures to the same reviewer conversation.
 
 ## Adopting Kogen in an existing project
 

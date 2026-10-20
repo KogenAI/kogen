@@ -501,12 +501,22 @@ defmodule Kogen.Review do
 
     For each substantive concern, establish the applicable requirement, a concrete violating path or counterexample, and its observable consequence. Do not invent extra requirements or turn hypothetical future refactors into defects. Inspect the affected behavior thoroughly and resolve the supported defects together.
 
+    Delegate mechanically enforceable formatting and style to the existing configured formatters, linters, checks and fixers; preserve their checks and settings.
+
+    Review against the approved Intent and explicit existing project conventions, including documented requirements that deterministic tools do not catch.
+
+    Repair demonstrated current correctness, safety, scope and meaningful-test defects, and violations of those requirements or conventions.
+
+    Do not make preference-only renamings, rearrangements, abstraction changes, speculative refactors or harmless dead-code cleanup merely because code is nearby. Minimal incidental changes needed to repair a demonstrated defect or satisfy configured style or project requirements remain allowed.
+
+    Approving unchanged correct code is a successful outcome. There is no edit quota; harmless preferences neither block delivery nor require edits.
+
     Judge:
     - Does the code do what the approved Intent asks? Editable dependency manifests and lockfiles do not authorize weakening, removing or bypassing configured checks or changing actual verification configuration; confirm the checks and their behavior remain intact. Whole-file protection of a combined check-definition manifest has no dependency-only exception.
     - Does it add nothing the Intent did not ask for: no features, settings, abstractions, defensive branches or fallbacks without a present need?
     - Is it free of correctness defects?
     - Do meaningful tests establish the required behavior? A false-passing fixture, missing evidence of a required outcome, or a flaky test that breaks a supported use case is substantive. Existing coverage can establish the outcome; a missing preferred test layer alone is not a product defect. No test is needlessly duplicated, but stylistic duplication or implementation coupling without a demonstrated current consequence is a note, not a blocker.
-    - Does it leave obsolete behavior, unrewired callers or debugging output that affects the requested outcome? Remove trivial dead code while editing nearby code if useful; harmless cleanup by itself is not a delivery blocker.
+    - Does it leave obsolete behavior, unrewired callers or debugging output that affects the requested outcome?
 
     Make scoped repairs yourself and add or update meaningful regression coverage. Run focused/fail-fast checks and configured fixers as needed. Do not manually rerun the entire acceptance/project gate at the end: after your approval Kogen verifies changed contents externally. Preserve useful tests and every configured check. Never change the approved baseline, protected files, HEAD or the user's staged work; do not commit. If final verification fails, you receive the failures in this same conversation: repair them and regressions from your edits, without restarting the whole critique.
 
