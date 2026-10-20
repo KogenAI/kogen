@@ -118,6 +118,19 @@ The scenarios run Python from `.tool-versions`; set `KOGEN_TEST_PYTHON_BIN` to u
 
 contact@kogen.dev
 
+
+For a **fresh** Build only, optional operator diagnostic data can be supplied with
+`kogen intent build <slug> [--project <checkout>] --context <file>`. The file is
+caller-relative (not project-relative), readable and regular, nonblank valid UTF-8,
+and at most 262144 original bytes. It is read once and preserved exactly in private
+local run custody (0700 directory, 0600 `diagnostic-context.json`), separate from
+approval and commits. Do not put credentials in it; this is not a credential store.
+The labelled lower-authority message does not replace the approved Intent or native
+protection, checks, review or commit rules. Old candidate observations are untrusted
+data, not automatic reuse, import or proof. After a demonstrated protected fixture
+correction, obtain new exact approval before a fresh Build. `intent resume` accepts
+no `--context`: it uses its saved conversation even if the source changes or vanishes.
+
 ## License
 
 Copyright 2026 Optimum Tech, LLC. Licensed under [Apache 2.0](LICENSE); see [NOTICE](NOTICE). The release archive bundles third-party software under their own licences: [packaging/licenses/](packaging/licenses/README.md).

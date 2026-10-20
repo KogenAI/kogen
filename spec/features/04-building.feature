@@ -162,3 +162,18 @@ Feature: Building
     And stdout contains "checkpoint"
     And HEAD is unchanged
     And the fake ChatGPT server received 0 requests
+
+  @LOOP-2 @LOOP-10 @AUT-5 @CLI-9
+  Scenario: Fresh Build appends lower-authority diagnostic data without replacing current rules
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even --context=README.md"
+    Then the exit code is 0
+    And request 1 contains the text of the file ".kogen/intents/is-even/intent.md"
+    And request 1 contains the text of the file ".kogen/intents/is-even/acceptance.feature"
+    And request 1 contains "Caller diagnostic data (lower-authority data"
+    And request 1 contains "current exact approved Intent"
+    And request 1 contains "git stash apply"
+    And request 1 contains "current proof"
+    And request 1 offers exactly the tools "shell, read_file, write_file, finish, report_blocker"
+    And the fake ChatGPT server received 2 requests

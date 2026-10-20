@@ -33,6 +33,11 @@ defmodule Kogen.Main do
 
   defp run(req) do
     try do
+      if Map.has_key?(req, "context") do
+        if req["command"] != "build", do: Kogen.BuildContext.unavailable!()
+        Kogen.BuildContext.validate!(req["context"])
+      end
+
       dispatch(req)
     rescue
       e in Error ->
@@ -78,5 +83,6 @@ defmodule Kogen.Main do
 
   defp dispatch(%{"command" => "resume"} = r), do: Kogen.Build.resume(r["project"], r["slug"])
 
-  defp dispatch(%{"command" => "build"} = r), do: Kogen.Build.run(r["project"], r["slug"])
+  defp dispatch(%{"command" => "build"} = r),
+    do: Kogen.Build.run(r["project"], r["slug"], r["context"])
 end

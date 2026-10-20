@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 )
 
 const topPage = `Commands:
@@ -40,6 +42,7 @@ Commands:
 Options:
   --project <checkout>  Project checkout (default: current directory)
   --by <name>           Approver (default: your Git identity)
+  --context <file>      Fresh Build diagnostic data only (not resume)
 `
 
 const providerPage = `Usage: kogen provider <command>
@@ -61,6 +64,7 @@ type invocation struct {
 	hash    string
 	by      string
 	project string
+	context *string
 }
 
 type usageError struct{ msg, page string }
@@ -83,7 +87,7 @@ var leaves = map[string]spec{
 	"intent refine":  {path: "intent refine", command: "refine", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<sha256>", "<file|->"}},
 	"intent approve": {path: "intent approve", command: "approve", page: "intent", options: []string{"project", "by"}, positional: []string{"<slug>", "<hash>"}, optional: 1},
 	"intent resume":  {path: "intent resume", command: "resume", page: "intent", options: []string{"project"}, positional: []string{"<build-id>"}},
-	"intent build":   {path: "intent build", command: "build", page: "intent", options: []string{"project"}, positional: []string{"<slug>"}},
+	"intent build":   {path: "intent build", command: "build", page: "intent", options: []string{"project", "context"}, positional: []string{"<slug>"}},
 	"provider login": {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
 	"provider list":  {path: "provider list", command: "list", page: "provider"},
 }
@@ -173,6 +177,9 @@ func parse(args []string) (*invocation, string, *usageError) {
 		return fail("unexpected argument '%s'", pos[len(leaf.positional)])
 	}
 	inv := &invocation{command: leaf.command, project: opts["project"], by: opts["by"]}
+	if value, ok := opts["context"]; ok {
+		inv.context = &value
+	}
 	switch leaf.command {
 	case "login":
 		if pos[0] != "chatgpt" {
@@ -243,7 +250,18 @@ func main() {
 	if err != nil {
 		fail(3, "environment/cwd_unavailable: "+err.Error())
 	}
+	var diagnostic map[string]string
+	if inv.context != nil {
+		var e error
+		diagnostic, e = readDiagnostic(cwd, *inv.context)
+		if e != nil {
+			fail(2, "intent/context_unavailable: "+e.Error())
+		}
+	}
 	run := map[string]any{"type": "run", "command": inv.command, "cwd": cwd, "install_root": root, "env": environ()}
+	if diagnostic != nil {
+		run["context"] = diagnostic
+	}
 	switch inv.command {
 	case "shape", "refine", "approve", "build", "resume":
 		if inv.command != "resume" && (!slugRe.MatchString(inv.slug) || len(inv.slug) < 3 || len(inv.slug) > 48) {
@@ -396,4 +414,27 @@ func coreCommand(root string) (*exec.Cmd, io.WriteCloser, *bufio.Reader) {
 func encode(m map[string]any) []byte {
 	b, _ := json.Marshal(m)
 	return append(b, '\n')
+}
+
+// validateDiagnostic counts original bytes, before JSON encoding.
+func validateDiagnostic(data []byte) bool {
+	return len(data) <= 262144 && utf8.Valid(data) && strings.TrimSpace(string(data)) != ""
+}
+
+func readDiagnostic(cwd, file string) (map[string]string, error) {
+	path := absFrom(cwd, file)
+	st, err := os.Stat(path)
+	if err != nil || !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("file must be readable and regular")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("file is unreadable")
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 262145))
+	if err != nil || !validateDiagnostic(data) {
+		return nil, fmt.Errorf("file must contain nonblank UTF-8 data of at most 262144 bytes")
+	}
+	return map[string]string{"text": string(data), "source_path": path, "sha256": fmt.Sprintf("%x", sha256.Sum256(data))}, nil
 }

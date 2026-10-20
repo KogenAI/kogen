@@ -9,7 +9,7 @@ kogen init
 kogen intent shape <slug> <file|->
 kogen intent refine <slug> <sha256> <file|->
 kogen intent approve <slug> [<hash>] [--by <name>]
-kogen intent build <slug>
+kogen intent build <slug> [--context <file>]
 kogen intent resume <build-id>
 kogen provider login chatgpt
 kogen provider list
@@ -20,7 +20,7 @@ kogen help
 
 `intent` commands also take `--project <checkout>` (default: the working directory). No other command or option exists.
 
-**CLI-2 — Grammar.** `--name value` or `--name=value`; options anywhere after the command path; the last repeated option wins; `--` ends options; `-h` is the only short option; a lone `-` is a positional. `--help` or `-h` after a command path prints that path's existing help page (CLI-3), exit 0. `--version` prints the same version line as `kogen version` (CLI-10), exit 0. First match wins: `kogen` and `kogen help` print the top page and a group alone (`intent`, `provider`) its page (exit 0); otherwise `kogen help: unexpected argument '<token>'`, `kogen <group>: unknown command '<sub>'`, `kogen: unknown command '<x>'`, `kogen <path>: unknown option '<opt>'`, `kogen <path>: <opt> needs a value`, `kogen <path>: missing <name>`, `kogen <path>: unexpected argument '<arg>'`, `kogen provider <verb>: unknown provider '<p>' (supported: chatgpt)`, `kogen intent approve: <hash> must be 6 to 64 lowercase hex characters`, `kogen intent refine: <sha256> must be 64 lowercase hex characters`. A usage error prints the message, an empty line and the page of the group meant (the top page outside groups), exit 2. A missing `--project` directory is `environment/project_unavailable: <path>` (exit 3).
+**CLI-2 — Grammar.** `--name value` or `--name=value`; options anywhere after the command path; the last repeated option wins; `--` ends options; `-h` is the only short option; a lone `-` is a positional. `--help` or `-h` after a command path prints that path's existing help page (CLI-3), exit 0. `--version` prints the same version line as `kogen version` (CLI-10), exit 0. First match wins: `kogen` and `kogen help` print the top page and a group alone (`intent`, `provider`) its page (exit 0); otherwise `kogen help: unexpected argument '<token>'`, `kogen <group>: unknown command '<sub>'`, `kogen: unknown command '<x>'`, `kogen <path>: unknown option '<opt>'`, `kogen <path>: <opt> needs a value`, `kogen <path>: missing <name>`, `kogen <path>: unexpected argument '<arg>'`, `kogen provider <verb>: unknown provider '<p>' (supported: chatgpt)`, `kogen intent approve: <hash> must be 6 to 64 lowercase hex characters`, `kogen intent refine: <sha256> must be 64 lowercase hex characters`. A usage error prints the message, an empty line and the page of the group meant (the top page outside groups), exit 2. Only fresh `intent build` accepts `--context`; every other command path, including resume, rejects it with ordinary unknown-option grammar. The file is resolved relative to the caller working directory, not `--project`; it is never stdin or command text. A missing `--project` directory is `environment/project_unavailable: <path>` (exit 3).
 
 **CLI-3 — Help pages.** Byte-exact.
 
@@ -53,6 +53,7 @@ Commands:
 Options:
   --project <checkout>  Project checkout (default: current directory)
   --by <name>           Approver (default: your Git identity)
+  --context <file>      Fresh Build diagnostic data only (not resume)
 ```
 
 `kogen provider`:
@@ -83,3 +84,5 @@ Logins belong to this machine, never to a repo.
 Scenarios: `features/09-cli-and-process.feature`. Model: `quint/run_control.qnt`.
 
 Explicit continuation uses `kogen intent resume <build-id> [--project <checkout>]`; it shares the Build bridge and repository lock (LOOP-10).
+
+Fresh Build diagnostic text is read once by Go before any model request and transported as JSON data, never interpolated shell/argv. The optional run field is `context: {text: <UTF-8 string>, source_path: <nonempty absolute source label>, sha256: <64 lowercase hex>}`; omission omits the field. The core independently requires exactly those string fields, valid nonblank UTF-8 text of at most 262144 original bytes, and matching SHA-256. Malformed data or any supplied context on a non-build request is `intent/context_unavailable` (exit 2) before effects. The core never stats or rereads the label; a valid inaccessible label is usable. Invalid original UTF-8 is rejected at the CLI, not repaired through JSON.

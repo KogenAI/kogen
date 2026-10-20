@@ -10,6 +10,7 @@ defmodule Kogen.Run do
     id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
     dir = Path.join(root, ".kogen/local/runs/#{id}")
     File.mkdir_p!(dir)
+    File.chmod!(dir, 0o700)
     %__MODULE__{id: id, dir: dir, log: Path.join(dir, "log.jsonl")}
   end
 

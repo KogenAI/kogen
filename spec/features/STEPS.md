@@ -286,3 +286,12 @@ One JavaScript regular expression per line.
 ```
 
 Verification vocabulary: a green pass means completed fresh setup, acceptance, model and configured checks on exact disposable candidate inputs, with stable scratch inputs and workspace. It never means successful workspace-only commands.
+
+### Fresh Build diagnostic data
+
+`the caller runs {string}` uses the existing command grammar for `intent build
+<slug> [--project <checkout>] [--context <file>]`; caller-relative diagnostic files
+are data, never stdin or commands. The existing `the exit code is {int}`, `the first
+line of stdout is {string}` and `stdout matches {string}` vocabulary checks early
+usage failures and rejects the option on non-build paths. Frozen continuation uses
+the saved initial conversation, not a replacement context or external file read.

@@ -100,3 +100,19 @@ correct contracts. No benchmark, default adoption or speed/quality guarantee fol
 Final readiness uses a fresh disposable directory materialized from `Snapshot.tree`, with exact tracked (including ignored tracked) bytes, executable modes, additions/deletions and synthetic local Git. It runs verbatim declared setup before model/acceptance; ignored untracked dependency/build outputs are neither copied nor linked. Caller environment, installed tools and declared services remain available: this is not hermeticity. Raw scratch mutations, including staged additions, reject proof. Source identity is rechecked around execution and publication, including approval. Disposable directories are removed on success, failure and interruption. Exploratory probes remain warm.
 
 Readiness record version 3 adds `candidate_tree` to the complete baseline/hash, HEAD, declarations and actual model/scenario/exit evidence. Only exact unchanged clean evidence is reusable; version 2 and older are normal misses, never migrated. Ignored untracked warmth does not affect identity; nonignored changes, deletions, executable modes, tracked ignored changes, HEAD, protected baseline and declarations do. Retaining original-precondition evidence skips only original setup/model/acceptance, not fresh changed-candidate proof, and is not current-environment proof. Refine tests and publishes its complete accumulated formatted proposals; Shape tests its final formatted files. Accounted red remains inspectable and exact unchanged acknowledgment reuses the same clean observation. Build verification, review and explicit caller approval remain separate.
+
+## Fresh Build diagnostic data
+
+For a **fresh** Build only, optional operator diagnostic data can be supplied with
+`kogen intent build <slug> [--project <checkout>] --context <file>`. The file is
+caller-relative (not project-relative), readable and regular, nonblank valid UTF-8,
+and at most 262144 original bytes. It is read once and preserved exactly in private
+local run custody (0700 directory, 0600 `diagnostic-context.json`), separate from
+approval and commits. Do not put credentials in it; this is not a credential store.
+The labelled lower-authority message does not replace the approved Intent or native
+protection, checks, review or commit rules. Old candidate observations are untrusted
+data, not automatic reuse, import or proof. After a demonstrated protected fixture
+correction, obtain new exact approval before a fresh Build. `intent resume` accepts
+no `--context`: it uses its saved conversation even if the source changes or vanishes.
+
+Deterministic prompt and guard tests do not establish live model obedience or performance. Qualification uses a separately packaged frozen private prefix and scoped installed use outside the checkout; no global install, push or release is implied. Root owns Studio recovery qualification and adoption. Preserve short commit subjects and the exact `Kogen-Intent: <slug>` trailer without an appended hash; native approval hashes stay in their binding fields.

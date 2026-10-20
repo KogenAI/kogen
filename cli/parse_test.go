@@ -40,6 +40,7 @@ Commands:
 Options:
   --project <checkout>  Project checkout (default: current directory)
   --by <name>           Approver (default: your Git identity)
+  --context <file>      Fresh Build diagnostic data only (not resume)
 `},
 		{name: "provider page", args: []string{"provider"}, want: `Usage: kogen provider <command>
 

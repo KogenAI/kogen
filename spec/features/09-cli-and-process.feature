@@ -275,3 +275,22 @@ Feature: CLI and process
       | command         |
       | kogen version   |
       | kogen --version |
+
+  @CLI-1 @CLI-2 @CLI-9
+  Scenario Outline: Diagnostic data is restricted to fresh Build
+    When the caller runs "<command>"
+    Then the exit code is 2
+    And the first line of stdout is "<message>"
+
+    Examples:
+      | command                                                  | message                                                |
+      | kogen intent resume deadbeef --context=notes.txt          | kogen intent resume: unknown option '--context'         |
+      | kogen intent shape fixture request.txt --context=notes.txt | kogen intent shape: unknown option '--context'         |
+      | kogen intent approve fixture --context=notes.txt          | kogen intent approve: unknown option '--context'        |
+      | kogen init --context=notes.txt                            | kogen init: unknown option '--context'                  |
+
+  @CLI-1 @CLI-2 @CLI-9
+  Scenario: Fresh Build validates caller diagnostic input before repository work
+    When the caller runs "kogen intent build fixture --context=absent-diagnostic.txt"
+    Then the exit code is 2
+    And stdout matches "^intent/context_unavailable:"

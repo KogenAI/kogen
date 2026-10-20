@@ -150,6 +150,14 @@ defmodule Kogen.Integration.FakeProvider do
   defp provider_action({:http, status, body}, _index), do: {:json, status, body}
   defp provider_action({:json, status, body}, _index), do: {:json, status, body}
 
+  defp provider_action({:pause, owner, action}, index) do
+    send(owner, {:provider_paused, self()})
+
+    receive do
+      :continue -> provider_action(action, index)
+    end
+  end
+
   defp provider_action({:text, text}, index) do
     item = %{
       "type" => "message",
@@ -754,7 +762,9 @@ defmodule Kogen.Integration.Helpers do
   defp temp_dir!(prefix) do
     # The OS pid keeps the name unique across runs (a crashed run leaves its folder behind).
     name = "#{prefix}-#{System.pid()}-#{System.unique_integer([:positive, :monotonic])}"
-    path = Path.join(System.tmp_dir!(), name)
+    # Match the OS working directory used by the installed CLI (macOS /var is a symlink).
+    {tmp, 0} = System.cmd("/bin/pwd", ["-P"], cd: System.tmp_dir!())
+    path = Path.join(String.trim(tmp), name)
     File.mkdir!(path)
     path
   end

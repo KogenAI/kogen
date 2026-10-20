@@ -24,7 +24,8 @@ defmodule Kogen.Build do
     Usage
   }
 
-  def run(project, slug) do
+  def run(project, slug, diagnostic \\ nil) do
+    if diagnostic != nil, do: Kogen.BuildContext.validate!(diagnostic)
     root = Git.root!(project)
     config = Config.load!(root)
 
@@ -44,7 +45,7 @@ defmodule Kogen.Build do
     lock = lock!(root)
 
     try do
-      checked(root, slug, config, start)
+      checked(root, slug, config, start, diagnostic)
     after
       Lock.release(lock)
     end
@@ -289,7 +290,7 @@ defmodule Kogen.Build do
     |> Enum.uniq()
   end
 
-  defp checked(root, slug, config, start) do
+  defp checked(root, slug, config, start, diagnostic) do
     Intent.exists!(root, slug)
 
     approval =
@@ -321,6 +322,7 @@ defmodule Kogen.Build do
     Readiness.tools!(root, config)
     if model != :none, do: Checks.require_quint!()
     run = Run.start(root)
+    if diagnostic != nil, do: Kogen.BuildContext.capture!(run, diagnostic)
     # GIT-8: a Build that does not commit leaves the index as it found it.
     git_index =
       Path.join(Git.ok!(root, ["rev-parse", "--absolute-git-dir"]) |> String.trim(), "index")
@@ -373,7 +375,7 @@ defmodule Kogen.Build do
       baseline_intact!(b)
       already_failing!(root, config, run)
       Bridge.puts("building #{slug}")
-      start_builder(track(%{b | phase: :building}))
+      start_builder(track(%{b | phase: :building}), diagnostic)
     rescue
       e in Error -> stopped(Process.get(:kogen_build), e)
     catch
@@ -456,7 +458,14 @@ defmodule Kogen.Build do
 
   # ---- Build (LOOP-1..7) ----
 
-  defp start_builder(b), do: loop(b, [%{"role" => "user", "content" => context(b)}])
+  defp start_builder(b, diagnostic) do
+    input = [%{"role" => "user", "content" => context(b)}]
+
+    input =
+      if diagnostic == nil, do: input, else: input ++ [Kogen.BuildContext.message(diagnostic)]
+
+    loop(b, input)
+  end
 
   # The latest Build state, for the report of a Build that stops on an error or an interrupt.
   @doc false
