@@ -98,7 +98,7 @@ defmodule Kogen.Refine do
 
       originals = Map.new(files, &{&1, File.read!(Path.join(root, &1))})
       File.mkdir_p!(evidence)
-      Kogen.ShapeEvidence.start(evidence)
+      Kogen.ShapeEvidence.start(evidence, slug)
       Bridge.progress("kogen: refinement evidence: #{evidence}")
       File.write!(Path.join(evidence, "request.md"), request)
       if approval, do: File.write!(Path.join(evidence, "original-approval.json"), approval)
@@ -699,17 +699,13 @@ defmodule Kogen.Refine do
       )
 
     """
-    #{selected}
     Full contract inclusions: original Intent prose, Gherkin and declared model preserve exact authority, irrespective of excerpt budget.
 
     # Correction requested
     #{request}
-    # Original authoritative contracts (full contents; other Acceptance sources are indexed above)
+    # Original authoritative contracts and owned originals (full contents)
     Within this run, omitted paths retain earlier well-formed proposals; paths never proposed retain these original bytes. Submit original content explicitly to revert a proposal. Nothing is published until the complete accumulated candidate is ready.
-    #{Enum.map_join(Enum.sort(s.originals), "\n", fn {path, content} -> if String.ends_with?(path, ["intent.md", "acceptance.feature", "model.qnt"]), do: "--- #{path}\n#{content}", else: "" end)}
-    # Original baseline observations
-    Exact retained readiness result: #{Path.join(s.evidence, "original-readiness-observations.json")}
-    #{s.original_observations}
+    #{Enum.map_join(Enum.sort(s.originals), "\n", fn {path, content} -> "--- #{path}\n#{content}" end)}
     # Exclusively owned editable files
     #{Enum.join(s.allowed, "\n")}
     # Protection and commands
@@ -724,6 +720,12 @@ defmodule Kogen.Refine do
     # Testing rules
     #{Kogen.testing_rules()}
     """
+    |> Kogen.PromptCache.contract_blocks("""
+    # Original baseline observations
+    Exact retained readiness result: #{Path.join(s.evidence, "original-readiness-observations.json")}
+    #{s.original_observations}
+    #{selected}
+    """)
   end
 
   defp instructions do

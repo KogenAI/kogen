@@ -297,3 +297,7 @@ are data, never stdin or commands. The existing `the exit code is {int}`, `the f
 line of stdout is {string}` and `stdout matches {string}` vocabulary checks early
 usage failures and rejects the option on non-build paths. Frozen continuation uses
 the saved initial conversation, not a replacement context or external file read.
+
+## Prompt reuse evidence
+
+The GPT-7/GPT-9 loopback and local usage scenarios exercise full replay and retained request accounting. The approved prompt-cache usage acceptance vocabulary (`exercise prompt reuse through native`, `retained usage files for prompt reuse`, `run prompt reuse usage with arguments`, `prompt reuse report has`) is implemented in `features/steps/prompt_cache_usage_steps.js`, separately from this chapter harness. Fixtures are guide-shaped synthetic responses, not live account captures.

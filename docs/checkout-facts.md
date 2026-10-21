@@ -76,3 +76,12 @@ original attempt artifacts after resume, not nonexistent files in a new attempt.
 Inspection checks checkpoint presence now; checkpoint compatibility and all other
 resume safety remain the authoritative resume command's responsibility.
 Context and completion use local integration records, not historical log streams.
+
+## Usage investigation
+
+`intent usage [RUN-ID] [--lineage] [--project DIR] [--json]` is a separate,
+bounded retained-history scan, not part of context or completion. It uses the
+same version 1 facts envelope with `kind:"usage"`; it requires neither installed
+core nor credentials. See [the scoped usage contract](usage.md) for exact
+filters/grouping, limits, nullable measurements, deduplication and provenance.
+It observes one canonical checkout, never an account or authorization to resume.

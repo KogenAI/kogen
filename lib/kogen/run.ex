@@ -86,6 +86,7 @@ defmodule Kogen.Run do
       (b.last_pass == nil or not b.last_pass.green or
          complete_pass?(b.last_pass, b.config, b.intent, b.model)) and
       valid_review?(b.last_review) and
+      valid_cache_states?(Map.get(b, :prompt_cache_states, %{})) and
       is_map(b[:baseline_digests]) and is_list(b[:baseline]) and
       Kogen.Config.path() in b.baseline and
       Enum.all?(b.baseline, &(is_binary(&1) and Map.has_key?(b.baseline_digests, &1))) and
@@ -111,6 +112,18 @@ defmodule Kogen.Run do
       match?({:ok, _}, Base.decode64(doc["index"])) and
       match?({:ok, _}, Base.decode64(doc["approval"]))
   end
+
+  defp valid_cache_states?(states) when is_map(states) do
+    Enum.all?(states, fn {key, state} ->
+      is_binary(key) and is_map(state) and
+        is_binary(state[:id]) and byte_size(state.id) in 1..256 and
+        is_boolean(state[:unsupported]) and
+        (is_nil(state[:response]) or
+           (is_binary(state.response) and byte_size(state.response) in 1..256))
+    end)
+  end
+
+  defp valid_cache_states?(_), do: false
 
   defp valid_input?(input), do: is_list(input) and Enum.all?(input, &is_map/1)
 

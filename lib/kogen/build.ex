@@ -90,6 +90,8 @@ defmodule Kogen.Build do
         {:error, why} -> refuse!(id, why)
       end
 
+    Process.put(:prompt_cache_states, Map.get(b, :prompt_cache_states, %{}))
+
     unless b.root == root and doc["identity"] == identity(root),
       do: refuse!(id, "another checkout identity")
 
@@ -218,7 +220,12 @@ defmodule Kogen.Build do
 
   @doc false
   def save(b, continuation) do
-    b = track(%{b | continuation: continuation})
+    b =
+      track(
+        b
+        |> Map.put(:continuation, continuation)
+        |> Map.put(:prompt_cache_states, Process.get(:prompt_cache_states, %{}))
+      )
 
     Run.checkpoint(b.run, %{
       "version" => 2,
@@ -1138,6 +1145,24 @@ defmodule Kogen.Build do
     Bridge.progress("kogen: #{role_name} request #{role.model}/#{role.effort}")
     Process.put(:kogen_build, %{b | unknown_requests: b.unknown_requests + 1})
     b = save(Process.get(:kogen_build), b.continuation)
+
+    Process.put(
+      :provider_conversation_scope,
+      [b.root_run || b.run.id, role_name, if(role_name == "review", do: b.review, else: 0)]
+    )
+
+    Process.put(:prompt_cache_states, Map.get(b, :prompt_cache_states, %{}))
+
+    Process.put(:provider_context, %{
+      phase: role_name,
+      role: role_name,
+      run_id: b.run.id,
+      slug: b.slug,
+      lineage: b.root_run,
+      pass: b.pass,
+      repair: b.repairs
+    })
+
     resp = ChatGPT.respond(role, instructions, input, tools)
     wall = System.monotonic_time(:millisecond) - t0
 
@@ -1155,6 +1180,7 @@ defmodule Kogen.Build do
 
     Run.log(b.run, %{
       "event" => "request",
+      "operation_id" => Process.get(:provider_operation).id,
       "role" => role_name,
       "model" => role.model,
       "effort" => role.effort,
@@ -1207,10 +1233,10 @@ defmodule Kogen.Build do
 
     Dependency manifests and lockfiles that are not in this baseline remain editable inputs for approved implementation changes. Their editable portions do not authorize weakening, removing or bypassing a configured check or changing actual verification configuration. Preserve all configured checks, their commands and the behavior they verify. Protection is whole-file: if a combined check-definition manifest is listed above, it cannot be edited for dependencies either.
 
-    # Files
-
-    #{Git.ok!(b.root, ["ls-files", "--cached", "--others", "--exclude-standard"])}
     """
+    |> Kogen.PromptCache.contract_blocks(
+      "# Files\n\n" <> Git.ok!(b.root, ["ls-files", "--cached", "--others", "--exclude-standard"])
+    )
   end
 
   defp builder_instructions do

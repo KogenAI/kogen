@@ -118,3 +118,14 @@ correction, obtain new exact approval before a fresh Build. `intent resume` acce
 no `--context`: it uses its saved conversation even if the source changes or vanishes.
 
 Deterministic prompt and guard tests do not establish live model obedience or performance. Qualification uses a separately packaged frozen private prefix and scoped installed use outside the checkout; no global install, push or release is implied. Root owns Studio recovery qualification and adoption. Preserve short commit subjects and the exact `Kogen-Intent: <slug>` trailer without an appended hash; native approval hashes stay in their binding fields.
+
+### Responses reuse diagnostics
+
+There is no new cache TTL setting. Documented GPT-5.6+ models request implicit
+30m caching with stable policy/contract boundaries; older/unknown routes omit
+new controls. One definite nonexecuting cache-parameter refusal may retry without
+controls within the same response deadline. Full replay, fixed role effort,
+review independence and all safety checks remain mandatory. Retained write-12h
+counts are reportable, but enabling 12h later needs stable cross-gap measurements
+and exact account qualification (2.5x writes rather than 30m's 1.25x). No prewarm
+or paid baseline/benchmark calls are introduced. See [retained usage](usage.md).

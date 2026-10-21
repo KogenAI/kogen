@@ -8,6 +8,7 @@ One `kogen` command for people and for coding agents that drive it: no TUI, no p
 kogen context [--json] [--project <checkout>]
 kogen completion zsh
 kogen intent list [--limit N] [--cursor TOKEN] [--json]
+kogen intent usage [RUN-ID] [--lineage] [--json]
 kogen intent inspect <run-id> [--json]
 kogen intent preflight <slug> [--json]
 kogen init
@@ -57,6 +58,7 @@ Commands:
   build <slug>              Build, verify, review and commit the approved Intent
   resume <build-id>         Continue a stopped Build in this checkout
   list                     List packages and Build attempts
+  usage [run-id]          Explain local retained provider usage
   inspect <run-id>         Inspect recorded Build evidence
   preflight <slug>         Observe read-only prerequisites
 
@@ -87,7 +89,7 @@ Logins belong to this machine, never to a repo.
 
 **CLI-8 — Core crash.** If the core exits without a result, `kogen` kills the core's process group and the process groups of every command it started, then reports what Git actually holds: it compares HEAD with the start HEAD in the run record. Unchanged: `controller/internal_error: the Kogen core stopped unexpectedly (status <n>); nothing was committed; run log: <path>`. Moved by the Build's commit: `controller/internal_error: the Kogen core stopped unexpectedly (status <n>) after creating commit <sha8>, before checking it; inspect it with git show <sha8>; run log: <path>`. Exit 70 either way; Kogen does not try to repair it. Model: `run_control.qnt` `ExitCodes` (a crash may end with or without a commit).
 
-**CLI-9 — Go/Elixir bridge.** `kogen` (Go) starts the core (Elixir release) in its own process group for core-backed invocations (context, list, inspect and completion are native bounded local reads), so terminal signals reach only `kogen`, which forwards them as messages. They exchange one JSON object per line over the core's stdin and stdout; the core's stderr passes through. The first exchange is `{"type":"hello"}` both ways; a core that does not reach `hello` is `environment/core_unavailable: <detail>; reinstall Kogen` (exit 3). Caller input (request, answers, a pasted login URL) is read only by `kogen` and sent as message data. The core is started with `+Bi +fnu` (UTF-8 file names whatever the caller's locale), so the BEAM ignores SIGINT and never enters its break handler; cancellation reaches the core only as a protocol message from `kogen`. No BEAM distribution, daemon or network listener; the login loopback listener belongs to `kogen` and forwards the redirect to the core. Messages are UTF-8 JSON text: valid UTF-8 in a command's output arrives byte for byte, and an invalid byte arrives as U+FFFD.
+**CLI-9 — Go/Elixir bridge.** `kogen` (Go) starts the core (Elixir release) in its own process group for core-backed invocations (context, list, inspect, usage and completion are native bounded local reads), so terminal signals reach only `kogen`, which forwards them as messages. They exchange one JSON object per line over the core's stdin and stdout; the core's stderr passes through. The first exchange is `{"type":"hello"}` both ways; a core that does not reach `hello` is `environment/core_unavailable: <detail>; reinstall Kogen` (exit 3). Caller input (request, answers, a pasted login URL) is read only by `kogen` and sent as message data. The core is started with `+Bi +fnu` (UTF-8 file names whatever the caller's locale), so the BEAM ignores SIGINT and never enters its break handler; cancellation reaches the core only as a protocol message from `kogen`. No BEAM distribution, daemon or network listener; the login loopback listener belongs to `kogen` and forwards the redirect to the core. Messages are UTF-8 JSON text: valid UTF-8 in a command's output arrives byte for byte, and an invalid byte arrives as U+FFFD.
 
 **CLI-10 — Version.** `kogen version` prints `kogen <sha8> (<YYYY-MM-DD>)` — the commit the release was built from and its date — anywhere, without login. A release built from source that is not exactly a commit (a tree with uncommitted changes, or source outside any commit) prints `kogen dev+<hash8> (<YYYY-MM-DD>, uncommitted source)`, where `<hash8>` is the first 8 hex digits of the SHA-256 over, for each source file sorted by path, `<path>\0<sha256 of its bytes>\n`; the source files are `mix.exs`, `LICENSE`, `NOTICE`, `config/`, `lib/`, `rel/`, `cli/`, `packaging/` and `docs/`.
 
@@ -103,3 +105,5 @@ The maintained [version 1 read contract](../../docs/checkout-facts.md) specifies
 context, Intent listing/inspection/preflight and standalone Zsh completion. These
 interfaces observe facts and never approve, recover or authorize a Build. Local
 metadata is ignored private integration evidence, not checkpoint authority.
+
+The usage subcommand is a separate bounded history scan with human and version 1 JSON output, exact filters, grouping and lineage. Its full interface and uncertainty rules are maintained in [usage.md](../../docs/usage.md); context and completion never start that scan.

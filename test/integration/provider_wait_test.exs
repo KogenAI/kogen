@@ -44,6 +44,165 @@ defmodule Kogen.Integration.ProviderWaitTest do
     server
   end
 
+  test "cache refusal retries once, persists unsupported, and retains real request identifiers",
+       %{home: home} do
+    refusal =
+      {:http, 400,
+       %{
+         "error" => %{
+           "code" => "unknown_parameter",
+           "param" => "input[0].content[0].prompt_cache_breakpoint",
+           "message" => "unsupported"
+         }
+       }}
+
+    completed =
+      {:events, [done(%{"id" => "resp_cache", "model" => "gpt-6.1-sol", "output" => [tool()]})]}
+
+    server = connect(home, [refusal, completed, completed])
+    Kogen.ShapeEvidence.start(Path.join(home, "evidence"))
+
+    call = fn ->
+      Kogen.ShapeEvidence.provider(
+        "shape",
+        nil,
+        "revision",
+        [],
+        %{model: "gpt-6.1-sol", effort: "medium"},
+        fn ->
+          ChatGPT.respond(
+            %{model: "gpt-6.1-sol", effort: "medium"},
+            "policy",
+            [%{"role" => "user", "content" => "contract"}],
+            [],
+            single_attempt: true
+          )
+        end
+      )
+    end
+
+    assert call.().items == [tool()]
+    assert call.().items == [tool()]
+    [first, retry, next] = FakeProvider.provider_requests(server)
+    assert first.json["prompt_cache_options"]
+    assert first.json["include"] == ["reasoning.encrypted_content"]
+    assert retry.json["include"] == first.json["include"]
+    refute retry.json["prompt_cache_options"]
+    refute next.json["prompt_cache_options"]
+    assert retry.json["input"] == next.json["input"]
+
+    rows =
+      File.read!(Path.join(home, "evidence/events.ndjson"))
+      |> String.split("\n", trim: true)
+      |> Enum.map(&JSON.decode!/1)
+
+    assert length(rows) == 3
+    assert Enum.at(rows, 0)["provider"]["timestamp"] != Enum.at(rows, 1)["provider"]["timestamp"]
+    assert hd(rows)["provider"]["usage"]["input"] == nil
+    assert hd(rows)["provider"]["cache"]["status"] == "unsupported"
+    assert hd(rows)["provider"]["cache"]["boundaries"] != []
+    assert Enum.at(rows, 1)["provider"]["cache"]["boundaries"] == []
+    assert List.last(rows)["provider"]["provider_response_id"] == "resp_cache"
+    assert List.last(rows)["provider"]["provider_request_id"] == "req-fixture"
+  end
+
+  test "unrelated refusal never strips cache fields or reexecutes", %{home: home} do
+    server =
+      connect(home, [
+        {:http, 400,
+         %{
+           "error" => %{
+             "code" => "context_length_exceeded",
+             "param" => "input",
+             "message" => "full"
+           }
+         }}
+      ])
+
+    error =
+      assert_raise Error, fn ->
+        ChatGPT.respond(%{model: "gpt-6.1-sol", effort: "medium"}, "policy", [], [])
+      end
+
+    assert error.reason == "context_too_long"
+    assert length(FakeProvider.provider_requests(server)) == 1
+  end
+
+  test "a cache field alone does not authorize compatibility replay", %{home: home} do
+    for code <- ["policy_violation", "invalid_request_error", "unknown_policy_refusal"] do
+      server =
+        connect(home, [
+          {:http, 400,
+           %{
+             "error" => %{
+               "code" => code,
+               "param" => "prompt_cache_options",
+               "message" => "refused"
+             }
+           }}
+        ])
+
+      assert_raise Error, fn ->
+        ChatGPT.respond(%{model: "gpt-6.1-sol", effort: "medium"}, "policy", [], [])
+      end
+
+      assert length(FakeProvider.provider_requests(server)) == 1
+    end
+  end
+
+  test "inconsistent completed usage is retained but not added to compatible totals", %{
+    home: home
+  } do
+    connect(home, [
+      {:events,
+       [
+         done(%{
+           "output" => [tool()],
+           "usage" => %{
+             "input_tokens" => 10,
+             "input_tokens_details" => %{"cached_tokens" => 11},
+             "output_tokens" => 2
+           }
+         })
+       ]}
+    ])
+
+    response = respond(single_attempt: true)
+    assert response.known_usage.cached == 11
+    assert Kogen.Usage.state(response.known_usage) == "inconsistent"
+    assert response.usage == Kogen.Usage.zero()
+  end
+
+  test "malformed optional write counts never leak into analytical usage", %{home: home} do
+    connect(home, [
+      {:events,
+       [
+         done(%{
+           "output" => [tool()],
+           "usage" => %{
+             "input_tokens" => 10,
+             "input_tokens_details" => %{"cache_write_tokens" => %{"raw" => "PRIVATE-WRITE-BODY"}}
+           }
+         })
+       ]}
+    ])
+
+    Kogen.ShapeEvidence.start(Path.join(home, "evidence"))
+
+    r =
+      Kogen.ShapeEvidence.provider("shape", nil, "revision", [], @model, fn ->
+        respond(single_attempt: true)
+      end)
+
+    assert r.items == [tool()]
+    assert r.known_usage.write == nil
+    assert r.usage_state == "inconsistent"
+    log = File.read!(Path.join(home, "evidence/events.ndjson"))
+    refute log =~ "PRIVATE-WRITE-BODY"
+    row = JSON.decode!(String.trim(log))
+    assert row["provider"]["usage_state"] == "inconsistent"
+  end
+
   defp respond(opts), do: ChatGPT.respond(@model, "fixture", [], [], opts)
   defp done(response), do: %{"type" => "response.completed", "response" => response}
 
@@ -159,7 +318,19 @@ defmodule Kogen.Integration.ProviderWaitTest do
 
     expected_usage = %{input: 100, cached: 5, output: 20, reasoning: 10}
 
-    assert %{items: ^items, usage: ^expected_usage, known_usage: ^expected_usage} =
+    assert %{
+             items: ^items,
+             usage: ^expected_usage,
+             known_usage: %{
+               input: 100,
+               cached: 5,
+               output: 20,
+               reasoning: 10,
+               write: nil,
+               write_30m: nil,
+               write_12h: nil
+             }
+           } =
              respond(single_attempt: true, response_budget_ms: 1000)
 
     assert_receive {:provider_open, _}

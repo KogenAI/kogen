@@ -458,16 +458,18 @@ defmodule Kogen.Review do
 
     #{Kogen.testing_rules()}
 
-    # Check results of the final pass
-
-    #{results(pass)}
-
     # Protected paths and configured commands
 
     The approved baseline cannot change: #{Enum.join(b.baseline, ", ")}.
     Fixers: #{Enum.join(b.config.fix, "; ")}.
     Project checks: #{Enum.map_join(b.config.checks, "; ", fn {name, command} -> "#{name}: #{command}" end)}.
     Acceptance: #{b.config.acceptance_run}.
+
+    """
+    |> Kogen.PromptCache.contract_blocks("""
+    # Check results of the final pass
+
+    #{results(pass)}
 
     # Diff of existing/deleted paths against start HEAD #{String.slice(b.start, 0, 8)}
 
@@ -477,7 +479,7 @@ defmodule Kogen.Review do
     Newly added files appear here once, with their mode, instead of being repeated in the diff.
 
     #{texts}
-    """
+    """)
   end
 
   defp results(pass) do

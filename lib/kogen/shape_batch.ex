@@ -117,6 +117,7 @@ defmodule Kogen.ShapeBatch do
       Enum.map(jobs, fn j ->
         %{
           job: j,
+          cache_states: %{},
           input: [%{"role" => "user", "content" => JSON.encode!(%{brief: brief, job: j})}],
           started_at: ShapeEvidence.now(),
           calls: 0,
@@ -212,7 +213,7 @@ defmodule Kogen.ShapeBatch do
 
             {:ok, {outcome, event}} ->
               retain_interval(event)
-              s = %{s | task: nil}
+              s = %{s | task: nil, cache_states: Map.get(event, :cache_states, %{})}
 
               case outcome do
                 {:ok, r} ->
@@ -281,7 +282,10 @@ defmodule Kogen.ShapeBatch do
 
     task =
       Task.async(fn ->
+        Process.put(:prompt_cache_states, s.cache_states)
+        Process.put(:provider_conversation_scope, j["id"])
         Process.put(:shape_evidence, evidence_state)
+        Process.put(:provider_context, %{phase: "shape", role: j["role"], slug: sh.slug})
         t = ShapeEvidence.now()
 
         base = %{
@@ -291,11 +295,14 @@ defmodule Kogen.ShapeBatch do
           scope: j["scope"],
           revision: revision,
           configured_model: role.model,
-          effective_model: role.model,
+          effective_model: nil,
           configured_effort: role.effort,
-          effective_effort: role.effort,
+          effective_effort: nil,
           started_ms: ShapeEvidence.offset(t)
         }
+
+        Process.put(:shape_provider_context, base)
+        Process.put(:shape_transport_calls, 0)
 
         try do
           r =
@@ -333,8 +340,9 @@ defmodule Kogen.ShapeBatch do
              })}
         end
         |> then(fn {_, event} = result ->
-          ShapeEvidence.record(event)
-          result
+          if Process.get(:shape_transport_calls, 0) == 0, do: ShapeEvidence.record(event)
+          {outcome, _} = result
+          {outcome, Map.put(event, :cache_states, Process.get(:prompt_cache_states, %{}))}
         end)
       end)
 

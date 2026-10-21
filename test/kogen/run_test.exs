@@ -154,6 +154,25 @@ defmodule Kogen.RunTest do
 
       assert {:ok, _, _} = Run.decode_checkpoint(encode.(state))
 
+      cache = %{
+        "conversation" => %{id: "conversation-id", unsupported: true, response: "resp_last"}
+      }
+
+      assert {:ok, _, saved} =
+               Run.decode_checkpoint(encode.(Map.put(state, :prompt_cache_states, cache)))
+
+      assert saved.prompt_cache_states == cache
+
+      for damaged <- [
+            nil,
+            [],
+            %{"key" => %{}},
+            %{"key" => %{id: "id", unsupported: "false", response: nil}}
+          ] do
+        assert {:error, _} =
+                 Run.decode_checkpoint(encode.(Map.put(state, :prompt_cache_states, damaged)))
+      end
+
       for incomplete <- [
             Map.put(evidence, :not_run, ["a-last"]),
             %{evidence | checks: []},

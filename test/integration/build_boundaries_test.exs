@@ -62,9 +62,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     requests = FakeProvider.review_requests(context.server)
     assert length(requests) == 4
 
-    assert Enum.any?(Enum.at(requests, 2).json["input"], fn item ->
-             String.contains?(item["content"] || "", "Final verification")
-           end)
+    assert FakeProvider.input_text(Enum.at(requests, 2)) =~ "Final verification"
 
     assert Enum.any?(Enum.at(requests, 2).json["input"], &(&1["type"] == "function_call_output"))
   end
@@ -571,7 +569,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
     assert status == 0, output
     [review] = FakeProvider.review_requests(context.server)
-    material = hd(review.json["input"])["content"]
+    material = FakeProvider.input_text(review)
     assert length(:binary.matches(material, "new-source-sentinel")) == 1
     assert material =~ "100755"
     assert material =~ "--- new-data.bin (added; mode 100644) (binary)"

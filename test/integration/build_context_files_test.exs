@@ -88,12 +88,18 @@ defmodule Kogen.Integration.BuildContextFilesTest do
 
       [_, initial] = FakeProvider.provider_requests(c.server)
       input = initial.json["input"]
-      assert length(input) == if(unquote(diagnostic?), do: 2, else: 1)
+      assert length(input) == if(unquote(diagnostic?), do: 3, else: 2)
       checkpoint = JSON.decode!(original["checkpoint.json"])
       assert checkpoint["version"] == 2
       assert {:ok, _, state} = Kogen.Run.decode_checkpoint(original["checkpoint.json"])
       assert state.continuation.stage == :builder
-      assert state.continuation.input == input
+
+      assert Kogen.PromptCache.prepare(
+               "gpt-6.1-sol",
+               hd(input)["content"] |> hd() |> Map.fetch!("text"),
+               state.continuation.input,
+               initial.json["tools"]
+             )["input"] == input
 
       if unquote(diagnostic?) do
         assert List.last(input)["content"] =~ text

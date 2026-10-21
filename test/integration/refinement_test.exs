@@ -263,7 +263,7 @@ defmodule Kogen.Integration.RefinementTest do
     [_, request] = FakeProvider.provider_requests(context.server)
     assert request.json["model"] == "gpt-6.1-sol"
     assert request.json["reasoning"]["effort"] == "high"
-    assert request.json["input"] |> hd() |> Map.fetch!("content") =~ before[path]
+    assert FakeProvider.input_text(request) =~ before[path]
     assert [_] = Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/result.json"))
   end
 

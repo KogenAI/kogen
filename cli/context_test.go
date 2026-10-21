@@ -51,3 +51,16 @@ func TestFreshBuildContextGrammar(t *testing.T) {
 		}
 	}
 }
+
+func TestContextHistoryTrap(t *testing.T) {
+	c := factProject(t)
+	root := c["root"].(string)
+	for _, p := range []string{"runs", "shaping", "refinements"} {
+		if e := os.Mkdir(filepath.Join(root, ".kogen/local", p), 0000); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if got := contextData(c); got["integration_state"] != "missing" {
+		t.Fatal(got)
+	}
+}

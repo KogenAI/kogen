@@ -68,6 +68,12 @@ defmodule Kogen.LocalFacts do
       "evidence_locations" => %{"run_dir" => run.dir, "log" => run.log}
     }
 
+    Process.put(
+      :usage_phase_clock,
+      {"startup", System.monotonic_time(:millisecond),
+       DateTime.utc_now() |> DateTime.to_iso8601()}
+    )
+
     Process.put(:local_record, record)
     publish(root, c, record)
     package(root, slug, Kogen.Config.load!(root))
@@ -143,6 +149,30 @@ defmodule Kogen.LocalFacts do
 
     if r && r["run_id"] == b.run.id do
       phase = phase || r["phase"]
+
+      if clock = Process.get(:usage_phase_clock) do
+        {old_phase, started, at} = clock
+
+        if old_phase != phase or outcome != nil do
+          now = System.monotonic_time(:millisecond)
+
+          Kogen.Run.log(b.run, %{
+            event: "phase_duration",
+            phase:
+              Map.get(%{"building" => "build", "reviewing" => "review"}, old_phase, old_phase),
+            timestamp: at,
+            wall_ms: now - started
+          })
+
+          if outcome == nil,
+            do:
+              Process.put(
+                :usage_phase_clock,
+                {phase, now, DateTime.utc_now() |> DateTime.to_iso8601()}
+              ),
+            else: Process.delete(:usage_phase_clock)
+        end
+      end
 
       status =
         cond do

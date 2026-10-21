@@ -8,7 +8,7 @@ defmodule Kogen.Shape do
 
   def run(project, slug, input, input_path \\ nil) do
     root = Git.root!(project)
-    Kogen.ShapeEvidence.start(Path.join(root, ".kogen/local/shaping/#{slug}"))
+    Kogen.ShapeEvidence.start(Path.join(root, ".kogen/local/shaping/#{slug}"), slug)
 
     try do
       config = Config.load!(root)
@@ -651,13 +651,27 @@ defmodule Kogen.Shape do
     :ok
   end
 
-  @doc "An output item sent back on the next request; reasoning items are not kept (store is false)."
+  @doc "Supported stateless replay fields, including opaque reasoning, in received order."
   def replay_item(%{"type" => "function_call"} = c),
-    do: Map.take(c, ["type", "call_id", "name", "arguments"])
+    do: Map.take(c, ~w(type id call_id name arguments status))
 
-  def replay_item(%{"type" => "message", "content" => content}) do
-    text = Enum.map_join(content || [], "", &(&1["text"] || ""))
-    if text == "", do: nil, else: %{"role" => "assistant", "content" => text}
+  def replay_item(%{"type" => "reasoning"} = c),
+    do: Map.take(c, ~w(type id encrypted_content summary status))
+
+  def replay_item(%{"type" => "message", "content" => content} = c) when is_list(content) do
+    content =
+      Enum.flat_map(content, fn
+        %{"type" => "output_text", "text" => text} when is_binary(text) ->
+          [%{"type" => "output_text", "text" => text}]
+
+        %{"type" => "refusal", "refusal" => text} when is_binary(text) ->
+          [%{"type" => "refusal", "refusal" => text}]
+
+        _ ->
+          []
+      end)
+
+    if content != [], do: Map.put(Map.take(c, ~w(type id role phase status)), "content", content)
   end
 
   def replay_item(_), do: nil
@@ -955,8 +969,8 @@ defmodule Kogen.Shape do
     Approval freezes this baseline. It is not an exception or authorization to change a protected path. Inspect the implementation edits required to deliver the requested outcome; do not infer a conflict by scanning request prose. If a required protected edit cannot be avoided without changing the requested outcome, submit the exclusive `blocked` report with actual protected paths and a reason. Never submit a ready package conditional on a protected-edit approval mechanism: no such override exists.
 
     Full contract inclusions: exact request, Q&A, README, testing rules and protection/automatic baseline are authoritative and are not clipped.
-    #{selected}
     """
+    |> Kogen.PromptCache.contract_blocks(selected)
   end
 
   def readme(root) do

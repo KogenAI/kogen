@@ -345,12 +345,7 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     assert feedback =~ "readiness acknowledgment"
 
     retry_messages =
-      FakeProvider.provider_requests(context.server)
-      |> List.last()
-      |> Map.fetch!(:json)
-      |> Map.fetch!("input")
-      |> Enum.filter(&(&1["role"] == "user"))
-      |> Enum.map_join("\n", & &1["content"])
+      FakeProvider.input_text(List.last(FakeProvider.provider_requests(context.server)))
 
     refute retry_messages =~ "Call submit_refinement with changed existing files"
 
@@ -402,7 +397,7 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     assert output =~ "refined fixture"
     assert executions(context) - before == 1
     requests = FakeProvider.provider_requests(context.server)
-    prompt = List.last(requests).json["input"] |> hd() |> Map.fetch!("content")
+    prompt = FakeProvider.input_text(List.last(requests))
 
     assert prompt =~ "pre-existing legitimate product red"
     [_, reference] = Regex.run(~r/^Evidence: (.+)$/m, prompt)

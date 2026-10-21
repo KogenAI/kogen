@@ -425,7 +425,7 @@ defmodule Kogen.ChatGPT do
       %{
         "model" => model,
         "reasoning" => %{"effort" => effort},
-        "instructions" => instructions,
+        "include" => ["reasoning.encrypted_content"],
         "input" => input,
         "stream" => true,
         "store" => false
@@ -433,12 +433,29 @@ defmodule Kogen.ChatGPT do
       |> then(fn b ->
         if tools == [], do: b, else: Map.merge(b, %{"tools" => tools, "tool_choice" => "auto"})
       end)
+      |> Map.merge(Kogen.PromptCache.prepare(model, instructions, input, tools))
       |> JSON.encode!()
+
+    Process.put(:provider_operation, %{
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      id: Kogen.tmp_path("operation") |> Path.basename(),
+      model: model,
+      effort: effort
+    })
 
     if Keyword.get(opts, :single_attempt, false) do
       case stream(body, access_token(deadline), deadline) do
         {:ok, result} ->
           result
+
+        {:error, %{status: 400, param: param} = error} ->
+          if cache_refusal?(param) and cache_error_allowed?(error) and
+               Map.has_key?(JSON.decode!(body), "prompt_cache_options") do
+            Kogen.PromptCache.unsupported()
+            single_compatibility(strip_cache(body), model, deadline)
+          else
+            classify(error, model)
+          end
 
         {:error, error} ->
           classify(error, model)
@@ -460,6 +477,25 @@ defmodule Kogen.ChatGPT do
       end
     else
       attempt(body, model, 1, false, false, deadline)
+    end
+  end
+
+  defp single_compatibility(body, model, deadline) do
+    case stream(body, access_token(deadline), deadline) do
+      {:ok, result} ->
+        result
+
+      {:error, error} ->
+        classify(error, model)
+
+      {:unauthorized, error} ->
+        login_rejected!(diagnostics(error))
+
+      {:invalid, detail} ->
+        Error.raise!("provider", "invalid_response", detail, 4)
+
+      {:transient, _} ->
+        Error.raise!("provider", "unavailable", "ChatGPT response unavailable", 4)
     end
   end
 
@@ -514,9 +550,43 @@ defmodule Kogen.ChatGPT do
           4
         )
 
+      {:error, %{status: 400, param: param} = error} ->
+        if cache_refusal?(param) and cache_error_allowed?(error) and
+             Map.has_key?(JSON.decode!(body), "prompt_cache_options") do
+          Kogen.PromptCache.unsupported()
+          attempt(strip_cache(body), model, n, refreshed, retried_invalid, deadline)
+        else
+          classify(error, model)
+        end
+
       {:error, error} ->
         classify(error, model)
     end
+  end
+
+  defp cache_error_allowed?(error),
+    do:
+      error[:code] in ~w(unknown_parameter unsupported_parameter subscription_sharing_unsupported_capability)
+
+  defp cache_refusal?(param) when is_binary(param),
+    do: Regex.match?(~r/(?:^|[.\[])prompt_cache_(?:options|breakpoint)(?:$|[.\[])/, param)
+
+  defp cache_refusal?(_), do: false
+
+  defp strip_cache(body) do
+    b = JSON.decode!(body) |> Map.delete("prompt_cache_options")
+
+    input =
+      Enum.map(b["input"], fn item ->
+        if is_list(item["content"]),
+          do:
+            Map.update!(item, "content", fn blocks ->
+              Enum.map(blocks, &Map.delete(&1, "prompt_cache_breakpoint"))
+            end),
+          else: item
+      end)
+
+    b |> Map.put("input", input) |> JSON.encode!()
   end
 
   defp pause(ms, deadline) do
@@ -627,8 +697,129 @@ defmodule Kogen.ChatGPT do
 
   defp reset_text(t) when is_binary(t), do: "; it resets at " <> t
 
-  defp stream(body, token, deadline),
-    do: Kogen.ShapeEvidence.transport(fn -> stream_request(body, token, deadline) end)
+  defp stream(body, token, deadline) do
+    Kogen.ShapeEvidence.transport(fn ->
+      t = System.monotonic_time(:millisecond)
+      timestamp = DateTime.utc_now() |> DateTime.to_iso8601()
+      Process.delete(:provider_request_id)
+
+      try do
+        result = stream_request(body, token, deadline)
+
+        case result do
+          {:error, %{status: 400, param: param} = error} ->
+            if cache_error_allowed?(error) and cache_refusal?(param) and
+                 Map.has_key?(JSON.decode!(body), "prompt_cache_options"),
+               do: Kogen.PromptCache.unsupported()
+
+          _ ->
+            :ok
+        end
+
+        record_attempt(result, t, timestamp, body)
+        result
+      catch
+        kind, reason ->
+          record_attempt(
+            {:failed, if(match?({:cancel, _}, reason), do: "cancelled", else: "failed")},
+            t,
+            timestamp,
+            body
+          )
+
+          :erlang.raise(kind, reason, __STACKTRACE__)
+      end
+    end)
+  end
+
+  defp returned_effort(%{"effort" => effort}), do: Kogen.PromptCache.identifier(effort)
+  defp returned_effort(_), do: nil
+
+  defp record_attempt(result, t, timestamp, body) do
+    {_, _, meta} = Process.get(:prompt_cache_current)
+    op = Process.get(:provider_operation)
+
+    r =
+      case result do
+        {:ok, r} -> r
+        _ -> %{}
+      end
+
+    response = Map.get(r, :response_metadata, %{})
+    completed = match?({:ok, _}, result)
+
+    outcome =
+      case result do
+        {:ok, _} -> "completed"
+        {:failed, "cancelled"} -> "cancelled"
+        _ -> "failed"
+      end
+
+    cache =
+      if completed and meta.cache.status == "requested",
+        do: %{
+          meta.cache
+          | status: "applied",
+            applied_mode: "implicit",
+            diagnostics: Kogen.PromptCache.diagnostics(response["prompt_cache_diagnostics"])
+        },
+        else: meta.cache
+
+    cache =
+      if Map.has_key?(JSON.decode!(body), "prompt_cache_options"),
+        do: cache,
+        else: %{cache | boundaries: [], comparison_response_id: nil}
+
+    cache =
+      if completed,
+        do: %{
+          cache
+          | diagnostics: Kogen.PromptCache.diagnostics(response["prompt_cache_diagnostics"])
+        },
+        else: cache
+
+    context = Process.get(:provider_context, %{})
+    measured_usage = Map.get(r, :known_usage, known_usage(nil))
+
+    provider =
+      Map.merge(
+        meta,
+        Map.merge(context, %{
+          operation_id: op.id,
+          attempt_id: Kogen.tmp_path("attempt") |> Path.basename(),
+          timestamp: timestamp,
+          provider_response_id: Kogen.PromptCache.identifier(response["id"]),
+          provider_request_id: Process.get(:provider_request_id),
+          configured_model: op.model,
+          configured_effort: op.effort,
+          effective_model: Kogen.PromptCache.identifier(response["model"]),
+          effective_effort: returned_effort(response["reasoning"]),
+          requested_service_tier: nil,
+          effective_service_tier: Kogen.PromptCache.identifier(response["service_tier"]),
+          requested_reasoning_context: nil,
+          effective_reasoning_context: nil,
+          cache: cache,
+          usage: measured_usage,
+          usage_state:
+            if(completed,
+              do: Map.get(r, :usage_state, Kogen.Usage.state(measured_usage)),
+              else: "unknown"
+            ),
+          wall_ms: System.monotonic_time(:millisecond) - t,
+          ttft_ms: nil,
+          outcome: outcome,
+          error: if(completed, do: nil, else: "provider_failure")
+        })
+      )
+
+    if b = Process.get(:kogen_build) do
+      Kogen.Run.log(b.run, %{event: "provider_attempt", provider: provider})
+    else
+      Process.put(:provider_attempt_metadata, provider)
+    end
+
+    if completed, do: Kogen.PromptCache.complete(response)
+  end
 
   defp stream_request(body, token, deadline) do
     url = String.to_charlist(api_base() <> "/responses")
@@ -649,6 +840,7 @@ defmodule Kogen.ChatGPT do
       collect(
         ref,
         %{
+          response_metadata: %{},
           buf: "",
           items: %{},
           pending: MapSet.new(),
@@ -672,7 +864,8 @@ defmodule Kogen.ChatGPT do
     remaining(deadline)
 
     receive do
-      {:http, {^ref, :stream_start, _headers}} ->
+      {:http, {^ref, :stream_start, headers}} ->
+        capture_request_id(headers)
         collect(ref, acc, deadline)
 
       {:http, {^ref, :stream, chunk}} ->
@@ -689,7 +882,8 @@ defmodule Kogen.ChatGPT do
         remaining(deadline)
         finish(acc)
 
-      {:http, {^ref, {{_, status, _}, _headers, body}}} ->
+      {:http, {^ref, {{_, status, _}, headers, body}}} ->
+        capture_request_id(headers)
         remaining(deadline)
         http_error(status, body)
 
@@ -703,6 +897,15 @@ defmodule Kogen.ChatGPT do
     after
       remaining(deadline) -> expired!()
     end
+  end
+
+  defp capture_request_id(headers) do
+    id =
+      Enum.find_value(headers, fn {k, v} ->
+        if String.downcase(to_string(k)) == "x-request-id", do: to_string(v)
+      end)
+
+    Process.put(:provider_request_id, Kogen.PromptCache.identifier(id))
   end
 
   defp finish(%{failure: f}) when f != nil, do: failure(f)
@@ -727,7 +930,24 @@ defmodule Kogen.ChatGPT do
       |> Enum.sort()
 
     if reasons == [] do
-      {:ok, %{items: items, usage: usage(acc.usage), known_usage: known_usage(acc.usage)}}
+      measured = known_usage(acc.usage)
+      usage_state = Kogen.Usage.state(measured)
+
+      {:ok,
+       %{
+         items: items,
+         usage:
+           if(usage_state == "inconsistent",
+             do: Kogen.Usage.zero(),
+             else: usage(acc.usage)
+           ),
+         known_usage:
+           Map.new(measured, fn {k, v} ->
+             {k, if(is_integer(v) and v >= 0, do: v)}
+           end),
+         usage_state: usage_state,
+         response_metadata: acc.response_metadata
+       }}
     else
       counts = [length(items), MapSet.size(acc.pending), acc.observed_index_count]
       [item_count, pending_count, observed_index_count] = Enum.map(counts, &min(&1, 1024))
@@ -788,15 +1008,28 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp known_usage(nil), do: %{input: nil, cached: nil, output: nil, reasoning: nil}
+  defp known_usage(nil),
+    do: Map.new(~w(input cached write write_30m write_12h output reasoning)a, &{&1, nil})
 
   defp known_usage(u),
     do: %{
+      write: optional_count(u, ["input_tokens_details", "cache_write_tokens"]),
+      write_30m:
+        optional_count(u, ["input_tokens_details", "cache_write_tokens_details", "ttl_30m_tokens"]),
+      write_12h:
+        optional_count(u, ["input_tokens_details", "cache_write_tokens_details", "ttl_12h_tokens"]),
       input: u["input_tokens"],
-      cached: get_in(u, ["input_tokens_details", "cached_tokens"]),
+      cached: optional_count(u, ["input_tokens_details", "cached_tokens"]),
       output: u["output_tokens"],
-      reasoning: get_in(u, ["output_tokens_details", "reasoning_tokens"])
+      reasoning: optional_count(u, ["output_tokens_details", "reasoning_tokens"])
     }
+
+  defp optional_count(value, []), do: value
+
+  defp optional_count(value, [key | rest]) when is_map(value),
+    do: optional_count(value[key], rest)
+
+  defp optional_count(_, _), do: nil
 
   defp usage(u) do
     u = u || %{}
@@ -914,7 +1147,9 @@ defmodule Kogen.ChatGPT do
 
     acc = %{
       acc
-      | done: true,
+      | response_metadata:
+          Map.take(response, ~w(id model service_tier reasoning prompt_cache_diagnostics)),
+        done: true,
         usage: response["usage"],
         validation_reasons: reasons,
         terminal_response_present: true,

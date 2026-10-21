@@ -41,6 +41,7 @@ Commands:
   build <slug>              Build, verify, review and commit the approved Intent
   resume <build-id>         Continue a stopped Build in this checkout
   list                     List packages and Build attempts
+  usage [run-id]          Explain local retained provider usage
   inspect <run-id>         Inspect recorded Build evidence
   preflight <slug>         Observe read-only prerequisites
 

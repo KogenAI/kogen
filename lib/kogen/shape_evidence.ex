@@ -1,12 +1,14 @@
 defmodule Kogen.ShapeEvidence do
   @moduledoc "Append-only native shaping/refinement observations. Bytes are not tokens."
-  def start(dir) do
+  def start(dir, slug \\ nil) do
     File.mkdir_p!(dir)
     File.write!(Path.join(dir, "events.ndjson"), "", [:append])
 
     Process.put(:shape_evidence, %{
       dir: dir,
+      slug: slug,
       start: now(),
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
       intervals: %{},
       event_offset: file_size(Path.join(dir, "events.ndjson"))
     })
@@ -24,6 +26,14 @@ defmodule Kogen.ShapeEvidence do
   def now, do: System.monotonic_time(:millisecond)
 
   def record(event) do
+    event =
+      if event[:event] == "provider_call" and Process.get(:provider_attempt_metadata) do
+        meta = Process.delete(:provider_attempt_metadata)
+        event |> Map.put(:provider, meta) |> Map.put(:error, meta.error)
+      else
+        event
+      end
+
     if s = Process.get(:shape_evidence) do
       File.write!(Path.join(s.dir, "events.ndjson"), JSON.encode!(event) <> "\n", [:append])
     end
@@ -66,11 +76,19 @@ defmodule Kogen.ShapeEvidence do
       revision: revision,
       scope: scope,
       configured_model: config.model,
-      effective_model: config.model,
+      effective_model: nil,
       configured_effort: config.effort,
-      effective_effort: config.effort,
+      effective_effort: nil,
       started_ms: offset(t)
     }
+
+    Process.put(:provider_conversation_scope, Process.get(:shape_evidence).dir)
+
+    Process.put(:provider_context, %{
+      phase: role,
+      role: role,
+      slug: Process.get(:shape_evidence).slug
+    })
 
     Process.put(:shape_provider_context, base)
     Process.put(:shape_transport_calls, 0)
@@ -148,7 +166,16 @@ defmodule Kogen.ShapeEvidence do
             {kind, detail} -> {"failed", unknown(), %{reason: kind, detail: detail}}
           end
 
-        record(Map.merge(base, %{status: status, usage: usage, error: error, wall_ms: now() - t}))
+        record(
+          Map.merge(base, %{
+            event: "provider_call",
+            status: status,
+            usage: usage,
+            error: error,
+            wall_ms: now() - t
+          })
+        )
+
         result
       catch
         kind, reason ->
@@ -243,7 +270,12 @@ defmodule Kogen.ShapeEvidence do
 
       known =
         Map.new(~w(input cached output reasoning), fn k ->
-          {k, calls |> Enum.map(& &1["usage"][k]) |> Enum.filter(&is_integer/1) |> Enum.sum()}
+          {k,
+           calls
+           |> Enum.reject(&(get_in(&1, ["provider", "usage_state"]) == "inconsistent"))
+           |> Enum.map(& &1["usage"][k])
+           |> Enum.filter(&is_integer/1)
+           |> Enum.sum()}
         end)
 
       record(%{
@@ -271,6 +303,13 @@ defmodule Kogen.ShapeEvidence do
             )
         })
       end
+
+      record(%{
+        event: "phase_duration",
+        phase: "shape",
+        timestamp: s.timestamp,
+        wall_ms: now() - s.start
+      })
 
       record(%{
         event: "session_end",

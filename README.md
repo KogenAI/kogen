@@ -150,3 +150,15 @@ The latter three accept `--json`; all four accept `--project <checkout>`.
 Context and completion run without the installed core. See
 [the version 1 contract and standalone Zsh installation](docs/checkout-facts.md).
 Preflight is not authorization: Build still performs its normal safety checks.
+
+## Prompt reuse and retained usage
+
+`kogen intent usage [RUN-ID] [--lineage] [--project DIR] [--json]` explains
+local retained transport evidence without credentials or inference. It reports
+weighted cache ratios, nullable writes/lifetimes, unknown/inconsistent counts,
+failures and provenance; totals cover selected evidence, not just displayed rows.
+This is not account or weekly usage. Supported Responses routes request
+best-effort implicit 30m reuse while keeping full stateless encrypted replay,
+independent reviewers and fresh safety/verification gates. Cache acceptance is
+not proof of a hit, effective TTL or live account qualification. See
+[usage scope, filters and uncertainty](docs/usage.md).

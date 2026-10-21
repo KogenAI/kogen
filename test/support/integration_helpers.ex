@@ -40,9 +40,21 @@ defmodule Kogen.Integration.FakeProvider do
     end)
   end
 
+  def input_text(request) do
+    request.json["input"]
+    |> Enum.reject(&(&1["role"] == "developer"))
+    |> Enum.map_join("\n", fn item ->
+      case item["content"] do
+        text when is_binary(text) -> text
+        blocks when is_list(blocks) -> Enum.map_join(blocks, "", &(&1["text"] || ""))
+        _ -> ""
+      end
+    end)
+  end
+
   def review_requests(server) do
     Enum.filter(provider_requests(server), fn request ->
-      String.contains?(request.json["instructions"] || "", "You review code")
+      String.contains?(JSON.encode!(request.json["input"] || []), "You review code")
     end)
   end
 
@@ -269,6 +281,7 @@ defmodule Kogen.Integration.FakeProvider do
     :gen_tcp.send(socket, [
       "HTTP/1.1 #{status} #{reason}\r\n",
       "content-type: #{content_type}\r\n",
+      "x-request-id: req-fixture\r\n",
       "content-length: #{byte_size(body)}\r\n",
       "connection: close\r\n\r\n",
       body

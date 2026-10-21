@@ -43,3 +43,18 @@ func TestZshDynamicWiring(t *testing.T) {
 		}
 	}
 }
+
+func TestCompletionHistoryTrap(t *testing.T) {
+	c := factProject(t)
+	root := c["root"].(string)
+	for _, p := range []string{"runs", "shaping", "refinements"} {
+		if e := os.Mkdir(filepath.Join(root, ".kogen/local", p), 0000); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// The completion entry point only consumes its fixed catalog, not history.
+	handled, code := localRead([]string{"__complete", "build", "--project", root})
+	if !handled || code != 0 {
+		t.Fatal(handled, code)
+	}
+}

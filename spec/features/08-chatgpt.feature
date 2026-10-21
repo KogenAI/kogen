@@ -249,3 +249,11 @@ Feature: ChatGPT connection
     And the fake ChatGPT server received 1 requests
     And the file ".kogen/intents/is-even/intent.md" does not exist
     And HEAD is unchanged
+
+  @GPT-9
+  Scenario: Empty local retained usage is honest and requires no provider
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    When the caller runs "kogen intent usage --json"
+    Then the exit code is 0
+    And stdout contains "usage"

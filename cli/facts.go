@@ -248,6 +248,9 @@ func response(kind string, c object, data any, reason string, code int) int {
 
 // localRead handles bounded native reads before any installed runtime is consulted.
 func localRead(args []string) (bool, int) {
+	if len(args) > 1 && args[0] == "intent" && args[1] == "usage" {
+		return true, usageCommand(args[2:])
+	}
 	if len(args) == 0 {
 		return false, 0
 	}
@@ -615,7 +618,7 @@ _kogen() {
     return
   fi
   if [[ $words[2] == intent ]] && (( CURRENT == 3 )); then
-    compadd shape refine approve build resume list inspect preflight
+    compadd shape refine approve build resume list inspect preflight usage
     return
   fi
   if [[ $words[CURRENT-1] == --project ]]; then _directories; return; fi
@@ -630,6 +633,7 @@ _kogen() {
     intent)
       op=$words[3]
       options=(--project --help)
+      if [[ $op == usage ]]; then options+=(--json --lineage --limit --slug --phase --role --model --effective-model --effort --effective-effort --outcome --pass --repair --since --until --group-by); fi
       case $op in
         build) options+=(--context) ;;
         approve) options+=(--by) ;;

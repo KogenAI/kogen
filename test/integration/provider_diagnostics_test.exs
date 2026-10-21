@@ -79,7 +79,13 @@ defmodule Kogen.Integration.ProviderDiagnosticsTest do
     assert authority(context) == before
     log = File.read!(Helpers.run_log(context))
     assert log =~ "unknown_http_code"
-    outcome = log |> String.split("\n", trim: true) |> List.last() |> JSON.decode!()
+
+    outcome =
+      log
+      |> String.split("\n", trim: true)
+      |> Enum.map(&JSON.decode!/1)
+      |> Enum.find(&(&1["event"] == "outcome"))
+
     assert outcome["event"] == "outcome"
     assert outcome["provider_failure"] == expected
     refute log <> output =~ "SECRET-AUTH-MARKER"
