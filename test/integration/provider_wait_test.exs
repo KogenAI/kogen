@@ -55,6 +55,61 @@ defmodule Kogen.Integration.ProviderWaitTest do
       "arguments" => "{}"
     }
 
+  test "terminal evidence retains sticky guards but describes only effective replacement items",
+       %{home: home} do
+    bad = Map.put(tool(), "arguments", "PRIVATE-invalid-json")
+
+    frames = [
+      %{"type" => "response.output_item.done", "output_index" => -1, "item" => bad},
+      %{"type" => "response.output_item.done", "output_index" => 0, "item" => bad},
+      %{"type" => "response.output_item.added", "output_index" => 2},
+      done(%{"output" => [tool()]})
+    ]
+
+    connect(home, [{:events, frames}])
+    error = assert_raise Error, fn -> respond(single_attempt: true) end
+    evidence = terminal_evidence(error)
+    assert evidence["reasons"] == ["item_event_shape", "terminal_index_coverage"]
+    facts = evidence["facts"]
+    assert facts["observed_index_count"] == 2
+    assert facts["item_count"] == 1
+    assert facts["pending_count"] == 0
+    assert facts["terminal_output_replaced"]
+    assert facts["arguments_object"] == ["yes"]
+    refute error.detail =~ "PRIVATE"
+  end
+
+  test "terminal evidence distinguishes effective pending and gap predicates", %{home: home} do
+    connect(home, [
+      {:events,
+       [
+         %{"type" => "response.output_item.done", "output_index" => 1, "item" => tool()},
+         done(%{})
+       ]},
+      {:events,
+       [
+         %{"type" => "response.output_item.done", "output_index" => 0, "item" => tool()},
+         %{"type" => "response.output_item.added", "output_index" => 1},
+         done(%{})
+       ]}
+    ])
+
+    gap = assert_raise Error, fn -> respond(single_attempt: true) end
+    assert terminal_evidence(gap)["reasons"] == ["noncontiguous_indexes"]
+    pending = assert_raise Error, fn -> respond(single_attempt: true) end
+    evidence = terminal_evidence(pending)
+    assert evidence["reasons"] == ["pending_items"]
+    assert evidence["facts"]["pending_count"] == 1
+    assert evidence["facts"]["observed_index_count"] == 2
+    refute evidence["facts"]["terminal_output_replaced"]
+  end
+
+  defp terminal_evidence(error) do
+    [_, json] = String.split(error.detail, "; validation=", parts: 2)
+    assert byte_size(json) <= 2048
+    JSON.decode!(json)
+  end
+
   test "an expired invocation does not consume the next invocation's budget", %{home: home} do
     server = connect(home, [{:http, 500, %{}}, {:text, "fresh"}])
     started = System.monotonic_time(:millisecond)

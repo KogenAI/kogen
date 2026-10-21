@@ -655,7 +655,11 @@ defmodule Kogen.ChatGPT do
           usage: nil,
           done: false,
           failure: nil,
-          invalid: false
+          validation_reasons: [],
+          terminal_response_present: false,
+          terminal_output_present: false,
+          terminal_output_replaced: false,
+          observed_index_count: 0
         },
         deadline
       )
@@ -709,11 +713,78 @@ defmodule Kogen.ChatGPT do
     indexes = Map.keys(acc.items) |> Enum.sort()
     contiguous = indexes == Enum.to_list(0..(length(items) - 1)//1)
 
-    if not acc.invalid and items != [] and contiguous and MapSet.size(acc.pending) == 0 and
-         Enum.all?(items, &complete_item?/1) do
+    reasons =
+      acc.validation_reasons
+      |> reject_reason(items == [], "empty_output")
+      |> reject_reason(not contiguous, "noncontiguous_indexes")
+      |> reject_reason(MapSet.size(acc.pending) != 0, "pending_items")
+      |> reject_reason(
+        Enum.any?(items, &(item_field(&1, "status") not in [nil, "completed"])),
+        "item_status"
+      )
+      |> reject_reason(Enum.any?(items, &(not valid_item?(&1))), "item_shape")
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    if reasons == [] do
       {:ok, %{items: items, usage: usage(acc.usage), known_usage: known_usage(acc.usage)}}
     else
-      {:invalid, "the completed response has invalid or unfinished output"}
+      counts = [length(items), MapSet.size(acc.pending), acc.observed_index_count]
+      [item_count, pending_count, observed_index_count] = Enum.map(counts, &min(&1, 1024))
+
+      facts = %{
+        event_kind: "response.completed",
+        done: acc.done,
+        terminal_response_present: acc.terminal_response_present,
+        terminal_output_present: acc.terminal_output_present,
+        terminal_output_replaced: acc.terminal_output_replaced,
+        item_count: item_count,
+        pending_count: pending_count,
+        observed_index_count: observed_index_count,
+        counts_capped: Enum.any?(counts, &(&1 > 1024)),
+        indexes_contiguous: contiguous,
+        item_types:
+          aggregate(items, &category(item_field(&1, "type"), ~w(function_call message reasoning))),
+        item_statuses:
+          aggregate(
+            items,
+            &category(item_field(&1, "status"), ~w(completed in_progress incomplete failed))
+          ),
+        arguments_object:
+          items
+          |> Enum.filter(&(item_field(&1, "type") == "function_call"))
+          |> aggregate(&arguments_object/1)
+      }
+
+      {:invalid,
+       "the completed response has invalid or unfinished output; validation=" <>
+         JSON.encode!(%{reasons: reasons, facts: facts})}
+    end
+  end
+
+  defp reject_reason(reasons, true, reason), do: [reason | reasons]
+  defp reject_reason(reasons, false, _reason), do: reasons
+
+  defp item_field(%{} = item, key), do: item[key]
+  defp item_field(_, _), do: nil
+
+  defp category(value, allowed) when is_binary(value),
+    do: if(value in allowed, do: value, else: "other")
+
+  defp category(_, _), do: "unknown"
+
+  defp aggregate(items, fun), do: items |> Enum.map(fun) |> Enum.uniq() |> Enum.sort()
+
+  defp arguments_object(item) do
+    case item_field(item, "arguments") do
+      args when is_binary(args) ->
+        case JSON.decode(args) do
+          {:ok, value} when is_map(value) -> "yes"
+          _ -> "no"
+        end
+
+      _ ->
+        "unknown"
     end
   end
 
@@ -769,11 +840,6 @@ defmodule Kogen.ChatGPT do
         end
     end
   end
-
-  defp complete_item?(%{} = item),
-    do: item["status"] in [nil, "completed"] and valid_item?(item)
-
-  defp complete_item?(_), do: false
 
   defp valid_usage?(nil), do: true
 
@@ -832,16 +898,28 @@ defmodule Kogen.ChatGPT do
 
   defp apply_event(type, _ev, acc)
        when type in ["response.output_item.added", "response.output_item.done"],
-       do: %{acc | invalid: true}
+       do: %{
+         acc
+         | validation_reasons: reject_reason(acc.validation_reasons, true, "item_event_shape")
+       }
 
   defp apply_event("response.completed", %{"response" => response}, acc) when is_map(response) do
+    observed = MapSet.union(MapSet.new(Map.keys(acc.items)), acc.pending)
+
+    reasons =
+      acc.validation_reasons
+      |> reject_reason(response["status"] not in [nil, "completed"], "response_status")
+      |> reject_reason(response["error"] != nil, "response_error")
+      |> reject_reason(not valid_usage?(response["usage"]), "usage_shape")
+
     acc = %{
       acc
       | done: true,
         usage: response["usage"],
-        invalid:
-          acc.invalid or response["status"] not in [nil, "completed"] or
-            response["error"] != nil or not valid_usage?(response["usage"])
+        validation_reasons: reasons,
+        terminal_response_present: true,
+        terminal_output_present: Map.has_key?(response, "output"),
+        observed_index_count: MapSet.size(observed)
     }
 
     case Map.fetch(response, "output") do
@@ -851,21 +929,33 @@ defmodule Kogen.ChatGPT do
       {:ok, output} when is_list(output) ->
         items = output |> Enum.with_index() |> Map.new(fn {item, i} -> {i, item} end)
         indexes = MapSet.new(Map.keys(items))
-        observed = MapSet.union(MapSet.new(Map.keys(acc.items)), acc.pending)
 
         %{
           acc
           | items: items,
             pending: MapSet.new(),
-            invalid: acc.invalid or not MapSet.subset?(observed, indexes)
+            terminal_output_replaced: true,
+            validation_reasons:
+              reject_reason(
+                reasons,
+                not MapSet.subset?(observed, indexes),
+                "terminal_index_coverage"
+              )
         }
 
       _ ->
-        %{acc | invalid: true}
+        %{acc | validation_reasons: reject_reason(reasons, true, "terminal_output_shape")}
     end
   end
 
-  defp apply_event("response.completed", _ev, acc), do: %{acc | done: true, invalid: true}
+  defp apply_event("response.completed", _ev, acc),
+    do: %{
+      acc
+      | done: true,
+        observed_index_count:
+          MapSet.size(MapSet.union(MapSet.new(Map.keys(acc.items)), acc.pending)),
+        validation_reasons: reject_reason(acc.validation_reasons, true, "terminal_envelope")
+    }
 
   defp apply_event("response.incomplete", ev, acc),
     do: %{

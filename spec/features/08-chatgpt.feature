@@ -221,11 +221,13 @@ Feature: ChatGPT connection
     When the caller runs "kogen intent build is-even"
     Then the exit code is 4
     And stdout contains "provider/invalid_response"
+    And stdout contains "; validation="
+    And stdout contains "<predicate>"
     And the fake ChatGPT server received 2 requests
     And the file "unauthorized.txt" does not exist
     And HEAD is unchanged
 
     Examples:
-      | script          |
-      | unfinished-tool |
-      | malformed-tool  |
+      | script          | predicate     |
+      | unfinished-tool | pending_items |
+      | malformed-tool  | item_shape    |
