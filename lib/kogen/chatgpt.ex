@@ -195,7 +195,7 @@ defmodule Kogen.ChatGPT do
     if claims["nonce"] != nonce, do: login_failed("the sign-in answer does not match this login")
     email = claims["email"]
 
-    with_lock(fn ->
+    with_lock(nil, fn ->
       write_creds(%{
         "client_id" => client_id,
         "access_token" => tok["access_token"],
@@ -243,35 +243,48 @@ defmodule Kogen.ChatGPT do
   defp now, do: System.os_time(:second)
 
   # A token request that an interrupt can cancel.
-  defp post_form(url, form) do
+  defp post_form(url, form, deadline \\ nil) do
     body = URI.encode_query(form)
 
     req =
       {String.to_charlist(url), [{~c"accept", ~c"application/json"}],
        ~c"application/x-www-form-urlencoded", body}
 
-    {:ok, ref} = :httpc.request(:post, req, http_opts(), sync: false, body_format: :binary)
+    {:ok, ref} =
+      :httpc.request(:post, req, http_opts(deadline), sync: false, body_format: :binary)
 
-    receive do
-      {:http, {^ref, {{_, status, _}, _headers, resp}}} ->
-        {status,
-         case JSON.decode(resp) do
-           {:ok, map} when is_map(map) -> map
-           _ -> %{}
-         end}
+    try do
+      remaining(deadline)
 
-      {:http, {^ref, {:error, reason}}} ->
-        {0, %{"error" => inspect(reason)}}
+      receive do
+        {:http, {^ref, {{_, status, _}, _headers, resp}}} ->
+          remaining(deadline)
 
-      {:proto, %{"type" => "cancel", "signal" => sig}} ->
-        :httpc.cancel_request(ref)
-        Bridge.cancelled(sig)
+          {status,
+           case JSON.decode(resp) do
+             {:ok, map} when is_map(map) -> map
+             _ -> %{}
+           end}
+
+        {:http, {^ref, {:error, reason}}} ->
+          remaining(deadline)
+          {0, %{"error" => inspect(reason)}}
+
+        {:proto, %{"type" => "cancel", "signal" => sig}} ->
+          :httpc.cancel_request(ref)
+          Bridge.cancelled(sig)
+      after
+        remaining(deadline) -> expired!()
+      end
+    after
+      :httpc.cancel_request(ref)
     end
   end
 
-  defp http_opts do
+  defp http_opts(deadline) do
     [
-      connect_timeout: 30_000,
+      connect_timeout: min(30_000, remaining(deadline)),
+      timeout: remaining(deadline),
       ssl: [
         verify: :verify_peer,
         cacerts: :public_key.cacerts_get(),
@@ -288,10 +301,13 @@ defmodule Kogen.ChatGPT do
     :ok
   end
 
-  defp access_token do
+  defp access_token(deadline) do
+    remaining(deadline)
     c = stored_credentials!()
 
-    if expiring?(c), do: refreshed(c["access_token"], :proactive), else: c["access_token"]
+    if expiring?(c),
+      do: refreshed(c["access_token"], :proactive, deadline),
+      else: c["access_token"]
   end
 
   defp stored_credentials! do
@@ -316,23 +332,24 @@ defmodule Kogen.ChatGPT do
   defp expiring?(c), do: c["expires_at"] - 60 <= now()
 
   # GPT-6: refresh under an exclusive lock; another kogen may already have rotated the token.
-  defp refreshed(stale, reason) do
-    with_lock(fn ->
+  defp refreshed(stale, reason, deadline) do
+    with_lock(deadline, fn ->
       c = stored_credentials!()
 
       if c["access_token"] != stale and not expiring?(c),
         do: c["access_token"],
-        else: refresh(c, reason)
+        else: refresh(c, reason, deadline)
     end)
   end
 
-  defp with_lock(fun) do
+  defp with_lock(deadline, fun) do
+    remaining(deadline)
     lock = Path.join(Path.dirname(creds_path()), "chatgpt.lock")
 
     case Lock.acquire(lock) do
       {:held, _pid} ->
-        pause(100)
-        with_lock(fun)
+        pause(100, deadline)
+        with_lock(deadline, fun)
 
       _taken ->
         try do
@@ -343,13 +360,17 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp refresh(c, reason) do
-    case post_form(auth_base() <> "/api/accounts/oauth/token", %{
-           "grant_type" => "refresh_token",
-           "client_id" => c["client_id"],
-           "refresh_token" => c["refresh_token"],
-           "resource" => @resource
-         }) do
+  defp refresh(c, reason, deadline) do
+    case post_form(
+           auth_base() <> "/api/accounts/oauth/token",
+           %{
+             "grant_type" => "refresh_token",
+             "client_id" => c["client_id"],
+             "refresh_token" => c["refresh_token"],
+             "resource" => @resource
+           },
+           deadline
+         ) do
       {200, tok} ->
         write_creds(%{
           c
@@ -396,6 +417,10 @@ defmodule Kogen.ChatGPT do
   provider failure, with reason `context_too_long` when the conversation no longer fits.
   """
   def respond(%{model: model, effort: effort}, instructions, input, tools, opts \\ []) do
+    deadline =
+      System.monotonic_time(:millisecond) +
+        min(1_800_000, Keyword.get(opts, :response_budget_ms, 1_800_000))
+
     body =
       %{
         "model" => model,
@@ -411,7 +436,7 @@ defmodule Kogen.ChatGPT do
       |> JSON.encode!()
 
     if Keyword.get(opts, :single_attempt, false) do
-      case stream(body, access_token()) do
+      case stream(body, access_token(deadline), deadline) do
         {:ok, result} ->
           result
 
@@ -434,32 +459,32 @@ defmodule Kogen.ChatGPT do
           Error.raise!("provider", "invalid_response", detail, 4)
       end
     else
-      attempt(body, model, 1, false, false)
+      attempt(body, model, 1, false, false, deadline)
     end
   end
 
-  defp attempt(body, model, n, refreshed, retried_invalid) do
-    token = access_token()
+  defp attempt(body, model, n, refreshed, retried_invalid, deadline) do
+    token = access_token(deadline)
 
-    case stream(body, token) do
+    case stream(body, token, deadline) do
       {:ok, result} ->
         result
 
       {:unauthorized, error} when not refreshed ->
         try do
-          refreshed(token, :after_401)
+          refreshed(token, :after_401, deadline)
         rescue
           e in Error -> reraise with_diagnostics(e, diagnostics(error)), __STACKTRACE__
         end
 
-        attempt(body, model, n, true, retried_invalid)
+        attempt(body, model, n, true, retried_invalid, deadline)
 
       {:unauthorized, error} ->
         login_rejected!(diagnostics(error))
 
       {:transient, _detail} when n < 3 ->
-        pause(if n == 1, do: 2_000, else: 8_000)
-        attempt(body, model, n + 1, refreshed, retried_invalid)
+        pause(if(n == 1, do: 2_000, else: 8_000), deadline)
+        attempt(body, model, n + 1, refreshed, retried_invalid, deadline)
 
       {:transient, detail} ->
         {message, diagnostics} =
@@ -479,7 +504,7 @@ defmodule Kogen.ChatGPT do
               )
 
       {:invalid, _detail} when not retried_invalid ->
-        attempt(body, model, n, refreshed, true)
+        attempt(body, model, n, refreshed, true, deadline)
 
       {:invalid, detail} ->
         Error.raise!(
@@ -494,11 +519,29 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp pause(ms) do
+  defp pause(ms, deadline) do
     receive do
       {:proto, %{"type" => "cancel", "signal" => sig}} -> Bridge.cancelled(sig)
     after
-      ms -> :ok
+      min(ms, remaining(deadline)) -> remaining(deadline)
+    end
+  end
+
+  defp expired!,
+    do: Error.raise!("provider", "unavailable", "ChatGPT response wait exceeded 30 minutes", 4)
+
+  defp remaining(nil), do: :infinity
+
+  defp remaining(deadline) do
+    receive do
+      {:proto, %{"type" => "cancel", "signal" => sig}} -> Bridge.cancelled(sig)
+    after
+      0 -> :ok
+    end
+
+    case deadline - System.monotonic_time(:millisecond) do
+      ms when ms > 0 -> ms
+      _ -> expired!()
     end
   end
 
@@ -584,10 +627,10 @@ defmodule Kogen.ChatGPT do
 
   defp reset_text(t) when is_binary(t), do: "; it resets at " <> t
 
-  defp stream(body, token),
-    do: Kogen.ShapeEvidence.transport(fn -> stream_request(body, token) end)
+  defp stream(body, token, deadline),
+    do: Kogen.ShapeEvidence.transport(fn -> stream_request(body, token, deadline) end)
 
-  defp stream_request(body, token) do
+  defp stream_request(body, token, deadline) do
     url = String.to_charlist(api_base() <> "/responses")
 
     headers = [
@@ -596,38 +639,65 @@ defmodule Kogen.ChatGPT do
     ]
 
     {:ok, ref} =
-      :httpc.request(:post, {url, headers, ~c"application/json", body}, http_opts(),
+      :httpc.request(:post, {url, headers, ~c"application/json", body}, http_opts(deadline),
         sync: false,
         stream: :self,
         body_format: :binary
       )
 
-    collect(ref, %{buf: "", items: %{}, usage: nil, done: false, failure: nil})
+    try do
+      collect(
+        ref,
+        %{
+          buf: "",
+          items: %{},
+          pending: MapSet.new(),
+          usage: nil,
+          done: false,
+          failure: nil,
+          invalid: false
+        },
+        deadline
+      )
+    after
+      :httpc.cancel_request(ref)
+    end
   end
 
-  defp collect(ref, acc) do
+  defp collect(ref, acc, deadline) do
+    remaining(deadline)
+
     receive do
       {:http, {^ref, :stream_start, _headers}} ->
-        collect(ref, acc)
+        collect(ref, acc, deadline)
 
       {:http, {^ref, :stream, chunk}} ->
         case events(acc.buf <> chunk, acc) do
-          {:ok, acc} -> collect(ref, acc)
-          {:invalid, detail} -> :httpc.cancel_request(ref) && {:invalid, detail}
+          {:ok, acc} ->
+            remaining(deadline)
+            if acc.done or acc.failure != nil, do: finish(acc), else: collect(ref, acc, deadline)
+
+          {:invalid, detail} ->
+            :httpc.cancel_request(ref) && {:invalid, detail}
         end
 
       {:http, {^ref, :stream_end, _headers}} ->
+        remaining(deadline)
         finish(acc)
 
       {:http, {^ref, {{_, status, _}, _headers, body}}} ->
+        remaining(deadline)
         http_error(status, body)
 
       {:http, {^ref, {:error, reason}}} ->
+        remaining(deadline)
         {:transient, "network error: #{inspect(reason)}"}
 
       {:proto, %{"type" => "cancel", "signal" => sig}} ->
         :httpc.cancel_request(ref)
         Bridge.cancelled(sig)
+    after
+      remaining(deadline) -> expired!()
     end
   end
 
@@ -636,7 +706,15 @@ defmodule Kogen.ChatGPT do
 
   defp finish(acc) do
     items = acc.items |> Enum.sort() |> Enum.map(&elem(&1, 1))
-    {:ok, %{items: items, usage: usage(acc.usage), known_usage: known_usage(acc.usage)}}
+    indexes = Map.keys(acc.items) |> Enum.sort()
+    contiguous = indexes == Enum.to_list(0..(length(items) - 1)//1)
+
+    if not acc.invalid and items != [] and contiguous and MapSet.size(acc.pending) == 0 and
+         Enum.all?(items, &complete_item?/1) do
+      {:ok, %{items: items, usage: usage(acc.usage), known_usage: known_usage(acc.usage)}}
+    else
+      {:invalid, "the completed response has invalid or unfinished output"}
+    end
   end
 
   defp known_usage(nil), do: %{input: nil, cached: nil, output: nil, reasoning: nil}
@@ -692,11 +770,102 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp apply_event("response.output_item.done", %{"output_index" => i, "item" => item}, acc),
-    do: %{acc | items: Map.put(acc.items, i, item)}
+  defp complete_item?(%{} = item),
+    do: item["status"] in [nil, "completed"] and valid_item?(item)
 
-  defp apply_event("response.completed", ev, acc),
-    do: %{acc | done: true, usage: get_in(ev, ["response", "usage"])}
+  defp complete_item?(_), do: false
+
+  defp valid_usage?(nil), do: true
+
+  defp valid_usage?(%{} = usage) do
+    Enum.all?(~w(input_tokens output_tokens), fn key ->
+      is_nil(usage[key]) or is_integer(usage[key])
+    end) and
+      Enum.all?(
+        [
+          {"input_tokens_details", "cached_tokens"},
+          {"output_tokens_details", "reasoning_tokens"}
+        ],
+        fn {key, count} ->
+          case usage[key] do
+            nil -> true
+            %{} = details -> is_nil(details[count]) or is_integer(details[count])
+            _ -> false
+          end
+        end
+      )
+  end
+
+  defp valid_usage?(_), do: false
+
+  defp valid_item?(%{
+         "type" => "function_call",
+         "call_id" => id,
+         "name" => name,
+         "arguments" => args
+       })
+       when is_binary(id) and id != "" and is_binary(name) and name != "" and is_binary(args) do
+    case JSON.decode(args) do
+      {:ok, value} when is_map(value) -> true
+      _ -> false
+    end
+  end
+
+  defp valid_item?(%{"type" => "message", "content" => content}) when is_list(content) do
+    Enum.all?(content, fn
+      %{"type" => "output_text", "text" => text} when is_binary(text) -> true
+      %{"type" => "refusal", "refusal" => text} when is_binary(text) -> true
+      _ -> false
+    end)
+  end
+
+  defp valid_item?(%{"type" => "reasoning"}), do: true
+  defp valid_item?(_), do: false
+
+  defp apply_event("response.output_item.added", %{"output_index" => i}, acc)
+       when is_integer(i) and i >= 0,
+       do: %{acc | pending: MapSet.put(acc.pending, i)}
+
+  defp apply_event("response.output_item.done", %{"output_index" => i, "item" => item}, acc)
+       when is_integer(i) and i >= 0,
+       do: %{acc | items: Map.put(acc.items, i, item), pending: MapSet.delete(acc.pending, i)}
+
+  defp apply_event(type, _ev, acc)
+       when type in ["response.output_item.added", "response.output_item.done"],
+       do: %{acc | invalid: true}
+
+  defp apply_event("response.completed", %{"response" => response}, acc) when is_map(response) do
+    acc = %{
+      acc
+      | done: true,
+        usage: response["usage"],
+        invalid:
+          acc.invalid or response["status"] not in [nil, "completed"] or
+            response["error"] != nil or not valid_usage?(response["usage"])
+    }
+
+    case Map.fetch(response, "output") do
+      :error ->
+        acc
+
+      {:ok, output} when is_list(output) ->
+        items = output |> Enum.with_index() |> Map.new(fn {item, i} -> {i, item} end)
+        indexes = MapSet.new(Map.keys(items))
+        observed = MapSet.union(MapSet.new(Map.keys(acc.items)), acc.pending)
+
+        %{
+          acc
+          | items: items,
+            pending: MapSet.new(),
+            invalid: acc.invalid or not MapSet.subset?(observed, indexes)
+        }
+
+      _ ->
+        %{acc | invalid: true}
+    end
+  end
+
+  defp apply_event("response.completed", _ev, acc), do: %{acc | done: true, invalid: true}
 
   defp apply_event("response.incomplete", ev, acc),
     do: %{

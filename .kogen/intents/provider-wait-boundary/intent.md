@@ -1,0 +1,43 @@
+# Bound one logical ChatGPT response wait
+
+Slug: provider-wait-boundary
+Model: .kogen/intents/provider-wait-boundary/model.qnt invariants=Bounded,SafeResult seed=21 samples=100 steps=30
+Acceptance:
+- .kogen/intents/provider-wait-boundary/acceptance.feature
+- features/steps/provider_wait_boundary_steps.js
+
+Repair `Kogen.ChatGPT.respond/5` in `lib/kogen/chatgpt.ex`, not caller job budgets. Replace its unbounded response wait with a fixed 1,800,000 ms absolute monotonic budget established on entry, before credentials, proactive refresh and request work. All attempts of that logical response share it, including credential lock contention, refresh after 401, invalid-response retry and existing 2 s/8 s backoff. Chunks, heartbeats and retries cannot renew it. Preserve the 30 s connection-establishment ceiling and TLS verification; request-related HTTP waits and pauses use no more than the remaining logical budget. Check expiry even with a continuously nonempty receive mailbox. Do not start another attempt after expiry. A later independent respond call gets its own budget. Preserve single_attempt semantics.
+
+Expiry cancels any outstanding Responses or refresh HTTP request and raises the existing structured `Kogen.Error` path: class `provider`, reason `unavailable`, exit 4, safe detail `ChatGPT response wait exceeded 30 minutes`. It is a local budget failure, not an invented provider error code or fabricated usage. Do not retry expiry. Preserve existing safe diagnostics, request/evidence accounting, known completed usage and unknown failed-request usage. Cancellation remains a prompt `{:cancel, signal}` through Bridge, with existing CLI signal exits (SIGINT 130, SIGTERM 143, SIGHUP 129), not a timeout failure. Release only locks owned by the invocation on every exit.
+
+Return promptly on a complete, validated `response.completed` SSE frame, cancelling the now-unneeded HTTP request rather than awaiting stream_end. The actual current event shapes are `response.output_item.done` with `output_index` and `item`, followed by `response.completed` with `response: {usage: ...}`; neither current local fake requires response.output or status. Preserve these shapes: do not require a new completion envelope that breaks existing callers/fakes. A completion marker alone is not validation. Require a response object, no recorded failure, and complete ordered output items (nonnegative contiguous indexes, no added-but-unfinished item). A complete final response.output, if supplied, may establish the same validated output, not introduce unvalidated tools. Validate completed message content before returning it; a function call needs nonempty string call_id/name and string arguments decoding to a JSON object, consistent with Shape.decode/1 and existing tool validators. Preserve normal message/function/reasoning output handling, tool authorization and validation at callers. Never return partial argument deltas or execute tool work from an unfinished item, malformed JSON, malformed terminal envelope, `response.incomplete`, `response.failed` or `error`. A failure already observed in the stream wins over completion; do not turn a cut stream or [DONE] alone into success. Unreadable responses retain their existing one-retry policy within the same budget, not a new retry taxonomy.
+
+Use the existing opts argument for an internal deterministic `response_budget_ms` test seam, which can only shorten the fixed budget. It is not a CLI, YAML or environment setting. No production mock layer, scheduler, external monitor, new model/effort/cap, planner or idle-timeout knob. Acceptance calls the real respond interface and OTP HTTP transport against an instance of the existing local FakeServers tool, with fake credentials only. Its watchdog is test cleanup and reports harness_timeout, never provider success or timeout evidence. The budget tests measure inside the core, excluding Mix startup.
+
+Align maintained specification GPT-7/GPT-8 in `spec/prose/08-chatgpt.md` and the matching `spec/features/08-chatgpt.feature`/step vocabulary as needed. Update `docs/configuration.md`'s obsolete no-deadline implication to describe this fixed logical-response bound; keep unlimited project command durations distinct. Document the explicit test duration seam in `docs/testing-strategy.md` instead of its current blanket no-time-injection claim. Do not rewrite historical frozen Intents.
+
+Observed incident evidence was read at `/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/provider-wait-boundary-20261021/case.json`, baseline `3ef1f173001cacde72dd4066fe1189ff3cbd53b4`: fourteen calls completed, the fifteenth stayed silent about fifty minutes, one established outbound TLS socket and no active tool/probe; supported Go SIGINT exited 130 after 4003 seconds, retaining known calls and unknown pending usage and the Ready candidate. This establishes the unbounded core gap, not whether remote execution, network or socket closure caused the incident. Do not inspect Studio.
+
+Delivery stays in native exact-package approval, Build, configured verification, independent review/fix and signed commit. No push, release, installation/adoption, hook/signing bypass, global settings or Studio/other app source changes. The coordinator owns later qualified adoption and normal pushes. Preserve `.formatter.exs`, `mix.exs`, `.kogen/project.yaml` and all configured checks; no protected edits are necessary.
+
+## Decisions
+- Use one fixed maximum 30-minute logical provider-response budget, not an idle/per-attempt timeout or caller job budget. (source: request)
+- Return a valid complete terminal response without waiting for socket closure; never grant partial or malformed tool output authority. (source: request)
+- Preserve prompt explicit cancellation, safe errors and unknown failed-request usage; expose no public timeout control. (source: request)
+- Deliver only the core repair through native approval, Build, verification, independent review/fix and signed commit; leave installation and pushes to the coordinator. (source: request)
+
+## Tests
+- Accepted open HTTP connections must expire and be cancelled: independent acceptance silent/no-headers fixtures through respond/5 with shortened real transport budget (regression)
+- Nonterminal bytes cannot renew the absolute budget: independent heartbeat fixture continues well beyond budget and checks elapsed result plus closed connection (regression)
+- Valid terminal response returns before socket close with exact ordered items and usage: independent terminal-open fixture plus normal closed-response control (regression)
+- Explicit cancellation wins promptly before expiry without changing exit semantics: independent Bridge-cancel transport case and existing installed CLI signal regressions (regression)
+- Backoff, invalid-response retry, refresh and lock waits share the original remaining budget: delayed first-invalid/401/proactive refresh, blocked refresh, contended credential lock and transient-backoff acceptance cases; add focused integration tests for remaining-budget boundaries and a fresh subsequent respond call (regression)
+- No partial or malformed tool output is successful: independent unfinished-item, invalid-argument, malformed-completion and incomplete terminal fixtures; maintained installed caller regression asserts no file/tool effect or commit from such output (regression)
+- Failed/cancelled request usage stays unknown and safe evidence remains intact: independent ShapeEvidence wrapper assertions and maintained provider diagnostics/Build unknown_requests tests (integration)
+- Normal Responses handling, retry classification, TLS/connect safety and caller authority remain unchanged: existing provider, Build and cancellation tests, with affected transport regressions added under ordinary existing test selection (existing)
+
+## Feasibility
+- The existing Mix runtime can execute a scratch transport driver; Quint 0.33 typecheck and TypeScript simulation passed Bounded and SafeResult (100 samples, 30 steps). (probe 1: exit 0, 1.4 s)
+- Inspected the existing fake's exports and configuration documentation; the fake exports message/functionCall and FakeServers, and current prose implies no response deadline. (probe 2: exit 0, 0.0 s)
+- First smoke-file proposal outside scratch was refused without execution; corrected to a scratch-relative file. (probe 3: rejected)
+- Real respond/5 against Integration.FakeProvider returned the exact normal message and usage (1 input, 1 output, 0 cached/reasoning); the existing opts interface accepts the proposed seam key without requiring manifest edits. This does not prove the not-yet-implemented budget. (probe 4: exit 0, 0.4 s)

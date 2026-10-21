@@ -183,6 +183,7 @@ defmodule Kogen.Integration.FakeProvider do
 
   defp provider_action({:items, items}, _index), do: {:sse, items}
   defp provider_action({:events, events}, _index), do: {:events, events}
+  defp provider_action({:open_events, owner, events}, _index), do: {:open_events, owner, events}
 
   defp refused_body do
     %{"error" => %{"message" => "scripted provider refusal", "code" => "invalid_request_error"}}
@@ -190,6 +191,25 @@ defmodule Kogen.Integration.FakeProvider do
 
   defp send_response(socket, {:json, status, body}) do
     send_http(socket, status, "application/json", JSON.encode!(body))
+  end
+
+  defp send_response(socket, {:open_events, owner, events}) do
+    :ok =
+      :gen_tcp.send(
+        socket,
+        "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n"
+      )
+
+    for event <- events do
+      frame = "data: " <> JSON.encode!(event) <> "\n\n"
+
+      :ok =
+        :gen_tcp.send(socket, [Integer.to_string(byte_size(frame), 16), "\r\n", frame, "\r\n"])
+    end
+
+    send(owner, {:provider_open, self()})
+    result = wait_for_close(socket, System.monotonic_time(:millisecond) + 3000)
+    send(owner, {:provider_closed, result})
   end
 
   defp send_response(socket, {:events, events}) do
@@ -224,6 +244,22 @@ defmodule Kogen.Integration.FakeProvider do
       })
 
     send_http(socket, 200, "text/event-stream", events <> "data: " <> done <> "\n\n")
+  end
+
+  # Keep a real open stream active even if TCP coalesces its initial headers and frames.
+  defp wait_for_close(socket, deadline) do
+    case :gen_tcp.recv(socket, 0, 20) do
+      {:error, :timeout} = timeout ->
+        if System.monotonic_time(:millisecond) < deadline do
+          :gen_tcp.send(socket, "3\r\n:\n\n\r\n")
+          wait_for_close(socket, deadline)
+        else
+          timeout
+        end
+
+      result ->
+        result
+    end
   end
 
   defp send_http(socket, status, content_type, body) do

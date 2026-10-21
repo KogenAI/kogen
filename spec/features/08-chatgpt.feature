@@ -210,3 +210,22 @@ Feature: ChatGPT connection
       """
       environment/invalid_test_seam: KOGEN_AUTH_URL must be http://127.0.0.1:<port> or http://localhost:<port>
       """
+
+  @GPT-7 @GPT-8 @GIT-8
+  Scenario Outline: Invalid terminal tools cannot edit the candidate
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    And the caller is signed in to ChatGPT
+    And the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "<script>"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 4
+    And stdout contains "provider/invalid_response"
+    And the fake ChatGPT server received 2 requests
+    And the file "unauthorized.txt" does not exist
+    And HEAD is unchanged
+
+    Examples:
+      | script          |
+      | unfinished-tool |
+      | malformed-tool  |
