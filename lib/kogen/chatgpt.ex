@@ -448,8 +448,8 @@ defmodule Kogen.ChatGPT do
         {:ok, result} ->
           result
 
-        {:error, %{status: 400, param: param} = error} ->
-          if cache_refusal?(param) and cache_error_allowed?(error) and
+        {:error, %{status: 400} = error} ->
+          if cache_refusal?(error) and
                Map.has_key?(JSON.decode!(body), "prompt_cache_options") do
             Kogen.PromptCache.unsupported()
             single_compatibility(strip_cache(body), model, deadline)
@@ -550,8 +550,8 @@ defmodule Kogen.ChatGPT do
           4
         )
 
-      {:error, %{status: 400, param: param} = error} ->
-        if cache_refusal?(param) and cache_error_allowed?(error) and
+      {:error, %{status: 400} = error} ->
+        if cache_refusal?(error) and
              Map.has_key?(JSON.decode!(body), "prompt_cache_options") do
           Kogen.PromptCache.unsupported()
           attempt(strip_cache(body), model, n, refreshed, retried_invalid, deadline)
@@ -564,12 +564,15 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp cache_error_allowed?(error),
+  defp cache_refusal?(%{code: "invalid_parameter", message: message, param: param}),
     do:
-      error[:code] in ~w(unknown_parameter unsupported_parameter subscription_sharing_unsupported_capability)
+      message == "prompt_cache_options is not supported on this model" and
+        param in [nil, "prompt_cache_options"]
 
-  defp cache_refusal?(param) when is_binary(param),
-    do: Regex.match?(~r/(?:^|[.\[])prompt_cache_(?:options|breakpoint)(?:$|[.\[])/, param)
+  defp cache_refusal?(%{code: code, param: param}) when is_binary(param),
+    do:
+      code in ~w(unknown_parameter unsupported_parameter subscription_sharing_unsupported_capability) and
+        Regex.match?(~r/(?:^|[.\[])prompt_cache_(?:options|breakpoint)(?:$|[.\[])/, param)
 
   defp cache_refusal?(_), do: false
 
@@ -707,8 +710,8 @@ defmodule Kogen.ChatGPT do
         result = stream_request(body, token, deadline)
 
         case result do
-          {:error, %{status: 400, param: param} = error} ->
-            if cache_error_allowed?(error) and cache_refusal?(param) and
+          {:error, %{status: 400} = error} ->
+            if cache_refusal?(error) and
                  Map.has_key?(JSON.decode!(body), "prompt_cache_options"),
                do: Kogen.PromptCache.unsupported()
 

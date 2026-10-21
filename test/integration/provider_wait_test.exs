@@ -44,6 +44,114 @@ defmodule Kogen.Integration.ProviderWaitTest do
     server
   end
 
+  for single <- [false, true], param <- [:absent, nil, "prompt_cache_options"] do
+    @single single
+    @param param
+    test "observed cache refusal preserves requests and evidence (single=#{single}, param=#{inspect(param)})",
+         %{home: home} do
+      refusal =
+        {:http, 400,
+         %{
+           "error" => %{
+             "type" => "invalid_request_error",
+             "code" => "invalid_parameter",
+             "message" => "prompt_cache_options is not supported on this model"
+           }
+         }}
+
+      {:http, 400, payload} = refusal
+
+      error =
+        if @param == :absent,
+          do: payload["error"],
+          else: Map.put(payload["error"], "param", @param)
+
+      refusal = {:http, 400, %{"error" => error}}
+
+      completed =
+        {:events, [done(%{"id" => "resp_cache", "model" => "gpt-6.1-sol", "output" => [tool()]})]}
+
+      server = connect(home, [refusal, completed, completed])
+      Kogen.ShapeEvidence.start(Path.join(home, "evidence"))
+
+      call = fn ->
+        Kogen.ShapeEvidence.provider(
+          "shape",
+          nil,
+          "revision",
+          [],
+          %{model: "gpt-6.1-sol", effort: "high"},
+          fn ->
+            ChatGPT.respond(
+              %{model: "gpt-6.1-sol", effort: "high"},
+              "policy",
+              [%{"role" => "user", "content" => "contract"}],
+              [],
+              single_attempt: @single
+            )
+          end
+        )
+      end
+
+      assert call.().items == [tool()]
+      assert call.().items == [tool()]
+      [first, retry, next] = FakeProvider.provider_requests(server)
+      assert first.json["prompt_cache_options"]
+      assert first.json["include"] == ["reasoning.encrypted_content"]
+      assert first.json["model"] == "gpt-6.1-sol"
+      assert first.json["reasoning"] == %{"effort" => "high"}
+
+      stripped =
+        first.json
+        |> Map.delete("prompt_cache_options")
+        |> Map.update!("input", fn items ->
+          Enum.map(items, fn item ->
+            if is_list(item["content"]),
+              do:
+                Map.update!(
+                  item,
+                  "content",
+                  &Enum.map(&1, fn block -> Map.delete(block, "prompt_cache_breakpoint") end)
+                ),
+              else: item
+          end)
+        end)
+
+      assert retry.json == stripped
+      refute retry.json["prompt_cache_options"]
+      refute next.json["prompt_cache_options"]
+      assert retry.json["input"] == next.json["input"]
+
+      rows =
+        File.read!(Path.join(home, "evidence/events.ndjson"))
+        |> String.split("\n", trim: true)
+        |> Enum.map(&JSON.decode!/1)
+
+      assert length(rows) == 3
+
+      assert Enum.at(rows, 0)["provider"]["timestamp"] !=
+               Enum.at(rows, 1)["provider"]["timestamp"]
+
+      refused = hd(rows)["provider"]
+      assert refused["usage_state"] == "unknown"
+      assert Enum.all?(refused["usage"], fn {_, count} -> is_nil(count) end)
+
+      for field <-
+            ~w(provider_response_id effective_model effective_effort effective_service_tier) do
+        assert refused[field] == nil
+      end
+
+      assert refused["provider_request_id"] == "req-fixture"
+      assert refused["cache"]["applied_ttl"] == nil
+      assert refused["cache"]["applied_mode"] == nil
+      assert hd(rows)["provider"]["cache"]["status"] == "unsupported"
+      assert hd(rows)["provider"]["cache"]["boundaries"] != []
+      assert Enum.at(rows, 1)["provider"]["cache"]["boundaries"] == []
+      assert List.last(rows)["provider"]["provider_response_id"] == "resp_cache"
+      assert List.last(rows)["provider"]["provider_request_id"] == "req-fixture"
+    end
+  end
+
   test "cache refusal retries once, persists unsupported, and retains real request identifiers",
        %{home: home} do
     refusal =
