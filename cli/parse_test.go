@@ -9,6 +9,8 @@ func TestParseHelpPagesCLI3(t *testing.T) {
 		want string
 	}{
 		{name: "implicit top page", want: `Commands:
+  context    Read checkout-local facts (JSON)
+  completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
   provider   Sign in to ChatGPT and show the login
@@ -19,6 +21,8 @@ func TestParseHelpPagesCLI3(t *testing.T) {
 Run kogen <command> to see its subcommands and options.
 `},
 		{name: "explicit top page", args: []string{"help"}, want: `Commands:
+  context    Read checkout-local facts (JSON)
+  completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
   provider   Sign in to ChatGPT and show the login
@@ -36,6 +40,9 @@ Commands:
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
   resume <build-id>         Continue a stopped Build in this checkout
+  list                     List packages and Build attempts
+  inspect <run-id>         Inspect recorded Build evidence
+  preflight <slug>         Observe read-only prerequisites
 
 Options:
   --project <checkout>  Project checkout (default: current directory)

@@ -1,0 +1,181 @@
+[
+  {
+    "scenario": "Context resolves nested directories and isolates linked worktrees",
+    "observations": {
+      "supported": true,
+      "empty": true,
+      "nested": true,
+      "outside": true,
+      "worktreeIdentity": true,
+      "worktreeAbsence": true,
+      "dirtyIsNotActive": true,
+      "readOnly": true
+    }
+  },
+  {
+    "scenario": "Repeated failed attempts remain inspectable and resume has lineage",
+    "observations": {
+      "supported": true,
+      "receipt": true,
+      "twoAttempts": true,
+      "packageSeparate": true,
+      "pagination": true,
+      "failureInspection": true,
+      "lastStarted": true,
+      "rejectedDoesNotReplace": true,
+      "resumeLineage": true,
+      "originalResults": true,
+      "inspectReadOnly": true
+    }
+  },
+  {
+    "scenario": "Real phases and verification passes follow a signed Build with reviewer repair",
+    "observations": {
+      "supported": true,
+      "phases": [
+        "building",
+        "verifying",
+        "reviewing",
+        "verifying",
+        "committing"
+      ],
+      "passes": [
+        null,
+        1,
+        null,
+        2,
+        null
+      ],
+      "oneReviewerConversation": true,
+      "oneSignedCommit": true,
+      "idleRetainsLast": true,
+      "landedInspection": true,
+      "localNotCommitted": true
+    }
+  },
+  {
+    "scenario": "Stopped owners are not indefinitely active",
+    "observations": {
+      "supported": true,
+      "receipt": true,
+      "observedActive": true,
+      "cleared": true,
+      "lastRetained": true,
+      "noCommit": true,
+      "inspectionStopped": true
+    }
+  },
+  {
+    "scenario": "Stopped owners are not indefinitely active",
+    "observations": {
+      "supported": true,
+      "receipt": true,
+      "observedActive": true,
+      "cleared": true,
+      "lastRetained": true,
+      "noCommit": true,
+      "inspectionStopped": true
+    }
+  },
+  {
+    "scenario": "Stopped owners are not indefinitely active",
+    "observations": {
+      "supported": true,
+      "receipt": true,
+      "observedActive": true,
+      "cleared": true,
+      "lastRetained": true,
+      "noCommit": true,
+      "inspectionStopped": true
+    }
+  },
+  {
+    "scenario": "Missing and malformed integration snapshots never invent activity",
+    "observations": {
+      "supported": true,
+      "readOnly": true,
+      "malformedSafe": true,
+      "missingSafe": true,
+      "noReconstruction": true
+    }
+  },
+  {
+    "scenario": "Preflight observes useful blockers without executing or changing custody",
+    "observations": {
+      "supported": true,
+      "green": true,
+      "readOnly": true,
+      "scopeHonest": true,
+      "dirtyBlocked": true,
+      "approvalBlocked": true,
+      "conflictBlocked": true,
+      "noCommandsOrProvider": true
+    }
+  },
+  {
+    "scenario": "Zsh and bounded fast reads work without the core or historical access",
+    "observations": {
+      "supported": true,
+      "timings": {
+        "blocked": {
+          "completion": {
+            "max": 20.209,
+            "p95": 19.626,
+            "p50": 17.278
+          },
+          "context": {
+            "max": 20.058,
+            "p95": 19.231,
+            "p50": 16.548
+          }
+        },
+        "accumulated": {
+          "completion": {
+            "max": 21.384,
+            "p95": 19.24,
+            "p50": 17.899
+          },
+          "context": {
+            "max": 18.166,
+            "p95": 17.647,
+            "p50": 15.307
+          }
+        },
+        "samples": 20,
+        "platform": "{:unix, :darwin}",
+        "baseline": {
+          "completion": {
+            "max": 21.721,
+            "p95": 20.238,
+            "p50": 18.01
+          },
+          "context": {
+            "max": 17.748,
+            "p95": 17.166,
+            "p50": 15.497
+          }
+        }
+      },
+      "completionSyntax": true,
+      "intentCandidates": true,
+      "resumeCandidates": true,
+      "unsupportedExcluded": true,
+      "noCoreOrHistory": true,
+      "noProvider": true,
+      "measuredWithinBudget": true,
+      "measurementsRecorded": true
+    }
+  },
+  {
+    "scenario": "Structured reads have versioned empty results and predictable errors",
+    "observations": {
+      "supported": true,
+      "versioned": true,
+      "emptyList": true,
+      "unknownRun": true,
+      "invalidLimits": true,
+      "unavailableProject": true,
+      "humanOutput": true
+    }
+  }
+]

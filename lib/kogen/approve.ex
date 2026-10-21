@@ -89,6 +89,7 @@ defmodule Kogen.Approve do
             throw({:cancel, signal})
         end
 
+        Kogen.LocalFacts.package(root, slug, config)
         Bridge.puts("approved #{slug} #{String.slice(sha, 0, 8)}")
         Bridge.puts("Next: kogen intent build #{slug}")
         0

@@ -79,6 +79,12 @@ defmodule Kogen.Integration.BuilderBlockerTest do
 
     assert File.read!(Helpers.run_log(context)) =~ "builder_blocker"
     id = Path.basename(Path.dirname(Helpers.run_log(context)))
+    {inspection, 0} = Helpers.run_kogen(context, ["intent", "inspect", id, "--json"])
+    facts = JSON.decode!(inspection)["data"]
+    assert facts["resume_status"] == "unsupported"
+    assert facts["next_command"] == nil
+    assert hd(facts["blockers"])["paths"] == [step]
+    assert output =~ "kogen intent inspect #{id}"
     requests = length(FakeProvider.provider_requests(context.server))
     candidate = File.read!(Path.join(context.repo, "app.txt"))
     {resumed, code} = Helpers.run_kogen(context, ["intent", "resume", id])

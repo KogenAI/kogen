@@ -1,5 +1,5 @@
 // Command kogen is the command-line front of Kogen (spec chapter 09). It parses the command
-// line, reads caller input, and starts the Elixir core for each invocation, exchanging one
+// line, reads caller input, and starts the Elixir core for mutating invocations, exchanging one
 // JSON object per line over the core's stdin and stdout (CLI-9). It runs the project commands
 // the core asks for, each in its own process group, and owns the login loopback listener.
 package main
@@ -20,6 +20,8 @@ import (
 )
 
 const topPage = `Commands:
+  context    Read checkout-local facts (JSON)
+  completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
   provider   Sign in to ChatGPT and show the login
@@ -38,6 +40,9 @@ Commands:
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
   resume <build-id>         Continue a stopped Build in this checkout
+  list                     List packages and Build attempts
+  inspect <run-id>         Inspect recorded Build evidence
+  preflight <slug>         Observe read-only prerequisites
 
 Options:
   --project <checkout>  Project checkout (default: current directory)
@@ -226,6 +231,9 @@ func fail(code int, line string) {
 }
 
 func main() {
+	if handled, code := localRead(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	inv, page, uerr := parse(os.Args[1:])
 	if uerr != nil {
 		fmt.Print(uerr.msg + "\n\n" + pages[uerr.page])

@@ -3,6 +3,14 @@ defmodule Kogen.Git do
   alias Kogen.Error
 
   def run(root, args, opts \\ []) do
+    opts =
+      if Process.get(:kogen_read_only_git),
+        do: Keyword.put(opts, :env, [{"GIT_OPTIONAL_LOCKS", "0"}]),
+        else: opts
+
+    args =
+      if Process.get(:kogen_read_only_git), do: ["-c", "core.fsmonitor=false" | args], else: args
+
     System.cmd("git", args, [cd: root, stderr_to_stdout: true] ++ opts)
   end
 

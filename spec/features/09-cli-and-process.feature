@@ -13,6 +13,8 @@ Feature: CLI and process
     And stdout is:
       """
       Commands:
+        context    Read checkout-local facts (JSON)
+        completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
         provider   Sign in to ChatGPT and show the login
@@ -28,6 +30,8 @@ Feature: CLI and process
     And stdout is:
       """
       Commands:
+        context    Read checkout-local facts (JSON)
+        completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
         provider   Sign in to ChatGPT and show the login
@@ -42,6 +46,8 @@ Feature: CLI and process
     And stdout is:
       """
       Commands:
+        context    Read checkout-local facts (JSON)
+        completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
         provider   Sign in to ChatGPT and show the login
@@ -56,6 +62,8 @@ Feature: CLI and process
     And stdout is:
       """
       Commands:
+        context    Read checkout-local facts (JSON)
+        completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
         provider   Sign in to ChatGPT and show the login

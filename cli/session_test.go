@@ -197,7 +197,7 @@ func TestSessionCoreCrashReportCLI8(t *testing.T) {
 	repo, head := createGitRepo(t, baseEnv)
 	root := installFixtureCore(t)
 	log := filepath.Join(t.TempDir(), "protocol.log")
-	runLog := filepath.Join(repo, ".kogen", "local", "run.log")
+	runLog := filepath.Join(repo, ".kogen", "local", "runs", "1234abcd", "log.jsonl")
 	cmd, stdout, _ := startSessionProcess(t, root, map[string]string{
 		"KOGEN_TEST_CORE_MODE":   "crash",
 		"KOGEN_TEST_CORE_LOG":    log,
@@ -208,7 +208,7 @@ func TestSessionCoreCrashReportCLI8(t *testing.T) {
 	})
 	waitErr := waitCommand(t, cmd, 3*time.Second)
 	assertExitCode(t, cmd, waitErr, 70)
-	want := fmt.Sprintf("controller/internal_error: the Kogen core stopped unexpectedly (status 23); nothing was committed; run log: %s\n", runLog)
+	want := fmt.Sprintf("  kogen intent inspect 1234abcd --project %s\ncontroller/internal_error: the Kogen core stopped unexpectedly (status 23); nothing was committed; run log: %s\n", shellQuote(repo), runLog)
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}

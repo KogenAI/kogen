@@ -42,6 +42,13 @@ defmodule Kogen.Main do
     rescue
       e in Error ->
         Bridge.out(Error.render(e))
+
+        if req["command"] in ["build", "resume"] and Process.get(:local_record) == nil,
+          do:
+            Bridge.puts(
+              "  no newly created Build run; correct the named prerequisite before trying again"
+            )
+
         e.exit
 
       e ->
@@ -62,6 +69,8 @@ defmodule Kogen.Main do
   def signal_exit("SIGINT"), do: 130
   def signal_exit("SIGTERM"), do: 143
   def signal_exit("SIGHUP"), do: 129
+
+  defp dispatch(%{"command" => "preflight"} = r), do: Kogen.Preflight.run(r)
 
   defp dispatch(%{"command" => "version"}) do
     Bridge.puts(Kogen.version())

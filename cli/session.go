@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -177,9 +178,17 @@ func (s *session) coreStopped(cause error) int {
 	root, _ := s.build["root"].(string)
 	start, _ := s.build["start_head"].(string)
 	runLog, _ := s.build["run_log"].(string)
+	id := filepath.Base(filepath.Dir(runLog))
+	if runID.MatchString(id) {
+		fmt.Printf("  kogen intent inspect %s --project %s\n", id, shellQuote(root))
+	}
 	out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 	head := strings.TrimSpace(string(out))
-	if err != nil || head == start {
+	if err != nil {
+		fmt.Printf("controller/internal_error: the Kogen core stopped unexpectedly (status %d); HEAD could not be observed; inspect the checkout; run log: %s\n", status, runLog)
+		return 70
+	}
+	if head == start {
 		fmt.Printf("controller/internal_error: the Kogen core stopped unexpectedly (status %d); nothing was committed; run log: %s\n", status, runLog)
 		return 70
 	}

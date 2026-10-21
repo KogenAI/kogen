@@ -66,6 +66,22 @@ defmodule Kogen.Lock do
     end
   end
 
+  @doc "Observe lock ownership without acquisition or recovery."
+  def held?(path) do
+    case File.ls(path) do
+      {:ok, [_]} -> match?({:ok, _, _}, owner(path)) and held_owner?(path)
+      {:error, :enotdir} -> held_owner?(path)
+      _ -> false
+    end
+  end
+
+  defp held_owner?(path) do
+    case owner(path) do
+      {:ok, _, pid} -> alive?(pid)
+      :retry -> false
+    end
+  end
+
   def release(path) do
     if token = Process.delete({__MODULE__, path}) do
       File.rm(Path.join(path, token))

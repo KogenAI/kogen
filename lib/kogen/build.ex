@@ -159,7 +159,10 @@ defmodule Kogen.Build do
       end
 
       run = Run.start(root)
+      Kogen.LocalFacts.start(root, b.slug, run, id, b.root_run || id)
       File.write!(Path.join(run.dir, "index-at-start"), saved_index)
+
+      Kogen.LocalFacts.inherit(b, b.run)
 
       b = %{
         b
@@ -322,6 +325,7 @@ defmodule Kogen.Build do
     Readiness.tools!(root, config)
     if model != :none, do: Checks.require_quint!()
     run = Run.start(root)
+    Kogen.LocalFacts.start(root, slug, run)
     if diagnostic != nil, do: Kogen.BuildContext.capture!(run, diagnostic)
     # GIT-8: a Build that does not commit leaves the index as it found it.
     git_index =
@@ -375,6 +379,7 @@ defmodule Kogen.Build do
       baseline_intact!(b)
       already_failing!(root, config, run)
       Bridge.puts("building #{slug}")
+      Kogen.LocalFacts.update(b, "building")
       start_builder(track(%{b | phase: :building}), diagnostic)
     rescue
       e in Error -> stopped(Process.get(:kogen_build), e)
@@ -480,16 +485,19 @@ defmodule Kogen.Build do
       end
 
     Process.put(:kogen_build, b)
+    Kogen.LocalFacts.update(b)
     b
   end
 
   defp loop(b, input) do
+    Kogen.LocalFacts.update(b, "building")
     b = track(%{b | round: b.round + 1})
     Bridge.progress("kogen: building (round #{b.round})")
     builder_turn(b, input)
   end
 
   defp builder_turn(b, input) do
+    Kogen.LocalFacts.update(b, "building")
     b = save(b, %{stage: :builder, input: input})
     role = b.config.models["build"]
 
@@ -639,7 +647,8 @@ defmodule Kogen.Build do
   # ---- Verification (VER-1..10) ----
 
   defp verify(b) do
-    b = %{b | pass: b.pass + 1}
+    b = track(%{b | pass: b.pass + 1})
+    Kogen.LocalFacts.update(b, "verifying")
     n = b.pass
     Bridge.progress("kogen: verifying (pass #{n})")
     before = Snapshot.tree(b.root, b.start, b.excluded)
@@ -878,6 +887,7 @@ defmodule Kogen.Build do
       verify_and_review(b)
     else
       b = save(b, %{stage: :commit, tree: pass.tree})
+      Kogen.LocalFacts.update(b, "committing")
       Git.ok!(b.root, ["read-tree", pass.tree])
       msg = Path.join(b.run.dir, "commit-message.txt")
       File.write!(msg, commit_message(b.intent.title, b.slug))
@@ -953,6 +963,7 @@ defmodule Kogen.Build do
     Run.log(b.run, %{"event" => "outcome", "outcome" => "landed", "commit" => new})
     Run.write(b.run, "result.json", result(b, "landed", %{"commit" => new}))
 
+    Kogen.LocalFacts.update(b, nil, "landed")
     Bridge.puts("landed #{b.slug} #{sha8} (Build #{b.run.id})")
     Bridge.puts("  checks: " <> checks_line(pass))
 
@@ -1023,6 +1034,7 @@ defmodule Kogen.Build do
     report = b.phase != :startup
     if report, do: Bridge.puts("failed #{b.slug}: #{e.reason} (Build #{b.run.id})")
     Bridge.out(Error.render(e))
+    Kogen.LocalFacts.failure(e)
     details(b, e.reason, report, e.provider_failure)
     e.exit
   end
@@ -1086,6 +1098,13 @@ defmodule Kogen.Build do
 
     Run.write(b.run, "result.json", result(b, reason, extra))
     save(b, b.continuation)
+    Kogen.LocalFacts.update(b, nil, reason)
+
+    Bridge.puts(
+      "  #{b.slug} Build #{b.run.id} stopped in #{Process.get(:local_record)["phase"]}: #{reason}; candidate: #{b.root}; evidence: #{b.run.dir}; index: #{b.run.dir}/index-at-start"
+    )
+
+    Bridge.puts("  kogen intent inspect #{b.run.id} --project #{Kogen.Init.shell_quote(b.root)}")
   end
 
   defp result(b, outcome, extra) do

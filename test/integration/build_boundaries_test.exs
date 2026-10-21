@@ -69,6 +69,33 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     assert Enum.any?(Enum.at(requests, 2).json["input"], &(&1["type"] == "function_call_output"))
   end
 
+  test "preflight missing packages and malformed approval remain structured read observations", %{
+    suite: suite
+  } do
+    context = fixture!(suite, build_script())
+    monitor = Path.join(context.root, "fsmonitor")
+    marker = Path.join(context.root, "fsmonitor-ran")
+    File.write!(monitor, "#!/bin/sh\ntouch #{Kogen.Init.shell_quote(marker)}\n")
+    File.chmod!(monitor, 0o700)
+    {_, 0} = Helpers.git!(context, ["config", "core.fsmonitor", monitor])
+    {out, 0} = Helpers.run_kogen(context, ["intent", "preflight", "fixture", "--json"])
+    assert JSON.decode!(out)["data"]["ready"]
+    refute File.exists?(marker)
+    {out, 1} = Helpers.run_kogen(context, ["intent", "preflight", "missing", "--json"])
+    doc = JSON.decode!(out)
+    assert doc["error"] == nil
+    refute doc["data"]["ready"]
+
+    assert Enum.find(doc["data"]["checks"], &(&1["name"] == "cleanliness"))["status"] ==
+             "not_evaluated"
+
+    File.write!(Kogen.Intent.approval_path(context.repo, "fixture"), "{broken")
+    {out, 1} = Helpers.run_kogen(context, ["intent", "preflight", "fixture", "--json"])
+    doc = JSON.decode!(out)
+    assert Enum.any?(doc["data"]["blockers"], &(&1["reason"] == "approval_changed"))
+    refute doc["data"]["ready"]
+  end
+
   test "resuming pending reviewer verification keeps repairs with the reviewer", %{suite: suite} do
     context =
       fixture!(
@@ -92,6 +119,11 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     Helpers.signal!(context, port, "INT")
     {output, 130} = Helpers.await_exit(port, "", 15_000)
     assert output =~ "interrupted"
+    {snapshot, 0} = Helpers.run_kogen(context, ["context"])
+    data = JSON.decode!(snapshot)["data"]
+    assert data["integration_state"] == "ok"
+    assert data["active"] == nil
+    assert data["last_built"] != nil
     log = Helpers.run_log(context)
     id = Path.basename(Path.dirname(log))
     original = File.read!(Path.join(Path.dirname(log), "result.json"))

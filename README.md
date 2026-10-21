@@ -140,3 +140,13 @@ Copyright 2026 Optimum Tech, LLC. Licensed under [Apache 2.0](LICENSE); see [NOT
 Final readiness uses a fresh disposable directory materialized from `Snapshot.tree`, with exact tracked (including ignored tracked) bytes, executable modes, additions/deletions and synthetic local Git. It runs verbatim declared setup before model/acceptance; ignored untracked dependency/build outputs are neither copied nor linked. Caller environment, installed tools and declared services remain available: this is not hermeticity. Raw scratch mutations, including staged additions, reject proof. Source identity is rechecked around execution and publication, including approval. Disposable directories are removed on success, failure and interruption. Exploratory probes remain warm.
 
 Readiness record version 3 adds `candidate_tree` to the complete baseline/hash, HEAD, declarations and actual model/scenario/exit evidence. Only exact unchanged clean evidence is reusable; version 2 and older are normal misses, never migrated. Ignored untracked warmth does not affect identity; nonignored changes, deletions, executable modes, tracked ignored changes, HEAD, protected baseline and declarations do. Retaining original-precondition evidence skips only original setup/model/acceptance, not fresh changed-candidate proof, and is not current-environment proof. Refine tests and publishes its complete accumulated formatted proposals; Shape tests its final formatted files. Accounted red remains inspectable and exact unchanged acknowledgment reuses the same clean observation. Build verification, review and explicit caller approval remain separate.
+
+## Checkout facts and completion
+
+Use `kogen context` for JSON checkout activity and last-started Build facts,
+`kogen intent list`, `kogen intent inspect <run-id>` and
+`kogen intent preflight <slug>` for discovery and read-only investigation.
+The latter three accept `--json`; all four accept `--project <checkout>`.
+Context and completion run without the installed core. See
+[the version 1 contract and standalone Zsh installation](docs/checkout-facts.md).
+Preflight is not authorization: Build still performs its normal safety checks.

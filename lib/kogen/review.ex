@@ -81,6 +81,7 @@ defmodule Kogen.Review do
 
   defp finish(b, pass, session, verify) do
     b = Build.save(b, %{stage: :review, pass: pass, session: session})
+    Kogen.LocalFacts.update(b, "reviewing")
 
     {b, verdict, usage, input} =
       converse(b, session.role, session.input, session.tools, 0, session.usage)

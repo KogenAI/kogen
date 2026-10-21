@@ -246,6 +246,8 @@ defmodule Kogen.Readiness do
       File.rm(path)
       Error.raise!("intent", "not_ready", "readiness inputs changed during publication", 1)
     end
+
+    Kogen.LocalFacts.package(root, slug, config)
   end
 
   defp readiness_path(root, slug),
