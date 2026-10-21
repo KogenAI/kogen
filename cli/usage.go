@@ -219,6 +219,7 @@ func usageCommand(args []string) int {
 		}
 		return selected[i]["source_line"].(int) < selected[j]["source_line"].(int)
 	})
+	coverage := s.coverage(selected, totals, filters, limit)
 	omitted := 0
 	if len(selected) > limit {
 		omitted = len(selected) - limit
@@ -229,7 +230,7 @@ func usageCommand(args []string) int {
 		limitations = append(limitations, k)
 	}
 	sort.Strings(limitations)
-	data := object{"scope": object{"project_root": s.root, "run_id": nil, "lineage": lineage, "filters": filters}, "totals": totals, "groups": groups, "requests": selected, "limitations": limitations, "truncated": s.truncated, "omitted_rows": omitted}
+	data := object{"scope": object{"project_root": s.root, "run_id": nil, "lineage": lineage, "filters": filters}, "totals": totals, "coverage": coverage, "groups": groups, "requests": selected, "limitations": limitations, "truncated": s.truncated, "omitted_rows": omitted}
 	if id != "" {
 		data["scope"].(object)["run_id"] = id
 	}
@@ -240,6 +241,13 @@ func usageCommand(args []string) int {
 	fmt.Printf("Requests: %v; completed %v; failed %v; cancelled %v; unknown usage %v; inconsistent %v\n", totals["requests"], totals["completed"], totals["failed"], totals["cancelled"], totals["unknown_usage"], totals["inconsistent"])
 	fmt.Printf("Known input %v; cached %v; weighted cached/input %v%% (paired input %v, rows %v)\n", totals["known_input"], totals["known_cached"], totals["cached_input_percent"], totals["paired_input"], totals["paired_requests"])
 	fmt.Printf("Known writes %v (30m %v; 12h %v); output %v; reasoning %v\nUnknown fields: %v\nResponse wall ms: %v; phase wall ms: %v\nMiss reasons: %v\n", totals["known_write"], totals["known_write_30m"], totals["known_write_12h"], totals["known_output"], totals["known_reasoning"], totals["unknown_fields"], totals["response_wall_ms"], totals["phase_wall_ms"], totals["miss_reasons"])
+	fmt.Printf("Retained attempts: %v; unknown usage attempts: %v; completed logical operations: %v\n", coverage["retained_attempts"], coverage["retained_unknown_attempts"], coverageCount(coverage["completed_operations"]))
+	fmt.Printf("Summary unknown requests: %v; unrepresented unknown requests: %v; reconciliation: %v\n", coverageCount(coverage["summary_unknown_requests"]), coverageCount(coverage["unrepresented_unknown_requests"]), coverage["status"])
+	for _, summary := range coverage["summaries"].([]object) {
+		b, _ := json.Marshal(summary)
+		fmt.Printf("Coverage summary: %s\n", b)
+	}
+	fmt.Printf("Omitted summaries: %v\n", coverage["omitted_summaries"])
 	b, _ := json.Marshal(data["scope"])
 	fmt.Printf("Scope: %s\n", b)
 	for _, g := range groups {
@@ -273,14 +281,23 @@ func matchesUsage(r object, filters object) bool {
 func stringValue(v any) string { s, _ := v.(string); return s }
 
 type usageScan struct {
-	root        string
-	bytes       int64
-	count       int
-	truncated   bool
-	limitations map[string]bool
-	metadata    map[string]object
-	selected    map[string]bool
-	durations   []object
+	root               string
+	bytes              int64
+	count              int
+	truncated          bool
+	limitations        map[string]bool
+	metadata           map[string]object
+	selected           map[string]bool
+	durations          []object
+	coverageIncomplete bool
+}
+
+func (s *usageScan) incompleteCoverage(base object) {
+	if m, ok := s.metadata[stringValue(base["run_id"])]; ok {
+		m["coverage_incomplete"] = true
+	} else {
+		s.coverageIncomplete = true
+	}
 }
 
 func (s *usageScan) cap(reason string) { s.truncated = true; s.limitations[reason] = true }
@@ -291,6 +308,7 @@ func (s *usageScan) directories(root string) []os.DirEntry {
 	}
 	if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
 		s.limitations["nonregular_source"] = true
+		s.coverageIncomplete = true
 		return nil
 	}
 	f, e := os.Open(root)
@@ -299,12 +317,14 @@ func (s *usageScan) directories(root string) []os.DirEntry {
 	}
 	if e != nil {
 		s.limitations["unreadable_source"] = true
+		s.coverageIncomplete = true
 		return nil
 	}
 	defer f.Close()
 	es, e := f.ReadDir(10001)
 	if e != nil && e != io.EOF {
 		s.limitations["unreadable_source"] = true
+		s.coverageIncomplete = true
 	}
 	sort.Slice(es, func(i, j int) bool { return es[i].Name() < es[j].Name() })
 	if len(es) > 10000 {
@@ -345,7 +365,25 @@ func (s *usageScan) readMeta(path string) object {
 		s.limitations["malformed_record"] = true
 		return object{}
 	}
-	safe := object{}
+	safe := object{"summary_available": true, "unknown_requests": nil, "outcome": analyticalIdentifier(m["outcome"]), "provider_failure_code": nil}
+	// Decode the native integer separately: float64 rounding could otherwise
+	// turn a fractional/overflowing counter into an apparently exact count.
+	var fields map[string]json.RawMessage
+	var counter *int64
+	if json.Unmarshal(b, &fields) == nil && json.Unmarshal(fields["unknown_requests"], &counter) == nil && counter != nil && *counter >= 0 {
+		safe["unknown_requests"] = *counter
+	}
+	if failure, ok := m["provider_failure"].(map[string]any); ok {
+		safe["provider_failure_code"] = analyticalIdentifier(failure["code"])
+	}
+	if m["build"] != nil && m["build"] != filepath.Base(filepath.Dir(path)) {
+		safe["identity_conflict"] = true
+	}
+	for _, k := range []string{"resumed_from", "root_build"} {
+		if m[k] != nil && (!runID.MatchString(stringValue(m[k]))) {
+			safe["ancestry_conflict"] = true
+		}
+	}
 	for _, k := range []string{"slug", "resumed_from", "root_build"} {
 		v := stringValue(m[k])
 		if v != "" && len(v) <= 256 {
@@ -454,15 +492,18 @@ func (s *usageScan) readRows(path string, base object, rows *[]object) {
 	st, e := os.Lstat(path)
 	if e != nil {
 		s.limitations["missing_record"] = true
+		s.incompleteCoverage(base)
 		return
 	}
 	if !st.Mode().IsRegular() {
 		s.limitations["nonregular_source"] = true
+		s.incompleteCoverage(base)
 		return
 	}
 	f, e := os.Open(path)
 	if e != nil {
 		s.limitations["unreadable_source"] = true
+		s.incompleteCoverage(base)
 		return
 	}
 	defer f.Close()
@@ -502,6 +543,7 @@ func (s *usageScan) readRows(path string, base object, rows *[]object) {
 		}
 		if oversize {
 			s.cap("oversized_line")
+			s.incompleteCoverage(base)
 			if e == io.EOF {
 				break
 			}
@@ -509,10 +551,12 @@ func (s *usageScan) readRows(path string, base object, rows *[]object) {
 		}
 		if len(buffer) > 0 && buffer[len(buffer)-1] != '\n' {
 			s.limitations["truncated_record"] = true
+			s.incompleteCoverage(base)
 		}
 		var ev object
 		if json.Unmarshal(buffer, &ev) != nil {
 			s.limitations["malformed_record"] = true
+			s.incompleteCoverage(base)
 		} else {
 			event := stringValue(ev["event"])
 			if event == "phase_duration" {
@@ -536,8 +580,16 @@ func (s *usageScan) readRows(path string, base object, rows *[]object) {
 					r := normalizeUsage(ev, base)
 					if r == nil {
 						s.limitations["malformed_record"] = true
+						s.incompleteCoverage(base)
 					}
 					if r != nil {
+						if base["run_id"] != nil && (r["run_id"] != base["run_id"] || (base["slug"] != nil && r["slug"] != base["slug"])) {
+							r["coverage_conflict"] = true
+							if m := s.metadata[stringValue(base["run_id"])]; m != nil {
+								// Keep scope conflicts even when a row filter hides the row.
+								m["row_scope_conflict"] = true
+							}
+						}
 						r["source"], _ = filepath.Rel(s.root, path)
 						r["source_line"] = line
 						r["project"] = s.root
@@ -561,6 +613,7 @@ func (s *usageScan) readRows(path string, base object, rows *[]object) {
 		}
 		if e != nil {
 			s.limitations["unreadable_source"] = true
+			s.incompleteCoverage(base)
 			break
 		}
 	}
@@ -806,6 +859,9 @@ func deduplicateUsage(rows []object) ([]object, int) {
 		if n, ok := seen[key]; ok && key != "" {
 			duplicates++
 			old := out[n]
+			if old["operation_id"] != r["operation_id"] || old["outcome"] != r["outcome"] || r["coverage_conflict"] == true {
+				old["coverage_conflict"] = true
+			}
 			old["provenance"] = append(old["provenance"].([]object), prov)
 			a, _ := json.Marshal(old["usage"])
 			b, _ := json.Marshal(r["usage"])
