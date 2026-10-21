@@ -926,6 +926,9 @@ defmodule Kogen.ChatGPT do
       :error ->
         acc
 
+      {:ok, []} ->
+        acc
+
       {:ok, output} when is_list(output) ->
         items = output |> Enum.with_index() |> Map.new(fn {item, i} -> {i, item} end)
         indexes = MapSet.new(Map.keys(items))

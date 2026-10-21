@@ -52,6 +52,8 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `shape-observed-repair` | submits a hook fixture defect, repairs it after observed feedback, then acknowledges legitimate product-red observations |
 | `refine-title` | submits only the existing Intent prose with a clarified title; all other artifacts are reused |
 | `refine-constraint` | reports that the correction needs an unsupported new step file, without changing the draft |
+| `shape-asks-one-empty-final` | complete streamed question tool followed by empty final output metadata; the question still reaches the caller |
+| `unfinished-tool-empty-final`, `malformed-tool-empty-final` | unfinished added or malformed done tool followed by empty final output; retained invalid output cannot write unauthorized.txt |
 | `shape-asks-one`, `shape-asks-two` | submits one or two UI/UX questions |
 | `shape-asks-one-then-writes` | one question; after the answer, submits `is-even` citing `(source: answer 1)` |
 | `shape-asks-two-then-writes` | two questions; after both answers, submits `is-even` citing both answer numbers |

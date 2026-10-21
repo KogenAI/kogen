@@ -277,7 +277,7 @@ class FakeServers {
       if (outcome.invalidTool === 'malformed') item.arguments = '{"path":';
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.write(responseEvent(outcome.invalidTool === 'unfinished' ? 'response.output_item.added' : 'response.output_item.done', { output_index: 0, item }));
-      res.end(responseEvent('response.completed', { response: { usage: {} } }));
+      res.end(responseEvent('response.completed', { response: { usage: {}, ...(outcome.emptyFinal ? { output: [] } : {}) } }));
       return;
     }
     if (outcome.cut) {
@@ -328,7 +328,7 @@ class FakeServers {
     }
     if (pause) await this.pause(pause, record);
     res.end(responseEvent('response.completed', {
-      response: { usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } } },
+      response: { ...(this.script?.name.endsWith('-empty-final') ? { output: [] } : {}), usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } } },
     }));
   }
 
@@ -398,7 +398,8 @@ class FakeServers {
     if (name === '400-bad-request') return { status: 400, error: { code: 'invalid_request', message: 'bad request' } };
     if (name === '500-always' || (name === 'build-then-500-always' && record.kind === 'build' && this.hasToolOutput(record, 'write_file', args => args.path === 'calc.py'))) return { status: 500, error: { code: 'server_error', message: 'server error' } };
     if (name === '401-then-ok' && this.requests.length === 1) return { status: 401, error: { code: 'unauthorized', message: 'unauthorized' } };
-    if (name === 'unfinished-tool' || name === 'malformed-tool') return { invalidTool: name === 'unfinished-tool' ? 'unfinished' : 'malformed' };
+    if (['unfinished-tool', 'malformed-tool', 'unfinished-tool-empty-final', 'malformed-tool-empty-final'].includes(name)) return { invalidTool: name.startsWith('unfinished') ? 'unfinished' : 'malformed', emptyFinal: name.endsWith('-empty-final') };
+    if (name === 'shape-asks-one-empty-final' && record.kind === 'shape') return this.shapeResponse('shape-asks-one', ordinal, record);
     if (name === 'stream-cut-then-ok' && this.requests.length === 1) return { cut: true };
 
     if (record.kind === 'init') return this.initResponse(name, ordinal);

@@ -231,3 +231,21 @@ Feature: ChatGPT connection
       | script          | predicate     |
       | unfinished-tool | pending_items |
       | malformed-tool  | item_shape    |
+      | unfinished-tool-empty-final | pending_items |
+      | malformed-tool-empty-final | item_shape |
+
+  @GPT-7 @GPT-8
+  Scenario: Empty final metadata preserves complete streamed tools
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    And the caller is signed in to ChatGPT
+    And the fake ChatGPT server plays script "shape-asks-one-empty-final"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 5
+    And stdout contains "1. What should is_even do with a non-integer?"
+    And the fake ChatGPT server received 1 requests
+    And the file ".kogen/intents/is-even/intent.md" does not exist
+    And HEAD is unchanged

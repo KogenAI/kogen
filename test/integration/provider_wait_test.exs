@@ -110,6 +110,145 @@ defmodule Kogen.Integration.ProviderWaitTest do
     JSON.decode!(json)
   end
 
+  defp item_done(index, item),
+    do: %{"type" => "response.output_item.done", "output_index" => index, "item" => item}
+
+  test "empty terminal metadata retains ordered multiitem output and usage on an open socket", %{
+    home: home
+  } do
+    items = [
+      %{"type" => "reasoning", "summary" => []},
+      %{
+        "type" => "message",
+        "role" => "assistant",
+        "status" => "completed",
+        "content" => [%{"type" => "output_text", "text" => "ready", "annotations" => []}]
+      },
+      Map.put(tool(), "arguments", "{\"path\":\"app.txt\"}"),
+      Map.put(tool(), "call_id", "second")
+    ]
+
+    frames =
+      Enum.flat_map(Enum.with_index(items), fn {item, i} ->
+        [
+          %{"type" => "response.output_item.added", "output_index" => i, "item" => item},
+          %{
+            "type" => "response.function_call_arguments.delta",
+            "output_index" => i,
+            "delta" => "PRIVATE-partial"
+          }
+        ]
+      end)
+
+    # Done events need not arrive in index order.
+    frames =
+      frames ++
+        Enum.map(Enum.reverse(Enum.with_index(items)), fn {item, i} -> item_done(i, item) end)
+
+    usage = %{
+      "input_tokens" => 100,
+      "input_tokens_details" => %{"cached_tokens" => 5},
+      "output_tokens" => 20,
+      "output_tokens_details" => %{"reasoning_tokens" => 10}
+    }
+
+    server =
+      connect(home, [
+        {:open_events, self(), frames ++ [done(%{"output" => [], "usage" => usage})]}
+      ])
+
+    expected_usage = %{input: 100, cached: 5, output: 20, reasoning: 10}
+
+    assert %{items: ^items, usage: ^expected_usage, known_usage: ^expected_usage} =
+             respond(single_attempt: true, response_budget_ms: 1000)
+
+    assert_receive {:provider_open, _}
+    assert_receive {:provider_closed, {:error, :closed}}, 1000
+    assert length(FakeProvider.provider_requests(server)) == 1
+  end
+
+  test "empty final output retains refusal predicates and effective diagnostic facts", %{
+    home: home
+  } do
+    item = tool()
+    added = %{"type" => "response.output_item.added", "output_index" => 1}
+
+    cases = [
+      {[item_done(0, item), added], %{}, ["pending_items"], 1, 1, 2},
+      {[
+         %{
+           "type" => "response.function_call_arguments.delta",
+           "output_index" => 0,
+           "delta" => "{}"
+         }
+       ], %{}, ["empty_output"], 0, 0, 0},
+      {[item_done(0, %{item | "arguments" => "PRIVATE-invalid"})], %{}, ["item_shape"], 1, 0, 1},
+      {[item_done(0, %{item | "arguments" => "[]"})], %{}, ["item_shape"], 1, 0, 1},
+      {[item_done(0, %{item | "call_id" => ""})], %{}, ["item_shape"], 1, 0, 1},
+      {[
+         item_done(0, %{
+           "type" => "message",
+           "content" => [%{"type" => "output_text", "text" => 42}]
+         })
+       ], %{}, ["item_shape"], 1, 0, 1},
+      {[item_done(0, Map.put(item, "status", "in_progress"))], %{}, ["item_status"], 1, 0, 1},
+      {[item_done(1, item)], %{}, ["noncontiguous_indexes"], 1, 0, 1},
+      {[item_done(-1, item), item_done(0, item)], %{}, ["item_event_shape"], 1, 0, 1},
+      {[item_done(0, item)], %{"usage" => "bad"}, ["usage_shape"], 1, 0, 1},
+      {[item_done(0, item)], %{"usage" => %{"input_tokens_details" => 42}}, ["usage_shape"], 1, 0,
+       1},
+      {[item_done(0, item)], %{"status" => "incomplete"}, ["response_status"], 1, 0, 1},
+      {[item_done(0, item)], %{"error" => %{}}, ["response_error"], 1, 0, 1}
+    ]
+
+    connect(
+      home,
+      Enum.map(cases, fn {frames, meta, _, _, _, _} ->
+        {:events, frames ++ [done(Map.put(meta, "output", []))]}
+      end)
+    )
+
+    for {_, _, reasons, items, pending, observed} <- cases do
+      error = assert_raise Error, fn -> respond(single_attempt: true) end
+      assert error.reason == "invalid_response"
+      evidence = terminal_evidence(error)
+      assert evidence["reasons"] == reasons
+      facts = evidence["facts"]
+      assert facts["terminal_response_present"]
+      assert facts["terminal_output_present"]
+      refute facts["terminal_output_replaced"]
+      assert facts["item_count"] == items
+      assert facts["pending_count"] == pending
+      assert facts["observed_index_count"] == observed
+      refute error.detail =~ "PRIVATE"
+    end
+  end
+
+  test "failure events win over retained done items and empty completion", %{home: home} do
+    kinds = ["response.failed", "response.incomplete", "error"]
+
+    connect(
+      home,
+      Enum.map(kinds, fn kind ->
+        {:events,
+         [
+           item_done(0, tool()),
+           %{"type" => kind, "response" => %{"error" => %{}}},
+           done(%{"output" => []})
+         ]}
+      end) ++ [{:events, [item_done(0, tool())]}, {:events, [item_done(0, tool()), done("bad")]}]
+    )
+
+    for _ <- kinds do
+      assert %{reason: "refused"} = assert_raise(Error, fn -> respond(single_attempt: true) end)
+    end
+
+    assert %{reason: "unavailable"} = assert_raise(Error, fn -> respond(single_attempt: true) end)
+
+    assert %{reason: "invalid_response"} =
+             assert_raise(Error, fn -> respond(single_attempt: true) end)
+  end
+
   test "an expired invocation does not consume the next invocation's budget", %{home: home} do
     server = connect(home, [{:http, 500, %{}}, {:text, "fresh"}])
     started = System.monotonic_time(:millisecond)
