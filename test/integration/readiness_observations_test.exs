@@ -534,6 +534,44 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     refute File.exists?(Intent.approval_path(context.repo, "fixture"))
   end
 
+  test "native Shape returns missing and oversized source comparisons for correction before readiness",
+       %{suite: suite} do
+    context = fixture!(suite)
+    proposed = files(nil)
+    intent = hd(proposed)
+
+    missing =
+      Regex.replace(~r/## Source comparison\n.*?(?=## Feasibility)/s, intent["content"], "")
+
+    oversized =
+      String.replace(
+        intent["content"],
+        "## Source comparison\n",
+        "## Source comparison\n" <> String.duplicate("x", 8193)
+      )
+
+    script!(context, [
+      submit([%{intent | "content" => missing} | tl(proposed)]),
+      submit([%{intent | "content" => oversized}]),
+      submit([intent])
+    ])
+
+    {output, 0} = shape(context)
+    assert output =~ "1 pass now"
+    assert executions(context) == 1
+
+    assert Enum.count(
+             FakeProvider.tool_outputs(context.server),
+             &String.contains?(&1, "Source comparison")
+           ) >= 2
+
+    receipt =
+      Kogen.SourceProvenance.path(context.repo, "observed") |> File.read!() |> JSON.decode!()
+
+    assert receipt["comparison"] == Kogen.SourceProvenance.comparison(context.repo, "observed")
+    assert receipt["comparison"] =~ "addressed:"
+  end
+
   defp fixture!(suite) do
     context = Helpers.project!(suite, [], staged_intent: false)
     on_exit(fn -> Helpers.cleanup_case(context) end)
@@ -567,7 +605,7 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
       %{
         "path" => Intent.intent_md("observed"),
         "content" =>
-          "# Observe actual readiness\n\nSlug: observed\nModel: not applicable — a fixture without state\nAcceptance:\n- .kogen/intents/observed/acceptance.feature\n- features/steps/observed_steps.js\n\n## Tests\n- observe actual readiness: the observation scenario (regression)\n\n## Feasibility\n- none\n"
+          "# Observe actual readiness\n\nSlug: observed\nModel: not applicable — a fixture without state\nAcceptance:\n- .kogen/intents/observed/acceptance.feature\n- features/steps/observed_steps.js\n\n## Tests\n- observe actual readiness: the observation scenario (regression)\n\n## Source comparison\n- addressed: source request readiness observation; contract Tests and acceptance.feature.\n\n## Feasibility\n- none\n"
       },
       %{
         "path" => Intent.feature("observed"),

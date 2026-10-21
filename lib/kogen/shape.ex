@@ -41,8 +41,16 @@ defmodule Kogen.Shape do
 
       state =
         case state do
-          nil -> %{"request" => input, "rounds" => []}
-          pending -> answer(pending, input)
+          nil ->
+            %{
+              "request" => input,
+              "rounds" => [],
+              "source_path" => input_path || "-",
+              "origin" => Kogen.SourceProvenance.origin(root, config)
+            }
+
+          pending ->
+            answer(pending, input)
         end
 
       case unanswered(state) do
@@ -78,7 +86,10 @@ defmodule Kogen.Shape do
 
   defp save_state(dir, state) do
     File.mkdir_p!(dir)
-    File.write!(Path.join(dir, "state.json"), JSON.encode!(state))
+    File.chmod!(dir, 0o700)
+    path = Path.join(dir, "state.json")
+    File.write!(path, JSON.encode!(state))
+    File.chmod!(path, 0o600)
   end
 
   # Merges `<n>: <answer>` lines into the pending round.
@@ -111,7 +122,14 @@ defmodule Kogen.Shape do
     end)
 
     given = Map.filter(given, fn {n, _} -> String.to_integer(n) in 1..count end)
-    %{state | "rounds" => earlier ++ [Map.update(round, "answers", given, &Map.merge(&1, given))]}
+
+    round =
+      round
+      |> Map.put("inputs", (round["inputs"] || []) ++ [input])
+      |> Map.put("input", (round["input"] || "") <> input)
+      |> Map.update("answers", given, &Map.merge(&1, given))
+
+    %{state | "rounds" => earlier ++ [round]}
   end
 
   defp parse_answers!(input) do
@@ -294,6 +312,7 @@ defmodule Kogen.Shape do
         print_blocked(paths, reason)
 
       :ready ->
+        Kogen.SourceProvenance.capture(root, slug, config, state)
         Readiness.record_pass!(root, slug, config, sh.ready)
         File.rm(Path.join(state_dir, "state.json"))
         new_paths = for {p, :absent} <- sh.originals, do: p
@@ -554,6 +573,8 @@ defmodule Kogen.Shape do
     progress(sh, "kogen: checking readiness")
 
     try do
+      Kogen.SourceProvenance.comparison(sh.root, sh.slug)
+
       # Fixers may change submitted declarations. The final formatted package
       # must retain the same executable artifacts before it can be certified.
       case Intent.check(sh.root, sh.slug) do
@@ -692,7 +713,7 @@ defmodule Kogen.Shape do
       "name" => "submit",
       "strict" => false,
       "description" =>
-        "End shaping with exactly one of questions, Intent files, or blocked. Within this run, well-formed file proposals accumulate: omitted paths retain earlier proposals; latest content wins. Submit only corrections on editing retries. #{Readiness.acknowledgment_guidance()} A malformed or unsafe submission contributes no files. A blocked report is never authorization and cannot be paired with another result.",
+        "Include nonempty ## Source comparison prose (at most 8192 UTF-8 bytes) comparing requested behaviors and settled non-secret literals against the actual complete contract, using addressed, omitted, conflicting, superseded with source/contract references. Do not expose secrets or raw private originals. Deliberate scope changes must be explicit; mappings are diagnostic aids, not semantic proof. End shaping with exactly one of questions, Intent files, or blocked. Within this run, well-formed file proposals accumulate: omitted paths retain earlier proposals; latest content wins. Submit only corrections on editing retries. #{Readiness.acknowledgment_guidance()} A malformed or unsafe submission contributes no files. A blocked report is never authorization and cannot be paired with another result.",
       "parameters" => %{
         "type" => "object",
         "properties" => %{
@@ -1012,6 +1033,9 @@ defmodule Kogen.Shape do
     ## Decisions
     - <each UI/UX decision> (source: request)
     - <decided from an answer> (source: answer <n>)
+
+    ## Source comparison
+    - <addressed, omitted, conflicting or superseded behavior/non-secret literal; source and complete proposed contract references>
 
     ## Tests
     - <each behavioral rule the request adds, changes or removes>: <the test to add or update> (<layer>)

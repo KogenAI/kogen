@@ -416,25 +416,28 @@ defmodule Kogen.ChatGPT do
   effort. Returns `%{items: [...], usage: %{...}}`; raises `Kogen.Error` (class `provider`) on a
   provider failure, with reason `context_too_long` when the conversation no longer fits.
   """
+  def request_body(%{model: model, effort: effort}, instructions, input, tools) do
+    %{
+      "model" => model,
+      "reasoning" => %{"effort" => effort},
+      "include" => ["reasoning.encrypted_content"],
+      "input" => input,
+      "stream" => true,
+      "store" => false
+    }
+    |> then(fn b ->
+      if tools == [], do: b, else: Map.merge(b, %{"tools" => tools, "tool_choice" => "auto"})
+    end)
+    |> Map.merge(Kogen.PromptCache.prepare(model, instructions, input, tools))
+  end
+
   def respond(%{model: model, effort: effort}, instructions, input, tools, opts \\ []) do
     deadline =
       System.monotonic_time(:millisecond) +
         min(1_800_000, Keyword.get(opts, :response_budget_ms, 1_800_000))
 
     body =
-      %{
-        "model" => model,
-        "reasoning" => %{"effort" => effort},
-        "include" => ["reasoning.encrypted_content"],
-        "input" => input,
-        "stream" => true,
-        "store" => false
-      }
-      |> then(fn b ->
-        if tools == [], do: b, else: Map.merge(b, %{"tools" => tools, "tool_choice" => "auto"})
-      end)
-      |> Map.merge(Kogen.PromptCache.prepare(model, instructions, input, tools))
-      |> JSON.encode!()
+      request_body(%{model: model, effort: effort}, instructions, input, tools) |> JSON.encode!()
 
     Process.put(:provider_operation, %{
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),

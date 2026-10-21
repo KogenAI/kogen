@@ -25,3 +25,5 @@ explanation is invented. Notes never block. Model: `build.qnt` `CommitOnlyWhenEl
 Scenarios: `features/06-reviewing.feature`. Model: `quint/build.qnt`.
 
 The independent reviewer starts without builder transcript, reasoning or cache comparison. Its stable approved contract precedes fresh candidate and verification evidence. A saved reviewer retry keeps its own opaque replay and latest completed comparison, but still requires fresh verification and explicit clearance of unresolved blockers.
+
+Independent review receives the approved source-provenance diagnostic retrieval reference, or `Source provenance: unavailable (legacy)`, never builder reasoning. Full originals are available through ordinary read tools; the approved Intent alone is implementation authority. Omissions require ordinary Refine and new exact approval. Local window resets preserve the same stage, observations and unresolved blockers and cannot clear native verification/review eligibility (LOOP-9).

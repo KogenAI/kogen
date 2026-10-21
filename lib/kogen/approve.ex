@@ -21,6 +21,11 @@ defmodule Kogen.Approve do
     questions_pending!(root, slug)
     Intent.exists!(root, slug)
 
+    with {:ok, bytes} <- File.read(Intent.approval_path(root, slug)),
+         {:ok, approval} <- JSON.decode(bytes) do
+      Kogen.SourceProvenance.validate_bound!(approval["source_provenance"])
+    end
+
     approver =
       by || Git.identity(root) ||
         Error.raise!(
@@ -33,6 +38,7 @@ defmodule Kogen.Approve do
     baseline = Intent.baseline(root, slug, config)
     before = Intent.hash(root, baseline)
     if hash && not String.starts_with?(before, hash), do: mismatch!(slug, before, hash)
+    source = Kogen.SourceProvenance.binding(root, slug, before)
     ready = Readiness.cached(root, slug, config) || Readiness.check!(root, slug, config)
     baseline = Intent.baseline(root, slug, config)
     sha = Intent.hash(root, baseline)
@@ -41,8 +47,20 @@ defmodule Kogen.Approve do
     if not Readiness.current?(root, slug, config, ready),
       do: Error.raise!("intent", "not_ready", "readiness inputs changed; review again", 1)
 
+    Kogen.SourceProvenance.validate_bound!(source)
+
+    unless Kogen.SourceProvenance.binding(root, slug, sha) == source do
+      Error.raise!(
+        "candidate",
+        "source_provenance_changed",
+        "source provenance changed during readiness; inspect the receipt and review again before exact approval",
+        1
+      )
+    end
+
     cond do
       hash == nil ->
+        Bridge.puts(Kogen.SourceProvenance.card(source))
         card(slug, sha, approver, ready, baseline)
 
       true ->
@@ -59,7 +77,8 @@ defmodule Kogen.Approve do
               "slug" => slug,
               "sha256" => sha,
               "approver" => approver,
-              "approved_at" => approved_at
+              "approved_at" => approved_at,
+              "source_provenance" => source
             }) <> "\n"
           )
 

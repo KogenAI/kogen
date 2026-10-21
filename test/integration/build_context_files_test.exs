@@ -90,9 +90,11 @@ defmodule Kogen.Integration.BuildContextFilesTest do
       input = initial.json["input"]
       assert length(input) == if(unquote(diagnostic?), do: 3, else: 2)
       checkpoint = JSON.decode!(original["checkpoint.json"])
-      assert checkpoint["version"] == 2
+      assert checkpoint["version"] == 3
       assert {:ok, _, state} = Kogen.Run.decode_checkpoint(original["checkpoint.json"])
       assert state.continuation.stage == :builder
+      assert is_map(state.working_context)
+      assert state.source_provenance == nil
 
       assert Kogen.PromptCache.prepare(
                "gpt-6.1-sol",
@@ -128,7 +130,7 @@ defmodule Kogen.Integration.BuildContextFilesTest do
           result = JSON.decode!(File.read!(Path.join(child, "result.json")))
           assert result["resumed_from"] == parent
           assert result["root_build"] == id
-          assert JSON.decode!(File.read!(Path.join(child, "checkpoint.json")))["version"] == 2
+          assert JSON.decode!(File.read!(Path.join(child, "checkpoint.json")))["version"] == 3
           Path.basename(child)
         end)
 
@@ -138,6 +140,42 @@ defmodule Kogen.Integration.BuildContextFilesTest do
           do: assert(File.read!(Path.join(original_dir, name)) == bytes)
 
       assert length(FakeProvider.provider_requests(c.server)) == 4
+    end
+  end
+
+  test "fresh independent review and its resets retain only frozen caller diagnostics, not builder reasoning",
+       %{suite: suite} do
+    growth =
+      for _ <- 1..3,
+          do:
+            {:function, "write_file",
+             %{"path" => ".kogen/local/padding", "content" => String.duplicate("x", 190_000)}}
+
+    script =
+      [{:pause, self(), {:function, "finish", %{"summary" => "builder-only-reasoning-sentinel"}}}] ++
+        growth ++
+        [{:function, "submit_review", %{"verdict" => "approve", "findings" => []}}]
+
+    c = Helpers.project!(suite, script, staged_intent: false)
+    on_exit(fn -> Helpers.cleanup_case(c) end)
+    file = Path.join(c.root, "diagnostic.txt")
+    text = "  frozen selective reuse Δ🙂\r\nnot approval or old green proof\n"
+    File.write!(file, text)
+    port = Helpers.start_kogen(c, ["intent", "build", "fixture", "--context", file])
+    assert_receive {:provider_paused, provider}, 15_000
+    File.write!(file, "POISON replacement")
+    send(provider, :continue)
+    {output, 0} = Helpers.await_exit(port, "", 30_000)
+    assert output =~ "review local reset"
+    reviews = FakeProvider.review_requests(c.server)
+    assert length(reviews) == 4
+
+    for request <- reviews do
+      material = FakeProvider.input_text(request)
+      assert material =~ text
+      assert material =~ "lower-authority data"
+      refute material =~ "POISON replacement"
+      refute material =~ "builder-only-reasoning-sentinel"
     end
   end
 

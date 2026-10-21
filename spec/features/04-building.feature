@@ -26,7 +26,22 @@ Feature: Building
     And request 1 contains "background"
     And request 1 contains the text of the file ".kogen/intents/is-even/intent.md"
     And request 1 contains "Use the narrowest test that exercises the rule"
+    And request 1 contains "Source provenance: unavailable (legacy)"
     And the fake ChatGPT server received 2 requests
+
+  @LOOP-9 @LOOP-10 @REV-2 @model:build
+  Scenario: Completed builder and independent reviewer windows reset locally
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-local-windows"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 0
+    And stderr contains "build local reset"
+    And stderr contains "review local reset"
+    And stderr contains "ceiling 524288; reserve 131072"
+    And request 5 contains the text of the file ".kogen/intents/is-even/intent.md"
+    And request 5 contains "Local working-window reset"
+    And the review request 5 contains "Local working-window reset"
+    And the review request 5 contains "Source provenance: unavailable (legacy)"
 
   @LOOP-7 @VER-12 @GIT-8 @model:build
   Scenario: A builder-reported protected contradiction stops without later mutations or gates

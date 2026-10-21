@@ -90,6 +90,8 @@ defmodule Kogen.Build do
         {:error, why} -> refuse!(id, why)
       end
 
+    Kogen.WorkingContext.validate!(b)
+    Kogen.SourceProvenance.validate_bound!(b.source_provenance)
     Process.put(:prompt_cache_states, Map.get(b, :prompt_cache_states, %{}))
 
     unless b.root == root and doc["identity"] == identity(root),
@@ -228,7 +230,7 @@ defmodule Kogen.Build do
       )
 
     Run.checkpoint(b.run, %{
-      "version" => 2,
+      "version" => 3,
       "identity" => identity(b.root),
       "candidate" => Snapshot.tree(b.root, b.start, []),
       "index" => Base.encode64(File.read!(b.git_index)),
@@ -324,6 +326,8 @@ defmodule Kogen.Build do
       )
     end
 
+    source = approval["source_provenance"]
+    Kogen.SourceProvenance.validate_bound!(source)
     excluded = clean_paths!(root, slug)
 
     intent = Intent.read(root, slug)
@@ -370,7 +374,9 @@ defmodule Kogen.Build do
       root_run: nil,
       model_active_ms: 0,
       unknown_requests: 0,
-      attempt_usage: Usage.zero()
+      attempt_usage: Usage.zero(),
+      working_context: %{},
+      source_provenance: source
     }
 
     build_started(b)
@@ -519,6 +525,8 @@ defmodule Kogen.Build do
       )
 
     b = track(b)
+    b = Map.put(b, :working_context, resp.working_context)
+    input = resp.active_input
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &Shape.replay_item/1) |> Enum.reject(&is_nil/1))
     ctx = %{root: b.root, protected: b.baseline, tools: ~w(shell read_file write_file)}
@@ -527,6 +535,8 @@ defmodule Kogen.Build do
       Enum.reduce(calls, {[], nil}, fn call, {outs, finish} ->
         Bridge.check_cancel()
         args = Shape.decode(call)
+        Kogen.WorkingContext.validate!(b)
+        Kogen.SourceProvenance.validate_bound!(b.source_provenance)
 
         save(b, %{stage: :tool, owner: :builder, input: input ++ outs})
 
@@ -541,8 +551,9 @@ defmodule Kogen.Build do
           "event" => "tool_call",
           "call_id" => call["call_id"],
           "name" => call["name"],
-          "arguments" => Run.cap(call["arguments"] || ""),
-          "result" => if(result == :finish, do: "finish", else: Run.cap(result))
+          "arguments" => Kogen.PromptCache.fingerprint(call["arguments"] || ""),
+          "result" =>
+            if(result == :finish, do: "finish", else: Kogen.PromptCache.fingerprint(result))
         })
 
         save(b, %{
@@ -595,7 +606,7 @@ defmodule Kogen.Build do
         "event" => "tool_call",
         "call_id" => call["call_id"],
         "name" => "report_blocker",
-        "arguments" => Run.cap(call["arguments"] || ""),
+        "arguments" => Kogen.PromptCache.fingerprint(call["arguments"] || ""),
         "result" => "BUILDER-REPORTED build_blocked"
       })
 
@@ -836,6 +847,8 @@ defmodule Kogen.Build do
   # files (a new file in the Intent's folder or matching `protect` joins it) with the same bytes.
   @doc false
   def baseline_intact!(b) do
+    Kogen.WorkingContext.validate!(b)
+    Kogen.SourceProvenance.validate_bound!(b.source_provenance)
     now = Intent.baseline(b.root, b.slug, b.config)
     added = now -- b.baseline
 
@@ -1141,10 +1154,8 @@ defmodule Kogen.Build do
   @doc false
   def request(b, role_name, role, instructions, input, tools) do
     Bridge.check_cancel()
-    t0 = System.monotonic_time(:millisecond)
-    Bridge.progress("kogen: #{role_name} request #{role.model}/#{role.effort}")
-    Process.put(:kogen_build, %{b | unknown_requests: b.unknown_requests + 1})
-    b = save(Process.get(:kogen_build), b.continuation)
+    Kogen.WorkingContext.validate!(b)
+    Kogen.SourceProvenance.validate_bound!(b.source_provenance)
 
     Process.put(
       :provider_conversation_scope,
@@ -1152,6 +1163,21 @@ defmodule Kogen.Build do
     )
 
     Process.put(:prompt_cache_states, Map.get(b, :prompt_cache_states, %{}))
+
+    {b, input} = Kogen.WorkingContext.prepare(b, role_name, role, instructions, input, tools)
+
+    continuation =
+      if role_name == "review" do
+        %{b.continuation | session: %{b.continuation.session | input: input}}
+      else
+        %{b.continuation | input: input}
+      end
+
+    b = save(b, continuation)
+    t0 = System.monotonic_time(:millisecond)
+    Bridge.progress("kogen: #{role_name} request #{role.model}/#{role.effort}")
+    Process.put(:kogen_build, %{b | unknown_requests: b.unknown_requests + 1})
+    b = save(Process.get(:kogen_build), b.continuation)
 
     Process.put(:provider_context, %{
       phase: role_name,
@@ -1188,7 +1214,7 @@ defmodule Kogen.Build do
       "wall_ms" => wall
     })
 
-    resp
+    resp |> Map.put(:active_input, input) |> Map.put(:working_context, b.working_context)
   end
 
   # ---- Prompts (LOOP-2) ----
@@ -1201,6 +1227,8 @@ defmodule Kogen.Build do
       end
 
     """
+    #{Kogen.SourceProvenance.message(Map.get(b, :source_provenance))}
+
     # Intent: #{b.intent.title}
 
     ```markdown

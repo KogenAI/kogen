@@ -275,7 +275,8 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
 
     actual_log = log_line["result"]
 
-    {{tool_result, actual_log}, {expected, expected}}
+    {{tool_result, actual_log},
+     {expected, JSON.decode!(JSON.encode!(Kogen.PromptCache.fingerprint(expected)))}}
   end
 
   defp fixture!(suite, script, opts \\ []) do

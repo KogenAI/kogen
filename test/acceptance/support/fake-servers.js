@@ -402,6 +402,11 @@ class FakeServers {
     if (name === 'shape-asks-one-empty-final' && record.kind === 'shape') return this.shapeResponse('shape-asks-one', ordinal, record);
     if (name === 'stream-cut-then-ok' && this.requests.length === 1) return { cut: true };
 
+    if (name === 'build-local-windows' && ['build', 'review'].includes(record.kind) && ordinal <= 4) {
+      return { items: [message(`UNFINISHED: ${record.kind} preserve current candidate and exact checks`),
+        functionCall('write_file', { path: '.kogen/local/window-fixture', content: 'x'.repeat(180000) }, `window_${record.kind}_${ordinal}`)] };
+    }
+
     if (record.kind === 'init') return this.initResponse(name, ordinal);
     if (record.kind === 'refine') {
       if (name === 'refine-constraint') return { items: [functionCall('submit_refinement', { constraint: 'This correction needs a new step file; refinement changes existing files only.' }, 'refine_constraint')] };
@@ -669,7 +674,7 @@ function intentFiles(slug, options = {}) {
   const decision = options.decision || '(source: request)';
   const feasibility = options.feasibility || '- none';
   const title = options.period ? 'Add an is-even helper.' : 'Add an is-even helper';
-  const intent = `# ${title}\n\nSlug: ${slug}\nModel: not applicable — a pure function without state\nAcceptance:\n${acceptance.map(file => `- ${file}`).join('\n')}\n\ncalc.is_even(n) returns True for even integers and False for odd ones; non-integers raise TypeError.\n\n## Decisions\n- Non-integers raise TypeError instead of returning False. ${decision}\n\n## Tests\n- calc.is_even returns True for even and False for odd integers: add test_is_even in tests/test_calc.py (unit)\n- calc.is_even raises TypeError for a non-integer: add test_is_even_rejects_floats in tests/test_calc.py (unit)\n\n## Feasibility\n${feasibility}\n`;
+  const intent = `# ${title}\n\nSlug: ${slug}\nModel: not applicable — a pure function without state\nAcceptance:\n${acceptance.map(file => `- ${file}`).join('\n')}\n\ncalc.is_even(n) returns True for even integers and False for odd ones; non-integers raise TypeError.\n\n## Decisions\n- Non-integers raise TypeError instead of returning False. ${decision}\n\n## Tests\n- calc.is_even returns True for even and False for odd integers: add test_is_even in tests/test_calc.py (unit)\n- calc.is_even raises TypeError for a non-integer: add test_is_even_rejects_floats in tests/test_calc.py (unit)\n\n## Source comparison\n- addressed: source request is_even behavior; contract Decisions, Tests and acceptance.feature.\n\n## Feasibility\n${feasibility}\n`;
   const files = [
     { path: `.kogen/intents/${slug}/intent.md`, content: intent },
     { path: `.kogen/intents/${slug}/acceptance.feature`, content: feature },
@@ -710,7 +715,7 @@ function wrongFiles() {
 function counterFiles(failing) {
   const feature = `Feature: counter\n\n  Scenario: Counter starts at zero\n    Given the counter is initialized\n    Then its value is non-negative\n`;
   const model = `module counter {\n  var count: int\n  action init = all { count' = 0 }\n  action step = any { init, all { count' = count + 1 } }\n  val NeverNegative = ${failing ? 'false' : 'count >= 0'}\n}\n`;
-  const intent = `# Add a bounded counter\n\nSlug: counter\nModel: .kogen/intents/counter/model.qnt invariants=NeverNegative seed=7 samples=500 steps=30\nAcceptance:\n- .kogen/intents/counter/acceptance.feature\n- features/steps/counter_steps.js\n\nA counter starts at zero and stays non-negative.\n\n## Decisions\n- The counter begins at zero. (source: request)\n\n## Tests\n- Counter state initializes at zero and remains non-negative through increments: add test_counter_state in tests/test_counter.py (unit)\n\n## Feasibility\n- none\n`;
+  const intent = `# Add a bounded counter\n\nSlug: counter\nModel: .kogen/intents/counter/model.qnt invariants=NeverNegative seed=7 samples=500 steps=30\nAcceptance:\n- .kogen/intents/counter/acceptance.feature\n- features/steps/counter_steps.js\n\nA counter starts at zero and stays non-negative.\n\n## Decisions\n- The counter begins at zero. (source: request)\n\n## Tests\n- Counter state initializes at zero and remains non-negative through increments: add test_counter_state in tests/test_counter.py (unit)\n\n## Source comparison\n- addressed: source request counter state; contract Tests, acceptance.feature and model.qnt.\n\n## Feasibility\n- none\n`;
   const steps = `const { Given, Then } = require('@cucumber/cucumber');\nGiven('the counter is initialized', function () {});\nThen('its value is non-negative', function () {});\n`;
   return [
     { path: '.kogen/intents/counter/intent.md', content: intent },

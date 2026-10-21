@@ -425,7 +425,7 @@ function requestAssertions(world, label, args) {
 
 function reviewAssertions(world, label, args) {
   const matches = world.server.requests.filter(request => request.kind === 'review');
-  const reviewOrdinal = label.match(/review request (\d+)/)?.[1];
+  const reviewOrdinal = label.match(/review request (\d+)/)?.[1] || (label.startsWith('the review request (') ? args.shift() : null);
   const request = matches[Number(reviewOrdinal || 1) - 1];
   assert.ok(request, 'no review request was received');
   if (label.includes('used read_file on ')) {

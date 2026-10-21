@@ -667,6 +667,9 @@ defmodule Kogen.Integration.Helpers do
     ## Tests
     - the fixture stays as it is: the acceptance scenario (existing)
 
+    ## Source comparison
+    - addressed: preserve app.txt fixture behavior; source request; contract Tests and acceptance.feature.
+
     ## Feasibility
     - none
     """)

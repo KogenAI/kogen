@@ -13,7 +13,10 @@ defmodule Kogen.Review do
     b = Build.track(%{b | review: n})
     Bridge.progress("kogen: reviewing (review #{n})")
     role = b.config.models["review"]
-    input = [%{"role" => "user", "content" => material(b, pass)}]
+    # Only the frozen caller diagnostic follows the builder's initial authority
+    # message here, never its replay, progress or reasoning.
+    diagnostic = b.working_context |> get_in(["build", :mandatory]) |> List.wrap() |> Enum.drop(1)
+    input = [%{"role" => "user", "content" => material(b, pass)}] ++ diagnostic
     tools = Tools.defs(~w(read_file list_files search_text write_file shell)) ++ [submit_def()]
     session = %{role: role, input: input, tools: tools, usage: Usage.zero(), attempts: []}
     finish(b, pass, session, verify)
@@ -214,6 +217,8 @@ defmodule Kogen.Review do
     resp = Build.request(b, "review", role, instructions(), input, tools)
     usage = Usage.add(usage, resp.usage)
     b = Build.track(b)
+    b = Map.put(b, :working_context, resp.working_context)
+    input = resp.active_input
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &Shape.replay_item/1) |> Enum.reject(&is_nil/1))
 
@@ -226,6 +231,8 @@ defmodule Kogen.Review do
     {outputs, verdict} =
       Enum.reduce(calls, {[], nil}, fn call, {outs, verdict} ->
         Bridge.check_cancel()
+        Kogen.WorkingContext.validate!(b)
+        Kogen.SourceProvenance.validate_bound!(b.source_provenance)
 
         Build.save(b, %{stage: :tool, owner: :reviewer, input: input ++ outs})
 
@@ -249,8 +256,8 @@ defmodule Kogen.Review do
             Run.log(b.run, %{
               "event" => "review_tool_call",
               "name" => call["name"],
-              "arguments" => Run.cap(call["arguments"] || ""),
-              "result" => Run.cap(result)
+              "arguments" => Kogen.PromptCache.fingerprint(call["arguments"] || ""),
+              "result" => Kogen.PromptCache.fingerprint(result)
             })
 
             Build.save(b, %{
@@ -453,6 +460,8 @@ defmodule Kogen.Review do
     # Project instructions (README.md)
 
     #{Shape.readme(b.root)}
+
+    #{Kogen.SourceProvenance.message(Map.get(b, :source_provenance))}
 
     # Testing rules (docs/testing-rules.md)
 

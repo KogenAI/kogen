@@ -116,12 +116,14 @@ defmodule Kogen.RunTest do
       unknown_requests: 0,
       usage: Kogen.Usage.zero(),
       attempt_usage: Kogen.Usage.zero(),
+      working_context: %{},
+      source_provenance: nil,
       continuation: %{stage: :builder, input: []}
     }
 
     encode = fn state ->
       JSON.encode!(%{
-        "version" => 2,
+        "version" => 3,
         "state" => Base.encode64(:erlang.term_to_binary(state)),
         "identity" => "identity",
         "candidate" => "tree",
@@ -129,6 +131,10 @@ defmodule Kogen.RunTest do
         "approval" => b.approval_bytes
       })
     end
+
+    legacy = JSON.decode!(encode.(b)) |> Map.put("version", 2) |> JSON.encode!()
+    assert {:error, "incompatible checkpoint version 2"} = Run.decode_checkpoint(legacy)
+    assert {:error, _} = Run.decode_checkpoint(encode.(Map.drop(b, [:working_context])))
 
     session = %{
       input: [],

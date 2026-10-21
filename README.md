@@ -162,3 +162,43 @@ best-effort implicit 30m reuse while keeping full stateless encrypted replay,
 independent reviewers and fresh safety/verification gates. Cache acceptance is
 not proof of a hit, effective TTL or live account qualification. See
 [usage scope, filters and uncertainty](docs/usage.md).
+
+## Private working continuity and source provenance
+
+Build and its independent reviewer preflight the **complete rendered next JSON request**
+against a fixed **524288 UTF-8 byte** ceiling (equality fits), with **131072 tokens**
+reserved for output/reasoning. This is a conservative byte proxy, not observed usage,
+a provider rejection threshold or a total-Build limit. No provider/model/effort or
+stateless transport capability changes. Completed safe boundaries can start an explicitly
+labelled local working window; authority and current unfinished work/findings remain,
+while full ordered replay is retained privately under
+`.kogen/local/runs/<id>/working-context/<owner>/` with SHA-256 links. Opaque reasoning,
+assistant phase and complete tool batches are preserved. Irreducible requests stop as
+`candidate/context_budget_exceeded` before inference, naming retained custody and ordinary
+Refine/new-approval guidance. Provider context errors below the proxy remain honest failures.
+
+Version 3 checkpoints retain the active owner/window, archives, findings and source binding;
+version 2 and older are explicitly unsupported, inspectable and refused without changes.
+Missing, altered or unsafe bound custody is a refusal, not a new Build. Editing makes old
+green evidence stale, and a reviewer reset neither clears blockers nor starts a new critique.
+
+Successful Shape keeps exact request/Q&A and source identity privately at
+`.kogen/local/provenance/<slug>/current.json` (0600 files, 0700 custody directories).
+Successful Refine archives the previous receipt, retains originals and appends the exact
+correction/prior contract identity. Failed/refused attempts leave successful custody and
+approval unchanged. The shaper's bounded `## Source comparison` and approval card identify
+addressed, omitted, conflicting and superseded behaviors/non-secret literals. Native Shape
+and Refine require a nonempty report of at most 8192 UTF-8 bytes and return missing or
+oversized reports for correction rather than clipping them. This mapping
+is an aid, never proof of semantic completeness. Cards show the receipt path/hash and
+contract binding; Build and fresh independent review can retrieve originals with native
+read tools. Originals are diagnostic data, **not authority** to add omitted scope. Such
+changes require ordinary Refine and new exact approval. Legacy projects explicitly report
+`Source provenance: unavailable (legacy)`; originals are never reconstructed from Intent prose.
+Do not place credentials in these private receipts or handoffs.
+
+For protected-contract corrections, preserve native production externally with absolute
+archive paths and hashes, then obtain fresh exact approval and use production-clean fresh
+`build --context FILE` for selective inspection/reproduction. There is no automatic stash,
+patch or tree import, protected-byte replay, approval transfer or reuse of old green results.
+The new candidate receives normal verification and independent review.

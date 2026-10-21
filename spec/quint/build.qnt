@@ -228,7 +228,23 @@ module build {
   run resumeBuilderTest = init.then(move(Failed, 0, -1, "provider")).then(resume)
     .expect(phase == Loop and commits == 0)
 
-  action step = any { reopenBlocked, retryVerify, resume, modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
+  // LOOP-9: completed-boundary local reset changes replay custody, not eligibility.
+  // Window size/history are abstracted here; the approved continuity model bounds them.
+  action localReset = all {
+    phase == Loop or phase == Reviewing,
+    move(phase, cand, cleanPassVersion, reason),
+  }
+
+  run resetRetainsStaleEvidenceTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewEdit).then(localReset)
+      .expect(phase == Reviewing and cand == 3 and cleanPassVersion == 2 and reviewedVersion == -1 and commits == 0)
+
+  run resetCannotClearReopenedBlockerTest =
+    init.then(move(Reviewing, 2, 2, "")).then(reviewWith("changes"))
+      .then(reopenBlocked).then(retryVerifyWith("green")).then(localReset)
+      .expect(phase == Reviewing and reviewedVersion == -1 and commits == 0)
+
+  action step = any { localReset, reopenBlocked, retryVerify, resume, modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
 
   // ---- Invariants ----
   // GIT-3/6: a kept commit holds exactly the reviewed, green candidate; baseline intact; same HEAD.
@@ -245,7 +261,7 @@ module build {
   // failing checks continue with their current repair owner; unresolved review blockers stop.
   val FailureReasons = terminal(phase) implies Set(
     "commit", "baseline_changed", "head_moved", "hook_changed_commit", "commit_failed",
-    "context_exhausted", "review_invalid", "review_blocked", "build_blocked", "provider", "interrupted").contains(reason)
+    "context_exhausted", "context_budget_exceeded", "review_invalid", "review_blocked", "build_blocked", "provider", "interrupted").contains(reason)
   val Safety = CommitOnlyWhenEligible and AtMostOneCommit and ReviewNeverOverridesChecks
     and BaselineChangeNeverCommits and FailureReasons
 

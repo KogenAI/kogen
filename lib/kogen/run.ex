@@ -1,7 +1,7 @@
 defmodule Kogen.Run do
   @moduledoc """
   A Build's run record (LOOP-10): `.kogen/local/runs/<build-id>/log.jsonl` with requests and
-  usage, tool calls and results, verification passes, reviews and the outcome; `result.json`;
+  usage, tool-call byte counts/hashes (full replay stays in private continuity custody), verification passes, reviews and the outcome; `result.json`;
   `review-<n>.json`. Credentials never appear in it.
   """
   defstruct [:id, :dir, :log]
@@ -31,6 +31,7 @@ defmodule Kogen.Run do
     {:ok, io} = File.open(tmp, [:write, :binary])
 
     try do
+      File.chmod!(tmp, 0o600)
       IO.binwrite(io, JSON.encode!(data) <> "\n")
       :ok = :file.sync(io)
     after
@@ -43,7 +44,7 @@ defmodule Kogen.Run do
   def decode_checkpoint(bytes) do
     for module <- Application.spec(:kogen, :modules) || [], do: Code.ensure_loaded(module)
 
-    with {:ok, %{"version" => 2, "state" => state} = doc} <- JSON.decode(bytes),
+    with {:ok, %{"version" => 3, "state" => state} = doc} <- JSON.decode(bytes),
          true <- is_binary(state),
          {:ok, binary} <- Base.decode64(state) do
       try do
@@ -58,7 +59,7 @@ defmodule Kogen.Run do
         _ -> {:error, "damaged checkpoint state"}
       end
     else
-      {:ok, %{"version" => version}} when version != 2 ->
+      {:ok, %{"version" => version}} when version != 3 ->
         {:error, "incompatible checkpoint version #{inspect(version)}"}
 
       _ ->
@@ -69,7 +70,18 @@ defmodule Kogen.Run do
   defp valid_state?(b, doc) do
     is_map(b) and
       Enum.all?(
-        [:model, :phase, :t0, :last_pass, :last_review, :blocker, :parent, :root_run],
+        [
+          :model,
+          :phase,
+          :t0,
+          :last_pass,
+          :last_review,
+          :blocker,
+          :parent,
+          :root_run,
+          :working_context,
+          :source_provenance
+        ],
         &Map.has_key?(b, &1)
       ) and b.phase in [:startup, :building] and is_integer(b.t0) and
       Enum.all?(
@@ -85,6 +97,8 @@ defmodule Kogen.Run do
       valid_pass?(b.last_pass) and
       (b.last_pass == nil or not b.last_pass.green or
          complete_pass?(b.last_pass, b.config, b.intent, b.model)) and
+      valid_working_context?(b.working_context) and
+      valid_source?(b.source_provenance) and
       valid_review?(b.last_review) and
       valid_cache_states?(Map.get(b, :prompt_cache_states, %{})) and
       is_map(b[:baseline_digests]) and is_list(b[:baseline]) and
@@ -112,6 +126,27 @@ defmodule Kogen.Run do
       match?({:ok, _}, Base.decode64(doc["index"])) and
       match?({:ok, _}, Base.decode64(doc["approval"]))
   end
+
+  defp valid_source?(nil), do: true
+
+  defp valid_source?(ref) when is_map(ref) do
+    Enum.all?(~w(path sha256 contract_sha256), &is_binary(ref[&1]))
+  end
+
+  defp valid_source?(_), do: false
+
+  defp valid_working_context?(states) when is_map(states) do
+    Enum.all?(states, fn {owner, state} ->
+      owner in ["build", "review"] and is_map(state) and
+        valid_input?(state[:mandatory]) and is_list(state[:observations]) and
+        is_list(state[:history]) and
+        Enum.all?(state.history, fn ref ->
+          is_map(ref) and is_binary(ref["path"]) and is_binary(ref["sha256"])
+        end)
+    end)
+  end
+
+  defp valid_working_context?(_), do: false
 
   defp valid_cache_states?(states) when is_map(states) do
     Enum.all?(states, fn {key, state} ->

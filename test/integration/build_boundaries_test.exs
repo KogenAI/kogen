@@ -42,7 +42,10 @@ defmodule Kogen.Integration.BuildBoundariesTest do
         suite,
         Enum.take(build_script(), 2) ++
           [
-            {:function, "write_file", %{"path" => "app.txt", "content" => "broken\n"}},
+            {:function, "write_file", %{"path" => "app.txt", "content" => "broken\n"}}
+          ] ++
+          window_growth() ++
+          [
             {:function, "submit_review", %{"verdict" => "approve", "findings" => []}},
             {:function, "write_file", %{"path" => "app.txt", "content" => "reviewer repaired\n"}},
             {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
@@ -60,11 +63,13 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     assert result(context)["passes"] == 3
     assert result(context)["reviews"] == 1
     requests = FakeProvider.review_requests(context.server)
-    assert length(requests) == 4
+    assert length(requests) == 7
+    [reset] = reset_messages(requests)
+    assert reset["checks"]["status"] == "stale"
 
-    assert FakeProvider.input_text(Enum.at(requests, 2)) =~ "Final verification"
+    assert FakeProvider.input_text(Enum.at(requests, 5)) =~ "Final verification"
 
-    assert Enum.any?(Enum.at(requests, 2).json["input"], &(&1["type"] == "function_call_output"))
+    assert Enum.any?(Enum.at(requests, 5).json["input"], &(&1["type"] == "function_call_output"))
   end
 
   test "preflight missing packages and malformed approval remain structured read observations", %{
@@ -531,6 +536,50 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     assert result(context)["outcome"] == "review_blocked"
   end
 
+  test "reopened reviewer resets preserve the unresolved blocker and cannot authorize commit", %{
+    suite: suite
+  } do
+    finding = %{
+      "path" => "app.txt",
+      "line" => 1,
+      "severity" => "blocking",
+      "message" => "Unresolved exact requirement"
+    }
+
+    verdict = {:function, "submit_review", %{"verdict" => "changes", "findings" => [finding]}}
+
+    context =
+      fixture!(suite, Enum.take(build_script(), 2) ++ [verdict] ++ window_growth() ++ [verdict])
+
+    {output, 1} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    assert output =~ "review_blocked"
+    original_dir = Path.dirname(Helpers.run_log(context))
+    original_result = File.read!(Path.join(original_dir, "result.json"))
+
+    before =
+      {git_value!(context, ["rev-parse", "HEAD"]),
+       File.read!(Path.join(context.repo, ".git/index"))}
+
+    {output, 1} = Helpers.run_kogen(context, ["intent", "resume", Path.basename(original_dir)])
+    assert output =~ "review_blocked"
+
+    assert {git_value!(context, ["rev-parse", "HEAD"]),
+            File.read!(Path.join(context.repo, ".git/index"))} == before
+
+    assert File.read!(Path.join(original_dir, "result.json")) == original_result
+    [reset] = reset_messages(FakeProvider.review_requests(context.server))
+    assert reset["owner"] == "review"
+    assert reset["findings"] == [finding]
+
+    [child] =
+      Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*/checkpoint.json")) --
+        [Path.join(original_dir, "checkpoint.json")]
+
+    assert {:ok, _, saved} = Kogen.Run.decode_checkpoint(File.read!(child))
+    assert saved.last_review.findings == [finding]
+    assert saved.continuation.stage == :review_verify
+  end
+
   test "REV-2 review retains full source without replaying new files twice", %{suite: suite} do
     before = "outside-diff-sentinel\n" <> String.duplicate("context\n", 20) <> "old marker\n"
     after_text = String.replace(before, "old marker", "new marker")
@@ -828,6 +877,25 @@ defmodule Kogen.Integration.BuildBoundariesTest do
   defp result(context) do
     [path] = Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*/result.json"))
     path |> File.read!() |> JSON.decode!()
+  end
+
+  defp window_growth do
+    for _ <- 1..3 do
+      {:function, "write_file",
+       %{"path" => ".kogen/local/window-padding", "content" => String.duplicate("x", 190_000)}}
+    end
+  end
+
+  defp reset_messages(requests) do
+    for request <- requests,
+        item <- request.json["input"],
+        is_binary(item["content"]),
+        String.starts_with?(item["content"], "Local working-window reset\n"),
+        uniq: true do
+      item["content"]
+      |> String.replace_prefix("Local working-window reset\n", "")
+      |> JSON.decode!()
+    end
   end
 
   defp build_script do

@@ -834,6 +834,86 @@ defmodule Kogen.Integration.RefinementTest do
     end
   end
 
+  test "Refine refuses changed or deleted bound source during inference without publishing or revoking approval",
+       %{suite: suite} do
+    for drift <- [:changed, :deleted] do
+      context = approved_fixture!(suite)
+      path = Intent.intent_md("fixture")
+      before = package(context)
+      sha = hash(context)
+      source = Kogen.SourceProvenance.path(context.repo, "fixture")
+
+      Kogen.SourceProvenance.publish(context.repo, "fixture", %{
+        "version" => 1,
+        "request" => Kogen.SourceProvenance.request("original Δ🙂\n", "-"),
+        "rounds" => [],
+        "corrections" => [],
+        "contract_sha256" => sha,
+        "comparison" => Kogen.SourceProvenance.comparison(context.repo, "fixture")
+      })
+
+      {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", sha])
+      approval = File.read!(Intent.approval_path(context.repo, "fixture"))
+      original_index = index(context)
+      original_head = Kogen.Git.head(context.repo)
+      updated = before[path] <> "\nClarified only.\n"
+      script!(context, [{:pause, self(), submission([%{"path" => path, "content" => updated}])}])
+      port = Helpers.start_kogen(context, ["intent", "refine", "fixture", sha, request!(context)])
+      assert_receive {:provider_paused, provider}, 15_000
+
+      if drift == :changed,
+        do: File.write!(source, File.read!(source) <> " "),
+        else: File.rm!(source)
+
+      drifted = File.read(source)
+      send(provider, :continue)
+      {output, 1} = Helpers.await_exit(port, "", 20_000)
+      assert output =~ "source_provenance_changed"
+      assert package(context) == before
+      assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
+      assert index(context) == original_index
+      assert Kogen.Git.head(context.repo) == original_head
+      assert File.read(source) == drifted
+    end
+  end
+
+  test "exact approval refuses source drift during readiness instead of silently rebinding it", %{
+    suite: suite
+  } do
+    context = approved_fixture!(suite)
+    source = Kogen.SourceProvenance.path(context.repo, "fixture")
+    step = Path.join(context.repo, "features/steps/integration_steps.js")
+
+    File.write!(
+      step,
+      File.read!(step) <> "\nrequire('node:fs').appendFileSync(#{JSON.encode!(source)}, ' ');\n"
+    )
+
+    sha = hash(context)
+
+    Kogen.SourceProvenance.publish(context.repo, "fixture", %{
+      "version" => 1,
+      "request" => Kogen.SourceProvenance.request("frozen original", "-"),
+      "rounds" => [],
+      "corrections" => [],
+      "contract_sha256" => sha,
+      "comparison" => Kogen.SourceProvenance.comparison(context.repo, "fixture")
+    })
+
+    original_source = File.read!(source)
+    File.rm!(Intent.approval_path(context.repo, "fixture"))
+    before = package(context)
+    original_index = index(context)
+    requests = FakeProvider.provider_requests(context.server)
+    {output, 1} = Helpers.run_kogen(context, ["intent", "approve", "fixture", sha])
+    assert output =~ "source_provenance_changed"
+    assert File.read!(source) == original_source <> " "
+    refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+    assert package(context) == before
+    assert index(context) == original_index
+    assert FakeProvider.provider_requests(context.server) == requests
+  end
+
   defp fixture!(suite) do
     context = Helpers.project!(suite, [], staged_intent: false)
     on_exit(fn -> Helpers.cleanup_case(context) end)

@@ -85,7 +85,7 @@ defmodule Kogen.Main do
     do: Kogen.Shape.run(r["project"], r["slug"], r["input"], r["input_path"])
 
   defp dispatch(%{"command" => "refine"} = r),
-    do: Kogen.Refine.run(r["project"], r["slug"], r["hash"], r["input"])
+    do: Kogen.Refine.run(r["project"], r["slug"], r["hash"], r["input"], r["input_path"])
 
   defp dispatch(%{"command" => "approve"} = r),
     do: Kogen.Approve.run(r["project"], r["slug"], r["hash"], r["by"])

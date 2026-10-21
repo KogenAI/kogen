@@ -16,7 +16,7 @@ defmodule Kogen.Refine do
     Usage
   }
 
-  def run(project, slug, expected, request) do
+  def run(project, slug, expected, request, source_path \\ nil) do
     root = Git.root!(project)
     lock = Build.lock!(root)
 
@@ -67,7 +67,10 @@ defmodule Kogen.Refine do
       baseline = Intent.baseline(root, slug, config)
       if Intent.hash(root, baseline) != expected, do: stale!()
 
+      source = Kogen.SourceProvenance.binding(root, slug, expected)
+
       if approval != nil do
+        Kogen.SourceProvenance.validate_bound!(JSON.decode!(approval)["source_provenance"])
         unless match?({:ok, %{"sha256" => ^expected}}, JSON.decode(approval)), do: stale!()
         Build.clean_paths!(root, slug)
       end
@@ -98,9 +101,11 @@ defmodule Kogen.Refine do
 
       originals = Map.new(files, &{&1, File.read!(Path.join(root, &1))})
       File.mkdir_p!(evidence)
+      File.chmod!(evidence, 0o700)
       Kogen.ShapeEvidence.start(evidence, slug)
       Bridge.progress("kogen: refinement evidence: #{evidence}")
       File.write!(Path.join(evidence, "request.md"), request)
+      File.chmod!(Path.join(evidence, "request.md"), 0o600)
       if approval, do: File.write!(Path.join(evidence, "original-approval.json"), approval)
       save_files(evidence, "original", originals)
 
@@ -110,6 +115,8 @@ defmodule Kogen.Refine do
         slug: slug,
         config: config,
         expected: expected,
+        correction: Kogen.SourceProvenance.request(request, source_path),
+        source_provenance: source,
         head: head,
         tree: tree,
         approval: approval,
@@ -322,6 +329,7 @@ defmodule Kogen.Refine do
       end
 
       Readiness.record_pass!(s.root, s.slug, s.config, ready)
+      Kogen.SourceProvenance.refine(s.root, s.slug, s.correction, s.expected, s.source_provenance)
     rescue
       error ->
         restore_published!(s, changes)
@@ -353,6 +361,8 @@ defmodule Kogen.Refine do
   end
 
   defp freeze!(s) do
+    Kogen.SourceProvenance.validate_bound!(s.source_provenance)
+
     if approval_bytes(s.root, s.slug) != s.approval or index_digest(s.index_path) != s.index or
          Git.head(s.root) != s.head or
          Intent.hash(s.root, Intent.baseline(s.root, s.slug, s.config)) != s.expected or
@@ -590,6 +600,7 @@ defmodule Kogen.Refine do
           if result.status != 0, do: constraint!("A configured fixer failed: #{command}")
         end
 
+        Kogen.SourceProvenance.comparison(s.scratch, s.slug)
         candidate = Intent.read(s.scratch, s.slug)
         candidate_model = model_path(candidate)
 
@@ -701,6 +712,8 @@ defmodule Kogen.Refine do
     """
     Full contract inclusions: original Intent prose, Gherkin and declared model preserve exact authority, irrespective of excerpt budget.
 
+    #{Kogen.SourceProvenance.message(s.source_provenance)}
+
     # Correction requested
     #{request}
     # Original authoritative contracts and owned originals (full contents)
@@ -729,7 +742,7 @@ defmodule Kogen.Refine do
   end
 
   defp instructions do
-    "#{Kogen.Feasibility.guidance()} Correct only the requested points in an existing ready Intent. Read/probe as needed. For edits, submit_refinement contains complete replacement contents of changed existing editable files; omit unchanged artifacts. Well-formed proposals accumulate within this run: latest content for a path wins, omitted paths retain earlier proposed bytes, and explicit original content reverts a proposal. A malformed or unsafe submission contributes no paths. Each retry checks the complete accumulated candidate against the frozen original; nothing is published until all of it is ready. Accounted red observations return for inspection in this same conversation: repair demonstrated contract defects using existing read/probe tools as needed. #{Readiness.acknowledgment_guidance()} Failures can mask later cases; do not claim all fixtures are correct. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package and approval stay unchanged unless the full candidate is ready and its frozen hash/HEAD/tree/index/approval still match. Successful correction revokes any old approval; the caller must explicitly approve the resulting full hash. End with submit_refinement."
+    "#{Kogen.Feasibility.guidance()} Update the nonempty ## Source comparison (at most 8192 UTF-8 bytes) for the correction against the complete contract, distinguishing addressed, omitted, conflicting and superseded with references; never expose secrets or raw private originals. Correct only the requested points in an existing ready Intent. Read/probe as needed. For edits, submit_refinement contains complete replacement contents of changed existing editable files; omit unchanged artifacts. Well-formed proposals accumulate within this run: latest content for a path wins, omitted paths retain earlier proposed bytes, and explicit original content reverts a proposal. A malformed or unsafe submission contributes no paths. Each retry checks the complete accumulated candidate against the frozen original; nothing is published until all of it is ready. Accounted red observations return for inspection in this same conversation: repair demonstrated contract defects using existing read/probe tools as needed. #{Readiness.acknowledgment_guidance()} Failures can mask later cases; do not claim all fixtures are correct. Preserve its required Intent sections, executable scenarios, meaningful tests and model. Do not implement product code, authorize, approve or build. No new/deleted files, shared step edits, Acceptance path changes, model removal/addition, or UI/UX question/resume flow is supported. If the requested correction requires any of these or a protected edit, submit only constraint with a concrete reason; never silently reinterpret or discard the draft. Kogen formats the submitted files and checks the complete merged package in a scratch checkout. Readiness failures return for correction; the original package and approval stay unchanged unless the full candidate is ready and its frozen hash/HEAD/tree/index/approval still match. Successful correction revokes any old approval; the caller must explicitly approve the resulting full hash. End with submit_refinement."
   end
 
   defp submit_def do
