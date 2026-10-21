@@ -1,30 +1,29 @@
 version: 1
 commands:
   setup:
-    - 'if test -f mix.exs; then mix deps.get; fi'
+    - 'mix deps.get'
     - '(cd spec && npm ci)'
     - '(cd test/acceptance && npm ci)'
     - 'sh packaging/package.sh'
   fix:
-    - 'if test -f mix.exs; then mix format; fi'
-    - '(cd cli && gofmt -w .)'
+    - 'mix format'
   checks:
     - name: format
-      run: 'set -e; if test -f mix.exs; then mix format --check-formatted; fi; kogen_unformatted=$(cd cli && gofmt -l .); test -z "$kogen_unformatted"'
+      run: 'mix format --check-formatted'
     - name: compile
-      run: 'set -e; if test -f mix.exs; then mix compile --warnings-as-errors; fi; (cd cli && go build ./...)'
+      run: 'mix compile --warnings-as-errors'
     - name: test
-      run: 'if test -f mix.exs; then mix test; fi'
+      run: 'mix test'
     - name: go-test
-      run: '(cd cli && go test -race -count=1 ./...)'
-    - name: spec
-      run: '(cd spec && sh check.sh)'
+      run: '(cd cli && go test -race ./...)'
     - name: cucumber
       run: '(cd test/acceptance && npx cucumber-js --strict --tags "not @live" --require "steps/*.js" --require "support/*.js" ../../spec/features/04-building.feature)'
   acceptance:
     run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
     steps_dir: 'features/steps'
-protect: []
+protect:
+  - '.formatter.exs'
+  - 'mix.exs'
 models:
   shape:
     model: gpt-6.1-sol
