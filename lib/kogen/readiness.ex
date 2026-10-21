@@ -127,6 +127,7 @@ defmodule Kogen.Readiness do
          {:ok, feature} <- File.read(Path.join(root, Intent.feature(slug))),
          {:ok, expected} <- Kogen.Gherkin.parse(feature),
          true <- record["title"] == intent.title,
+         true <- Kogen.Feasibility.valid?(root, intent, record["feasibility"]),
          true <- record["model"] == json(Intent.model(intent)),
          true <-
            record["model_outcome"] ==
@@ -149,6 +150,7 @@ defmodule Kogen.Readiness do
 
       %{
         intent: intent,
+        feasibility: record["feasibility"] || [],
         model: Intent.model(intent),
         scenarios: checked,
         acceptance_exit: record["acceptance_exit"],
@@ -171,10 +173,11 @@ defmodule Kogen.Readiness do
   end
 
   @doc "Whether the complete checked baseline and HEAD still identify this readiness result."
-  def current?(root, slug, config, ready) when is_map(ready),
-    do:
-      inputs(root, slug, config) ==
-        {ready.baseline, ready.sha256, ready.head, ready.candidate_tree}
+  def current?(root, slug, config, ready) when is_map(ready) do
+    inputs(root, slug, config) ==
+      {ready.baseline, ready.sha256, ready.head, ready.candidate_tree} and
+      Kogen.Feasibility.valid?(root, ready.intent, Map.get(ready, :feasibility))
+  end
 
   def current?(_root, _slug, _config, _ready), do: false
 
@@ -215,12 +218,11 @@ defmodule Kogen.Readiness do
 
   @doc "Publishes the original successful evidence only when the complete checked inputs still match."
   def record_pass!(root, slug, config, ready) do
-    unless inputs(root, slug, config) ==
-             {ready.baseline, ready.sha256, ready.head, ready.candidate_tree},
-           do:
-             Error.raise!("intent", "not_ready", "the Intent is not ready to build", 1, [
-               "readiness inputs changed during checking or publication"
-             ])
+    unless current?(root, slug, config, ready),
+      do:
+        Error.raise!("intent", "not_ready", "the Intent is not ready to build", 1, [
+          "readiness inputs changed during checking or publication"
+        ])
 
     path = readiness_path(root, slug)
     File.mkdir_p!(Path.dirname(path))
@@ -238,7 +240,8 @@ defmodule Kogen.Readiness do
         "model" => ready.model,
         "model_outcome" => if(ready.model == :none, do: "not_applicable", else: "passed"),
         "acceptance_exit" => ready.acceptance_exit,
-        "scenarios" => ready.scenarios
+        "scenarios" => ready.scenarios,
+        "feasibility" => Map.get(ready, :feasibility, [])
       }) <> "\n"
     )
 
@@ -265,7 +268,7 @@ defmodule Kogen.Readiness do
 
     try do
       guard = Snapshot.materialize(root, tree, scratch)
-      ready = check_clean!(scratch, slug, config, baseline, sha, head, tree)
+      ready = check_clean!(scratch, slug, config, baseline, sha, head, tree, root)
       mutations = Snapshot.mutations(scratch, guard)
 
       if mutations != [],
@@ -278,7 +281,7 @@ defmodule Kogen.Readiness do
     end
   end
 
-  defp check_clean!(root, slug, config, baseline, sha, head, tree) do
+  defp check_clean!(root, slug, config, baseline, sha, head, tree, evidence_root) do
     intent =
       case Intent.check(root, slug) do
         {:ok, intent, _} ->
@@ -292,6 +295,8 @@ defmodule Kogen.Readiness do
       end
 
     setup!(root, config)
+
+    feasibility = Kogen.Feasibility.execute!(root, intent, evidence_root)
 
     model = Intent.model(intent)
 
@@ -348,6 +353,7 @@ defmodule Kogen.Readiness do
       [] ->
         %{
           intent: intent,
+          feasibility: feasibility,
           model: model,
           scenarios: result.scenarios,
           acceptance_exit: result.status,

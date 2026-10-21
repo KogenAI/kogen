@@ -11,6 +11,24 @@ Feature: Shaping
     And the project is initialized and configured
     And the caller is signed in to ChatGPT
 
+  @SHP-8 @SHP-10 @AUT-1
+  Scenario: Declared local rejection cannot be waived by unchanged product-red acknowledgment
+    Given the fake ChatGPT server plays script "shape-declared-rejection"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add the existing is-even request and qualify the declared local route control.
+      """
+    Then the exit code is 0
+    And request 2 contains "local-route/support"
+    And request 3 contains "local-route/support"
+    And request 4 contains "Readiness observations"
+    And the fake ChatGPT server received 4 requests
+    And the file ".kogen/local/readiness/is-even.json" contains "feasibility"
+    And the file ".kogen/local/readiness/is-even.json" contains "explicit rejection"
+    When the caller runs "kogen intent approve is-even"
+    Then the exit code is 5
+    And stdout contains "Readiness observations"
+
   @SHP-8 @AUT-1 @model:shaping
   Scenario: The final shaper repairs observed fixture failure then acknowledges legitimate product red
     Given the fake ChatGPT server plays script "shape-observed-repair"

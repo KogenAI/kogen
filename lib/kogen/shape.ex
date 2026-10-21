@@ -989,6 +989,8 @@ defmodule Kogen.Shape do
     - The builder receives your Intent, not the original request. Preserve settled non-secret literal inputs (paths, commands, names and values) needed by the requested behavior or required examples. Do not substitute guessed values or refer to facts that exist only in the original request.
     - Ask the caller (submit `questions`) only about material UI/UX choices the request leaves open, each with options (plain text; Kogen letters them) and one marked recommended. Decide technical details yourself. Never ask about things the request or the answers already settle.
     - Read the project with read_file, list_files and search_text before writing. Follow its README and conventions.
+    #{Kogen.Feasibility.guidance()}
+
     - Use `probe` only to prove a genuinely uncertain assumption the Intent depends on (a library call's behavior, a tool's availability, a command in this project). Most Intents need no probe. A failed probe is a finding: reshape around it, or ask if it is a UI/UX matter.
     - Probes run in a copy of the project outside the repository, so tools that trust folders (mise) may need `mise trust` first.
     - Kogen's own Quint runs in a probe as `"$KOGEN_NODE" "$KOGEN_QUINT" typecheck <file>` (also `test` and `run`): pass the model in the probe's files and check it before you submit.

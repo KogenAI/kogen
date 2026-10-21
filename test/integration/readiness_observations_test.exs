@@ -162,6 +162,126 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     assert executions(context) == 0
   end
 
+  test "SHP-8 declared checks cannot qualify replacement bytes inside their disposable probe", %{
+    suite: suite
+  } do
+    context = fixture!(suite)
+    observer = "features/steps/observed_steps.js"
+    source = "reject submitted bytes\n"
+    input = "control.txt"
+    File.write!(Path.join(context.repo, input), source)
+
+    for path <- [observer, input] do
+      check = %{
+        "name" => "support",
+        "command" => "printf 'replacement\\n' > #{path}; printf 'accepted\\n'",
+        "exit" => 0,
+        "output" => "accepted\n"
+      }
+
+      declaration = %{
+        "id" => "final-bytes",
+        "kind" => "capability",
+        "inputs" => [observer, input],
+        "observers" => [],
+        "checks" => [check]
+      }
+
+      proposed =
+        files("legitimate missing feature")
+        |> List.update_at(0, fn file ->
+          %{
+            file
+            | "content" =>
+                String.replace(
+                  file["content"],
+                  "- none",
+                  "- evidence: " <> JSON.encode!(declaration)
+                )
+          }
+        end)
+
+      for file <- proposed do
+        full = Path.join(context.repo, file["path"])
+        File.mkdir_p!(Path.dirname(full))
+        File.write!(full, file["content"])
+      end
+
+      {output, status} = Helpers.run_kogen(context, ["intent", "approve", "observed"])
+      assert status == 1, output
+      assert output =~ "final-bytes/support"
+      assert output =~ path
+      refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/observed.json"))
+
+      retained =
+        File.read!(Path.join(context.repo, ".kogen/local/readiness/observed-feasibility.ndjson"))
+
+      assert retained =~ "accepted"
+      assert File.read!(Path.join(context.repo, input)) == source
+      assert File.read!(Path.join(context.repo, observer)) == List.last(proposed)["content"]
+    end
+  end
+
+  test "SHP-8 feasibility feedback is bounded across obligations while full failures remain inspectable",
+       %{
+         suite: suite
+       } do
+    context = fixture!(suite)
+
+    declarations =
+      for id <- ["first-control", "last-control"] do
+        %{
+          "id" => id,
+          "kind" => "capability",
+          "inputs" => ["app.txt"],
+          "observers" => [],
+          "checks" => [
+            %{
+              "name" => "support",
+              "command" => ~s|node -e 'process.stdout.write("é".repeat(10000))'|,
+              "exit" => 0,
+              "output" => "supported\n"
+            }
+          ]
+        }
+      end
+
+    proposed =
+      files("legitimate missing feature")
+      |> List.update_at(0, fn file ->
+        %{
+          file
+          | "content" =>
+              String.replace(
+                file["content"],
+                "- none",
+                Enum.map_join(declarations, "\n", &("- evidence: " <> JSON.encode!(&1)))
+              )
+        }
+      end)
+
+    for file <- proposed do
+      full = Path.join(context.repo, file["path"])
+      File.mkdir_p!(Path.dirname(full))
+      File.write!(full, file["content"])
+    end
+
+    {output, 1} = Helpers.run_kogen(context, ["intent", "approve", "observed"])
+    assert String.valid?(output)
+    assert byte_size(output) < 17_000
+    assert output =~ "first-control/support"
+    assert output =~ "bytes omitted"
+
+    retained =
+      File.read!(Path.join(context.repo, ".kogen/local/readiness/observed-feasibility.ndjson"))
+      |> String.trim()
+      |> JSON.decode!()
+
+    assert Enum.map(retained, & &1["id"]) == ["first-control", "last-control"]
+    assert Enum.all?(retained, &(hd(&1["checks"])["output"] == String.duplicate("é", 10000)))
+    refute File.exists?(Path.join(context.repo, ".kogen/local/readiness/observed.json"))
+  end
+
   test "SHP-8 the final shaper sees a fixture failure and repairs it before ready", %{
     suite: suite
   } do

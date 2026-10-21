@@ -240,6 +240,16 @@ defmodule Kogen.Tools do
 
   # SHP-10: a scratch copy of the tracked files under the system temporary folder, 5 minutes.
   defp probe(command, files, ctx) do
+    case probe_result(command, files, ctx) do
+      %{status: status, timed_out: timeout, output: output, wall: wall} ->
+        "exit status: #{status}\ntimed_out: #{timeout}\nwall: #{wall} s\n" <> output
+
+      error ->
+        error
+    end
+  end
+
+  def probe_result(command, files, ctx) do
     scratch =
       Path.join(
         System.tmp_dir!(),
@@ -254,15 +264,48 @@ defmodule Kogen.Tools do
       case Enum.flat_map(files, &write_scratch(&1, scratch)) do
         [] ->
           t0 = System.monotonic_time(:millisecond)
+          inputs = Map.get(ctx, :evidence_inputs, %{})
+          before = Map.new(inputs, fn {path, _hash} -> {path, probe_input(scratch, path)} end)
           r = Bridge.exec(command, scratch, timeout_ms: 300_000)
           wall = Float.round((System.monotonic_time(:millisecond) - t0) / 1000, 1)
-          "exit status: #{r.status}\ntimed_out: #{r.timed_out}\nwall: #{wall} s\n" <> r.output
+
+          changes =
+            for {path, hash} <- inputs,
+                not match?({:file, _, ^hash}, before[path]) or
+                  probe_input(scratch, path) != before[path],
+                do: path
+
+          r = Map.put(r, :wall, wall)
+          if changes == [], do: r, else: Map.put(r, :input_changes, Enum.sort(changes))
 
         problems ->
           "error: " <> Enum.join(problems, "; ")
       end
     after
       File.rm_rf!(scratch)
+    end
+  end
+
+  # Final declared evidence must execute the submitted inputs, not replacements
+  # made in the disposable probe that the outer readiness guard cannot inspect.
+  defp probe_input(root, path) do
+    regular =
+      path
+      |> Path.split()
+      |> Enum.scan(root, &Path.join(&2, &1))
+      |> Enum.all?(fn part ->
+        case File.lstat(part) do
+          {:ok, %{type: type}} -> type in [:regular, :directory]
+          _ -> false
+        end
+      end)
+
+    with true <- regular,
+         {:ok, %{type: :regular, mode: mode}} <- File.lstat(Path.join(root, path)),
+         {:ok, bytes} <- File.read(Path.join(root, path)) do
+      {:file, Bitwise.band(mode, 0o111), Kogen.ShapeContext.hash(bytes)}
+    else
+      _ -> nil
     end
   end
 

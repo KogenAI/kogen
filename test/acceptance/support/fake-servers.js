@@ -444,6 +444,15 @@ class FakeServers {
         files[0].content = files[0].content.replace('# Add an is-even helper', '# Clarify the is-even helper');
         return { items: [functionCall('submit', { files: [files[0]] }, `shape_narrow_${ordinal}`)] };
       }
+      case 'shape-declared-rejection': {
+        const obligation = { id: 'local-route', kind: 'capability', inputs: ['calc.py'], observers: [], checks: [{
+          name: 'support', command: `python3 -c "import calc; print('explicit rejection'); raise SystemExit(23)"`,
+          exit: ordinal <= 2 ? 0 : 23, output: ordinal <= 2 ? 'supported\n' : 'explicit rejection\n',
+        }] };
+        const declared = intentFiles('is-even', { feasibility: '- evidence: ' + JSON.stringify(obligation) });
+        const submitted = ordinal === 2 || ordinal >= 4 ? [declared.find(file => file.path.endsWith('/acceptance.feature'))] : declared;
+        return { items: [functionCall('submit', { files: submitted }, `declared_${ordinal}`)] };
+      }
       case 'shape-observed-repair':
         if (ordinal === 1) {
           const step = files.find(file => file.path.endsWith('_steps.js'));

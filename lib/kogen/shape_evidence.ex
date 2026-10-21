@@ -64,7 +64,7 @@ defmodule Kogen.ShapeEvidence do
     end
   end
 
-  def offset(t), do: t - Process.get(:shape_evidence).start
+  def offset(t), do: t - (Process.get(:shape_evidence) || %{start: t}).start
 
   def provider(role, job, revision, scope, config, fun) do
     t = now()
@@ -213,9 +213,12 @@ defmodule Kogen.ShapeEvidence do
           event: "probe_result",
           started_ms: offset(t),
           wall_ms: ended - t,
-          status:
-            if(String.starts_with?(result, "exit status: 0\n"), do: "completed", else: "failed"),
-          timeout: String.contains?(result, "timed_out: true"),
+          status: if(probe_passed?(result), do: "completed", else: "failed"),
+          timeout:
+            if(is_map(result),
+              do: result.timed_out,
+              else: String.contains?(result, "timed_out: true")
+            ),
           detail: result
         })
       )
@@ -240,6 +243,9 @@ defmodule Kogen.ShapeEvidence do
         :erlang.raise(kind, reason, __STACKTRACE__)
     end
   end
+
+  defp probe_passed?(%{status: status}), do: status == 0
+  defp probe_passed?(result), do: String.starts_with?(result, "exit status: 0\n")
 
   def union(intervals) do
     intervals
