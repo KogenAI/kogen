@@ -36,8 +36,9 @@ defmodule Kogen.Integration.FakeProvider do
     |> Enum.flat_map(fn request ->
       (request.json["input"] || [])
       |> Enum.filter(&(&1["type"] == "function_call_output"))
-      |> Enum.map(& &1["output"])
     end)
+    |> Enum.uniq_by(& &1["call_id"])
+    |> Enum.map(& &1["output"])
   end
 
   def input_text(request) do

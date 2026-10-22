@@ -631,7 +631,28 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     do: Intent.hash(context.repo, Intent.baseline(context.repo, slug, Config.load!(context.repo)))
 
   defp head(context), do: Kogen.Git.head(context.repo)
-  defp submit(files), do: {:function, "submit", %{"files" => files}}
+
+  defp submit(files) do
+    id = System.unique_integer([:positive])
+
+    {:items,
+     [
+       %{
+         "type" => "function_call",
+         "id" => "function-read-#{id}",
+         "call_id" => "call-read-#{id}",
+         "name" => "read_file",
+         "arguments" => JSON.encode!(%{"path" => "README.md"})
+       },
+       %{
+         "type" => "function_call",
+         "id" => "function-submit-#{id}",
+         "call_id" => "call-submit-#{id}",
+         "name" => "submit",
+         "arguments" => JSON.encode!(%{"files" => files})
+       }
+     ]}
+  end
 
   defp script!(context, actions),
     do:

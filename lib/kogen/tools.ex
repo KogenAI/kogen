@@ -102,6 +102,24 @@ defmodule Kogen.Tools do
         ["pattern"]
       )
 
+  defp def_for("documentation"),
+    do:
+      fun(
+        "documentation",
+        "Shape documentation lookup discovers sources and retrieves current authoritative documentation.",
+        %{
+          "operation" => %{"type" => "string", "enum" => ["search", "fetch"]},
+          "query" => @str,
+          "url" => @str,
+          "base" => %{
+            "type" => "string",
+            "description" =>
+              "Optional origin. When present, every request in this call uses that origin and no other host."
+          }
+        },
+        ["operation"]
+      )
+
   defp def_for("probe"),
     do:
       fun(
@@ -140,6 +158,7 @@ defmodule Kogen.Tools do
     if name in ctx.tools, do: call(name, args, ctx), else: "error: unknown tool #{name}"
   end
 
+  defp call("documentation", args, _ctx), do: Kogen.Documentation.lookup(args)
   defp call("view_image", args, ctx), do: Kogen.Image.read(args, ctx)
 
   defp call("read_file", args, ctx) do

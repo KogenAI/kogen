@@ -25,6 +25,16 @@ function functionCall(name, args, id) {
   };
 }
 
+
+function inspectedSubmit(args, id) {
+  return {
+    items: [
+      functionCall('read_file', { path: 'README.md' }, `${id}_readme`),
+      functionCall('submit', args, id),
+    ],
+  };
+}
+
 function message(text, id = 'text') {
   return { type: 'message', id: `item_${id}`, role: 'assistant', content: [{ type: 'output_text', text }] };
 }
@@ -444,10 +454,10 @@ class FakeServers {
       case 'shape-narrow-retry': {
         if (ordinal === 1) {
           files[0].content = files[0].content.replace('(source: request)', '');
-          return { items: [functionCall('submit', { files }, 'shape_initial')] };
+          return inspectedSubmit({ files }, 'shape_initial');
         }
         files[0].content = files[0].content.replace('# Add an is-even helper', '# Clarify the is-even helper');
-        return { items: [functionCall('submit', { files: [files[0]] }, `shape_narrow_${ordinal}`)] };
+        return inspectedSubmit({ files: [files[0]] }, `shape_narrow_${ordinal}`);
       }
       case 'shape-declared-rejection': {
         const obligation = { id: 'local-route', kind: 'capability', inputs: ['calc.py'], observers: [], checks: [{
@@ -456,14 +466,14 @@ class FakeServers {
         }] };
         const declared = intentFiles('is-even', { feasibility: '- evidence: ' + JSON.stringify(obligation) });
         const submitted = ordinal === 2 || ordinal >= 4 ? [declared.find(file => file.path.endsWith('/acceptance.feature'))] : declared;
-        return { items: [functionCall('submit', { files: submitted }, `declared_${ordinal}`)] };
+        return inspectedSubmit({ files: submitted }, `declared_${ordinal}`);
       }
       case 'shape-observed-repair':
         if (ordinal === 1) {
           const step = files.find(file => file.path.endsWith('_steps.js'));
           step.content += "\nrequire('@cucumber/cucumber').Before(function () { throw new Error('unique fixture failure observation'); });\n";
         }
-        return { items: [functionCall('submit', { files }, `shape_observation_${ordinal}`)] };
+        return inspectedSubmit({ files }, `shape_observation_${ordinal}`);
       case 'shape-asks-one':
         return { items: [functionCall('submit', { questions: [{ question: 'What should is_even do with a non-integer?', options: [{ label: 'raise TypeError', recommended: true }, { label: 'return False' }] }] }, `shape_q_${ordinal}`)] };
       case 'shape-asks-two':
@@ -473,40 +483,46 @@ class FakeServers {
         ] }, `shape_q2_${ordinal}`)] };
       case 'shape-asks-one-then-writes':
         return record.text.includes('1: a')
-          ? { items: [functionCall('submit', { files: intentFiles('is-even', { decision: '(source: answer 1)' }) }, `shape_answer_${ordinal}`)] }
+          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: answer 1)' }) }, `shape_answer_${ordinal}`)
           : this.shapeResponse('shape-asks-one', ordinal, record);
       case 'shape-asks-two-then-writes':
         return record.text.includes('1: a') && record.text.includes('2: a')
-          ? { items: [functionCall('submit', { files: intentFiles('is-even', { decision: '(source: answer 1)\n- Booleans follow Python integer behavior. (source: answer 2)' }) }, `shape_answers_${ordinal}`)] }
+          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: answer 1)\n- Booleans follow Python integer behavior. (source: answer 2)' }) }, `shape_answers_${ordinal}`)
           : this.shapeResponse('shape-asks-two', ordinal, record);
       case 'shape-not-ready-then-asks':
         return record.text.includes('undefined step: When the caller doubles 4')
           ? { items: [functionCall('submit', { questions: [{ question: 'What should is_even do with a non-integer?', options: [{ label: 'raise TypeError', recommended: true }, { label: 'return False' }] }] }, `shape_after_not_ready_${ordinal}`)] }
-          : { items: [functionCall('submit', { files: intentFiles('is-even', { undefinedStep: true }) }, `shape_not_ready_${ordinal}`)] };
+          : inspectedSubmit({ files: intentFiles('is-even', { undefinedStep: true }) }, `shape_not_ready_${ordinal}`);
+      case 'shape-uninspected-submit':
+        return { items: [functionCall('submit', { files }, `shape_uninspected_${ordinal}`)] };
+      case 'shape-engineering-question':
+        return { items: [functionCall('submit', { questions: [{ question: 'Which protocol and endpoint should the integration use?', kind: 'engineering' }] }, `shape_engineering_${ordinal}`)] };
+      case 'shape-auth-handoff':
+        return { items: [functionCall('submit', { questions: [{ question: 'Sign in to the provider before shaping can check this account-scoped capability.', kind: 'handoff' }] }, `shape_handoff_${ordinal}`)] };
       case 'shape-invalid-three-times':
         return { items: [functionCall('submit', { files: [{ path: '../forbidden.txt', content: 'no' }] }, `shape_invalid_${ordinal}`)] };
       case 'shape-protected-conflict':
         return { items: [functionCall('submit', { blocked: { paths: ['.style.cfg'], reason: 'the requested check definition must change' } }, `shape_blocked_${ordinal}`)] };
       case 'shape-failed-and-undefined-step':
-        return { items: [functionCall('submit', { files: intentFiles('is-even', { undefinedStep: true, failedFirst: true }) }, `shape_mixed_${ordinal}`)] };
+        return inspectedSubmit({ files: intentFiles('is-even', { undefinedStep: true, failedFirst: true }) }, `shape_mixed_${ordinal}`);
       case 'shape-undefined-step':
-        return { items: [functionCall('submit', { files: intentFiles('is-even', { undefinedStep: true }) }, `shape_undefined_${ordinal}`)] };
+        return inspectedSubmit({ files: intentFiles('is-even', { undefinedStep: true }) }, `shape_undefined_${ordinal}`);
       case 'shape-failing-invariant':
-        return { items: [functionCall('submit', { files: counterFiles(true) }, `shape_model_${ordinal}`)] };
+        return inspectedSubmit({ files: counterFiles(true) }, `shape_model_${ordinal}`);
       case 'shape-probes-then-writes':
         {
           const result = this.toolOutput(record, 'probe');
           if (!result) return { items: [functionCall('probe', { command: "python3 -c 'print(1.5 % 2)'" }, `shape_probe_${ordinal}`)] };
-          return { items: [functionCall('submit', { files: intentFiles('is-even', { feasibility: probeFeasibility(result.output, 'Python returns a remainder of 1.5.') }) }, `shape_probe_submit_${ordinal}`)] };
+          return inspectedSubmit({ files: intentFiles('is-even', { feasibility: probeFeasibility(result.output, 'Python returns a remainder of 1.5.') }) }, `shape_probe_submit_${ordinal}`);
         }
       case 'shape-probe-hangs-then-writes':
         {
           const result = this.toolOutput(record, 'probe');
           if (!result) return { items: [functionCall('probe', { command: 'sleep 600' }, `shape_hang_${ordinal}`)] };
-          return { items: [functionCall('submit', { files: intentFiles('is-even', { feasibility: probeFeasibility(result.output, 'The probe exceeded its execution deadline.') }) }, `shape_hang_submit_${ordinal}`)] };
+          return inspectedSubmit({ files: intentFiles('is-even', { feasibility: probeFeasibility(result.output, 'The probe exceeded its execution deadline.') }) }, `shape_hang_submit_${ordinal}`);
         }
       case 'shape-edits-existing-step-file':
-        return { items: [functionCall('submit', { files: intentFiles('is-even', { extraStep: true }) }, `shape_edit_${ordinal}`)] };
+        return inspectedSubmit({ files: intentFiles('is-even', { extraStep: true }) }, `shape_edit_${ordinal}`);
       case '401-then-ok':
       case 'stream-cut-then-ok':
       case 'shape-ready-is-even':

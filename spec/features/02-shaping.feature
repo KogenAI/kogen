@@ -76,7 +76,7 @@ Feature: Shaping
     And the file ".kogen/intents/is-even/acceptance.feature" is unchanged
     And the file "features/steps/is_even_steps.js" is unchanged
     And the file ".kogen/local/approvals/is-even.json" does not exist
-    And request 1 offers exactly the tools "read_file, list_files, search_text, probe, submit_refinement"
+    And request 1 offers exactly the tools "read_file, list_files, search_text, probe, documentation, submit_refinement"
     And the original refinement readiness receipt has status "hit"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 5
@@ -224,7 +224,7 @@ Feature: Shaping
     And request 1 contains "paths currently matched by those patterns"
     And request 1 contains "automatic baseline"
     And request 1 contains "Approval freezes this baseline"
-    And request 1 offers exactly the tools "read_file, view_image, list_files, search_text, probe, submit"
+    And request 1 offers exactly the tools "read_file, view_image, list_files, search_text, probe, documentation, submit"
     And the file ".kogen/intents/is-even/intent.md" does not exist
     And the file ".kogen/local/approvals/is-even.json" does not exist
     And the fake ChatGPT server received 1 request
@@ -482,3 +482,64 @@ Feature: Shaping
     And stderr contains "kogen: running fix-1"
     And the file "features/steps/is_even_steps.js" contains "// formatted"
     And the file "README.md" is unchanged
+
+  @SHP-12
+  Scenario: The shaping request requires technical discovery
+    Given the fake ChatGPT server plays script "shape-ready-is-even"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 0
+    And request 1 contains "Shape owns discovery and settlement of material technical questions."
+    And request 1 contains "A trivial feature with no material technical uncertainty needs no probe, no sweep and no paid provider research."
+
+  @SHP-12
+  Scenario: A files submission without repository inspection is rejected
+    Given the fake ChatGPT server plays script "shape-uninspected-submit"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 1
+    And stdout contains "shape/invalid_output: the shaper's output was not a valid Intent after 3 attempts"
+    And stdout contains "shape/uninspected: inspect the relevant repository, configuration and authoritative material before declaring readiness"
+    And the folder ".kogen/intents/is-even" does not exist
+    And the fake ChatGPT server received 3 requests
+
+  @SHP-12
+  Scenario: An engineering question does not reach the caller
+    Given the fake ChatGPT server plays script "shape-engineering-question"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 1
+    And stdout contains "questions: decide technical questions inside shaping; only kind product or handoff may reach the caller"
+    And stdout does not contain "Questions for"
+    And the folder ".kogen/intents/is-even" does not exist
+
+  @SHP-12
+  Scenario: An authentication handoff still reaches the caller
+    Given the fake ChatGPT server plays script "shape-auth-handoff"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 5
+    And stdout contains "Questions for is-even:"
+    And stdout contains "This question is an authentication or security handoff, not a design choice."
+    And stdout contains "Sign in to the provider before shaping can check this account-scoped capability."
+    And the folder ".kogen/intents/is-even" does not exist
+
+  @SHP-13
+  Scenario: The shaping request requires documentation lookup
+    Given the fake ChatGPT server plays script "shape-ready-is-even"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 0
+    And request 1 contains "When a request materially depends on external, protocol, provider or library facts, Shape finds and retrieves current authoritative documentation itself."
+    And request 1 contains "Shape documentation lookup discovers sources and retrieves current authoritative documentation."
+    And request 1 contains "A trivial local edit needs no documentation lookup and no network access."
