@@ -543,3 +543,13 @@ Feature: Shaping
     And request 1 contains "When a request materially depends on external, protocol, provider or library facts, Shape finds and retrieves current authoritative documentation itself."
     And request 1 contains "Shape documentation lookup discovers sources and retrieves current authoritative documentation."
     And request 1 contains "A trivial local edit needs no documentation lookup and no network access."
+
+  @SHP-14
+  Scenario: The shaping request records documentation lookup evidence
+    Given the fake ChatGPT server plays script "shape-ready-is-even"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 0
+    And request 1 contains "Kogen records each documentation tool lookup as its own progress line, shaping event and retained record; a probe transcript and an optional Intent provenance line are not that record."

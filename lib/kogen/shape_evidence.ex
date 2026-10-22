@@ -244,6 +244,105 @@ defmodule Kogen.ShapeEvidence do
     end
   end
 
+  # One retained documentation lookup: progress is printed by the caller; the file and event are written here.
+  def retain_documentation(args, text) do
+    row = documentation_record(args, text)
+
+    if s = Process.get(:shape_evidence) do
+      path = Path.join(s.dir, "documentation.ndjson")
+      File.write!(path, JSON.encode!(row) <> "\n", [:append])
+      File.chmod!(path, 0o600)
+      File.chmod!(s.dir, 0o700)
+      record(Map.put(row, "event", "documentation_lookup"))
+    end
+
+    row
+  end
+
+  def documentation_progress(row) do
+    operation = row["operation"]
+    reference = documentation_reference(row)
+
+    {"kogen: documentation: #{operation} #{reference}",
+     "kogen: documentation result: #{operation} #{row["status"]}"}
+  end
+
+  defp documentation_record(args, text) when is_binary(text) do
+    case JSON.decode(text) do
+      {:ok, %{} = result} -> copy_documentation(result)
+      _ -> unsupported_documentation(args)
+    end
+  end
+
+  defp documentation_record(args, _text), do: unsupported_documentation(args)
+
+  defp copy_documentation(result) do
+    %{
+      "operation" => documentation_string(result["operation"]),
+      "status" => documentation_string(result["status"]),
+      "query" => documentation_string(result["query"]),
+      "url" => documentation_string(result["url"]),
+      "sources" => documentation_sources(result["sources"]),
+      "untrusted" => result["untrusted"] == true,
+      "truncated" => result["truncated"] == true,
+      "error" => documentation_string(result["error"])
+    }
+  end
+
+  defp unsupported_documentation(args) do
+    %{
+      "operation" => documentation_operation(args),
+      "status" => "unsupported",
+      "query" => documentation_call_string(args, "query"),
+      "url" => documentation_call_string(args, "url"),
+      "sources" => [],
+      "untrusted" => false,
+      "truncated" => false,
+      "error" => "documentation source unsupported"
+    }
+  end
+
+  defp documentation_operation(args) when is_map(args) do
+    case args["operation"] do
+      operation when operation in ["search", "fetch"] -> operation
+      _ -> "search"
+    end
+  end
+
+  defp documentation_operation(_args), do: "search"
+
+  defp documentation_call_string(args, key) when is_map(args) do
+    case args[key] do
+      value when is_binary(value) -> value
+      _ -> ""
+    end
+  end
+
+  defp documentation_call_string(_args, _key), do: ""
+
+  defp documentation_string(value) when is_binary(value), do: value
+  defp documentation_string(_value), do: ""
+
+  defp documentation_sources(sources) when is_list(sources) do
+    Enum.flat_map(sources, fn
+      %{"url" => url, "title" => title} when is_binary(url) and is_binary(title) ->
+        [%{"url" => url, "title" => title}]
+
+      _ ->
+        []
+    end)
+  end
+
+  defp documentation_sources(_sources), do: []
+
+  defp documentation_reference(row) do
+    cond do
+      row["url"] != "" -> String.replace(row["url"], ["\r", "\n"], " ")
+      row["query"] != "" -> String.replace(row["query"], ["\r", "\n"], " ")
+      true -> "-"
+    end
+  end
+
   defp probe_passed?(%{status: status}), do: status == 0
   defp probe_passed?(result), do: String.starts_with?(result, "exit status: 0\n")
 

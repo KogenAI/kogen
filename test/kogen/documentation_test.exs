@@ -420,4 +420,92 @@ defmodule Kogen.DocumentationTest do
         "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
     end
   end
+
+  test "a documentation lookup is retained without the document body" do
+    dir = Kogen.tmp_path("kogen-documentation-evidence")
+    on_exit(fn -> File.rm_rf!(dir) end)
+    Kogen.ShapeEvidence.start(dir)
+
+    search =
+      Kogen.ShapeEvidence.retain_documentation(
+        %{"operation" => "search", "query" => "cache controls"},
+        JSON.encode!(%{
+          "operation" => "search",
+          "status" => "retrieved",
+          "query" => "cache controls",
+          "url" => nil,
+          "sources" => [
+            %{
+              "url" => "http://127.0.0.1/cache-controls",
+              "title" => "Cache controls",
+              "rank" => 1
+            },
+            %{"url" => 1, "title" => "bad"},
+            "malformed"
+          ],
+          "body" => "DOC-FACT-7b9acb97",
+          "untrusted" => false,
+          "truncated" => false,
+          "error" => nil
+        })
+      )
+
+    assert search["url"] == ""
+    assert search["error"] == ""
+
+    assert search["sources"] == [
+             %{"url" => "http://127.0.0.1/cache-controls", "title" => "Cache controls"}
+           ]
+
+    refute Map.has_key?(search, "body")
+
+    broken =
+      Kogen.ShapeEvidence.retain_documentation(
+        %{"operation" => "browse", "query" => "missing\nprovider", "url" => 4},
+        "not json"
+      )
+
+    assert broken == %{
+             "operation" => "search",
+             "status" => "unsupported",
+             "query" => "missing\nprovider",
+             "url" => "",
+             "sources" => [],
+             "untrusted" => false,
+             "truncated" => false,
+             "error" => "documentation source unsupported"
+           }
+
+    {started, finished} = Kogen.ShapeEvidence.documentation_progress(broken)
+    assert started == "kogen: documentation: search missing provider"
+    assert finished == "kogen: documentation result: search unsupported"
+    refute started =~ "DOC-FACT-7b9acb97"
+
+    Kogen.ShapeEvidence.probe(fn -> "exit status: 0\nDOC-FACT-7b9acb97\n" end)
+    Kogen.ShapeEvidence.finish()
+
+    records =
+      Path.join(dir, "documentation.ndjson")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&JSON.decode!/1)
+
+    events =
+      Path.join(dir, "events.ndjson")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&JSON.decode!/1)
+      |> Enum.filter(&(&1["event"] == "documentation_lookup"))
+
+    assert length(records) == 2
+    assert Enum.map(events, &Map.drop(&1, ["event"])) == records
+    assert Enum.all?(events, &(&1["event"] == "documentation_lookup"))
+    refute File.read!(Path.join(dir, "documentation.ndjson")) =~ "DOC-FACT-7b9acb97"
+    assert File.read!(Path.join(dir, "events.ndjson")) =~ "DOC-FACT-7b9acb97"
+    assert Bitwise.band(File.stat!(Path.join(dir, "documentation.ndjson")).mode, 0o777) == 0o600
+    assert Bitwise.band(File.stat!(dir).mode, 0o777) == 0o700
+
+    assert Kogen.Shape.discovery_policy() =~
+             "Kogen records each documentation tool lookup as its own progress line, shaping event and retained record; a probe transcript and an optional Intent provenance line are not that record."
+  end
 end

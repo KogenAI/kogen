@@ -82,7 +82,7 @@ retains frozen originals in its evidence directory and cumulative proposals in
 scratch. Focused probes resolve named concrete uncertainties, not a manual replay
 of the entire acceptance suite immediately before the native readiness gate.
 
-Append-only `.kogen/local/shaping/<slug>/events.ndjson` survives completion.
+Append-only `.kogen/local/shaping/<slug>/events.ndjson` survives completion. Each documentation tool lookup appends one retained record to documentation.ndjson in that evidence directory. The record is not probe output, not an Intent provenance line, and not scope authority.
 Refinement writes its own events and original-readiness receipt. These are evidence,
 not cache, proposal, approval or shared-artifact authority. Supplied input bytes are
 not tokens. Usage can be unknown; model/probe phase times are interval unions,

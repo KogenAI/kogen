@@ -506,13 +506,22 @@ defmodule Kogen.Refine do
               submit(s, Shape.decode(call))
 
             true ->
+              args = Shape.decode(call)
+
               text =
                 if call["name"] == "probe",
                   do:
                     Kogen.ShapeEvidence.probe(fn ->
-                      Tools.run(call["name"], Shape.decode(call), ctx)
+                      Tools.run(call["name"], args, ctx)
                     end),
-                  else: Tools.run(call["name"], Shape.decode(call), ctx)
+                  else: Tools.run(call["name"], args, ctx)
+
+              if call["name"] == "documentation" do
+                retained = Kogen.ShapeEvidence.retain_documentation(args, text)
+                {started, finished} = Kogen.ShapeEvidence.documentation_progress(retained)
+                Bridge.progress(started)
+                Bridge.progress(finished)
+              end
 
               {text, nil, s}
           end
