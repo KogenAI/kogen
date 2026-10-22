@@ -16,8 +16,19 @@ defmodule Kogen.Review do
     # Only the frozen caller diagnostic follows the builder's initial authority
     # message here, never its replay, progress or reasoning.
     diagnostic = b.working_context |> get_in(["build", :mandatory]) |> List.wrap() |> Enum.drop(1)
-    input = [%{"role" => "user", "content" => material(b, pass)}] ++ diagnostic
     tools = Tools.defs(~w(read_file list_files search_text write_file shell)) ++ [submit_def()]
+
+    {b, input} =
+      Kogen.ReviewMaterial.prepare(
+        b,
+        pass.tree,
+        material(b, pass),
+        role,
+        instructions(),
+        tools,
+        diagnostic
+      )
+
     session = %{role: role, input: input, tools: tools, usage: Usage.zero(), attempts: []}
     finish(b, pass, session, verify)
   end
@@ -241,7 +252,7 @@ defmodule Kogen.Review do
             {outs ++ [Shape.output(call, "ignored: the review already has a verdict")], verdict}
 
           call["name"] == "submit_review" ->
-            case validate(Shape.decode(call), b) do
+            case validate(Shape.decode(call), b, input) do
               {:ok, v} ->
                 {outs ++ [Shape.output(call, "accepted")], v}
 
@@ -327,7 +338,7 @@ defmodule Kogen.Review do
   end
 
   # REV-4: `changes` has a blocking finding, `approve` none, every path is a repository file.
-  defp validate(%{"verdict" => verdict, "findings" => findings}, b)
+  defp validate(%{"verdict" => verdict, "findings" => findings}, b, input)
        when verdict in ["approve", "changes"] and is_list(findings) do
     problems =
       Enum.flat_map(findings, fn
@@ -358,12 +369,24 @@ defmodule Kogen.Review do
             []
         end
 
+    unread = if verdict == "approve", do: Kogen.ReviewMaterial.unread(b, input), else: []
+
+    problems =
+      if unread == [],
+        do: problems,
+        else:
+          problems ++
+            [
+              "Read all pinned source evidence before approving: #{length(unread)} unread part(s); " <>
+                "use read_file on " <> Enum.join(Enum.take(unread, 8), ", ")
+            ]
+
     if problems == [],
       do: {:ok, %{verdict: verdict, findings: findings}},
       else: {:error, problems}
   end
 
-  defp validate(_, _b),
+  defp validate(_, _b, _input),
     do: {:error, ["submit_review needs verdict (approve or changes) and a findings list"]}
 
   defp submit_def do
@@ -443,13 +466,41 @@ defmodule Kogen.Review do
         end
       end)
 
+    catalog =
+      Enum.map(files, fn path ->
+        entry = entries[path]
+        tree = if entry, do: pass.tree, else: b.start
+        object = Git.ok!(b.root, ["rev-parse", "#{tree}:#{path}"]) |> String.trim()
+
+        mode =
+          if entry,
+            do: entry.mode,
+            else:
+              Git.ok!(b.root, ["--literal-pathspecs", "ls-tree", b.start, "--", path])
+              |> String.split()
+              |> hd()
+
+        bytes =
+          if mode == "160000", do: object, else: Git.ok!(b.root, ["show", "#{tree}:#{path}"])
+
+        %{
+          "path" => path,
+          "status" =>
+            if(entry, do: if(path in existing, do: "changed", else: "added"), else: "deleted"),
+          "mode" => mode,
+          "git_object" => object,
+          "bytes" => byte_size(bytes),
+          "sha256" => Kogen.WorkingContext.hash(bytes)
+        }
+      end)
+
     model_text =
       case File.read(Path.join(b.root, Intent.model_path(b.slug))) do
         {:ok, t} -> "\n# model.qnt\n\n#{t}\n"
         _ -> ""
       end
 
-    """
+    authority = """
     # Intent
 
     #{b.intent.text}
@@ -475,7 +526,8 @@ defmodule Kogen.Review do
     Acceptance: #{b.config.acceptance_run}.
 
     """
-    |> Kogen.PromptCache.contract_blocks("""
+
+    source = """
     # Check results of the final pass
 
     #{results(pass)}
@@ -488,7 +540,9 @@ defmodule Kogen.Review do
     Newly added files appear here once, with their mode, instead of being repeated in the diff.
 
     #{texts}
-    """)
+    """
+
+    %{authority: authority, source: source, files: catalog, checks: results(pass)}
   end
 
   defp results(pass) do
@@ -509,7 +563,7 @@ defmodule Kogen.Review do
     """
     You review code that another model wrote to implement an approved Intent in this repository. The initial independent review follows a green pass; continued targeted requests may instead contain fresh red or unrun results, which supersede earlier green evidence. Perform one cohesive review and directly repair supported defects within that Intent using read_file, list_files, search_text, write_file and shell. You are a reviewer and fixer, not a source of serial suggestions for another builder. You do not see the builder's conversation.
 
-    Complete current source is already supplied for every changed/added file. New files appear once with their modes; the diff covers existing/deleted paths. Read other files only to fill a context gap, and batch independent lookups.
+    Complete current source is supplied inline, or, when the initial source exceeds the local window, in explicitly pinned private source parts with a complete path/mode/hash catalog. Read every pinned part through read_file before approving; a pointer alone is not inspection. The parts preserve the full diff and current text without clipping. New files appear once with their modes; the diff covers existing/deleted paths. Read other files only to fill a context gap, and batch independent lookups.
 
     For each substantive concern, establish the applicable requirement, a concrete violating path or counterexample, and its observable consequence. Do not invent extra requirements or turn hypothetical future refactors into defects. Inspect the affected behavior thoroughly and resolve the supported defects together.
 

@@ -81,3 +81,5 @@ Direct external-agent repairs are permitted during development. Preserve origina
 ## Changes Kogen builds (each Intent)
 
 Every changed behavior gets appropriate evidence. Often updating an existing test or scenario is enough. Wiring may need only a scenario. New rules with costly edge cases get unit or integration tests by the standard above. Obsolete tests go in the same change. There is no coverage % target; `mix test --cover` is information only. The rules for choosing tests, and for specifying a change so it can be tested, are `docs/testing-rules.md`; the shaper, the builder and the reviewer each get its text (SET-6).
+
+Oversized initial Review source is covered by `test/integration/review_material_test.exs` for exact UTF-8/control-byte reconstruction, existing tool caps, delivery/reset custody and irreducible authority, and chapter06 CLI scenarios for production material/body construction, complete source retrieval before approval and source-drift refusal. These local fake-provider journeys do not establish live provider interpretation or change account capabilities.

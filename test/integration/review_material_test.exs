@@ -1,0 +1,158 @@
+defmodule Kogen.Integration.ReviewMaterialTest do
+  use ExUnit.Case, async: true
+  alias Kogen.{ChatGPT, Git, ReviewMaterial, Run, Snapshot, Tools, WorkingContext}
+
+  setup do
+    root = Kogen.tmp_path("review-material")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+    Git.ok!(root, ["init", "-q"])
+    File.write!(Path.join(root, ".gitignore"), ".kogen/local/\n")
+    File.write!(Path.join(root, "app.txt"), "baseline\n")
+    Git.ok!(root, ["add", "."])
+
+    Git.ok!(root, [
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "commit",
+      "-qm",
+      "baseline"
+    ])
+
+    start = Git.head(root)
+    tree = Snapshot.tree(root, start, [])
+
+    b = %{
+      root: root,
+      start: start,
+      excluded: [],
+      run: Run.start(root),
+      review: 1,
+      continuation: %{stage: :review},
+      repairs: 0,
+      working_context: %{},
+      last_pass: %{tree: tree, green: true},
+      last_review: nil,
+      approval_bytes: Base.encode64(JSON.encode!(%{"sha256" => "exact approval"}))
+    }
+
+    {:ok, b: b, tree: tree}
+  end
+
+  test "small source remains inline without new custody", %{b: b, tree: tree} do
+    m = material("small source\n")
+    diagnostic = [%{"role" => "user", "content" => "frozen diagnostic\r\nΔ🙂"}]
+    {same, input} = ReviewMaterial.prepare(b, tree, m, role(), "policy", [], diagnostic)
+    assert same == b
+
+    assert input == [
+             %{
+               "role" => "user",
+               "content" => Kogen.PromptCache.contract_blocks(m.authority, m.source)
+             }
+             | diagnostic
+           ]
+
+    refute File.exists?(Path.join(b.run.dir, "review-source"))
+  end
+
+  test "exact UTF8 source delivery survives reset and damaged custody refuses", %{
+    b: b,
+    tree: tree
+  } do
+    source =
+      String.duplicate("literal Δ🙂\r\n\t\"\\\u0001", 30_000) <> String.duplicate(<<1>>, 12_000)
+
+    m = material(source)
+    {saved, input} = ReviewMaterial.prepare(b, tree, m, role(), "policy", [], [])
+
+    assert ChatGPT.request_body(role(), "policy", input, [])
+           |> WorkingContext.measure()
+           |> Map.fetch!(:fits)
+
+    assert hd(input)["content"] |> hd() |> Map.fetch!("text") == m.authority
+    refs = saved.working_context["review"].history
+    assert length(refs) > 1
+    ctx = %{root: b.root, protected: [], tools: ["read_file"]}
+
+    exchanges =
+      for {ref, n} <- Enum.with_index(refs) do
+        bytes = File.read!(ref["path"])
+        assert WorkingContext.hash(bytes) == ref["sha256"]
+        assert Bitwise.band(File.stat!(ref["path"]).mode, 0o777) == 0o600
+        assert Bitwise.band(File.stat!(Path.dirname(ref["path"])).mode, 0o777) == 0o700
+        output = Tools.run("read_file", %{"path" => ref["path"]}, ctx)
+        assert Tools.cut(output) == output
+
+        [
+          %{
+            "type" => "function_call",
+            "call_id" => "read-#{n}",
+            "name" => "read_file",
+            "arguments" => JSON.encode!(%{"path" => ref["path"]})
+          },
+          %{"type" => "function_call_output", "call_id" => "read-#{n}", "output" => output}
+        ]
+      end
+
+    assert Enum.map_join(refs, fn ref ->
+             JSON.decode!(File.read!(ref["path"]))["review_source"]["text"]
+           end) == source
+
+    assert length(ReviewMaterial.unread(saved, input)) == length(refs)
+    [first | _] = exchanges
+    [call, result] = first
+
+    for bad <- [
+          [call],
+          [call, %{result | "output" => "truncated"}],
+          [call, %{result | "call_id" => "wrong"}]
+        ] do
+      assert length(ReviewMaterial.unread(saved, input ++ bad)) == length(refs)
+    end
+
+    complete = input ++ List.flatten(exchanges)
+    assert ReviewMaterial.unread(saved, complete) == []
+    {reset, active} = WorkingContext.prepare(saved, "review", role(), "policy", complete, [])
+    assert length(active) < length(complete)
+    assert ReviewMaterial.unread(reset, active) == []
+    assert WorkingContext.validate!(reset) == reset
+    File.write!(hd(refs)["path"], "changed")
+
+    assert_raise Kogen.Error, ~r/history custody.*changed/, fn ->
+      WorkingContext.validate!(reset)
+    end
+  end
+
+  test "irreducible authority refuses without files or index changes", %{b: b, tree: tree} do
+    m = %{
+      material(String.duplicate("source", 120_000))
+      | authority: String.duplicate("authority", 70_000)
+    }
+
+    index = File.read!(Path.join(b.root, ".git/index"))
+
+    assert_raise Kogen.Error, ~r/mandatory authority.*524288.*131072.*checkpoint.*approval/, fn ->
+      ReviewMaterial.prepare(b, tree, m, role(), "policy", [], [])
+    end
+
+    assert File.read!(Path.join(b.root, ".git/index")) == index
+    refute File.exists?(Path.join(b.run.dir, "review-source"))
+  end
+
+  defp role, do: %{model: "fixture", effort: "high"}
+
+  defp material(source),
+    do: %{
+      authority: "exact approved literal Δ🙂\r\n\t  ",
+      source: source,
+      checks: "acceptance: passed (1 scenarios)",
+      files: []
+    }
+end

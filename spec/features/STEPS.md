@@ -249,6 +249,7 @@ One JavaScript regular expression per line.
 ^the\ request\ after\ verification\ pass\ (\d+)\ contains\ "([^"]*)"$
 ^the\ rest\ of\ stdout\ after\ a\ blank\ line\ is\ the\ help\ page\ "([^"]*)"\ from\ chapter\ (\d+)$
 ^the review request (\d+) contains "([^"]*)"$
+^the review request retains bounded complete pinned source evidence$
 ^the\ review\ request\ contains\ "([^"]*)"$
 ^the\ review\ request\ contains\ the\ diff\ of\ "([^"]*)"\ against\ the\ start\ HEAD$
 ^the\ review\ request\ contains\ the\ full\ text\ of\ the\ committed\ "([^"]*)"$

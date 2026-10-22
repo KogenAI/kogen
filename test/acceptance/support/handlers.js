@@ -428,6 +428,41 @@ function reviewAssertions(world, label, args) {
   const reviewOrdinal = label.match(/review request (\d+)/)?.[1] || (label.startsWith('the review request (') ? args.shift() : null);
   const request = matches[Number(reviewOrdinal || 1) - 1];
   assert.ok(request, 'no review request was received');
+  if (label === 'the review request retains bounded complete pinned source evidence') {
+    const catalog = request.text.split('\n').map(line => { try { return JSON.parse(line); } catch { return {}; } }).find(value => value.candidate_tree && Array.isArray(value.parts));
+    assert.ok(catalog && catalog.source_bytes > 524288, 'fixture did not cross the actual initial-source ceiling');
+    const parts = catalog.parts.map(part => {
+      const bytes = fs.readFileSync(part.path);
+      assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), part.sha256);
+      assert.equal(fs.statSync(part.path).mode & 0o777, 0o600);
+      assert.equal(fs.statSync(path.dirname(part.path)).mode & 0o777, 0o700);
+      const call = world.server.responseItems.find(item => item.kind === 'review' && item.name === 'read_file' && item.args.path === part.path);
+      assert.ok(call, `part was not read: ${part.path}`);
+      const continuation = matches.find(item => item.order > call.requestOrder && (item.body.input || []).some(out => out.type === 'function_call_output' && out.call_id === call.callId && out.output === '1\t' + bytes.toString('utf8').replace(/\n$/, '')));
+      assert.ok(continuation, 'complete pinned bytes were not delivered to a reviewer continuation');
+      return JSON.parse(bytes).review_source.text;
+    });
+    const full = parts.join('');
+    assert.equal(Buffer.byteLength(full), catalog.source_bytes);
+    assert.equal(crypto.createHash('sha256').update(full).digest('hex'), catalog.source_sha256);
+    const changed = git(world, ['diff', '--name-only', '-z', '--no-renames', catalog.start_head, catalog.candidate_tree]).split('\0').filter(Boolean);
+    assert.deepEqual(catalog.files.map(file => file.path).sort(), changed.sort(), 'candidate catalog omitted or invented a path');
+    const deleted = world.reviewDeletedSource;
+    assert.deepEqual(catalog.files.find(file => file.path === deleted.path), deleted.catalog, 'deleted literal-path metadata changed');
+    assert.ok(full.includes('-' + deleted.text), 'deleted literal-path content disappeared from the diff');
+    for (const file of catalog.files.filter(file => file.status !== 'deleted' && file.mode !== '160000')) {
+      const bytes = fs.readFileSync(projectFile(world, file.path));
+      assert.equal(bytes.length, file.bytes);
+      assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), file.sha256);
+      assert.ok(file.git_object && file.mode);
+      if (!bytes.includes(0)) assert.ok(full.includes(bytes.toString('utf8')), `complete source missing: ${file.path}`);
+    }
+    assert.ok(world.server.toolResults.some(item => item.name === 'submit_review' && String(item.output).includes('unread part')), 'premature approval was not rejected');
+    assert.ok(world.server.toolResults.some(item => item.callId === 'call_same_response_source_approval' && String(item.output).includes('unread part')), 'same-response reads counted as delivered before a reviewer continuation');
+    for (const item of matches) assert.ok(Buffer.byteLength(JSON.stringify(item.body)) <= 524288, 'oversized reviewer body reached transport');
+    assert.ok(request.text.includes(fs.readFileSync(projectFile(world, '.kogen/intents/is-even/intent.md'), 'utf8')), 'approved literals disappeared');
+    return;
+  }
   if (label.includes('used read_file on ')) {
     const call = world.server.responseItems.find(item => item.kind === 'review' && item.requestOrder >= request.order && item.name === 'read_file' && item.args.path === args[0]);
     assert.ok(call, `reviewer did not call read_file on ${args[0]}`);
@@ -1119,6 +1154,18 @@ async function dispatch(world, pattern, values, attachment) {
   }
   if (label.startsWith('the fake ChatGPT server plays script ')) {
     const name = args[0];
+    if (name.startsWith('build-large-review-evidence')) {
+      const literalPath = ':(glob)*';
+      const text = 'deleted literal source\n';
+      fs.writeFileSync(projectFile(world, literalPath), text);
+      git(world, ['--literal-pathspecs', 'add', '--', literalPath]);
+      git(world, ['commit', '-qm', 'Literal-path review fixture']);
+      world.reviewDeletedSource = { path: literalPath, text, catalog: {
+        path: literalPath, status: 'deleted', mode: '100644',
+        git_object: git(world, ['rev-parse', `HEAD:${literalPath}`]),
+        bytes: Buffer.byteLength(text), sha256: crypto.createHash('sha256').update(text).digest('hex'),
+      } };
+    }
     let pauseAt = null;
     let scriptArgs = {};
     if (label.includes(' pausing at ')) pauseAt = args[1];

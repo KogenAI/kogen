@@ -8,6 +8,8 @@ Kogen takes one requested feature through five steps in your own Git repository:
 4. **Review and fix**: an independent reviewer investigates and repairs concrete defects. Kogen verifies changed final files; failures stay with that reviewer. Maintenance preferences are notes. An unresolved substantive blocker stops with preserved work instead of restarting the builder/review loop.
 5. **Commit**: one commit of exactly the verified and reviewed contents, with your own Git configuration.
 
+Large initial reviews keep exact authority and check results in the working window, with complete candidate source/diff in private hash-bound parts when necessary. The reviewer reads every part before approval; missing or changed custody stops safely. This preserves the current context ceiling rather than silently clipping source.
+
 To explicitly continue a stopped checkpoint-capable Build in the same checkout, run
 `kogen intent resume <build-id> [--project <checkout>]`. Resume keeps the candidate and
 saved builder or independent reviewer conversation, and reuses only exact completed

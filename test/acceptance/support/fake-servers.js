@@ -526,6 +526,12 @@ class FakeServers {
     const writeFiles = list => list.map((file, i) => functionCall('write_file', file, `build_${name}_${ordinal}_${i}`));
     const finish = () => functionCall('finish', { summary: 'Implementation complete.' }, `finish_${name}_${ordinal}`);
     const calls = list => ({ items: [...writeFiles(list), finish()] });
+    if (name.startsWith('build-large-review-evidence') && ordinal <= 2) {
+      return { items: [...(ordinal === 1 ? [functionCall('shell', { command: "rm -- ':(glob)*'" }, 'delete_literal_source')] : []), functionCall('write_file', {
+        path: `large-source-${ordinal}.txt`,
+        content: `source-${ordinal}-sentinel\n` + 'literal Δ🙂\r\n'.repeat(24000),
+      }, `large_source_${ordinal}`)] };
+    }
     if (name === 'build-reports-blocker') {
       return { items: [functionCall('report_blocker', {
         paths: ['features/steps/is_even_steps.js'],
@@ -593,6 +599,21 @@ class FakeServers {
     const submit = (verdict, findings, id) => functionCall('submit_review', { verdict, findings }, id);
     const approve = (id = `review_approve_${ordinal}`) => submit('approve', [{ path: 'calc.py', line: 12, severity: 'note', message: 'the docstring could name TypeError' }], id);
     const output = id => (record.body.input || []).some(item => item.type === 'function_call_output' && item.call_id === `call_${id}`);
+    if (name.startsWith('build-large-review-evidence')) {
+      const catalog = record.text.split('\n').map(safeJson).find(value => Array.isArray(value.parts) && value.candidate_tree);
+      if (!catalog) throw new Error('large Review did not supply its complete pinned source catalog');
+      if (name.endsWith('-drift')) return { items: [
+        functionCall('write_file', { path: catalog.parts[0].path, content: 'altered pinned source' }, 'source_drift'),
+        approve('must_not_approve_drift'),
+      ] };
+      const read = new Set(this.toolResults.filter(item => item.kind === 'review' && item.name === 'read_file').map(item => path.resolve(item.args.path)));
+      const pending = catalog.parts.filter(part => !read.has(path.resolve(part.path)));
+      if (pending.length) return { items: [
+        ...pending.slice(0, 12).map((part, n) => functionCall('read_file', { path: part.path }, `source_read_${ordinal}_${n}`)),
+        ...(pending.length <= 12 ? [approve('same_response_source_approval')] : []),
+      ] };
+      return { items: [approve()] };
+    }
     if (name === 'build-review-invalid-twice') return { items: [submit('invalid', [], `review_invalid_${ordinal}`)] };
     if (name === 'build-review-unresolved') {
       if (record.text.includes('The caller explicitly resumed this blocked Build.')) return { items: [approve()] };
