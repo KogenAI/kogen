@@ -25,7 +25,7 @@ Resume is not automatic recovery or reapproval of a protected-contract blocker.
 
 A builder that observes a contradiction in protected fixtures can report it and stop with `candidate/build_blocked`. The report is labelled builder-reported, with evidence retained alongside the candidate, original index and approval; it does not authorize edits or skip successful checks. Ordinary implementation failures continue through repair.
 
-ChatGPT ("Sign in with ChatGPT", using your plan) is the only provider. Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
+Kogen supports ChatGPT ("Sign in with ChatGPT", using your plan) and SuperGrok subscription sign-in. Omitted per-role `provider` keeps ChatGPT; `provider: supergrok` selects `grok-4.7` with `low`, `medium`, `high` or `xhigh` effort. Sign in with `kogen provider login supergrok`: follow the printed HTTPS address and code; Kogen does not open a browser for this device flow. `kogen provider list` shows both local logins without network access. No API-key or paid-route fallback is used. See [provider configuration and qualification](docs/configuration.md#providers). Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
 
 ## Status
 
@@ -159,7 +159,7 @@ Preflight is not authorization: Build still performs its normal safety checks.
 local retained transport evidence without credentials or inference. It reports
 weighted cache ratios, nullable writes/lifetimes, unknown/inconsistent counts,
 failures and provenance; totals cover selected evidence, not just displayed rows.
-This is not account or weekly usage. Supported Responses routes request
+This is not account or weekly usage. Supported ChatGPT Responses routes request
 best-effort implicit 30m reuse while keeping full stateless encrypted replay,
 independent reviewers and fresh safety/verification gates. Cache acceptance is
 not proof of a hit, effective TTL or live account qualification. See

@@ -128,7 +128,7 @@ defmodule Kogen.Integration.FakeProvider do
         path == @provider_path ->
           JSON.decode!(body)
 
-        path == @token_path ->
+        path in [@token_path, "/oauth2/token", "/oauth2/device/code"] ->
           URI.decode_query(to_string(body))
 
         true ->
@@ -155,6 +155,14 @@ defmodule Kogen.Integration.FakeProvider do
       {{:provider, action, s.next + 1}, %{s | provider: [request | s.provider], next: s.next + 1}}
     end)
     |> then(fn {:provider, action, index} -> provider_action(action, index) end)
+  end
+
+  defp next_action(state, %{path: path} = request)
+       when path in ["/oauth2/token", "/oauth2/device/code"] do
+    Agent.get_and_update(state, fn s ->
+      action = Enum.at(s.script, s.next, {:json, 400, %{}})
+      {action, %{s | auth: [request | s.auth], next: s.next + 1}}
+    end)
   end
 
   defp next_action(_state, _request), do: {:json, 404, %{"error" => "not found"}}

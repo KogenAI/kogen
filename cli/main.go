@@ -24,7 +24,7 @@ const topPage = `Commands:
   completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
-  provider   Sign in to ChatGPT and show the login
+  provider   Sign in to a provider and show logins
   uninstall  Remove the installed kogen
   version    Show the Kogen version
   help       List commands
@@ -55,7 +55,8 @@ const providerPage = `Usage: kogen provider <command>
 
 Commands:
   login chatgpt      Sign in with a ChatGPT account
-  list               Show whether Kogen is signed in
+  login supergrok    Sign in with a SuperGrok subscription
+  list               Show which providers Kogen is signed in to
 
 Logins belong to this machine, never to a repo.
 `
@@ -64,13 +65,14 @@ var pages = map[string]string{"top": topPage, "intent": intentPage, "provider": 
 
 // invocation is a parsed command line.
 type invocation struct {
-	command string // init, shape, refine, approve, build, login, list, uninstall, version
-	slug    string
-	file    string
-	hash    string
-	by      string
-	project string
-	context *string
+	provider string
+	command  string // init, shape, refine, approve, build, login, list, uninstall, version
+	slug     string
+	file     string
+	hash     string
+	by       string
+	project  string
+	context  *string
 }
 
 type usageError struct{ msg, page string }
@@ -188,8 +190,9 @@ func parse(args []string) (*invocation, string, *usageError) {
 	}
 	switch leaf.command {
 	case "login":
-		if pos[0] != "chatgpt" {
-			return fail("unknown provider '%s' (supported: chatgpt)", pos[0])
+		inv.provider = pos[0]
+		if pos[0] != "chatgpt" && pos[0] != "supergrok" {
+			return fail("unknown provider '%s' (supported: chatgpt, supergrok)", pos[0])
 		}
 	case "shape":
 		inv.slug, inv.file = pos[0], pos[1]
@@ -268,6 +271,9 @@ func main() {
 		}
 	}
 	run := map[string]any{"type": "run", "command": inv.command, "cwd": cwd, "install_root": root, "env": environ()}
+	if inv.command == "login" {
+		run["provider"] = inv.provider
+	}
 	if diagnostic != nil {
 		run["context"] = diagnostic
 	}
@@ -391,7 +397,7 @@ func uninstall(root string) {
 		fail(3, "environment/uninstall_failed: "+err.Error())
 	}
 	fmt.Print("Uninstalled kogen from " + prefix + "\n")
-	fmt.Print("Kept your ChatGPT login; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id\n")
+	fmt.Print("Kept your ChatGPT and SuperGrok logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock\n")
 }
 
 // coreCommand starts the Elixir release in its own process group, so terminal signals reach

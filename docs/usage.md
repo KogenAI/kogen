@@ -58,7 +58,7 @@ classifications, not explanations inferred from local fingerprints.
 
 ## Best-effort reuse, correctness independent
 
-Supported documented GPT-5.6+ routes request implicit 30m caching. Unchanged
+Supported documented ChatGPT GPT-5.6+ routes request implicit 30m caching. Unchanged
 policy is an initial developer input_text block; the complete stable contract
 is a separate block in its original role, before changing evidence. These two
 explicit breakpoints plus the implicit slot use three of four writes. No filler,
@@ -198,3 +198,19 @@ responses, failed for explicit rejection, unknown for uncertain transport. Bound
 metadata events contain no data URLs/base64 or opaque reasoning. Explicit fallible
 observations remain assistant content in private replay; none of these events grants
 visual/design approval or bypasses checks. Fresh Review inspects its own pixels.
+
+## Provider identity and SuperGrok uncertainty
+
+New transport attempts and JSON `data.requests` rows carry `provider: "chatgpt"`
+or `"supergrok"` from the routed role. Older records without that field remain
+null; model names and endpoints never fill in missing provenance. SuperGrok
+requests omit cache options/breakpoints and developer policy messages, retaining
+cache status `unknown` with no boundaries. Missing token categories remain null,
+not zero. There is no cost, quota, dollar, charge-meter or savings field.
+
+These local rows cannot prove which subscription pool was charged. Account usage
+and Extra Usage require separately observed UI evidence during the human-owned
+[installed qualification handoff](configuration.md#installed-qualification-handoff).
+Endpoint choice, OAuth token type or an old harness success do not establish that
+fact. Kogen never reads another harness's stores, `~/.grok`, browser cookies or
+`XAI_API_KEY`; only its own private credentials file holds its tokens.

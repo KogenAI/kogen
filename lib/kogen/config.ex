@@ -259,10 +259,10 @@ defmodule Kogen.Config do
     Enum.reduce(pairs, {[], @default_models}, fn {role, line, node}, {probs, models} ->
       with true <- Map.has_key?(@default_models, role),
            {:map, _, kv} <- node,
-           [] <- for({k, _, _} <- kv, k not in ["model", "effort"], do: k),
+           [] <- for({k, _, _} <- kv, k not in ["model", "effort", "provider"], do: k),
            m when is_binary(m) <- string_at(kv, "model"),
            e when is_binary(e) <- string_at(kv, "effort") do
-        {probs, Map.put(models, role, %{model: m, effort: e})}
+        role_config(kv, "models.#{role}", line, m, e, probs, models, role)
       else
         false -> {[{line, "unknown key #{role}"} | probs], models}
         _ -> {[{line, "models.#{role} must be {model, effort}"} | probs], models}
@@ -289,8 +289,8 @@ defmodule Kogen.Config do
               e = string_at(kv, "effort")
 
               if is_binary(m) and String.trim(m) != "" and is_binary(e) and String.trim(e) != "" and
-                   Enum.all?(kv, fn {k, _, _} -> k in ~w(model effort) end),
-                 do: {p, Map.put(w, role, %{model: m, effort: e})},
+                   Enum.all?(kv, fn {k, _, _} -> k in ~w(model effort provider) end),
+                 do: role_config(kv, "shape_workers.#{role}", l, m, e, p, w, role),
                  else: {[{l, "shape_workers.#{role} must be {model, effort} strings"} | p], w}
 
             _ ->
@@ -312,6 +312,28 @@ defmodule Kogen.Config do
   end
 
   defp workers(node), do: {[{line(node), "shape_workers must be a mapping"}], %{enabled: false}}
+
+  defp role_config(kv, path, line, m, e, problems, roles, role) do
+    provider = string_at(kv, "provider")
+    present = Enum.any?(kv, fn {k, _, _} -> k == "provider" end)
+
+    cond do
+      present and provider not in ["chatgpt", "supergrok"] ->
+        {[{line, "#{path}.provider must be chatgpt or supergrok"} | problems], roles}
+
+      provider == "supergrok" and (m != "grok-4.7" or e not in ~w(low medium high xhigh)) ->
+        {[
+           {line,
+            "#{path}: supergrok supports model grok-4.7 with effort low, medium, high or xhigh"}
+           | problems
+         ], roles}
+
+      true ->
+        value = %{model: m, effort: e}
+        value = if present, do: Map.put(value, :provider, provider), else: value
+        {problems, Map.put(roles, role, value)}
+    end
+  end
 
   defp strings({:seq, _, items}, name) do
     Enum.reduce(items, {[], []}, fn

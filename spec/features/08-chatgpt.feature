@@ -12,6 +12,7 @@ Feature: ChatGPT connection
     Then stdout is:
       """
       chatgpt: not signed in
+      supergrok: not signed in
       """
     When the caller runs "kogen provider login chatgpt" in the background
     And the browser completes sign-in for "user@example.com"
@@ -29,6 +30,7 @@ Feature: ChatGPT connection
     Then stdout is:
       """
       chatgpt: signed in (user@example.com)
+      supergrok: not signed in
       """
 
   @GPT-4
@@ -42,6 +44,7 @@ Feature: ChatGPT connection
     And stdout is:
       """
       chatgpt: saved login cannot be used; run kogen provider login chatgpt
+      supergrok: not signed in
       """
 
   @GPT-2
@@ -257,3 +260,28 @@ Feature: ChatGPT connection
     When the caller runs "kogen intent usage --json"
     Then the exit code is 0
     And stdout contains "usage"
+
+  @GPT-4
+  Scenario: SuperGrok status is local and requires Kogen-owned credentials
+    Given the file "{home}/.kogen/credentials/supergrok.json" contains:
+      """
+      {"client_id":"fixture","referrer":"kogen","access_token":"synthetic-access","refresh_token":"synthetic-refresh","expires_at":0,"email":"grok@example.com"}
+      """
+    When the caller runs "kogen provider list"
+    Then the exit code is 0
+    And stdout is:
+      """
+      chatgpt: not signed in
+      supergrok: signed in (grok@example.com)
+      """
+    Given the file "{home}/.kogen/credentials/supergrok.json" contains:
+      """
+      {"client_id":"fixture","referrer":"another-harness","access_token":"synthetic-access","refresh_token":"synthetic-refresh","expires_at":0}
+      """
+    When the caller runs "kogen provider list"
+    Then the exit code is 0
+    And stdout is:
+      """
+      chatgpt: not signed in
+      supergrok: saved login cannot be used; run kogen provider login supergrok
+      """

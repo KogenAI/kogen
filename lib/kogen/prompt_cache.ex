@@ -10,7 +10,7 @@ defmodule Kogen.PromptCache do
 
   def fingerprint(value), do: fingerprint(JSON.encode!(value))
 
-  def prepare(model, policy, input, tools) do
+  def prepare(model, policy, input, tools, provider \\ "chatgpt") do
     key =
       fingerprint([Process.get(:provider_conversation_scope), policy, contract_identity(input)]).sha256
 
@@ -24,10 +24,11 @@ defmodule Kogen.PromptCache do
       })
 
     supported =
-      Regex.match?(
-        ~r/^gpt-(?:5\.(?:[6-9]|[1-9][0-9]+)(?:$|-)|(?:[6-9]|[1-9][0-9]+)(?:$|\.|-))/,
-        model
-      )
+      provider == "chatgpt" and
+        Regex.match?(
+          ~r/^gpt-(?:5\.(?:[6-9]|[1-9][0-9]+)(?:$|-)|(?:[6-9]|[1-9][0-9]+)(?:$|\.|-))/,
+          model
+        )
 
     enabled = supported and not state.unsupported
     {input, contract} = blocks(input, enabled)
@@ -57,7 +58,7 @@ defmodule Kogen.PromptCache do
           if(enabled,
             do: "requested",
             else:
-              if(supported or String.starts_with?(model, "gpt-5."),
+              if(provider == "chatgpt" and (supported or String.starts_with?(model, "gpt-5.")),
                 do: "unsupported",
                 else: "unknown"
               )

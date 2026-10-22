@@ -33,7 +33,7 @@ models:
 
 Init detects Go at the root or under `cli/`; other layouts can be supplied from the README. It deduplicates identical check commands; different commands remain because test paths and filters can change coverage. Machine bootstrap (`mix local.hex`, `mix local.rebar`) belongs in prerequisites rather than recurring setup.
 
-Progress goes to stderr: each build/review request names its model/effort, and completed shape/build/review responses report usage and wall time. Probe completion reports exit status, timeout and duration without echoing its output. A quiet in-flight request has no streaming activity indicator; each logical ChatGPT response has a fixed 30-minute absolute monotonic budget, starting before credentials and shared by refresh, lock waits, retries and backoff. Bytes do not renew it. Expiry cancels the HTTP request and reports `provider/unavailable: ChatGPT response wait exceeded 30 minutes` (exit 4); explicit cancellation keeps its signal exit. This is distinct from unlimited project command durations and adds no public timeout setting or retries. Build request durations are also stored as `wall_ms` in the existing run log.
+Progress goes to stderr: each build/review request names its model/effort, and completed shape/build/review responses report usage and wall time. Probe completion reports exit status, timeout and duration without echoing its output. A quiet in-flight request has no streaming activity indicator; each logical provider response has a fixed 30-minute absolute monotonic budget, starting before credentials and shared by refresh, lock waits, retries and backoff. Bytes do not renew it. Expiry cancels the HTTP request and reports `provider/unavailable: <ChatGPT|SuperGrok> response wait exceeded 30 minutes` (exit 4); explicit cancellation keeps its signal exit. This is distinct from unlimited project command durations and adds no public timeout setting or retries. Build request durations are also stored as `wall_ms` in the existing run log.
 
 A terminal `response.completed` with omitted output or `output: []` supplies final metadata, not a new empty result: Kogen retains complete streamed done items and any unfinished added items. Success still requires nonempty validated items at contiguous nonnegative indexes, no pending items, and no stream, envelope, status, error or usage failure. Deltas and partial tool arguments cannot authorize tools; function arguments must decode to a JSON object. Nonempty final output instead replaces the streamed output under the existing coverage and validation rules. Rejected responses retain unknown usage; bounded structural diagnostics describe retained state without exposing payloads and are not proof of compatibility success.
 
@@ -143,3 +143,69 @@ Preserve the complete original request, settled scope and supplied reproducing e
 Keep supplied historical evidence truthful: the changed installed cache request rejected `prompt_cache_options` in 17 seconds with HTTP 400, type `invalid_request_error`, code `invalid_parameter`, message "prompt_cache_options is not supported on this model", although old-driver Shape/Build calls succeeded. Its historical parameter field is UNKNOWN; omission in a local synthetic control is not evidence of historical absence. The paused f463 record retains completed84/failed0/unknown_usage0 plus one unknown failed request: separate `data.coverage.summary_unknown_requests` and `data.coverage.unrepresented_unknown_requests` are both 1. Arithmetic-only totals miss that uncertainty when coverage is omitted or zeroed; do not fabricate a retained failed or unknown-usage row. The completed legacy correction owns its eight installed-CLI cases; local readiness controls qualify the observer, not that product again.
 
 Native shell/read_file tools remain text-only; explicit view_image alone delivers bounded typed PNG pixels. DOM/action/data/contrast/overflow predicates, screenshot paths and exports do not establish actual pixel interpretation or visual approval. Distinguish successful selection, completed delivery, explicit fallible observations and required human/designer decisions. Retain a truthful external pixel-review handoff when native input is unavailable or refused. The Studio 45-image review found duplicate account shells, excessive mobile headers, raw metadata and weak history hierarchy despite 17 predicates; failed candidates did not reach formal independent review. Studio wholeUI b925 is now completed with root actual 45-image/canonical proof; historical visualhold descriptions are not current status. Cache042 remains OPEN: 20.624% and 0.9168% from different sessions prove neither benefit, quota effects nor miss causes. These historical controls do not authorize account probing; unchanged provider transport keeps its existing f91 qualification. Do not resume paused Go/014 work or duplicate completed Studio/legacy corrections.
+
+## Providers
+
+`models.shape`, `models.build`, `models.review` and each `shape_workers.read`,
+`probe`, `draft` selection accept optional `provider: chatgpt` or `provider: supergrok`.
+Omission preserves the exact legacy `{model, effort}` map, defaults and ChatGPT
+validation; explicit `chatgpt` routes identically. No template migration is required.
+SuperGrok supports exactly `model: grok-4.7` and `effort: low`, `medium`, `high` or
+`xhigh`; unsupported providers, models and efforts are configuration errors, not
+rewrites. A provider edit changes the protected approval baseline and prevents
+old Build resume. Obtain fresh exact approval.
+
+After installed qualification, the recommended subscription roles are:
+
+```yaml
+models:
+  shape: {provider: supergrok, model: grok-4.7, effort: high}
+  build: {provider: supergrok, model: grok-4.7, effort: medium}
+  review: {provider: supergrok, model: grok-4.7, effort: high}
+shape_workers:
+  enabled: false
+```
+
+This repository retains its existing ChatGPT bootstrap configuration. `kogen init`
+still requires ChatGPT. Shape checks its role and enabled workers, Refine checks
+Shape, and Build/resume checks Build and Review; unused providers need no login.
+
+`kogen provider login supergrok` uses Kogen's own device-code authorization with
+`referrer=kogen` and `User-Agent: kogen/<version id>`. Follow the HTTPS address and
+printed user code; no listener or browser is started. Polling follows the returned
+lifetime and interval (RFC default 5 seconds, minimum 1 second), adding 5 seconds
+on `slow_down`. Cancellation preserves signal exits. A rejected request never
+tries another identity. The grant must include `api:access` (absent scope means
+requested scope) and usable access/refresh tokens. Failures preserve earlier bytes.
+Credentials live only in `~/.kogen/credentials/supergrok.json` (0600), within 0700
+credentials and Kogen directories, atomically replaced under `supergrok.lock`.
+Refresh occurs 60 seconds before expiry and once after a 401, under the lock with
+re-read; omitted rotation keeps the refresh token. Status checks are offline.
+Uninstall preserves and names both providers' credential and lock files.
+
+SuperGrok uses streamed `https://api.x.ai/v1/responses` with full stateless encrypted
+replay, typed image outputs, reasoning effort, tools, `stream:true`, `store:false`
+and plain instructions. It sends no ChatGPT cache controls or developer policy,
+conversation header, cookies, harness identity or API key. A 402 billing/credit
+refusal or 403 access denial stops without retry/fallback; 401 refreshes once then
+retries once. Network/429/5xx/cut streams retain the 3-attempt 2s/8s policy. No
+subscription-pool exhaustion code is guessed. Unsupported capabilities fail
+honestly without dropping fields, changing effort or model, or switching routes.
+The 30-minute logical deadline, full rendered 524288-byte inclusive request ceiling,
+131072-token reserve, image guards and independent reviewer remain unchanged.
+
+### Installed qualification handoff
+
+Local fakes prove wiring and replay, not account capability, image interpretation,
+subscription pool charging or visual approval. After human consent and Kogen-owned
+login, run the smallest own-transport check in a throwaway repository: a short
+tool-using Shape with `provider: supergrok`, `model: grok-4.7`, `effort: low`,
+workers off. Record every actual request outcome, response IDs and nullable usage,
+and human-observed grok.com Settings → Usage before/after and Extra Usage (expected
+$0, not established by token rows). Unobserved account/UI facts remain UNKNOWN.
+Qualify the changed installed Shape/Build/fresh Review at high/medium/high before
+using these roles for the second provider Intent. Low-only external harness
+evidence does not qualify them. Tools, images, efforts and replay must stop honestly
+if refused; when native images are refused retain external preparation/pixel review.
+No automatic login, live probe, release/global installation, second provider Build
+or account charging claim is authorized by this handoff.

@@ -184,7 +184,7 @@ defmodule Kogen.Build do
       build_started(b)
 
       try do
-        ChatGPT.require_login!()
+        Kogen.Provider.require_roles!(Enum.map(~w(build review), &b.config.models[&1]))
 
         case b.continuation.stage do
           :builder ->
@@ -332,7 +332,7 @@ defmodule Kogen.Build do
 
     intent = Intent.read(root, slug)
     model = Intent.model(intent)
-    ChatGPT.require_login!()
+    Kogen.Provider.require_roles!(Enum.map(~w(build review), &config.models[&1]))
     Readiness.tools!(root, config)
     if model != :none, do: Checks.require_quint!()
     run = Run.start(root)

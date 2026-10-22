@@ -78,7 +78,13 @@ defmodule Kogen.Main do
   end
 
   defp dispatch(%{"command" => "init"} = r), do: Kogen.Init.run(r["project"])
-  defp dispatch(%{"command" => "list"}), do: Kogen.ChatGPT.status()
+
+  defp dispatch(%{"command" => "list"}) do
+    Kogen.ChatGPT.status()
+    Kogen.SuperGrok.status()
+  end
+
+  defp dispatch(%{"command" => "login", "provider" => "supergrok"}), do: Kogen.SuperGrok.login()
   defp dispatch(%{"command" => "login"}), do: Kogen.ChatGPT.login()
 
   defp dispatch(%{"command" => "shape"} = r),

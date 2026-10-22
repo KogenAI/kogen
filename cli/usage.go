@@ -622,7 +622,7 @@ func (s *usageScan) readRows(path string, base object, rows *[]object) {
 	}
 }
 
-var providerSafe = strings.Fields("operation_id attempt_id conversation_id timestamp phase role run_id slug lineage pass repair provider_response_id provider_request_id configured_model effective_model configured_effort effective_effort requested_service_tier effective_service_tier requested_reasoning_context effective_reasoning_context cache fingerprints usage usage_state wall_ms ttft_ms outcome error")
+var providerSafe = strings.Fields("provider operation_id attempt_id conversation_id timestamp phase role run_id slug lineage pass repair provider_response_id provider_request_id configured_model effective_model configured_effort effective_effort requested_service_tier effective_service_tier requested_reasoning_context effective_reasoning_context cache fingerprints usage usage_state wall_ms ttft_ms outcome error")
 
 func normalizeUsage(ev, base object) object {
 	r := object{}

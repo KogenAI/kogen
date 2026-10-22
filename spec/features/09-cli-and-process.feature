@@ -17,7 +17,7 @@ Feature: CLI and process
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
-        provider   Sign in to ChatGPT and show the login
+        provider   Sign in to a provider and show logins
         uninstall  Remove the installed kogen
         version    Show the Kogen version
         help       List commands
@@ -34,7 +34,7 @@ Feature: CLI and process
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
-        provider   Sign in to ChatGPT and show the login
+        provider   Sign in to a provider and show logins
         uninstall  Remove the installed kogen
         version    Show the Kogen version
         help       List commands
@@ -50,7 +50,7 @@ Feature: CLI and process
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
-        provider   Sign in to ChatGPT and show the login
+        provider   Sign in to a provider and show logins
         uninstall  Remove the installed kogen
         version    Show the Kogen version
         help       List commands
@@ -66,7 +66,7 @@ Feature: CLI and process
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
-        provider   Sign in to ChatGPT and show the login
+        provider   Sign in to a provider and show logins
         uninstall  Remove the installed kogen
         version    Show the Kogen version
         help       List commands
@@ -108,7 +108,7 @@ Feature: CLI and process
       | kogen intent build              | kogen intent build: missing <slug>                                 | intent   |
       | kogen intent build a --detach   | kogen intent build: unknown option '--detach'                      | intent   |
       | kogen intent shape a b c        | kogen intent shape: unexpected argument 'c'                        | intent   |
-      | kogen provider login grok       | kogen provider login: unknown provider 'grok' (supported: chatgpt) | provider |
+      | kogen provider login grok       | kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok) | provider |
 
   @CLI-2
   Scenario: The last repeated option wins and a missing project folder is an environment error
@@ -132,7 +132,8 @@ Feature: CLI and process
     And the Intent "is-even" from fixture "is-even" is shaped
     And the Kogen core logs at debug level
     When the caller runs "kogen intent approve is-even"
-    Then the first line of stdout is "Intent: is-even — Add an is-even helper"
+    Then the first line of stdout is "Source provenance: unavailable (legacy)"
+    And stdout contains "Intent: is-even — Add an is-even helper"
     And stderr contains core log lines
     And stdout does not contain "[debug]"
 

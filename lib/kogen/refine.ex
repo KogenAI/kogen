@@ -86,7 +86,7 @@ defmodule Kogen.Refine do
         |> String.trim()
 
       index = index_digest(index_path)
-      ChatGPT.require_login!()
+      Kogen.Provider.require_roles!([config.models["shape"]])
       Readiness.tools!(root, config)
       id = Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
       evidence = Path.join(root, ".kogen/local/refinements/#{id}")

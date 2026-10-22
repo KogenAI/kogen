@@ -185,4 +185,55 @@ defmodule Kogen.ConfigTest do
     assert error.detail == path
     assert error.lines == ["line 4: commands.acceptance.run must be a string or null"]
   end
+
+  test "provider selections preserve omission and validate every role and effort" do
+    for section <- ["models", "shape_workers"],
+        role <- if(section == "models", do: ~w(shape build review), else: ~w(read probe draft)) do
+      parse = fn fields ->
+        Config.parse!(
+          "version: 1\n#{section}:\n  #{role}: {#{fields}}\n",
+          "/project/.kogen/project.yaml"
+        )
+        |> Map.fetch!(String.to_existing_atom(section))
+        |> Map.fetch!(role)
+      end
+
+      assert parse.("model: fixture, effort: arbitrary") == %{
+               model: "fixture",
+               effort: "arbitrary"
+             }
+
+      assert parse.("model: fixture, effort: arbitrary, provider: chatgpt") == %{
+               model: "fixture",
+               effort: "arbitrary",
+               provider: "chatgpt"
+             }
+
+      for effort <- ~w(low medium high xhigh) do
+        assert parse.("model: grok-4.7, effort: #{effort}, provider: supergrok") == %{
+                 provider: "supergrok",
+                 model: "grok-4.7",
+                 effort: effort
+               }
+      end
+
+      for provider <- ["grok", "xai", "true", "null"] do
+        error =
+          assert_raise Error, fn ->
+            parse.("model: grok-4.7, effort: low, provider: #{provider}")
+          end
+
+        assert error.exit == 3
+        assert error.lines == ["line 3: #{section}.#{role}.provider must be chatgpt or supergrok"]
+      end
+
+      for fields <- ["model: grok-4, effort: high", "model: grok-4.7, effort: max"] do
+        error = assert_raise Error, fn -> parse.(fields <> ", provider: supergrok") end
+
+        assert error.lines == [
+                 "line 3: #{section}.#{role}: supergrok supports model grok-4.7 with effort low, medium, high or xhigh"
+               ]
+      end
+    end
+  end
 end

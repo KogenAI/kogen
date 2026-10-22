@@ -23,7 +23,7 @@ defmodule Kogen.Shape do
           )
 
       Readiness.tools!(root, config)
-      ChatGPT.require_login!()
+      Kogen.Provider.require_roles!(Kogen.Provider.shape_roles(config))
       state_dir = Path.join(root, ".kogen/local/shaping/#{slug}")
       state = read_state(state_dir)
 

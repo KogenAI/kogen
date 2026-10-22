@@ -8,11 +8,11 @@ This specification describes Kogen. Kogen takes a requested feature through five
 4. **Review and fix.** An independent reviewer repairs supported defects; changed contents receive external final verification. Unresolved substantive blockers stop with preserved work.
 5. **Commit.** Make one commit of exactly the verified and reviewed contents, signed or unsigned as the user's Git configuration says.
 
-Around these sit only the parts needed to use them: setup, the ChatGPT login and its status, the CLI, install and `kogen uninstall`. Callers are people at the command line or agents such as ChatGPT driving it.
+Around these sit only the parts needed to use them: setup, ChatGPT and SuperGrok login and status, the CLI, install and `kogen uninstall`. Callers are people at the command line or agents such as ChatGPT driving it.
 
 The specification decides technical details; UI/UX choices are asked of the person requesting a feature (SHP-6). It follows KISS and YAGNI: no speculative defensive branches, fallbacks, compatibility layers or future-proof abstractions.
 
-Out of scope: queues, background runs, daemons, sandboxing, history or archive services, recipe or plugin frameworks, distributed execution, other providers, API-key fallback, account switching, automatic updates, automatic Build recovery, rebasing, merging, pushing, and time or token limits on Builds.
+Out of scope: queues, background runs, daemons, sandboxing, history or archive services, recipe or plugin frameworks, distributed execution, providers beyond ChatGPT and SuperGrok, API-key fallback, account switching, automatic updates, automatic Build recovery, rebasing, merging, pushing, and time or token limits on Builds.
 
 ## Structure
 

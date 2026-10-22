@@ -1,6 +1,6 @@
-# 08 ChatGPT connection
+# 08 Subscription provider connections
 
-ChatGPT is the only provider. Kogen signs in with its own login flow, stores and refreshes its own credentials, streams responses with tool calls and usage, and reports provider problems precisely. It never borrows another tool's credentials, never falls back to a paid API key and never switches accounts. The route is OpenAI's official "Sign in with ChatGPT" plan usage for open-source apps, with dynamic client registration (developers.openai.com/siwc): authorization at `https://auth.openai.com/api/accounts/authorize`, tokens at `https://auth.openai.com/api/accounts/oauth/token`, inference at `https://api.openai.com/v1/responses`.
+ChatGPT and SuperGrok are supported providers. ChatGPT remains the default when a role omits `provider`. Kogen signs in with its own login flow, stores and refreshes its own credentials, streams responses with tool calls and usage, and reports provider problems precisely. It never borrows another tool's credentials, never falls back to a paid API key and never switches accounts. The route is OpenAI's official "Sign in with ChatGPT" plan usage for open-source apps, with dynamic client registration (developers.openai.com/siwc): authorization at `https://auth.openai.com/api/accounts/authorize`, tokens at `https://auth.openai.com/api/accounts/oauth/token`, inference at `https://api.openai.com/v1/responses`.
 
 **GPT-1 — Own login only.** Kogen uses only credentials from its own `kogen provider login chatgpt`. It never reads Codex, ChatGPT desktop, browser or Claude credential stores, and accepts no token from the environment or arguments.
 
@@ -8,9 +8,9 @@ ChatGPT is the only provider. Kogen signs in with its own login flow, stores and
 
 **GPT-3 — Storage.** Credentials (issued client ID, tokens, granted scope) live in `~/.kogen/credentials/chatgpt.json` (mode 0600, directory 0700), written atomically; the `ext_agent_host_id` lives in `~/.kogen/host-id`. The user signs in once per machine: every later command reuses these credentials, refreshes them (GPT-6) and saves each rotated refresh token, and a new login is needed only when a refresh fails for good. Kogen holds an exclusive lock on the credentials while it reads, refreshes and saves them: the lock file `~/.kogen/credentials/chatgpt.lock` is created exclusively (`O_EXCL`) and holds the pid; a process that finds it held waits, and a lock whose process is gone is removed. Under the lock Kogen re-reads `chatgpt.json` and uses a newer token if another process already refreshed.
 
-**GPT-4 — Status.** `kogen provider list` prints `chatgpt: signed in[ (<email>)]` only when `~/.kogen/credentials/chatgpt.json` contains the issued `client_id`, `refresh_token`, `access_token` and `expires_at`. A missing credentials file prints `chatgpt: not signed in`; a saved file missing any required value prints `chatgpt: saved login cannot be used; run kogen provider login chatgpt` (exit 0). It makes no request.
+**GPT-4 — Status.** The offline list prints the unchanged ChatGPT line followed by the SuperGrok line described below. `kogen provider list` prints `chatgpt: signed in[ (<email>)]` only when `~/.kogen/credentials/chatgpt.json` contains the issued `client_id`, `refresh_token`, `access_token` and `expires_at`. A missing credentials file prints `chatgpt: not signed in`; a saved file missing any required value prints `chatgpt: saved login cannot be used; run kogen provider login chatgpt` (exit 0). It makes no request.
 
-**GPT-5 — Login required.** `init` (on a repository with commits), shaping and Builds refuse before any request when no credentials file exists: `provider/login: not signed in; run kogen provider login chatgpt`. A saved credentials file missing any required value in GPT-4 is refused as `provider/login: saved login cannot be used; run kogen provider login chatgpt`. Both exit 4.
+**GPT-5 — Login required.** For provider-aware roles, check only the providers used: Shape plus enabled workers, Refine Shape, Build/resume Build and Review. Init remains ChatGPT. `init` (on a repository with commits), shaping and Builds refuse before any request when no credentials file exists: `provider/login: not signed in; run kogen provider login chatgpt`. A saved credentials file missing any required value in GPT-4 is refused as `provider/login: saved login cannot be used; run kogen provider login chatgpt`. Both exit 4.
 
 **GPT-6 — Refresh.** Kogen refreshes the access token (one hour) before it expires and once after a 401, with the issued client ID and without `scope`, saving the rotated refresh token before using the new access token (all of it under the GPT-3 lock). If the Responses API returns 401 and refresh fails, or the authorization server rejects the saved refresh token with `invalid_grant`, Kogen prints `provider/login: the ChatGPT sign-in was rejected; run kogen provider login chatgpt` (exit 4). Other failed proactive refreshes print `provider/login: the ChatGPT sign-in expired and could not be refreshed; run kogen provider login chatgpt` (exit 4).
 
@@ -45,3 +45,118 @@ All exit 4, except context exhaustion in a Build, which is LOOP-9 (exit 1). A re
 **GPT-11 — Test seams.** `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` replace the provider and authorization base URLs for tests and accept only `http://127.0.0.1:<port>` or `http://localhost:<port>`; any other value is `environment/invalid_test_seam: <NAME> must be http://127.0.0.1:<port> or http://localhost:<port>` (exit 3).
 
 Scenarios: `features/08-chatgpt.feature`.
+
+## SuperGrok subscription route
+
+The same status, secret, transport, usage and loopback-seam requirements apply to
+SuperGrok, with these provider-specific behaviors. The installed local-fake
+journeys are also maintained in the SuperGrok Intent's acceptance feature; they
+exercise login/refusals, Shape/Refine/Build/fresh Review, limits and legacy resume.
+
+### Selection and identity
+
+Every model role and Shape worker accepts optional `provider: chatgpt|supergrok`.
+Omission preserves exact legacy maps, request bytes, cache behavior and version-3
+checkpoint comparisons; explicit ChatGPT adds only the selected provider key.
+SuperGrok accepts exactly `grok-4.7`, effort `low|medium|high|xhigh`. Invalid provider
+values report `models.<role>.provider must be chatgpt or supergrok`; unsupported
+selections report `models.<role>: supergrok supports model grok-4.7 with effort low,
+medium, high or xhigh` (workers use `shape_workers.<role>`). Both use existing
+line-numbered `environment/project_config_invalid`, exit 3. A provider edit changes
+approval and refuses resume; no migration of existing saved configuration occurs.
+
+### Device login and storage
+
+`kogen provider login supergrok` POSTs `https://auth.x.ai/oauth2/device/code` with
+exact form fields `client_id=b1a00492-073a-47ea-816f-4c329264a828`,
+`scope=openid profile email offline_access grok-cli:access api:access`,
+`referrer=kogen`, and headers `accept: application/json`, `user-agent: kogen/<id>`
+(the second token of `Kogen.version()`). Non-200 stops after one request with
+`provider/login_failed: the SuperGrok device authorization request failed
+(<status>[ <error>])`. No alternate identity is attempted.
+
+Require nonempty device/user code and verification URI, positive integer
+`expires_in`, else `the SuperGrok device authorization response is incomplete`.
+Both verification URI and any complete URI must be absolute HTTPS with host,
+else `the SuperGrok verification address is not HTTPS`, before any polling.
+Stdout prints exactly `Continue with SuperGrok`, complete URI (else base URI),
+`Code: <user_code>`. No listener/browser starts; device codes are never printed.
+
+Token polls POST `https://auth.x.ai/oauth2/token` with only
+`grant_type=urn:ietf:params:oauth:grant-type:device_code`, device code and client ID.
+Wait at least the server interval before every poll, including first (absent = 5s,
+minimum 1s); pending continues and slow_down permanently adds 5s. No poll starts at
+or after the returned lifetime measured from the device answer. Denial prints
+`the SuperGrok sign-in was denied`; expired_token or deadline prints
+`the SuperGrok sign-in code expired`; other errors print
+`the SuperGrok token request failed (<status>[ <error>])`. All these messages use
+`provider/login_failed`, exit 4; cancellation instead retains signal exits and
+stops waiting/HTTP promptly. Failed login preserves earlier credential bytes.
+
+Grant access/refresh tokens must be nonempty, else `the SuperGrok sign-in returned
+no usable tokens`. Granted scope must contain api:access; absent scope means the
+requested scope. Missing access prints `SuperGrok API access was not granted; sign
+in again and allow it`. Successful atomic locked storage has exactly client_id,
+referrer=kogen, access_token, refresh_token, expires_at (now + expires_in, else
+3600), scope, and optional string email from id_token payload. Never persist
+id_token, user or device code. Credentials are 0600 at
+`~/.kogen/credentials/supergrok.json`, both parent directories 0700 even at umask
+022, using `supergrok.lock` with the same ownership/stale rules as ChatGPT.
+Success prints `supergrok signed in[ (<email>)]`, exit 0.
+
+Offline list prints `supergrok: not signed in`, `supergrok: signed in[ (<email>)]`,
+or `supergrok: saved login cannot be used; run kogen provider login supergrok`.
+Usability requires nonempty string client_id/access_token/refresh_token, integer
+expires_at and referrer exactly kogen. Required-role checks print
+`provider/login: not signed in; run kogen provider login supergrok` or
+`provider/login: saved login cannot be used; run kogen provider login supergrok`,
+exit 4, before any request.
+
+### Responses, refresh, refusal and retained evidence
+
+POST `https://api.x.ai/v1/responses` with application headers only Bearer
+authorization, accept text/event-stream, content-type application/json and Kogen
+user-agent. Transport framing headers remain ordinary HTTP. No harness,
+conversation, cookie or API-key header or previous_response_id. The existing
+request body retains model, reasoning.effort, encrypted reasoning include,
+complete ordered input, stream true, store false, plain instructions and tools
+with auto choice when present. SuperGrok never sends cache options/breakpoints or
+a developer policy message; cache status is unknown, boundaries empty. ChatGPT
+cache retry and subscription_sharing handling are ChatGPT-only.
+
+Refresh when expires_at - 60 <= now and once after 401, locked with re-read,
+POSTing only grant_type=refresh_token, refresh_token and client_id. Keep old
+refresh token if rotation omitted, expiry from expires_in else 3600. invalid_grant,
+any failure after 401, and a second 401 print `provider/login: the SuperGrok
+sign-in was rejected; run kogen provider login supergrok`; other proactive failure
+prints `provider/login: the SuperGrok sign-in expired and could not be refreshed;
+run kogen provider login supergrok`.
+
+402 stops with `provider/refused: SuperGrok reported a billing or credit limit
+(402[ <detail>]); Kogen uses only the subscription sign-in and never falls back to
+paid API usage`; 403 stops with `provider/refused: SuperGrok denied API access for
+this sign-in (403[ <detail>]); Kogen never falls back to an API key or another
+provider`. Neither retries. Network/429/5xx/cut streams retain 3 attempts with
+2s/8s waits, then `provider/unavailable: SuperGrok did not answer after 3 attempts:
+<detail>`. model_not_found prints `provider/model_unavailable: grok-4.7 is not
+available to this SuperGrok account`; context_length_exceeded retains context
+handling. Other 4xx print `provider/refused: SuperGrok refused the request:
+<status> <detail>`; unreadable output prints `provider/invalid_response: SuperGrok
+sent a response Kogen cannot read: <detail>`. Budget expiry prints
+`provider/unavailable: SuperGrok response wait exceeded 30 minutes`. All exit 4
+except existing Build context handling. No pool-exhaustion code is invented.
+
+Every new attempt carries the routed provider; usage JSON rows expose it and
+older missing fields stay null, never inferred. Absent categories stay null.
+There is no cost/quota/savings claim. Full encrypted reasoning, assistant phase,
+tool pairs, frozen typed images, full rendered 524288-byte inclusive ceiling and
+131072-token reserve, independent Review, pinned source delivery and version-3
+checkpoints are unchanged. Images are never textual substitutions. Local fakes
+establish plumbing, not account acceptance, pixel interpretation or pool charging.
+Kogen never reads other harness stores, ~/.grok, cookies or XAI_API_KEY, nor calls
+grok.com or cli-chat-proxy.grok.com. Both URL overrides keep the existing loopback
+rule. See the human-consent installed qualification handoff in
+[configuration.md](../../docs/configuration.md#installed-qualification-handoff):
+low tool-using Shape first, then changed installed high/medium/high roles before
+Intent 2, with actual nullable request evidence and separately observed account
+Usage/Extra Usage; unobserved facts remain UNKNOWN. No live probe is part of tests.

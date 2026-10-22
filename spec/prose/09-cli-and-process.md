@@ -18,6 +18,7 @@ kogen intent approve <slug> [<hash>] [--by <name>]
 kogen intent build <slug> [--context <file>]
 kogen intent resume <build-id>
 kogen provider login chatgpt
+kogen provider login supergrok
 kogen provider list
 kogen uninstall
 kogen version
@@ -26,7 +27,7 @@ kogen help
 
 `intent` commands also take `--project <checkout>` (default: the working directory). The checkout read interfaces and their JSON errors are specified below.
 
-**CLI-2 — Grammar.** `--name value` or `--name=value`; options anywhere after the command path; the last repeated option wins; `--` ends options; `-h` is the only short option; a lone `-` is a positional. `--help` or `-h` after a command path prints that path's existing help page (CLI-3), exit 0. `--version` prints the same version line as `kogen version` (CLI-10), exit 0. First match wins: `kogen` and `kogen help` print the top page and a group alone (`intent`, `provider`) its page (exit 0); otherwise `kogen help: unexpected argument '<token>'`, `kogen <group>: unknown command '<sub>'`, `kogen: unknown command '<x>'`, `kogen <path>: unknown option '<opt>'`, `kogen <path>: <opt> needs a value`, `kogen <path>: missing <name>`, `kogen <path>: unexpected argument '<arg>'`, `kogen provider <verb>: unknown provider '<p>' (supported: chatgpt)`, `kogen intent approve: <hash> must be 6 to 64 lowercase hex characters`, `kogen intent refine: <sha256> must be 64 lowercase hex characters`. A usage error prints the message, an empty line and the page of the group meant (the top page outside groups), exit 2. Only fresh `intent build` accepts `--context`; every other command path, including resume, rejects it with ordinary unknown-option grammar. The file is resolved relative to the caller working directory, not `--project`; it is never stdin or command text. A missing `--project` directory is `environment/project_unavailable: <path>` (exit 3).
+**CLI-2 — Grammar.** `--name value` or `--name=value`; options anywhere after the command path; the last repeated option wins; `--` ends options; `-h` is the only short option; a lone `-` is a positional. `--help` or `-h` after a command path prints that path's existing help page (CLI-3), exit 0. `--version` prints the same version line as `kogen version` (CLI-10), exit 0. First match wins: `kogen` and `kogen help` print the top page and a group alone (`intent`, `provider`) its page (exit 0); otherwise `kogen help: unexpected argument '<token>'`, `kogen <group>: unknown command '<sub>'`, `kogen: unknown command '<x>'`, `kogen <path>: unknown option '<opt>'`, `kogen <path>: <opt> needs a value`, `kogen <path>: missing <name>`, `kogen <path>: unexpected argument '<arg>'`, `kogen provider <verb>: unknown provider '<p>' (supported: chatgpt, supergrok)`, `kogen intent approve: <hash> must be 6 to 64 lowercase hex characters`, `kogen intent refine: <sha256> must be 64 lowercase hex characters`. A usage error prints the message, an empty line and the page of the group meant (the top page outside groups), exit 2. Only fresh `intent build` accepts `--context`; every other command path, including resume, rejects it with ordinary unknown-option grammar. The file is resolved relative to the caller working directory, not `--project`; it is never stdin or command text. A missing `--project` directory is `environment/project_unavailable: <path>` (exit 3).
 
 **CLI-3 — Help pages.** Byte-exact.
 
@@ -39,7 +40,7 @@ Commands:
   completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
-  provider   Sign in to ChatGPT and show the login
+  provider   Sign in to a provider and show logins
   uninstall  Remove the installed kogen
   version    Show the Kogen version
   help       List commands
@@ -74,7 +75,8 @@ Usage: kogen provider <command>
 
 Commands:
   login chatgpt      Sign in with a ChatGPT account
-  list               Show whether Kogen is signed in
+  login supergrok    Sign in with a SuperGrok subscription
+  list               Show which providers Kogen is signed in to
 
 Logins belong to this machine, never to a repo.
 ```

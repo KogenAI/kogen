@@ -73,7 +73,7 @@ Feature: Install and uninstall
     And stdout is:
       """
       Uninstalled kogen from {home}/.local
-      Kept your ChatGPT login; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id
+      Kept your ChatGPT and SuperGrok logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock
       """
     And the file "{home}/.local/bin/kogen" does not exist
     And the folder "{home}/.local/lib/kogen" does not exist

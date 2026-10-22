@@ -226,3 +226,16 @@ func TestUsageOversizedMetadataIsDisclosedAsCapped(t *testing.T) {
 		t.Fatal(s)
 	}
 }
+
+func TestUsageProviderIsRetainedNotInferred(t *testing.T) {
+	for _, provider := range []any{nil, "chatgpt", "supergrok"} {
+		p := object{"configured_model": "grok-4.7", "outcome": "completed"}
+		if provider != nil {
+			p["provider"] = provider
+		}
+		r := normalizeUsage(object{"event": "provider_attempt", "provider": p}, object{})
+		if r["provider"] != provider {
+			t.Fatalf("provider = %v, want %v", r["provider"], provider)
+		}
+	}
+}

@@ -3,6 +3,7 @@ defmodule Kogen.ChatGPT do
   ChatGPT through OpenAI's "Sign in with ChatGPT" plan usage for open-source apps (chapter 08):
   Kogen's own login with dynamic registration, its stored and refreshed credentials, and
   streamed `POST /v1/responses` requests with tool calls, usage and classified errors.
+  The Responses transport also routes SuperGrok roles through Kogen-owned subscription auth.
   """
   alias Kogen.{Bridge, Error, Lock}
 
@@ -281,7 +282,7 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp http_opts(deadline) do
+  def http_opts(deadline) do
     [
       connect_timeout: min(30_000, remaining(deadline)),
       timeout: remaining(deadline),
@@ -302,6 +303,12 @@ defmodule Kogen.ChatGPT do
   end
 
   defp access_token(deadline) do
+    if supergrok?(),
+      do: Kogen.SuperGrok.access_token(deadline),
+      else: chatgpt_access_token(deadline)
+  end
+
+  defp chatgpt_access_token(deadline) do
     remaining(deadline)
     c = stored_credentials!()
 
@@ -333,6 +340,12 @@ defmodule Kogen.ChatGPT do
 
   # GPT-6: refresh under an exclusive lock; another kogen may already have rotated the token.
   defp refreshed(stale, reason, deadline) do
+    if supergrok?(),
+      do: Kogen.SuperGrok.refreshed(stale, reason, deadline),
+      else: chatgpt_refreshed(stale, reason, deadline)
+  end
+
+  defp chatgpt_refreshed(stale, reason, deadline) do
     with_lock(deadline, fn ->
       c = stored_credentials!()
 
@@ -402,7 +415,8 @@ defmodule Kogen.ChatGPT do
             %Error{
               class: "provider",
               reason: "login",
-              detail: "the ChatGPT sign-in was rejected; run kogen provider login chatgpt",
+              detail:
+                "the #{provider_label()} sign-in was rejected; run kogen provider login #{if(supergrok?(), do: "supergrok", else: "chatgpt")}",
               exit: 4
             },
             diagnostics
@@ -416,7 +430,7 @@ defmodule Kogen.ChatGPT do
   effort. Returns `%{items: [...], usage: %{...}}`; raises `Kogen.Error` (class `provider`) on a
   provider failure, with reason `context_too_long` when the conversation no longer fits.
   """
-  def request_body(%{model: model, effort: effort}, instructions, input, tools) do
+  def request_body(%{model: model, effort: effort} = role, instructions, input, tools) do
     %{
       "model" => model,
       "reasoning" => %{"effort" => effort},
@@ -428,16 +442,20 @@ defmodule Kogen.ChatGPT do
     |> then(fn b ->
       if tools == [], do: b, else: Map.merge(b, %{"tools" => tools, "tool_choice" => "auto"})
     end)
-    |> Map.merge(Kogen.PromptCache.prepare(model, instructions, input, tools))
+    |> Map.merge(
+      Kogen.PromptCache.prepare(model, instructions, input, tools, Kogen.Provider.name(role))
+    )
   end
 
-  def respond(%{model: model, effort: effort}, instructions, input, tools, opts \\ []) do
+  def respond(%{model: model, effort: effort} = role, instructions, input, tools, opts \\ []) do
+    Process.put(:routed_provider, Kogen.Provider.name(role))
+
     deadline =
       System.monotonic_time(:millisecond) +
         min(1_800_000, Keyword.get(opts, :response_budget_ms, 1_800_000))
 
     body =
-      request_body(%{model: model, effort: effort}, instructions, input, tools) |> JSON.encode!()
+      request_body(role, instructions, input, tools) |> JSON.encode!()
 
     Process.put(:provider_operation, %{
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
@@ -446,7 +464,7 @@ defmodule Kogen.ChatGPT do
       effort: effort
     })
 
-    if Keyword.get(opts, :single_attempt, false) do
+    if Keyword.get(opts, :single_attempt, false) and not supergrok?() do
       case stream(body, access_token(deadline), deadline) do
         {:ok, result} ->
           result
@@ -502,21 +520,31 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp attempt(body, model, n, refreshed, retried_invalid, deadline) do
-    token = access_token(deadline)
+  defp attempt(body, model, n, refreshed, retried_invalid, deadline, token \\ nil) do
+    token = token || access_token(deadline)
 
     case stream(body, token, deadline) do
       {:ok, result} ->
         result
 
       {:unauthorized, error} when not refreshed ->
-        try do
-          refreshed(token, :after_401, deadline)
-        rescue
-          e in Error -> reraise with_diagnostics(e, diagnostics(error)), __STACKTRACE__
-        end
+        refreshed_token =
+          try do
+            refreshed(token, :after_401, deadline)
+          rescue
+            e in Error -> reraise with_diagnostics(e, diagnostics(error)), __STACKTRACE__
+          end
 
-        attempt(body, model, n, true, retried_invalid, deadline)
+        # A short-lived SuperGrok grant still gets exactly one retry after its 401 refresh.
+        attempt(
+          body,
+          model,
+          n,
+          true,
+          retried_invalid,
+          deadline,
+          if(supergrok?(), do: refreshed_token)
+        )
 
       {:unauthorized, error} ->
         login_rejected!(diagnostics(error))
@@ -536,7 +564,7 @@ defmodule Kogen.ChatGPT do
                 %Error{
                   class: "provider",
                   reason: "unavailable",
-                  detail: "ChatGPT did not answer after 3 attempts: #{message}",
+                  detail: "#{provider_label()} did not answer after 3 attempts: #{message}",
                   exit: 4
                 },
                 diagnostics
@@ -549,7 +577,7 @@ defmodule Kogen.ChatGPT do
         Error.raise!(
           "provider",
           "invalid_response",
-          "ChatGPT sent a response Kogen cannot read: #{detail}",
+          "#{provider_label()} sent a response Kogen cannot read: #{detail}",
           4
         )
 
@@ -567,17 +595,23 @@ defmodule Kogen.ChatGPT do
     end
   end
 
-  defp cache_refusal?(%{code: "invalid_parameter", message: message, param: param}),
+  defp supergrok?, do: Process.get(:routed_provider, "chatgpt") == "supergrok"
+  defp provider_label, do: if(supergrok?(), do: "SuperGrok", else: "ChatGPT")
+  defp detail_suffix(""), do: ""
+  defp detail_suffix(message), do: " " <> message
+  defp cache_refusal?(error), do: not supergrok?() and chatgpt_cache_refusal?(error)
+
+  defp chatgpt_cache_refusal?(%{code: "invalid_parameter", message: message, param: param}),
     do:
       message == "prompt_cache_options is not supported on this model" and
         param in [nil, "prompt_cache_options"]
 
-  defp cache_refusal?(%{code: code, param: param}) when is_binary(param),
+  defp chatgpt_cache_refusal?(%{code: code, param: param}) when is_binary(param),
     do:
       code in ~w(unknown_parameter unsupported_parameter subscription_sharing_unsupported_capability) and
         Regex.match?(~r/(?:^|[.\[])prompt_cache_(?:options|breakpoint)(?:$|[.\[])/, param)
 
-  defp cache_refusal?(_), do: false
+  defp chatgpt_cache_refusal?(_), do: false
 
   defp strip_cache(body) do
     b = JSON.decode!(body) |> Map.delete("prompt_cache_options")
@@ -604,11 +638,17 @@ defmodule Kogen.ChatGPT do
   end
 
   defp expired!,
-    do: Error.raise!("provider", "unavailable", "ChatGPT response wait exceeded 30 minutes", 4)
+    do:
+      Error.raise!(
+        "provider",
+        "unavailable",
+        "#{provider_label()} response wait exceeded 30 minutes",
+        4
+      )
 
-  defp remaining(nil), do: :infinity
+  def remaining(nil), do: :infinity
 
-  defp remaining(deadline) do
+  def remaining(deadline) do
     receive do
       {:proto, %{"type" => "cancel", "signal" => sig}} -> Bridge.cancelled(sig)
     after
@@ -661,7 +701,23 @@ defmodule Kogen.ChatGPT do
          model
        ) do
     cond do
-      code == "subscription_sharing_usage_limit_exceeded" ->
+      supergrok?() and status == 402 ->
+        Error.raise!(
+          "provider",
+          "refused",
+          "SuperGrok reported a billing or credit limit (402#{detail_suffix(message)}); Kogen uses only the subscription sign-in and never falls back to paid API usage",
+          4
+        )
+
+      supergrok?() and status == 403 ->
+        Error.raise!(
+          "provider",
+          "refused",
+          "SuperGrok denied API access for this sign-in (403#{detail_suffix(message)}); Kogen never falls back to an API key or another provider",
+          4
+        )
+
+      not supergrok?() and code == "subscription_sharing_usage_limit_exceeded" ->
         Error.raise!(
           "provider",
           "usage_limit",
@@ -670,11 +726,12 @@ defmodule Kogen.ChatGPT do
         )
 
       code == "model_not_found" or
-          (code == "subscription_sharing_unsupported_capability" and param == "model") ->
+          (not supergrok?() and code == "subscription_sharing_unsupported_capability" and
+             param == "model") ->
         Error.raise!(
           "provider",
           "model_unavailable",
-          "#{model} is not available to this ChatGPT account",
+          "#{model} is not available to this #{provider_label()} account",
           4
         )
 
@@ -690,7 +747,8 @@ defmodule Kogen.ChatGPT do
         Error.raise!(
           "provider",
           "refused",
-          "ChatGPT refused the request: #{status} #{message}" |> String.trim_trailing(),
+          "#{provider_label()} refused the request: #{status} #{message}"
+          |> String.trim_trailing(),
           4
         )
     end
@@ -791,6 +849,7 @@ defmodule Kogen.ChatGPT do
       Map.merge(
         meta,
         Map.merge(context, %{
+          provider: if(supergrok?(), do: "supergrok", else: "chatgpt"),
           operation_id: op.id,
           attempt_id: Kogen.tmp_path("attempt") |> Path.basename(),
           timestamp: timestamp,
@@ -828,12 +887,20 @@ defmodule Kogen.ChatGPT do
   end
 
   defp stream_request(body, token, deadline) do
-    url = String.to_charlist(api_base() <> "/responses")
+    url =
+      String.to_charlist(
+        if(supergrok?(), do: Kogen.SuperGrok.api_base(), else: api_base()) <> "/responses"
+      )
 
     headers = [
       {~c"authorization", String.to_charlist("Bearer " <> token)},
       {~c"accept", ~c"text/event-stream"}
     ]
+
+    headers =
+      if supergrok?(),
+        do: headers ++ [{~c"user-agent", String.to_charlist(Kogen.SuperGrok.user_agent())}],
+        else: headers
 
     {:ok, ref} =
       :httpc.request(:post, {url, headers, ~c"application/json", body}, http_opts(deadline),
@@ -1269,7 +1336,7 @@ defmodule Kogen.ChatGPT do
       status == 401 ->
         {:unauthorized, error}
 
-      err["code"] == "subscription_sharing_usage_limit_exceeded" ->
+      not supergrok?() and err["code"] == "subscription_sharing_usage_limit_exceeded" ->
         {:error, error}
 
       status == 429 or status >= 500 ->
