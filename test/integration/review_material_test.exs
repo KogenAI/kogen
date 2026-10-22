@@ -62,71 +62,78 @@ defmodule Kogen.Integration.ReviewMaterialTest do
     refute File.exists?(Path.join(b.run.dir, "review-source"))
   end
 
-  test "exact UTF8 source delivery survives reset and damaged custody refuses", %{
-    b: b,
-    tree: tree
-  } do
-    source =
-      String.duplicate("literal Δ🙂\r\n\t\"\\\u0001", 30_000) <> String.duplicate(<<1>>, 12_000)
+  for provider <- ["chatgpt", "opencode-go"] do
+    test "#{provider} exact UTF8 source delivery survives reset and damaged custody refuses", %{
+      b: b,
+      tree: tree
+    } do
+      role =
+        if unquote(provider) == "opencode-go",
+          do: %{provider: "opencode-go", model: "kimi-k3", effort: "high"},
+          else: role()
 
-    m = material(source)
-    {saved, input} = ReviewMaterial.prepare(b, tree, m, role(), "policy", [], [])
+      source =
+        String.duplicate("literal Δ🙂\r\n\t\"\\\u0001", 30_000) <> String.duplicate(<<1>>, 12_000)
 
-    assert ChatGPT.request_body(role(), "policy", input, [])
-           |> WorkingContext.measure()
-           |> Map.fetch!(:fits)
+      m = material(source)
+      {saved, input} = ReviewMaterial.prepare(b, tree, m, role, "policy", [], [])
 
-    assert hd(input)["content"] |> hd() |> Map.fetch!("text") == m.authority
-    refs = saved.working_context["review"].history
-    assert length(refs) > 1
-    ctx = %{root: b.root, protected: [], tools: ["read_file"]}
+      assert ChatGPT.request_body(role, "policy", input, [])
+             |> WorkingContext.measure()
+             |> Map.fetch!(:fits)
 
-    exchanges =
-      for {ref, n} <- Enum.with_index(refs) do
-        bytes = File.read!(ref["path"])
-        assert WorkingContext.hash(bytes) == ref["sha256"]
-        assert Bitwise.band(File.stat!(ref["path"]).mode, 0o777) == 0o600
-        assert Bitwise.band(File.stat!(Path.dirname(ref["path"])).mode, 0o777) == 0o700
-        output = Tools.run("read_file", %{"path" => ref["path"]}, ctx)
-        assert Tools.cut(output) == output
+      assert hd(input)["content"] |> hd() |> Map.fetch!("text") == m.authority
+      refs = saved.working_context["review"].history
+      assert length(refs) > 1
+      ctx = %{root: b.root, protected: [], tools: ["read_file"]}
 
-        [
-          %{
-            "type" => "function_call",
-            "call_id" => "read-#{n}",
-            "name" => "read_file",
-            "arguments" => JSON.encode!(%{"path" => ref["path"]})
-          },
-          %{"type" => "function_call_output", "call_id" => "read-#{n}", "output" => output}
-        ]
+      exchanges =
+        for {ref, n} <- Enum.with_index(refs) do
+          bytes = File.read!(ref["path"])
+          assert WorkingContext.hash(bytes) == ref["sha256"]
+          assert Bitwise.band(File.stat!(ref["path"]).mode, 0o777) == 0o600
+          assert Bitwise.band(File.stat!(Path.dirname(ref["path"])).mode, 0o777) == 0o700
+          output = Tools.run("read_file", %{"path" => ref["path"]}, ctx)
+          assert Tools.cut(output) == output
+
+          [
+            %{
+              "type" => "function_call",
+              "call_id" => "read-#{n}",
+              "name" => "read_file",
+              "arguments" => JSON.encode!(%{"path" => ref["path"]})
+            },
+            %{"type" => "function_call_output", "call_id" => "read-#{n}", "output" => output}
+          ]
+        end
+
+      assert Enum.map_join(refs, fn ref ->
+               JSON.decode!(File.read!(ref["path"]))["review_source"]["text"]
+             end) == source
+
+      assert length(ReviewMaterial.unread(saved, input)) == length(refs)
+      [first | _] = exchanges
+      [call, result] = first
+
+      for bad <- [
+            [call],
+            [call, %{result | "output" => "truncated"}],
+            [call, %{result | "call_id" => "wrong"}]
+          ] do
+        assert length(ReviewMaterial.unread(saved, input ++ bad)) == length(refs)
       end
 
-    assert Enum.map_join(refs, fn ref ->
-             JSON.decode!(File.read!(ref["path"]))["review_source"]["text"]
-           end) == source
+      complete = input ++ List.flatten(exchanges)
+      assert ReviewMaterial.unread(saved, complete) == []
+      {reset, active} = WorkingContext.prepare(saved, "review", role, "policy", complete, [])
+      assert length(active) < length(complete)
+      assert ReviewMaterial.unread(reset, active) == []
+      assert WorkingContext.validate!(reset) == reset
+      File.write!(hd(refs)["path"], "changed")
 
-    assert length(ReviewMaterial.unread(saved, input)) == length(refs)
-    [first | _] = exchanges
-    [call, result] = first
-
-    for bad <- [
-          [call],
-          [call, %{result | "output" => "truncated"}],
-          [call, %{result | "call_id" => "wrong"}]
-        ] do
-      assert length(ReviewMaterial.unread(saved, input ++ bad)) == length(refs)
-    end
-
-    complete = input ++ List.flatten(exchanges)
-    assert ReviewMaterial.unread(saved, complete) == []
-    {reset, active} = WorkingContext.prepare(saved, "review", role(), "policy", complete, [])
-    assert length(active) < length(complete)
-    assert ReviewMaterial.unread(reset, active) == []
-    assert WorkingContext.validate!(reset) == reset
-    File.write!(hd(refs)["path"], "changed")
-
-    assert_raise Kogen.Error, ~r/history custody.*changed/, fn ->
-      WorkingContext.validate!(reset)
+      assert_raise Kogen.Error, ~r/history custody.*changed/, fn ->
+        WorkingContext.validate!(reset)
+      end
     end
   end
 

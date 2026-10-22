@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 // session is one invocation of the core.
@@ -47,8 +48,11 @@ func (s *session) send(m map[string]any) {
 
 // run starts the core, says hello, sends the request and serves the core until it exits.
 func (s *session) run(req map[string]any) int {
+	restoreInput := func() {}
+	defer func() { restoreInput() }()
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(sigs)
 	s.core, s.in, s.out = coreCommand(s.root)
 
 	msgs := make(chan map[string]any)
@@ -86,6 +90,29 @@ func (s *session) run(req map[string]any) int {
 	for {
 		select {
 		case m := <-msgs:
+			if m["type"] == "secret_input" {
+				if info, err := os.Stdin.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
+					cmd := exec.Command("stty", "-g")
+					cmd.Stdin = os.Stdin
+					state, err := cmd.Output()
+					if err != nil {
+						s.send(map[string]any{"type": "secret_input", "ok": false})
+						continue
+					}
+					restoreInput = func() {
+						cmd := exec.Command("stty", strings.TrimSpace(string(state)))
+						cmd.Stdin = os.Stdin
+						_ = cmd.Run()
+					}
+					off := exec.Command("stty", "-echo")
+					off.Stdin = os.Stdin
+					if off.Run() != nil {
+						s.send(map[string]any{"type": "secret_input", "ok": false})
+						continue
+					}
+
+				}
+			}
 			if code, done := s.handle(m); done {
 				s.endCore()
 				s.stopGroups()
@@ -128,6 +155,19 @@ func (s *session) handle(m map[string]any) (int, bool) {
 		os.Stdout.WriteString(m["text"].(string))
 	case "exec":
 		go s.exec(m)
+	case "secret_input":
+		go func() {
+			var value []byte
+			var err error
+			if info, e := os.Stdin.Stat(); e == nil && info.Mode()&os.ModeCharDevice != 0 {
+				var line string
+				line, err = bufio.NewReader(os.Stdin).ReadString('\n')
+				value = []byte(line)
+			} else {
+				value, err = io.ReadAll(os.Stdin)
+			}
+			s.send(map[string]any{"type": "secret_input", "value": string(value), "ok": (err == nil || err == io.EOF) && utf8.Valid(value)})
+		}()
 	case "listen":
 		s.listen()
 		openBrowser(m["url"].(string))

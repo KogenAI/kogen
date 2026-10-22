@@ -303,9 +303,13 @@ defmodule Kogen.ChatGPT do
   end
 
   defp access_token(deadline) do
-    if supergrok?(),
-      do: Kogen.SuperGrok.access_token(deadline),
-      else: chatgpt_access_token(deadline)
+    if go?(),
+      do: Kogen.OpenCodeGo.require_login!(),
+      else:
+        if(supergrok?(),
+          do: Kogen.SuperGrok.access_token(deadline),
+          else: chatgpt_access_token(deadline)
+        )
   end
 
   defp chatgpt_access_token(deadline) do
@@ -416,7 +420,7 @@ defmodule Kogen.ChatGPT do
               class: "provider",
               reason: "login",
               detail:
-                "the #{provider_label()} sign-in was rejected; run kogen provider login #{if(supergrok?(), do: "supergrok", else: "chatgpt")}",
+                "the #{provider_label()} sign-in was rejected; run kogen provider login #{Process.get(:routed_provider, "chatgpt")}",
               exit: 4
             },
             diagnostics
@@ -430,6 +434,9 @@ defmodule Kogen.ChatGPT do
   effort. Returns `%{items: [...], usage: %{...}}`; raises `Kogen.Error` (class `provider`) on a
   provider failure, with reason `context_too_long` when the conversation no longer fits.
   """
+  def request_body(%{provider: "opencode-go"} = role, instructions, input, tools),
+    do: Kogen.OpenCodeGo.request_body(role, instructions, input, tools)
+
   def request_body(%{model: model, effort: effort} = role, instructions, input, tools) do
     %{
       "model" => model,
@@ -454,8 +461,19 @@ defmodule Kogen.ChatGPT do
       System.monotonic_time(:millisecond) +
         min(1_800_000, Keyword.get(opts, :response_budget_ms, 1_800_000))
 
-    body =
-      request_body(role, instructions, input, tools) |> JSON.encode!()
+    rendered = request_body(role, instructions, input, tools)
+    measured = Kogen.WorkingContext.measure(rendered)
+
+    unless measured.fits do
+      Error.raise!(
+        "candidate",
+        "context_budget_exceeded",
+        "Complete next request #{measured.rendered_bytes} bytes exceeds 524288; reserve 131072 tokens. Retain private source/replay; use external image preparation or ordinary Refine and new approval.",
+        1
+      )
+    end
+
+    body = JSON.encode!(rendered)
 
     Process.put(:provider_operation, %{
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
@@ -464,14 +482,14 @@ defmodule Kogen.ChatGPT do
       effort: effort
     })
 
-    if Keyword.get(opts, :single_attempt, false) and not supergrok?() do
+    if Keyword.get(opts, :single_attempt, false) and not supergrok?() and not go?() do
       case stream(body, access_token(deadline), deadline) do
         {:ok, result} ->
           result
 
         {:error, %{status: 400} = error} ->
           if cache_refusal?(error) and
-               Map.has_key?(JSON.decode!(body), "prompt_cache_options") do
+               has_cache?(body) do
             Kogen.PromptCache.unsupported()
             single_compatibility(strip_cache(body), model, deadline)
           else
@@ -528,6 +546,8 @@ defmodule Kogen.ChatGPT do
         result
 
       {:unauthorized, error} when not refreshed ->
+        if go?(), do: login_rejected!(diagnostics(error))
+
         refreshed_token =
           try do
             refreshed(token, :after_401, deadline)
@@ -570,7 +590,22 @@ defmodule Kogen.ChatGPT do
                 diagnostics
               )
 
+      {:go_error, reason, diagnostic} ->
+        raise with_diagnostics(
+                %Error{
+                  class: "provider",
+                  reason: reason,
+                  detail:
+                    "OpenCode Go refused HTTP #{diagnostic.status}; no route or model fallback",
+                  exit: 4
+                },
+                diagnostics(diagnostic)
+              )
+
       {:invalid, _detail} when not retried_invalid ->
+        if go?(),
+          do: Error.raise!("provider", "invalid_response", "malformed OpenCode Go completion", 4)
+
         attempt(body, model, n, refreshed, true, deadline)
 
       {:invalid, detail} ->
@@ -583,7 +618,7 @@ defmodule Kogen.ChatGPT do
 
       {:error, %{status: 400} = error} ->
         if cache_refusal?(error) and
-             Map.has_key?(JSON.decode!(body), "prompt_cache_options") do
+             has_cache?(body) do
           Kogen.PromptCache.unsupported()
           attempt(strip_cache(body), model, n, refreshed, retried_invalid, deadline)
         else
@@ -595,11 +630,30 @@ defmodule Kogen.ChatGPT do
     end
   end
 
+  defp go?, do: Process.get(:routed_provider) == "opencode-go"
+
+  defp has_cache?(body),
+    do:
+      Map.has_key?(
+        JSON.decode!(body),
+        if(supergrok?(), do: "prompt_cache_key", else: "prompt_cache_options")
+      )
+
   defp supergrok?, do: Process.get(:routed_provider, "chatgpt") == "supergrok"
-  defp provider_label, do: if(supergrok?(), do: "SuperGrok", else: "ChatGPT")
+
+  defp provider_label,
+    do: if(go?(), do: "OpenCode Go", else: if(supergrok?(), do: "SuperGrok", else: "ChatGPT"))
+
   defp detail_suffix(""), do: ""
   defp detail_suffix(message), do: " " <> message
-  defp cache_refusal?(error), do: not supergrok?() and chatgpt_cache_refusal?(error)
+
+  defp cache_refusal?(error) do
+    if supergrok?(),
+      do:
+        error[:code] in ~w(unknown_parameter unsupported_parameter) and
+          error[:param] == "prompt_cache_key",
+      else: not go?() and chatgpt_cache_refusal?(error)
+  end
 
   defp chatgpt_cache_refusal?(%{code: "invalid_parameter", message: message, param: param}),
     do:
@@ -614,6 +668,12 @@ defmodule Kogen.ChatGPT do
   defp chatgpt_cache_refusal?(_), do: false
 
   defp strip_cache(body) do
+    if supergrok?(),
+      do: JSON.encode!(Map.delete(JSON.decode!(body), "prompt_cache_key")),
+      else: strip_chatgpt_cache(body)
+  end
+
+  defp strip_chatgpt_cache(body) do
     b = JSON.decode!(body) |> Map.delete("prompt_cache_options")
 
     input =
@@ -768,12 +828,15 @@ defmodule Kogen.ChatGPT do
       Process.delete(:provider_request_id)
 
       try do
-        result = stream_request(body, token, deadline)
+        result =
+          if go?(),
+            do: Kogen.OpenCodeGo.transport(body, token, deadline),
+            else: stream_request(body, token, deadline)
 
         case result do
           {:error, %{status: 400} = error} ->
             if cache_refusal?(error) and
-                 Map.has_key?(JSON.decode!(body), "prompt_cache_options"),
+                 has_cache?(body),
                do: Kogen.PromptCache.unsupported()
 
           _ ->
@@ -830,7 +893,7 @@ defmodule Kogen.ChatGPT do
         else: meta.cache
 
     cache =
-      if Map.has_key?(JSON.decode!(body), "prompt_cache_options"),
+      if has_cache?(body),
         do: cache,
         else: %{cache | boundaries: [], comparison_response_id: nil}
 
@@ -849,7 +912,7 @@ defmodule Kogen.ChatGPT do
       Map.merge(
         meta,
         Map.merge(context, %{
-          provider: if(supergrok?(), do: "supergrok", else: "chatgpt"),
+          provider: Process.get(:routed_provider, "chatgpt"),
           operation_id: op.id,
           attempt_id: Kogen.tmp_path("attempt") |> Path.basename(),
           timestamp: timestamp,
@@ -876,6 +939,21 @@ defmodule Kogen.ChatGPT do
           error: if(completed, do: nil, else: "provider_failure")
         })
       )
+
+    provider =
+      case result do
+        {:go_error, _, d} ->
+          Map.put(provider, :provider_failure, diagnostics(d))
+
+        {:transient, %{provider_failure: d}} ->
+          Map.put(provider, :provider_failure, d)
+
+        {:unauthorized, d} ->
+          if go?(), do: Map.put(provider, :provider_failure, diagnostics(d)), else: provider
+
+        _ ->
+          provider
+      end
 
     if b = Process.get(:kogen_build) do
       Kogen.Run.log(b.run, %{event: "provider_attempt", provider: provider})

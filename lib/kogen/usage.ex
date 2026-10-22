@@ -34,10 +34,17 @@ defmodule Kogen.Usage do
   end
 
   def zero, do: %{input: 0, cached: 0, output: 0, reasoning: 0}
-  def add(a, b), do: Map.merge(a, b, fn _k, x, y -> x + y end)
+
+  def add(a, b),
+    do: Map.merge(a, b, fn _k, x, y -> if is_nil(x) or is_nil(y), do: nil, else: x + y end)
 
   def line(u),
-    do: "input=#{u.input} cached=#{u.cached} output=#{u.output} reasoning=#{u.reasoning}"
+    do:
+      "input=#{display(u.input)} cached=#{display(u.cached)} output=#{display(u.output)} reasoning=#{display(u.reasoning)}"
 
-  def total(u), do: u.input + u.output
+  defp display(nil), do: "unknown"
+  defp display(n), do: n
+
+  def total(u),
+    do: if(is_nil(u.input) or is_nil(u.output), do: "unknown", else: u.input + u.output)
 end

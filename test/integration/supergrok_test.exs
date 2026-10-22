@@ -159,6 +159,32 @@ defmodule Kogen.Integration.SuperGrokTest do
     assert (c.path |> File.read!() |> JSON.decode!())["refresh_token"] == "synthetic-refresh"
   end
 
+  for {status, error} <- [
+        {400, %{"code" => "unknown_parameter", "param" => "other"}},
+        {400, %{"code" => "invalid_parameter", "param" => "prompt_cache_key"}},
+        {400, %{"message" => "unsupported prompt_cache_key"}},
+        {402, %{"code" => "unknown_parameter", "param" => "prompt_cache_key"}},
+        {403, %{"code" => "unsupported_parameter", "param" => "prompt_cache_key"}}
+      ] do
+    test "HTTP #{status} #{JSON.encode!(error)} does not permit changing cache requests", c do
+      server =
+        connect(c.home, [{:http, unquote(status), %{"error" => unquote(Macro.escape(error))}}])
+
+      File.write!(
+        c.path,
+        JSON.encode!(%{@credentials | "expires_at" => System.system_time(:second) + 3600})
+      )
+
+      role = %{provider: "supergrok", model: "grok-4.7", effort: "high"}
+      assert_raise Error, fn -> Kogen.ChatGPT.respond(role, "policy", [], []) end
+      assert length(FakeProvider.provider_requests(server)) == 1
+      assert FakeProvider.auth_requests(server) == []
+      assert Kogen.ChatGPT.request_body(role, "policy", [], [])["prompt_cache_key"]
+      assert Process.get(:provider_attempt_metadata).outcome == "failed"
+      assert Process.get(:provider_attempt_metadata).usage_state == "unknown"
+    end
+  end
+
   test "device lifetime expires while a token poll is still in flight", c do
     server =
       connect(c.home, [

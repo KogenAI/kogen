@@ -176,6 +176,8 @@ defmodule Kogen.Image do
     end)
   end
 
+  def guard!(%{"messages" => _}, _owner), do: :ok
+
   def guard!(body, owner) do
     if entries(body["input"]) != [] do
       m = WorkingContext.measure(body)

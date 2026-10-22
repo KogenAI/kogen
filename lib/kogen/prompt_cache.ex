@@ -12,7 +12,15 @@ defmodule Kogen.PromptCache do
 
   def prepare(model, policy, input, tools, provider \\ "chatgpt") do
     key =
-      fingerprint([Process.get(:provider_conversation_scope), policy, contract_identity(input)]).sha256
+      fingerprint([
+        provider,
+        model,
+        Process.get(:provider_conversation_scope),
+        Process.get(:provider_working_window),
+        policy,
+        tools,
+        contract_identity(input)
+      ]).sha256
 
     states = Process.get(:prompt_cache_states, %{})
 
@@ -46,6 +54,11 @@ defmodule Kogen.PromptCache do
         else: %{"instructions" => policy, "input" => input}
 
     body = if enabled, do: Map.put(body, "prompt_cache_options", options), else: body
+
+    body =
+      if provider == "supergrok" and not state.unsupported,
+        do: Map.put(body, "prompt_cache_key", state.id),
+        else: body
 
     meta = %{
       conversation_id: state.id,
@@ -87,6 +100,7 @@ defmodule Kogen.PromptCache do
       }
     }
 
+    Process.put(:prompt_cache_states, Map.put(states, key, state))
     Process.put(:prompt_cache_current, {key, state, meta})
     body
   end

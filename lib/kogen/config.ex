@@ -318,8 +318,14 @@ defmodule Kogen.Config do
     present = Enum.any?(kv, fn {k, _, _} -> k == "provider" end)
 
     cond do
-      present and provider not in ["chatgpt", "supergrok"] ->
-        {[{line, "#{path}.provider must be chatgpt or supergrok"} | problems], roles}
+      present and provider not in ["chatgpt", "supergrok", "opencode-go"] ->
+        {[{line, "#{path}.provider must be chatgpt, supergrok or opencode-go"} | problems], roles}
+
+      provider == "opencode-go" and (m != "kimi-k3" or e not in ~w(default high)) ->
+        {[
+           {line, "#{path}: opencode-go supports model kimi-k3 with effort default or high"}
+           | problems
+         ], roles}
 
       provider == "supergrok" and (m != "grok-4.7" or e not in ~w(low medium high xhigh)) ->
         {[

@@ -214,3 +214,22 @@ and Extra Usage require separately observed UI evidence during the human-owned
 Endpoint choice, OAuth token type or an old harness success do not establish that
 fact. Kogen never reads another harness's stores, `~/.grok`, browser cookies or
 `XAI_API_KEY`; only its own private credentials file holds its tokens.
+
+
+## OpenCode Go and provider routing
+
+Go normalizes prompt_tokens, prompt_tokens_details.cached_tokens, completion_tokens
+and completion_tokens_details.reasoning_tokens to input/cached/output/reasoning.
+Missing counts, cache writes, effective effort, applied TTL and miss causes remain
+unknown/null, never invented zero. Requested high is not measured effective strength.
+Rows retain opencode-go/model/configured effort, actual request/response IDs when
+present, physical attempts and logical operation identity. Weighted ratios, failure
+and unknown coverage, deduplication and lineage apply unchanged. A refused attempt
+is not a cache miss with zero cost. Analytical events contain no key, prompt,
+reasoning, tool output or raw envelope. Complete replay lives only in private custody.
+
+Go uses x-opencode-session with no inferred explicit controls/TTL. SuperGrok sends
+prompt_cache_key in the Responses body with the narrowly guarded one-time
+unsupported-parameter fallback (see configuration.md). Acceptance is not a benefit
+or savings claim. ChatGPT's recognized in-conversation/checkpoint fallback remains;
+there is no cross-run registry. Cache042 remains OPEN, with miss causes UNKNOWN.

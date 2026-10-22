@@ -23,7 +23,7 @@ const LEGACY_BODY = '{"include":["reasoning.encrypted_content"],"input":[{"conte
 // Header names the native 007087b9 ChatGPT transport sends; SuperGrok adds only user-agent.
 const LEGACY_HEADER_NAMES = ['accept', 'authorization', 'connection', 'content-length', 'content-type', 'host'];
 const SUPERGROK_HEADER_NAMES = [...LEGACY_HEADER_NAMES, 'user-agent'].sort();
-const BODY_KEYS = ['include', 'input', 'instructions', 'model', 'reasoning', 'store', 'stream', 'tool_choice', 'tools'];
+const BODY_KEYS = ['include', 'input', 'instructions', 'model', 'prompt_cache_key', 'reasoning', 'store', 'stream', 'tool_choice', 'tools'];
 const SECRET_PREFIXES = ['SG_FAKE_ACCESS_', 'SG_FAKE_REFRESH_', 'SG_FAKE_DEVICE_CODE_', 'SG_FAKE_SIGNATURE_'];
 const WORKFLOW_EFFORTS = { shape: 'high', refine: 'high', build: 'medium', review: 'high' };
 
@@ -104,7 +104,7 @@ function credentialObserver(c, expected) {
   });
 }
 
-// SuperGrok Responses request: exact identity/header set and a cache-control-free body.
+// SuperGrok Responses request: exact identity/header set and a provider-specific routing key body.
 function wireObserver(r, d) {
   return holds(() => {
     assert.equal(r.method, 'POST'); assert.equal(r.path, '/v1/responses');
@@ -116,6 +116,7 @@ function wireObserver(r, d) {
     assert.deepEqual(keys(r.headers), SUPERGROK_HEADER_NAMES);
     const b = r.json;
     assert.deepEqual(keys(b), b.tools && b.tools.length ? BODY_KEYS : BODY_KEYS.filter(k => !['tool_choice', 'tools'].includes(k)));
+    assert.equal(typeof b.prompt_cache_key, 'string'); assert.ok(b.prompt_cache_key.length > 0);
     assert.equal(b.model, d.model || 'grok-4.7');
     assert.ok(['low', 'medium', 'high', 'xhigh'].includes(b.reasoning.effort)); assert.deepEqual(keys(b.reasoning), ['effort']);
     if (d.efforts) { assert.ok(Object.hasOwn(d.efforts, r.owner)); assert.equal(b.reasoning.effort, d.efforts[r.owner]); }
@@ -1027,7 +1028,7 @@ function control() {
 
 // Pre-feature native requests turned into the contract's SuperGrok form (synthetic identity only).
 function supergrokForm(native) {
-  return native.map(r => ({ ...structuredClone(r), provider: 'supergrok', headers: { ...r.headers, authorization: 'Bearer SG_FAKE_ACCESS_0_DO_NOT_LEAK', 'user-agent': 'kogen/007087b9' } }));
+  return native.map(r => ({ ...structuredClone(r), provider: 'supergrok', json: {...r.json, prompt_cache_key: 'synthetic-control-session'}, headers: { ...r.headers, authorization: 'Bearer SG_FAKE_ACCESS_0_DO_NOT_LEAK', 'user-agent': 'kogen/007087b9' } }));
 }
 
 function controlChecks(g) {

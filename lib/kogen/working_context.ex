@@ -75,6 +75,7 @@ defmodule Kogen.WorkingContext do
         observations: []
       })
 
+    Process.put(:provider_working_window, length(state.history))
     body = fn items -> Kogen.ChatGPT.request_body(role, instructions, items, tools) end
     measured = measure(body.(input))
 
@@ -127,6 +128,7 @@ defmodule Kogen.WorkingContext do
 
       mandatory = state.mandatory ++ [message]
       reduced = mandatory ++ newest_exchange(input)
+      Process.put(:provider_working_window, length(history))
       next = measure(body.(reduced))
       mandatory_size = measure(body.(mandatory)).rendered_bytes
 

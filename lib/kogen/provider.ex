@@ -8,6 +8,7 @@ defmodule Kogen.Provider do
     |> Enum.uniq()
     |> Enum.each(fn
       "chatgpt" -> Kogen.ChatGPT.require_login!()
+      "opencode-go" -> Kogen.OpenCodeGo.require_login!()
       "supergrok" -> Kogen.SuperGrok.require_login!()
     end)
   end

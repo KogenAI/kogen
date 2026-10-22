@@ -217,6 +217,23 @@ defmodule Kogen.ConfigTest do
                }
       end
 
+      for effort <- ~w(default high) do
+        assert parse.("model: kimi-k3, effort: #{effort}, provider: opencode-go") == %{
+                 provider: "opencode-go",
+                 model: "kimi-k3",
+                 effort: effort
+               }
+      end
+
+      for fields <- [
+            "model: grok-4.7, effort: high",
+            "model: gpt-6.1-sol, effort: high",
+            "model: claude-haiku-5-5, effort: high",
+            "model: kimi-k3, effort: xhigh"
+          ] do
+        assert_raise Error, fn -> parse.(fields <> ", provider: opencode-go") end
+      end
+
       for provider <- ["grok", "xai", "true", "null"] do
         error =
           assert_raise Error, fn ->
@@ -224,7 +241,10 @@ defmodule Kogen.ConfigTest do
           end
 
         assert error.exit == 3
-        assert error.lines == ["line 3: #{section}.#{role}.provider must be chatgpt or supergrok"]
+
+        assert error.lines == [
+                 "line 3: #{section}.#{role}.provider must be chatgpt, supergrok or opencode-go"
+               ]
       end
 
       for fields <- ["model: grok-4, effort: high", "model: grok-4.7, effort: max"] do

@@ -147,7 +147,7 @@ Native shell/read_file tools remain text-only; explicit view_image alone deliver
 ## Providers
 
 `models.shape`, `models.build`, `models.review` and each `shape_workers.read`,
-`probe`, `draft` selection accept optional `provider: chatgpt` or `provider: supergrok`.
+`probe`, `draft` selection accept optional `provider: chatgpt`, `provider: supergrok` or `provider: opencode-go`.
 Omission preserves the exact legacy `{model, effort}` map, defaults and ChatGPT
 validation; explicit `chatgpt` routes identically. No template migration is required.
 SuperGrok supports exactly `model: grok-4.7` and `effort: low`, `medium`, `high` or
@@ -166,8 +166,8 @@ shape_workers:
   enabled: false
 ```
 
-This repository retains its existing ChatGPT bootstrap configuration. `kogen init`
-still requires ChatGPT. Shape checks its role and enabled workers, Refine checks
+This repository retains its existing ChatGPT bootstrap configuration. Automatic command discovery with bare `kogen init`
+still requires ChatGPT; configuration-first bootstrap below does not. Shape checks its role and enabled workers, Refine checks
 Shape, and Build/resume checks Build and Review; unused providers need no login.
 
 `kogen provider login supergrok` uses Kogen's own device-code authorization with
@@ -181,7 +181,7 @@ Credentials live only in `~/.kogen/credentials/supergrok.json` (0600), within 07
 credentials and Kogen directories, atomically replaced under `supergrok.lock`.
 Refresh occurs 60 seconds before expiry and once after a 401, under the lock with
 re-read; omitted rotation keeps the refresh token. Status checks are offline.
-Uninstall preserves and names both providers' credential and lock files.
+Uninstall preserves and names all three providers' credential and lock files.
 
 SuperGrok uses streamed `https://api.x.ai/v1/responses` with full stateless encrypted
 replay, typed image outputs, reasoning effort, tools, `stream:true`, `store:false`
@@ -207,5 +207,110 @@ Qualify the changed installed Shape/Build/fresh Review at high/medium/high befor
 using these roles for the second provider Intent. Low-only external harness
 evidence does not qualify them. Tools, images, efforts and replay must stop honestly
 if refused; when native images are refused retain external preparation/pixel review.
-No automatic login, live probe, release/global installation, second provider Build
+No automatic login, live probe, release/global installation or automatic provider Build
 or account charging claim is authorized by this handoff.
+
+
+### OpenCode Go and role presets
+
+Select `provider: opencode-go`, `model: kimi-k3`, `effort: high` or `default` explicitly.
+`default` omits `reasoning_effort`; high sends the requested string `high`. Effective
+effort remains null unless actually reported: accepted high is not evidence of
+stronger reasoning. Other Go models and efforts fail configuration before inference.
+GPT stays on ChatGPT, Grok on SuperGrok, Claude awaits a separate connection.
+The initial Kimi-only allowlist reflects documented model and retained tools/reasoning
+evidence, not a qualified general OpenAI-compatible catalogue. The
+[upstream catalogue](https://opencode.ai/docs/go/) is discovery only. Free promotions
+are not unlimited: time, region, availability and rate restrictions apply. None is
+a default or fallback. ChatGPT can build again (steering-13 supersedes its temporary
+conservation window); there is no account-credit toggle.
+
+Complete version-1 starting templates (not verified project checks):
+- [OpenCode Go only](presets/opencode-go-only.yaml): Kimi/high for all roles.
+- [SuperGrok only](presets/supergrok-only.yaml): Grok high/medium/high.
+- [Three subscriptions](presets/three-subscriptions.yaml): ChatGPT GPT-6.1-sol/high,
+  Go Kimi/high, SuperGrok Grok/high.
+- [SuperGrok and Go](presets/supergrok-opencode-go.yaml): Grok/high, Kimi/high, Grok/high.
+
+These are explicit starting tradeoffs, not benchmark winners or a fallback policy.
+Workers remain disabled. No preset is automatically applied to this repository.
+For **configuration-first** bootstrap without ChatGPT, prepare your real
+`.kogen/project.yaml` from a preset, replace empty setup/fix/check/protect lists and
+null acceptance run/steps_dir with your own reviewed project commands and acceptance,
+then use the existing `kogen init` leftover-configuration commit path. Commit your
+application first. Bare init discovery still requires ChatGPT. No preset command,
+init provider selector or automatic router is added.
+
+`kogen provider login opencode-go` accepts only your personal workspace key on stdin
+(piped input supported; interactive input is not echoed). Do not put keys in argv,
+environment, operator files or another harness. Kogen stores only provider and api_key
+in `~/.kogen/credentials/opencode-go.json`, atomically under `opencode-go.lock`, with
+0600 file and 0700 custody directories. Empty, invalid, interrupted or failed saves
+leave the prior credential unchanged. Login performs no network calls; `opencode-go:
+key saved (not verified)` is local presence only. Offline provider list shows absent,
+locally usable or saved-login-unusable guidance. Selected roles alone require their
+logins; missing Go credentials exit 4 and name the login command. Uninstall keeps and
+names all three providers' credential/lock paths.
+
+Go sends Kogen Bearer auth only to
+`https://opencode.ai/inference/go/openai/v1/chat/completions`, never pay-as-you-go
+`/inference/openai/` or legacy Zen. The loopback-only test seam retains that Go path.
+Kogen sends its own `User-Agent: kogen/<version id>` and nonsecret generated
+`x-opencode-session`, not another harness's identity. JSON is non-streaming, store
+false, ordered messages with system policy first, ordered nested function tools and
+auto tool choice. No Responses include/input/cache controls, previous_response_id,
+truncation, sampling knobs or guessed max_completion_tokens are sent. Complete raw
+assistant `reasoning` and `reasoning_details` (including unknown fields and order)
+are retained in private `opencode_go_message` replay, alongside normalized tool calls.
+Replay sends the raw message once and actual tool outputs in order. No raw reasoning
+is analytical telemetry. Images are unqualified: stop before inference with
+`provider/unsupported_capability`, exit 4, and external preparation/pixel-review
+handoff, never substituted text or a delivered-pixels claim. Other providers retain
+native image custody. Full rendered requests, including escaped raw reasoning,
+retain the inclusive 524288-byte ceiling and 131072-token local output/reasoning
+reserve, not a vendor output-token setting. Fresh owners/windows get distinct
+routing; append-only turns and saved-owner resume retain their identity.
+
+401 rejects the Go key without OAuth refresh; 402/403 are honest access/billing
+refusals, not fallback permission. Model/capability refusals do not retry. The
+30-minute logical deadline includes credential/network/retry waits and cancellation;
+network/429/5xx alone use bounded 3-attempt 2s/8s retries. Malformed, truncated,
+refused or incomplete completions never execute a partial tool batch.
+
+SuperGrok Responses now sends body `prompt_cache_key`, not a redundant
+Chat Completions header. It is generated per owner/model/authority/tools/window.
+API docs recommend it; subscription acceptance and cache benefit remain unqualified.
+Only synchronous HTTP 400 with code unknown_parameter or unsupported_parameter and
+param exactly prompt_cache_key permits one retry removing just that field. The
+refusal survives the owner's checkpoint; later turns do not retry it. Other 400s,
+402/403s and failed streams never permit stripping. Rejected attempts retain unknown
+usage. ChatGPT retains its narrowly recognized prompt_cache_options fallback,
+policy/tools/effort and full stateless replay; no Go/xAI controls are copied into it.
+There is no cross-conversation persistent refusal registry or component diagnostics.
+
+### OpenCode Go installed security handoff
+
+This package never accesses a live provider or private key. Separate installed
+qualification requires an explicit human handoff: supply your key only through
+`kogen provider login opencode-go` stdin, confirm the intended single-member Go/Go
+Plus workspace, confirm **Extra usage OFF and auto-recharge OFF**, and consent to
+minimal own-transport calls. Refuse live qualification without those facts; never
+read operator key storage or mutate account settings. Record actual installed
+model/effort/routes, tool/reasoning replay, outcomes and nullable usage. Separately
+retain human-observed Console usage/credits before/after. Route/key alone cannot
+prove subscription eligibility or charging. Go and Go Plus limits differ; exact
+remaining allowances are account facts, not rounded percentages.
+
+The external 22 October observation was three kimi-k3/requested-high HTTP 200 calls
+with tools/reasoning replay: aggregate input 902, cached 192, output 179, reasoning
+90. Credits $0.00 and Extra usage/auto-recharge OFF were observed before/after;
+rounded weekly 0% and monthly 11% did not measure consumption. This did not qualify
+Kogen, other efforts/models/images or effective strength. Grok cached tokens do not
+qualify its changed routing key. SuperGrok's observed
+`403 personal-team-blocked:spending-limit` is exhaustion, not route-switch permission.
+Cache042 stays OPEN: 20.624% and 0.9168% from different sessions and same-prefix
+hit/miss examples prove neither benefit, quota effects nor miss causes. Historical
+KOGEN-042 param remains UNKNOWN; synthetic absence is not historical evidence.
+API acceptance, cache hits, account savings and visual interpretation are separate
+facts. No universal cache guarantee, paid benchmark, endpoint/settings sweep,
+savings claim, release/global installation or billing change follows.

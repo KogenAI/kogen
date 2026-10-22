@@ -1,0 +1,17 @@
+# Starting template only: replace empty commands with your real checks and acceptance.
+# Not verified project checks; never overwrite an existing approved configuration blindly.
+version: 1
+commands:
+  setup: []
+  fix: []
+  checks: []
+  acceptance:
+    run: null
+    steps_dir: null
+protect: []
+models:
+  shape: {provider: supergrok, model: grok-4.7, effort: high}
+  build: {provider: supergrok, model: grok-4.7, effort: medium}
+  review: {provider: supergrok, model: grok-4.7, effort: high}
+shape_workers:
+  enabled: false

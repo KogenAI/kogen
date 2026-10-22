@@ -725,6 +725,8 @@ defmodule Kogen.Shape do
   def replay_item(%{"type" => "reasoning"} = c),
     do: Map.take(c, ~w(type id encrypted_content summary status))
 
+  def replay_item(%{"opencode_go_message" => _} = c), do: c
+
   def replay_item(%{"type" => "message", "content" => content} = c) when is_list(content) do
     content =
       Enum.flat_map(content, fn
