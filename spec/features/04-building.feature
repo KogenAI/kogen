@@ -1,5 +1,5 @@
 Feature: Building
-  The builder uses shell, read_file, write_file, finish and
+  The builder uses shell, read_file, view_image, write_file, finish and
   report_blocker, until verification is green and the review approves. No time or
   token limit.
 
@@ -17,7 +17,7 @@ Feature: Building
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
     And request 1 uses model "gpt-6.1-sol" with effort "medium"
-    And request 1 offers exactly the tools "shell, read_file, write_file, finish, report_blocker"
+    And request 1 offers exactly the tools "shell, read_file, view_image, write_file, finish, report_blocker"
     And request 1 contains the text of the file ".kogen/intents/is-even/acceptance.feature"
     And request 1 contains the text of the file "README.md"
     And request 1 contains "python3 -m unittest"
@@ -192,5 +192,5 @@ Feature: Building
     And request 1 contains "current exact approved Intent"
     And request 1 contains "git stash apply"
     And request 1 contains "current proof"
-    And request 1 offers exactly the tools "shell, read_file, write_file, finish, report_blocker"
+    And request 1 offers exactly the tools "shell, read_file, view_image, write_file, finish, report_blocker"
     And the fake ChatGPT server received 2 requests

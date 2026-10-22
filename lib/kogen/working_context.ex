@@ -134,7 +134,7 @@ defmodule Kogen.WorkingContext do
         Error.raise!(
           "candidate",
           "context_budget_exceeded",
-          "#{owner}: measured #{measured.rendered_bytes} bytes; mandatory #{mandatory_size} bytes; ceiling #{@budget}, output reserve #{@reserve} tokens. Retained checkpoint #{b.run.dir}/checkpoint.json and history #{Enum.map_join(state.history, ", ", & &1["path"])}. Inspect custody; use ordinary Refine and new exact approval if scope must change.",
+          "#{owner}: measured #{measured.rendered_bytes} bytes; mandatory #{mandatory_size} bytes; ceiling #{@budget}, output reserve #{@reserve} tokens. Retained checkpoint #{b.run.dir}/checkpoint.json and history #{Enum.map_join(state.history, ", ", & &1["path"])}. Inspect custody; prepare a smaller supported image externally or use ordinary Refine and new exact approval if scope must change.",
           1
         )
       end

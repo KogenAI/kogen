@@ -224,7 +224,7 @@ Feature: Shaping
     And request 1 contains "paths currently matched by those patterns"
     And request 1 contains "automatic baseline"
     And request 1 contains "Approval freezes this baseline"
-    And request 1 offers exactly the tools "read_file, list_files, search_text, probe, submit"
+    And request 1 offers exactly the tools "read_file, view_image, list_files, search_text, probe, submit"
     And the file ".kogen/intents/is-even/intent.md" does not exist
     And the file ".kogen/local/approvals/is-even.json" does not exist
     And the fake ChatGPT server received 1 request

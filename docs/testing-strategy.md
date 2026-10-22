@@ -83,3 +83,21 @@ Direct external-agent repairs are permitted during development. Preserve origina
 Every changed behavior gets appropriate evidence. Often updating an existing test or scenario is enough. Wiring may need only a scenario. New rules with costly edge cases get unit or integration tests by the standard above. Obsolete tests go in the same change. There is no coverage % target; `mix test --cover` is information only. The rules for choosing tests, and for specifying a change so it can be tested, are `docs/testing-rules.md`; the shaper, the builder and the reviewer each get its text (SET-6).
 
 Oversized initial Review source is covered by `test/integration/review_material_test.exs` for exact UTF-8/control-byte reconstruction, existing tool caps, delivery/reset custody and irreducible authority, and chapter06 CLI scenarios for production material/body construction, complete source retrieval before approval and source-drift refusal. These local fake-provider journeys do not establish live provider interpretation or change account capabilities.
+
+## Native selected-image evidence
+
+`test/kogen/image_test.exs` exercises the shared callable view_image PNG validation,
+typed output/cut behavior, immutable selected bytes, complete request accounting at
+524287/524288/524289 bytes including Unicode and image envelopes, and bounded factual
+delivery events. The native-image-evidence Intent scenarios exercise installed Shape,
+Build and fresh independent Review with local scripted providers: changed/deleted
+sources, owner-specific checkpoint/resume and private archives, working windows,
+uncertain-effect/drift refusals, oversized complete exchanges, ordinary rejection and
+cache fallback. Existing non-image caps and all authority/verification gates remain.
+Local scripted observations qualify plumbing and custody, not live pixel interpretation.
+Real UI assessment still names inspected pages, states and viewports and retains final
+candidate-bound evidence, with an outside capture/pixel handoff when necessary.
+
+Keep the distinct `(cd spec && sh check.sh)` gate alongside configured checks; it
+checks maintained prose/Gherkin/Quint consistency and lifecycle invariants, not image
+interpretation or human design approval.

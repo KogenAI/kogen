@@ -244,7 +244,17 @@ module build {
       .then(reopenBlocked).then(retryVerifyWith("green")).then(localReset)
       .expect(phase == Reviewing and reviewedVersion == -1 and commits == 0)
 
-  action step = any { localReset, reopenBlocked, retryVerify, resume, modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
+  // Read-only image selection cannot change authority, candidate or eligibility.
+  action imageRead = all {
+    phase == Loop or phase == Reviewing,
+    move(phase, cand, cleanPassVersion, reason),
+  }
+
+  run imageReadCannotApproveTest =
+    init.then(move(Reviewing, 2, -1, "")).then(imageRead)
+      .expect(cand == 2 and cleanPassVersion == -1 and reviewedVersion == -1 and commits == 0)
+
+  action step = any { imageRead, localReset, reopenBlocked, retryVerify, resume, modelTurn, blocker, verify, reviewEdit, review, finalVerify, commit, world }
 
   // ---- Invariants ----
   // GIT-3/6: a kept commit holds exactly the reviewed, green candidate; baseline intact; same HEAD.

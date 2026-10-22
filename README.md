@@ -204,3 +204,38 @@ archive paths and hashes, then obtain fresh exact approval and use production-cl
 `build --context FILE` for selective inspection/reproduction. There is no automatic stash,
 patch or tree import, protected-byte replay, approval transfer or reuse of old green results.
 The new candidate receives normal verification and independent review.
+
+## Selected native image evidence
+
+Shape, Build and fresh independent Review share `view_image(path)`, one read-only
+selected local image resolved like read_file (repository-relative or explicitly
+selected absolute path). Only static non-interlaced 8-bit RGB PNG is supported:
+**1..131072 original bytes**, width/height **1..2048**. Unsupported, missing or
+expired artifacts need ordinary external preparation/export/capture and reselection.
+There is no scanning, capture, transcoding, hosted service, Files API or image generation.
+Shell/read_file remain text-only, even when printing paths or base64.
+
+Success freezes exact original bytes as ordered typed Responses content plus metadata.
+The read-time repository candidate is recorded when established; capture candidate,
+route, viewport and fixture state remain `UNKNOWN` without separately established
+provenance. Filenames/hashes/current checkout do not prove the intended candidate was
+served. Provider preprocessing may change resolution; no detail guarantee is added.
+
+Successful read, completed pixel delivery, explicit fallible visual observations,
+DOM/action/accessibility/layout checks and human/designer decisions are separate.
+Name pages, states and viewports actually inspected and retain final candidate-bound
+evidence. Fresh Review obtains its own pixels; builder judgments are not inspection.
+When provenance is stale/unknown or native input is refused, retain an honest outside
+capture/pixel-review handoff. Unrelated work needs no image invocation.
+
+Frozen outputs survive changed/deleted paths in private ordered replay, Build/Review
+archives and version-3 checkpoints (0700 directories/0600 files). Missing, altered or
+unsafe custody refuses resume before inference/mutation. Complete serialized JSON,
+including base64, envelopes, policy, tools, cache controls and replay, retains the
+524288-byte inclusive ceiling and 131072-token reserve. Build/Review keep completed
+safe working windows; image-bearing Shape adds only a guard, not reset or persistent
+resume. Irreducible requests stop before sending with retained custody and external
+image preparation or ordinary Refine/new-approval guidance. Images cannot change
+approval, protected contracts, failed/stale/unknown checks, blockers or exact-final-tree
+commit eligibility. Local scripted-provider tests establish plumbing/custody, not
+actual visual interpretation or automatic design approval.

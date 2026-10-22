@@ -1,7 +1,7 @@
 defmodule Kogen.Build do
   @moduledoc """
   `kogen intent build <slug>` (chapters 03-07): start checks, then the
-  builder conversation with `shell`, `read_file`, `write_file`, `finish` and `report_blocker`; after each round the
+  builder conversation with `shell`, `read_file`, `view_image`, `write_file`, `finish` and `report_blocker`; after each round the
   fixers and a verification pass; a green pass goes to independent review/fix, followed by
   external verification of repairs; an approved, verified, still identical candidate is committed. No time or token limit: a Build ends with a commit, an
   integrity stop, a provider failure, context exhaustion, an invalid/unresolved review or an interrupt.
@@ -521,7 +521,7 @@ defmodule Kogen.Build do
         role,
         builder_instructions(),
         input,
-        Tools.defs(~w(shell read_file write_file finish report_blocker))
+        Tools.defs(~w(shell read_file view_image write_file finish report_blocker))
       )
 
     b = track(b)
@@ -529,7 +529,13 @@ defmodule Kogen.Build do
     input = resp.active_input
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &Shape.replay_item/1) |> Enum.reject(&is_nil/1))
-    ctx = %{root: b.root, protected: b.baseline, tools: ~w(shell read_file write_file)}
+
+    ctx = %{
+      root: b.root,
+      excluded: b.excluded,
+      protected: b.baseline,
+      tools: ~w(shell read_file view_image write_file)
+    }
 
     {outputs, finish} =
       Enum.reduce(calls, {[], nil}, fn call, {outs, finish} ->
@@ -546,6 +552,8 @@ defmodule Kogen.Build do
             "report_blocker" -> report_blocker(b, args, call)
             name -> name |> Tools.run(args, ctx) |> Tools.cut()
           end
+
+        Kogen.Image.read_event(call, result, "build", b.run)
 
         Run.log(b.run, %{
           "event" => "tool_call",
@@ -1189,7 +1197,11 @@ defmodule Kogen.Build do
       repair: b.repairs
     })
 
-    resp = ChatGPT.respond(role, instructions, input, tools)
+    resp =
+      Kogen.Image.delivery(input, role_name, b.run, fn ->
+        ChatGPT.respond(role, instructions, input, tools)
+      end)
+
     wall = System.monotonic_time(:millisecond) - t0
 
     Process.put(:kogen_build, %{
@@ -1269,7 +1281,7 @@ defmodule Kogen.Build do
 
   defp builder_instructions do
     """
-    You implement an approved Intent in this Git repository with shell, read_file, write_file, finish and report_blocker. Follow the approved Intent and the project's README and conventions.
+    You implement an approved Intent in this Git repository with shell, read_file, view_image, write_file, finish and report_blocker. Follow the approved Intent and the project's README and conventions.
 
     Rules:
     - Start with the relevant implementation and test owners. Batch independent reads, search for specific symbols instead of surveying the whole repository, and implement a small testable increment before expanding inspection. Reuse information already read; do not repeatedly reread unchanged source.

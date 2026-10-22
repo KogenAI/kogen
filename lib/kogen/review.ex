@@ -16,7 +16,10 @@ defmodule Kogen.Review do
     # Only the frozen caller diagnostic follows the builder's initial authority
     # message here, never its replay, progress or reasoning.
     diagnostic = b.working_context |> get_in(["build", :mandatory]) |> List.wrap() |> Enum.drop(1)
-    tools = Tools.defs(~w(read_file list_files search_text write_file shell)) ++ [submit_def()]
+
+    tools =
+      Tools.defs(~w(read_file view_image list_files search_text write_file shell)) ++
+        [submit_def()]
 
     {b, input} =
       Kogen.ReviewMaterial.prepare(
@@ -235,8 +238,9 @@ defmodule Kogen.Review do
 
     ctx = %{
       root: b.root,
+      excluded: b.excluded,
       protected: b.baseline,
-      tools: ~w(read_file list_files search_text write_file shell)
+      tools: ~w(read_file view_image list_files search_text write_file shell)
     }
 
     {outputs, verdict} =
@@ -263,6 +267,8 @@ defmodule Kogen.Review do
 
           true ->
             result = call["name"] |> Tools.run(Shape.decode(call), ctx) |> Tools.cut()
+
+            Kogen.Image.read_event(call, result, "review", b.run)
 
             Run.log(b.run, %{
               "event" => "review_tool_call",
@@ -561,7 +567,7 @@ defmodule Kogen.Review do
 
   defp instructions do
     """
-    You review code that another model wrote to implement an approved Intent in this repository. The initial independent review follows a green pass; continued targeted requests may instead contain fresh red or unrun results, which supersede earlier green evidence. Perform one cohesive review and directly repair supported defects within that Intent using read_file, list_files, search_text, write_file and shell. You are a reviewer and fixer, not a source of serial suggestions for another builder. You do not see the builder's conversation.
+    You review code that another model wrote to implement an approved Intent in this repository. The initial independent review follows a green pass; continued targeted requests may instead contain fresh red or unrun results, which supersede earlier green evidence. Perform one cohesive review and directly repair supported defects within that Intent using read_file, view_image, list_files, search_text, write_file and shell. You are a reviewer and fixer, not a source of serial suggestions for another builder. You do not see the builder's conversation.
 
     Complete current source is supplied inline, or, when the initial source exceeds the local window, in explicitly pinned private source parts with a complete path/mode/hash catalog. Read every pinned part through read_file before approving; a pointer alone is not inspection. The parts preserve the full diff and current text without clipping. New files appear once with their modes; the diff covers existing/deleted paths. Read other files only to fill a context gap, and batch independent lookups.
 

@@ -250,7 +250,7 @@ defmodule Kogen.Shape do
     t0 = System.monotonic_time(:millisecond)
 
     tools =
-      Tools.defs(~w(read_file list_files search_text probe)) ++
+      Tools.defs(~w(read_file view_image list_files search_text probe)) ++
         [submit_def()] ++
         if(config.shape_workers.enabled, do: [Kogen.ShapeBatch.definition()], else: [])
 
@@ -389,29 +389,46 @@ defmodule Kogen.Shape do
 
     Kogen.ShapeContext.measure(input, manifest)
 
-    resp =
-      Kogen.ShapeEvidence.provider(
-        "shape",
-        nil,
-        Kogen.ShapeContext.revision(sh.root),
-        "main shaping",
+    Kogen.Image.guard!(
+      ChatGPT.request_body(
         sh.role,
-        fn ->
-          ChatGPT.respond(
-            sh.role,
-            instructions() <> Kogen.ShapeContext.guidance(),
-            input,
-            sh.tools
-          )
-        end
-      )
+        instructions() <> Kogen.ShapeContext.guidance(),
+        input,
+        sh.tools
+      ),
+      "shape"
+    )
+
+    resp =
+      Kogen.Image.delivery(input, "shape", nil, fn ->
+        Kogen.ShapeEvidence.provider(
+          "shape",
+          nil,
+          Kogen.ShapeContext.revision(sh.root),
+          "main shaping",
+          sh.role,
+          fn ->
+            ChatGPT.respond(
+              sh.role,
+              instructions() <> Kogen.ShapeContext.guidance(),
+              input,
+              sh.tools
+            )
+          end
+        )
+      end)
 
     wall = System.monotonic_time(:millisecond) - t0
     progress(sh, "kogen: shape response #{Usage.line(resp.usage)} wall_ms=#{wall}")
     usage = Usage.add(usage, resp.usage)
     calls = for %{"type" => "function_call"} = c <- resp.items, do: c
     input = input ++ (Enum.map(resp.items, &replay_item/1) |> Enum.reject(&is_nil/1))
-    ctx = %{root: sh.root, protected: [], tools: ~w(read_file list_files search_text probe)}
+
+    ctx = %{
+      root: sh.root,
+      protected: [],
+      tools: ~w(read_file view_image list_files search_text probe)
+    }
 
     {outputs, result, sh} =
       Enum.reduce(calls, {[], nil, sh}, fn call, {outs, result, sh} ->
@@ -454,6 +471,7 @@ defmodule Kogen.Shape do
               progress(sh, "kogen: probe result: #{summary}")
             end
 
+            Kogen.Image.read_event(call, tool_result, "shape", nil)
             {outs ++ [output(call, tool_result)], nil, sh}
         end
       end)

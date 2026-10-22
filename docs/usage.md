@@ -175,3 +175,26 @@ without adding a failed row or changing known token sums. Retained failed=0
 never establishes absence of run failures. Summary-only evidence adds no
 physical failure, completion, request or token totals. Legacy write counts and
 lifetimes remain unknown even when aggregate known-write sums are zero.
+
+## Image evidence and request accounting
+
+Explicit `view_image(path)` in Shape, Build and independent Review supplies one
+validated static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048).
+The exact selected bytes are frozen in typed function output; shell/read_file and
+browser capture/export remain distinct text/artifact operations. Metadata records
+read-time candidate when known, not capture provenance inferred from a filename.
+Capture candidate, route, viewport and fixture state otherwise remain `UNKNOWN`.
+
+The complete outbound JSON includes base64 overhead and typed envelopes in the
+524288-byte inclusive limit with 131072-token reserve. Multiple invocations are
+subject to this request budget, not a new setting or total-run cap. Oversized
+irreducible input stops before inference: prepare a smaller supported image externally
+or use ordinary Refine/new approval. Provider errors below the proxy remain failures.
+Frozen private replay/checkpoint bytes are not reread from changed/deleted paths.
+
+`image_read` facts mean successful selection only. `image_delivery` facts identify
+logical image-bearing requests and report completed only for validated completed
+responses, failed for explicit rejection, unknown for uncertain transport. Bounded
+metadata events contain no data URLs/base64 or opaque reasoning. Explicit fallible
+observations remain assistant content in private replay; none of these events grants
+visual/design approval or bypasses checks. Fresh Review inspects its own pixels.

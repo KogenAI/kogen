@@ -39,6 +39,15 @@ defmodule Kogen.Tools do
         ["command"]
       )
 
+  defp def_for("view_image"),
+    do:
+      fun(
+        "view_image",
+        "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+        %{"path" => @str},
+        ["path"]
+      )
+
   defp def_for("read_file"),
     do:
       fun(
@@ -130,6 +139,8 @@ defmodule Kogen.Tools do
   def run(name, args, ctx) do
     if name in ctx.tools, do: call(name, args, ctx), else: "error: unknown tool #{name}"
   end
+
+  defp call("view_image", args, ctx), do: Kogen.Image.read(args, ctx)
 
   defp call("read_file", args, ctx) do
     with {:ok, path} <- arg(args, "path") do
@@ -366,7 +377,9 @@ defmodule Kogen.Tools do
     end
   end
 
-  @doc "A tool result as given to the model: at most 16 KiB, the first 4 KiB and the last part (LOOP-8)."
+  @doc "Typed image results pass unchanged; text results are at most 16 KiB, the first 4 KiB and the last part (LOOP-8)."
+  def cut(result) when is_list(result), do: result
+
   def cut(text) when byte_size(text) <= @max, do: text
 
   def cut(text) do
