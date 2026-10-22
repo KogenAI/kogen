@@ -26,16 +26,16 @@ protect:
   - 'mix.exs'
 models:
   shape:
-    provider: supergrok
-    model: grok-4.7
+    provider: chatgpt
+    model: gpt-6.1-sol
     effort: high
   build:
-    provider: supergrok
-    model: grok-4.7
+    provider: chatgpt
+    model: gpt-6.1-sol
     effort: medium
   review:
-    provider: supergrok
-    model: grok-4.7
+    provider: chatgpt
+    model: gpt-6.1-sol
     effort: high
 shape_workers:
   enabled: false
