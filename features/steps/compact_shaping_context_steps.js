@@ -156,12 +156,12 @@ function reply(res, items) {
   items.forEach((item, i) => res.write('data: ' + JSON.stringify({ type: 'response.output_item.done', output_index: i, item }) + '\n\n'));
   res.end('data: ' + JSON.stringify({ type: 'response.completed', response: { usage: { input_tokens: 17, output_tokens: 3 } } }) + '\n\n');
 }
-function textOf(b) { return (b.input || []).map(i => i.content || i.output || '').filter(s => typeof s === 'string').join('\n'); }
+function textOf(b) { return (b.input || []).map(i => Array.isArray(i.content) ? i.content.map(block => block.text || '').join('') : i.content || i.output || '').filter(s => typeof s === 'string').join('\n'); }
 function outputs(b) { return (b.input || []).filter(i => i.type === 'function_call_output'); }
 const slug = 'compact-fixture', dir = '.kogen/intents/' + slug, steps = 'features/steps/compact_fixture.js';
 const contractTail = '\nAUTHORITATIVE_END_LITERAL_031\n';
 function files() {
-  const intent = '# Preserve the exact note\n\nSlug: ' + slug + '\nModel: not applicable — a stateless note assertion\nAcceptance:\n- ' + dir + '/acceptance.feature\n- ' + steps + '\n\nKeep the exact literal second note.\n' + 'Authoritative this other only licence paragraph.\n'.repeat(220) + contractTail + '\n## Decisions\n- Keep the literal second note. (source: request)\n\n## Tests\n- Exact note: native note assertion (scenario)\n\n## Feasibility\n- none\n';
+  const intent = '# Preserve the exact note\n\nSlug: ' + slug + '\nModel: not applicable — a stateless note assertion\nAcceptance:\n- ' + dir + '/acceptance.feature\n- ' + steps + '\n\nKeep the exact literal second note.\n' + 'Authoritative this other only licence paragraph.\n'.repeat(220) + contractTail + '\n## Decisions\n- Keep the literal second note. (source: request)\n\n## Tests\n- Exact note: native note assertion (scenario)\n\n## Source comparison\n- addressed: exact second note from request.\n\n## Feasibility\n- none\n';
   return [
     { path: dir + '/intent.md', content: intent },
     { path: dir + '/acceptance.feature', content: 'Feature: Exact note\n Scenario: Literal note\n  Then the compact fixture note is "second note"\n' },
@@ -240,8 +240,9 @@ async function exercise(mode) {
       result = await invoke(['intent', 'shape', slug, '-'], '1: ' + answer);
     } else result = await invoke(['intent', 'refine', slug, hash, '-'], request);
     assert.deepEqual(errors, [], errors.join('\n'));
+    assert.equal(result.code, 0, result.stdout + result.stderr);
     const initial = textOf(records[mode === 'shape' ? 1 : 0]);
-    const ix = JSON.parse(initial.match(/^Context index: (.+)$/m)?.[1] || 'null'); assert.ok(ix, initial.slice(-2000));
+    const ix = JSON.parse(initial.match(mode === 'shape' ? /^Context navigation: (.+)$/m : /^Context index: (.+)$/m)?.[1] || 'null'); assert.ok(ix, initial.slice(-2000));
     const eventsFile = mode === 'shape' ? path.join(w.project, '.kogen/local/shaping/' + slug + '/events.ndjson') : fs.readdirSync(path.join(w.project, '.kogen/local/refinements')).map(n => path.join(w.project, '.kogen/local/refinements', n, 'events.ndjson')).find(f => fs.existsSync(f));
     const events = fs.readFileSync(eventsFile, 'utf8').split('\n').filter(Boolean).map(s => JSON.parse(s));
     const selections = events.filter(e => e.event === 'context_selection');
@@ -255,13 +256,13 @@ async function exercise(mode) {
     const proposal = manifests.find(m => m.path === originals[0].path && m.proposed?.sha256 === sha(pending));
     const exactBoth = !!originalResult && !!proposedResult && originalResult.output === numbered(originals[0].content) && proposedResult.output === numbered(pending) && !!proposal && proposal.sha256 === sha(originals[0].content);
     const testing = fs.readFileSync(path.join(REPO, 'docs/testing-rules.md'), 'utf8');
-    const full = initial.includes(request) && initial.includes(readme) && initial.includes(testing) && initial.includes('guard.txt') && initial.includes('automatic') === (mode === 'shape') && initial.includes('KOGEN_ACCEPTANCE_REPORT') && (mode === 'shape' ? initial.includes(answer) && initial.includes('Approval freezes this baseline') : initial.includes(originals[0].content) && initial.includes(originals[1].content));
+    const full = initial.includes(request) && initial.includes(readme) && initial.includes(testing) && initial.includes('guard.txt') && (mode !== 'shape' || initial.includes('automatic')) && initial.includes('KOGEN_ACCEPTANCE_REPORT') && (mode === 'shape' ? initial.includes(answer) && initial.includes('Approval freezes this baseline') : initial.includes(originals[0].content) && initial.includes(originals[1].content));
     const nativeReady = result.code === 0 && fs.existsSync(path.join(w.project, '.kogen/local/readiness/' + slug + '.json')) && (mode === 'shape' ? result.stdout.includes('Scenarios: 1 (1 fail now') : result.stdout.includes('refined ' + slug) && fs.readFileSync(path.join(w.project, originals[0].path), 'utf8') === corrected);
     return {
       exit_code: result.code,
       optional_excerpts: (initial.match(/^Excerpt: /gm) || []).length,
       optional_body_bytes: optional.reduce((a, e) => a + e.included_body_bytes, 0),
-      shared_root_revision: ix.root === w.project && !!ix.revision && ix.entries.every(e => !e.revision && (!e.source || (mode === 'refine' && e.source.includes('/original/')))),
+      shared_root_revision: ix.root === w.project && !!ix.revision && (mode === 'shape' ? JSON.stringify(Object.keys(ix).sort()) === JSON.stringify(['retrieval', 'revision', 'root']) : ix.entries.every(e => !e.revision && (!e.source || e.source.includes('/original/')))),
       mandatory_exact: full,
       exact_tool_range: toolOutputs.some(i => i.call_id === 'c_range' && i.output === '2\tEXPLICIT_RANGE_EXACT_031') && (mode === 'shape' || toolOutputs.some(i => i.call_id === 'c_original_step' && i.output === '4\t// ORIGINAL_STEP_EXACT')),
       original_proposed_exact: exactBoth,

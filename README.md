@@ -184,6 +184,16 @@ version 2 and older are explicitly unsupported, inspectable and refused without 
 Missing, altered or unsafe bound custody is a refusal, not a new Build. Editing makes old
 green evidence stale, and a reviewer reset neither clears blockers nor starts a new critique.
 
+Native Shape supplies `Context navigation: <JSON>` as a single-line dynamic block,
+with exactly `root`, `revision` (`head` and `tree`) and `retrieval`. The resolved
+checkout root and candidate revision replace the generated repository inventory;
+retrieval is `read_file exact bytes and line ranges; list_files directories; search_text exact signatures`.
+Descriptor size does not grow with repository cardinality. Shape must still inspect
+relevant files and establish documentation evidence through native tools. Exact
+request/Q&A, README, testing rules, commands and protection/automatic baseline stay
+complete; caller-supplied inventories are not stripped. Refine retains its frozen-original
+context index and explicit excerpts. This is not a guarantee that every request fits.
+
 Native Shape can continue across bounded local working windows within one invocation.
 At a completed provider/tool boundary it preflights the complete next request, archives
 oversized active input privately under

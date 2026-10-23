@@ -1123,7 +1123,7 @@ defmodule Kogen.Shape do
   # ---- Prompt (SHP-3) ----
 
   defp context(root, slug, config, state, protected_paths) do
-    {selected, _} = Kogen.ShapeContext.index(root, slug, config, state["request"])
+    {selected, _} = Kogen.ShapeContext.navigation(root)
     steps_dir = config.steps_dir
     baseline = Intent.baseline(root, slug, config)
 

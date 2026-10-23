@@ -291,7 +291,7 @@ function evidenceObjects(folder) {
   return all;
 }
 // Inspect supplied text rather than its JSON-escaped wire representation.
-function suppliedText(body) { return (body?.input || []).map(i => typeof i.content === 'string' ? i.content : typeof i.output === 'string' ? i.output : '').join('\n'); }
+function suppliedText(body) { return (body?.input || []).map(i => Array.isArray(i.content) ? i.content.map(block => block.text || '').join('') : typeof i.content === 'string' ? i.content : typeof i.output === 'string' ? i.output : '').join('\n'); }
 async function speedBoundary(mode) {
   const root = await candidate(), w = await fixture(root);
   let provider;
@@ -366,9 +366,9 @@ async function speedBoundary(mode) {
     const result = await w.invoke(shape ? ['intent', 'shape', slug, '-'] : ['intent', 'refine', slug, hash, '-'], request);
     const ar = lines(acceptanceTrace).slice(ac), mr = lines(modelTrace).slice(mc).map(parseJSON), sr = lines(setupTrace).slice(sc);
     const after = rootManifest(w), initial = suppliedText(records[0]), later = suppliedText(records.at(-1)), allOutputs = records.flatMap(outputs);
-    const ixText = initial.match(/^Context index: (.+)$/m)?.[1];
+    const ixText = initial.match(shape ? /^Context navigation: (.+)$/m : /^Context index: (.+)$/m)?.[1];
     const ix = parseJSON(ixText), entries = ix?.entries || [];
-    const indexedRetrievable = ['src/unrelated.txt', 'features/steps/unrelated.js', ...(shape ? [] : [stepPath])].every(p => entries.some(e => e.path === p && e.sha256 === sha(fs.readFileSync(path.join(w.project, p))) && e.bytes === fs.statSync(path.join(w.project, p)).size && sha(fs.readFileSync(e.source || path.join(ix.root, e.path))) === e.sha256 && e.ownership)) && !!ix?.retrieval && ix?.revision?.head === head && entries.map(e => e.path).join('\n') === entries.map(e => e.path).sort().join('\n');
+    const indexedRetrievable = shape ? ix?.root === w.project && ix?.revision?.head === head && JSON.stringify(Object.keys(ix).sort()) === JSON.stringify(['retrieval', 'revision', 'root']) && ix.retrieval === 'read_file exact bytes and line ranges; list_files directories; search_text exact signatures' : ['src/unrelated.txt', 'features/steps/unrelated.js', ...(shape ? [] : [stepPath])].every(p => entries.some(e => e.path === p && e.sha256 === sha(fs.readFileSync(path.join(w.project, p))) && e.bytes === fs.statSync(path.join(w.project, p)).size && sha(fs.readFileSync(e.source || path.join(ix.root, e.path))) === e.sha256 && e.ownership)) && !!ix?.retrieval && ix?.revision?.head === head && entries.map(e => e.path).join('\n') === entries.map(e => e.path).sort().join('\n');
     const objects = [...events(w), ...evidenceObjects(path.join(w.project, '.kogen/local/refinements'))];
     const original = objects.find(o => o.event === 'original_readiness');
     const originalRuns = ar.filter(k => k === 'original').length, originalModelRuns = mr.filter(k => k?.kind === 'original').length;

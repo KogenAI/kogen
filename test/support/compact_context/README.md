@@ -17,6 +17,13 @@ The same logical corpus root, slug, configuration, empty answers/history, tools,
 instructions and empty cumulative manifest are used in both arms. Output retains
 both raw serialized inputs/provider requests, indexes, contexts, logs and receipts.
 
+This is the historical compact-inventory comparison, not the current native Shape
+navigation regression. Its after-arm inventory equality assertions describe the
+then-current renderer and are superseded for Shape by fixed-shape navigation.
+Use `test/kogen/shape_context_test.exs` and the installed `shape-context-index`
+journeys for the current contract; Refine inventory and explicit excerpt coverage
+remain in the compact-context scenarios.
+
 The genuine capture was recovered at
 `/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/faster-shaping-20261019/context-correction/qualification/`.
 Fresh successful evidence is retained at

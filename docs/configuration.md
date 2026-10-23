@@ -70,16 +70,25 @@ the original bridge owner alone runs probes, serially. Worker failure is not ret
 Workers cannot write, submit, approve or publish. A complete common brief and exact
 disjoint draft ownership are required before dispatch. Drift invalidates drafts.
 
-Native context is index-first: deterministic indexes and full hashes, with zero
-automatic optional source-body excerpts (including Acceptance steps and licences);
-`read_file`, `list_files` and `search_text` retrieve exact source bytes. Request,
-Q&A and authoritative contract details are complete, not replaced by a summary.
-Root and revision are shared once; ordinary exact paths resolve from root. Frozen
-originals and complete signature pages retain explicit retrieval references.
-Explicit excerpts have only path/hash/range headers and at most 80 lines/8192
-UTF-8 body bytes. This does not bound conversation growth or imply speed/cost savings. Refinement
-retains frozen originals in its evidence directory and cumulative proposals in
-scratch. Focused probes resolve named concrete uncertainties, not a manual replay
+Native Shape's generated dynamic block is exactly `Context navigation: ` followed
+by single-line JSON and a newline. It has exactly `root` (resolved checkout root),
+`revision` (exactly `head` and candidate `tree`, including nonignored changes but
+excluding `.kogen/local`) and `retrieval` (`read_file exact bytes and line ranges; list_files directories; search_text exact signatures`).
+It contains no repository inventory, signatures or source bodies, and its size
+varies with root/revision, not repository cardinality. Native tools discover relevant
+facts; the descriptor is not inspection or documentation evidence. Initial Shape,
+reconstruction after answers and in-process working windows retain this descriptor
+alongside complete request, Q&A, README, testing rules, configured commands and
+protection/automatic baseline. Literal inventories in caller requests remain exact.
+The complete rendered-request guard remains 524288 UTF-8 bytes inclusive with a
+131072-token reserve; irreducible authority still stops unsent, not clipped or split.
+
+Refine remains index-first with deterministic full hashes, exact signature ranges,
+directory counts and frozen-original retrieval references. Automatic optional
+source-body inclusion stays zero. Explicit excerpts have only path/hash/range
+headers and at most 80 lines/8192 UTF-8 body bytes. Refinement retains frozen
+originals in its evidence directory and cumulative proposals in scratch.
+Focused probes resolve named concrete uncertainties, not a manual replay
 of the entire acceptance suite immediately before the native readiness gate.
 
 Append-only `.kogen/local/shaping/<slug>/events.ndjson` survives completion. Each documentation tool lookup appends one retained record to documentation.ndjson in that evidence directory. The record is not probe output, not an Intent provenance line, and not scope authority.

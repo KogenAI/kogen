@@ -2,6 +2,57 @@ defmodule Kogen.ShapeContextTest do
   use ExUnit.Case, async: true
   alias Kogen.ShapeContext
 
+  test "navigation has fixed shape across empty, small and large candidate trees" do
+    root = Kogen.tmp_path("shape-navigation")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+    Kogen.Git.ok!(root, ["init", "-q"])
+    Kogen.Git.ok!(root, ["config", "user.name", "Context Fixture"])
+    Kogen.Git.ok!(root, ["config", "user.email", "context@example.invalid"])
+    Kogen.Git.ok!(root, ["config", "commit.gpgsign", "false"])
+    Kogen.Git.ok!(root, ["config", "core.hooksPath", "/dev/null"])
+    Kogen.Git.ok!(root, ["commit", "--allow-empty", "-qm", "Initial"])
+    head = Kogen.Git.head(root)
+
+    descriptors =
+      for count <- [0, 1, 1800] do
+        if count > 0 do
+          for n <- 1..count do
+            path = Path.join(root, "deep/source/file-#{n}.ex")
+            File.mkdir_p!(Path.dirname(path))
+            File.write!(path, "def declaration_#{n}, do: :ok\n")
+          end
+        end
+
+        {text, descriptor} = ShapeContext.navigation(root)
+        assert Map.keys(descriptor) |> Enum.sort() == [:retrieval, :revision, :root]
+        assert Map.keys(descriptor.revision) |> Enum.sort() == [:head, :tree]
+        assert descriptor.root == Path.expand(root)
+        assert descriptor.revision == ShapeContext.revision(root)
+        assert descriptor.revision.head == head
+
+        assert descriptor.retrieval ==
+                 "read_file exact bytes and line ranges; list_files directories; search_text exact signatures"
+
+        assert text == "Context navigation: " <> JSON.encode!(descriptor) <> "\n"
+        assert length(String.split(text, "\n")) == 2
+        assert byte_size(text) < 1024
+        assert {text, descriptor} == ShapeContext.navigation(root)
+        descriptor
+      end
+
+    assert descriptors |> Enum.map(& &1.revision.tree) |> Enum.uniq() |> length() == 3
+    assert descriptors |> Enum.map(&byte_size(JSON.encode!(&1))) |> Enum.uniq() |> length() == 1
+    {_, before} = ShapeContext.navigation(root)
+    File.mkdir_p!(Path.join(root, ".kogen/local"))
+    File.write!(Path.join(root, ".kogen/local/private"), "not navigation")
+    assert {_, ^before} = ShapeContext.navigation(root)
+    File.write!(Path.join(root, "deep/source/file-1.ex"), "changed candidate")
+    {_, changed} = ShapeContext.navigation(root)
+    refute changed.revision.tree == before.revision.tree
+    assert changed.revision.head == head
+  end
+
   test "explicit windows preserve adjacent line and UTF-8 byte bounds" do
     for count <- [79, 80, 81] do
       bytes = Enum.map_join(1..count, "\n", &"line #{&1}")

@@ -17,6 +17,17 @@ defmodule Kogen.ShapeContext do
     end
   end
 
+  def navigation(root) do
+    descriptor = %{
+      root: Path.expand(root),
+      revision: revision(root),
+      retrieval:
+        "read_file exact bytes and line ranges; list_files directories; search_text exact signatures"
+    }
+
+    {"Context navigation: " <> JSON.encode!(descriptor) <> "\n", descriptor}
+  end
+
   def hash(bytes), do: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
 
   def index(root, slug, config, _request, originals \\ %{}, opts \\ []) do
