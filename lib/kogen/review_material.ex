@@ -4,17 +4,19 @@ defmodule Kogen.ReviewMaterial do
 
   # Keep authority verbatim. Only the large, reproducible candidate source/diff moves
   # to private, hash-bound evidence, using the existing checkpoint history custody.
-  def prepare(b, tree, material, role, policy, tools, diagnostic) do
+  def prepare(b, tree, material, role, policy, tools, diagnostic, force \\ false) do
     full = input(material.authority, material.source, diagnostic)
 
     measure = fn items ->
       WorkingContext.measure(ChatGPT.request_body(role, policy, items, tools))
     end
 
-    if measure.(full).fits do
-      {b, full}
+    if measure.(full).fits and not force do
+      state = Map.get(b.working_context, "review", %{history: [], observations: []})
+      state = Map.merge(state, %{mandatory: full, inline_material: material, source_tree: tree})
+      {%{b | working_context: Map.put(b.working_context, "review", state)}, full}
     else
-      dir = Path.join([b.run.dir, "review-source", "#{b.review}-#{tree}"])
+      dir = Path.join([b.run.dir, "review-source", "#{b.review}-#{tree || "historical"}"])
       chunks = chunks(material.source)
       count = length(chunks)
 
@@ -43,6 +45,8 @@ defmodule Kogen.ReviewMaterial do
       catalog = %{
         "version" => 1,
         "candidate_tree" => tree,
+        "binding" =>
+          if(tree, do: "candidate", else: "historical saved source; tree binding unavailable"),
         "start_head" => b.start,
         "source_bytes" => byte_size(material.source),
         "source_sha256" => WorkingContext.hash(material.source),
@@ -99,6 +103,7 @@ defmodule Kogen.ReviewMaterial do
 
       state = Map.get(b.working_context, "review", %{history: [], observations: []})
       state = Map.merge(state, %{history: state.history ++ refs, mandatory: bounded})
+      state = Map.drop(state, [:inline_material, :source_tree])
       b = %{b | working_context: Map.put(b.working_context, "review", state)}
       WorkingContext.validate!(b)
 
@@ -111,6 +116,51 @@ defmodule Kogen.ReviewMaterial do
       })
 
       {b, bounded}
+    end
+  end
+
+  # Older version-3 checkpoints have exact saved blocks but no source/tree
+  # association. Relocate those historical bytes, never reconstruct from checkout.
+  def relocate(b, role, policy, tools) do
+    state = b.working_context["review"]
+
+    case state.mandatory do
+      [%{"content" => [%{"text" => authority}, %{"text" => source}]} | diagnostic] ->
+        pinned =
+          Enum.any?(state.history, fn ref ->
+            JSON.decode!(File.read!(ref["path"]))["review_source"]["review"] == b.review
+          end)
+
+        if pinned do
+          b
+        else
+          material =
+            Map.get(state, :inline_material) ||
+              %{
+                authority: authority,
+                source: source,
+                files: [],
+                checks:
+                  source |> String.split("# Diff of existing/deleted paths", parts: 2) |> hd()
+              }
+
+          {b, _} =
+            prepare(
+              b,
+              Map.get(state, :source_tree),
+              material,
+              role,
+              policy,
+              tools,
+              diagnostic,
+              true
+            )
+
+          b
+        end
+
+      _ ->
+        b
     end
   end
 

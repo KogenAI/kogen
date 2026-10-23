@@ -2,6 +2,7 @@ Feature: Reviewing
   After a green pass, one independent reviewer inspects and repairs the code.
   Changed final contents must pass fresh clean candidate setup and external verification before a commit.
   Verification failures stay in that reviewer conversation.
+  Fitted inline source may relocate only on completed continuation pressure; newly pinned parts still require completed delivery.
 
   Background:
     Given a clean Kogen home

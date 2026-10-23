@@ -78,6 +78,11 @@ Feature: Shaping
     And the file ".kogen/local/approvals/is-even.json" does not exist
     And request 1 offers exactly the tools "read_file, list_files, search_text, probe, documentation, submit_refinement"
     And the original refinement readiness receipt has status "hit"
+    And request 1 contains "Clarify the existing title only."
+    And request 1 contains "# Project README"
+    And request 1 contains "# Testing rules"
+    And request 1 contains "# Protection and commands"
+    And request 1 contains "Cumulative proposal/original manifest:"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 5
     And stdout contains "intent/not_approved"

@@ -8,7 +8,7 @@ Kogen takes one requested feature through five steps in your own Git repository:
 4. **Review and fix**: an independent reviewer investigates and repairs concrete defects. Kogen verifies changed final files; failures stay with that reviewer. Maintenance preferences are notes. An unresolved substantive blocker stops with preserved work instead of restarting the builder/review loop.
 5. **Commit**: one commit of exactly the verified and reviewed contents, with your own Git configuration.
 
-Large initial reviews keep exact authority and check results in the working window, with complete candidate source/diff in private hash-bound parts when necessary. The reviewer reads every part before approval; missing or changed custody stops safely. This preserves the current context ceiling rather than silently clipping source.
+Reviews keep exact authority and check results in the working window, with complete candidate source/diff in private hash-bound parts when necessary, including when an initially fitting inline review later runs out of continuation room. The reviewer reads every part before approval; missing or changed custody stops safely. This preserves the current context ceiling rather than silently clipping source.
 
 To explicitly continue a stopped checkpoint-capable Build in the same checkout, run
 `kogen intent resume <build-id> [--project <checkout>]`. Resume keeps the candidate and
@@ -193,6 +193,40 @@ relevant files and establish documentation evidence through native tools. Exact
 request/Q&A, README, testing rules, commands and protection/automatic baseline stay
 complete; caller-supplied inventories are not stripped. Refine retains its frozen-original
 context index and explicit excerpts. This is not a guarantee that every request fits.
+
+At a completed Review boundary, an oversized next request can relocate the exact
+original inline source/diff to the same private ordered source parts and try one
+smaller window. Small fitting continuations are unchanged; pinned source is not
+re-pinned on every reset. Supported version-3 inline checkpoints use their exact
+saved blocks, including explicit resume after a provider failure, without restarting
+Review or Build. Older source without an established tree binding is labelled
+historical, never reconstructed from an edited checkout. Every newly pinned part
+must reach the reviewer through a complete matching read_file output in a completed
+continuation before approval. Native current-tree checks alone determine eligibility.
+
+Native Refine also preflights complete rendered requests within one invocation.
+At completed response/tool-batch boundaries it archives oversized input under
+`.kogen/local/refinements/<attempt-id>/working-context/<n>.json` and tries one
+deterministic smaller window. Version-1 archives retain owner `refine`, exact input
+and the previous path/hash (null first); new custody directories are 0700, files
+0600, and hashes cover complete bytes. Every window keeps exact initial correction,
+owned originals, README, testing rules, commands/protection and source-provenance
+binding, plus the newest complete exchange, current complete proposal manifest,
+ownership, readiness observations/identity, invalid count, documentation records
+and assistant observations. Cumulative native proposals remain authoritative;
+handoffs are diagnostic, not model-authored substitutes or approval. Old manifests
+remain in exact history. Linked custody is validated before subsequent inference,
+tool effects and publication; missing, altered, symlinked or unsafe custody stops as
+`candidate/context_custody_invalid`, preserving package and approval.
+
+Refine emits `working_context_reset` events and progress with measured before/after
+bytes and retained custody. A reduced request must be both smaller and within the
+unchanged inclusive ceiling. Irreducible input is retained exactly unsent in the
+same chain with `working_context_stop`, measured/mandatory bytes and limits; it
+stops before inference as `candidate/context_budget_exceeded`. An identical fresh
+retry is not recovery: Refine has no persistent resume or automatic retry. Ordinary
+scope/correction changes may be needed. Publication, exact red acknowledgment and
+new exact approval requirements remain unchanged.
 
 Native Shape can continue across bounded local working windows within one invocation.
 At a completed provider/tool boundary it preflights the complete next request, archives

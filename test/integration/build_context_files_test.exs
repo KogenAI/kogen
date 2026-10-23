@@ -154,7 +154,7 @@ defmodule Kogen.Integration.BuildContextFilesTest do
     script =
       [{:pause, self(), {:function, "finish", %{"summary" => "builder-only-reasoning-sentinel"}}}] ++
         growth ++
-        [{:function, "submit_review", %{"verdict" => "approve", "findings" => []}}]
+        [{:pause, self(), {:function, "read_file", %{"path" => "app.txt"}}}]
 
     c = Helpers.project!(suite, script, staged_intent: false)
     on_exit(fn -> Helpers.cleanup_case(c) end)
@@ -165,10 +165,26 @@ defmodule Kogen.Integration.BuildContextFilesTest do
     assert_receive {:provider_paused, provider}, 15_000
     File.write!(file, "POISON replacement")
     send(provider, :continue)
+    assert_receive {:provider_paused, reviewer}, 30_000
+    parts = Path.wildcard(Path.join(c.repo, ".kogen/local/runs/*/review-source/*/*.json"))
+    assert parts != []
+    reads = Enum.map(parts, &{:function, "read_file", %{"path" => &1}})
+
+    Agent.update(c.server.state, fn state ->
+      %{
+        state
+        | script:
+            Enum.take(state.script, state.next) ++
+              reads ++
+              [{:function, "submit_review", %{"verdict" => "approve", "findings" => []}}]
+      }
+    end)
+
+    send(reviewer, :continue)
     {output, 0} = Helpers.await_exit(port, "", 30_000)
     assert output =~ "review local reset"
     reviews = FakeProvider.review_requests(c.server)
-    assert length(reviews) == 4
+    assert length(reviews) == 5 + length(parts)
 
     for request <- reviews do
       material = FakeProvider.input_text(request)

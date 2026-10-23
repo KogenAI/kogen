@@ -49,7 +49,8 @@ defmodule Kogen.Integration.ReviewMaterialTest do
     m = material("small source\n")
     diagnostic = [%{"role" => "user", "content" => "frozen diagnostic\r\nΔ🙂"}]
     {same, input} = ReviewMaterial.prepare(b, tree, m, role(), "policy", [], diagnostic)
-    assert same == b
+    assert same.working_context["review"].mandatory == input
+    assert same.working_context["review"].inline_material == m
 
     assert input == [
              %{
@@ -60,6 +61,94 @@ defmodule Kogen.Integration.ReviewMaterialTest do
            ]
 
     refute File.exists?(Path.join(b.run.dir, "review-source"))
+  end
+
+  for historical <- [false, true] do
+    test "fitted inline source relocates on pressure (historical=#{historical})", %{
+      b: b,
+      tree: tree
+    } do
+      source =
+        "# Check results of the final pass\nacceptance: passed (1 scenarios)\n# Diff of existing/deleted paths\n" <>
+          String.duplicate("candidate source Δ🙂\r\n", 15_000)
+
+      files = [
+        %{
+          "path" => "app.txt",
+          "status" => "changed",
+          "mode" => "100644",
+          "git_object" => Git.ok!(b.root, ["rev-parse", "HEAD:app.txt"]),
+          "bytes" => 9,
+          "sha256" => WorkingContext.hash("baseline\n")
+        }
+      ]
+
+      m = %{material(source) | files: files}
+      diagnostic = [%{"role" => "user", "content" => "frozen diagnostic Δ\r\n"}]
+      {saved, input} = ReviewMaterial.prepare(b, tree, m, role(), "policy", [], diagnostic)
+      refute File.exists?(Path.join(b.run.dir, "review-source"))
+      {same, ^input} = WorkingContext.prepare(saved, "review", role(), "policy", input, [])
+      assert same == saved
+
+      exchange = [
+        %{
+          "type" => "function_call",
+          "name" => "read_file",
+          "call_id" => "large",
+          "arguments" => "{}"
+        },
+        %{
+          "type" => "function_call_output",
+          "call_id" => "large",
+          "output" => String.duplicate("x", 220_000)
+        }
+      ]
+
+      initial =
+        if unquote(historical),
+          do:
+            put_in(
+              saved.working_context["review"],
+              Map.drop(saved.working_context["review"], [:inline_material, :source_tree])
+            ),
+          else: saved
+
+      {reset, active} =
+        WorkingContext.prepare(initial, "review", role(), "policy", input ++ exchange, [])
+
+      refs =
+        Enum.filter(reset.working_context["review"].history, fn ref ->
+          JSON.decode!(File.read!(ref["path"]))["review_source"] != nil
+        end)
+
+      assert Enum.map_join(refs, fn ref ->
+               JSON.decode!(File.read!(ref["path"]))["review_source"]["text"]
+             end) == source
+
+      assert hd(active)["content"] |> hd() |> Map.fetch!("text") == m.authority
+      assert JSON.encode!(active) =~ m.checks
+      assert WorkingContext.measure(ChatGPT.request_body(role(), "policy", active, [])).fits
+      assert length(ReviewMaterial.unread(reset, active)) == length(refs)
+      assert Enum.at(active, 1) == hd(diagnostic)
+      text = hd(active)["content"] |> Enum.at(1) |> Map.fetch!("text")
+      [catalog_line] = Enum.filter(String.split(text, "\n"), &String.starts_with?(&1, "{\""))
+      catalog = JSON.decode!(catalog_line)
+      assert catalog["source_bytes"] == byte_size(source)
+      assert catalog["source_sha256"] == WorkingContext.hash(source)
+      assert catalog["start_head"] == b.start
+
+      if unquote(historical) do
+        assert catalog["candidate_tree"] == nil
+        assert catalog["binding"] =~ "historical"
+      else
+        assert catalog["candidate_tree"] == tree
+        assert catalog["files"] == files
+      end
+
+      # Relocation is a one-time representation transition, not repeated pinning.
+      again = ReviewMaterial.relocate(reset, role(), "policy", [])
+      assert again == reset
+    end
   end
 
   for provider <- ["chatgpt", "opencode-go"] do

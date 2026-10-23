@@ -615,7 +615,7 @@ class FakeServers {
     const submit = (verdict, findings, id) => functionCall('submit_review', { verdict, findings }, id);
     const approve = (id = `review_approve_${ordinal}`) => submit('approve', [{ path: 'calc.py', line: 12, severity: 'note', message: 'the docstring could name TypeError' }], id);
     const output = id => (record.body.input || []).some(item => item.type === 'function_call_output' && item.call_id === `call_${id}`);
-    if (name.startsWith('build-large-review-evidence')) {
+    if (name.startsWith('build-large-review-evidence') || name === 'build-local-windows') {
       const catalog = record.text.split('\n').map(safeJson).find(value => Array.isArray(value.parts) && value.candidate_tree);
       if (!catalog) throw new Error('large Review did not supply its complete pinned source catalog');
       if (name.endsWith('-drift')) return { items: [
@@ -626,7 +626,7 @@ class FakeServers {
       const pending = catalog.parts.filter(part => !read.has(path.resolve(part.path)));
       if (pending.length) return { items: [
         ...pending.slice(0, 12).map((part, n) => functionCall('read_file', { path: part.path }, `source_read_${ordinal}_${n}`)),
-        ...(pending.length <= 12 ? [approve('same_response_source_approval')] : []),
+        ...(name !== 'build-local-windows' && pending.length <= 12 ? [approve('same_response_source_approval')] : []),
       ] };
       return { items: [approve()] };
     }

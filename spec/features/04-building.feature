@@ -42,6 +42,8 @@ Feature: Building
     And request 5 contains "Local working-window reset"
     And the review request 5 contains "Local working-window reset"
     And the review request 5 contains "Source provenance: unavailable (legacy)"
+    And the review request 5 contains "# Pinned complete candidate source evidence"
+    And the review request 6 contains "review_source"
 
   @LOOP-7 @VER-12 @GIT-8 @model:build
   Scenario: A builder-reported protected contradiction stops without later mutations or gates

@@ -228,7 +228,8 @@ defmodule Kogen.Refine do
         tools =
           Tools.defs(~w(read_file list_files search_text probe documentation)) ++ [submit_def()]
 
-        {changes, ready, usage} = converse(state, role, tools, input, 0, Usage.zero())
+        state = Map.put(state, :working_context, Kogen.RefineWorkingContext.new(state, input))
+        {changes, ready, usage, state} = converse(state, role, tools, input, 0, Usage.zero())
         freeze!(state)
         # Publication is serialized with approval/Build. Each destination existed at the
         # frozen baseline; scratch checks and failed submissions never write the draft.
@@ -364,6 +365,9 @@ defmodule Kogen.Refine do
   end
 
   defp freeze!(s) do
+    if Map.has_key?(s, :working_context),
+      do: Kogen.RefineWorkingContext.validate!(s.working_context, s.root)
+
     Kogen.SourceProvenance.validate_bound!(s.source_provenance)
 
     if approval_bytes(s.root, s.slug) != s.approval or index_digest(s.index_path) != s.index or
@@ -467,6 +471,17 @@ defmodule Kogen.Refine do
 
     Kogen.ShapeContext.measure(input, manifest)
 
+    {s, input} =
+      Kogen.RefineWorkingContext.prepare(
+        s,
+        role,
+        tools,
+        input,
+        invalid,
+        manifest,
+        instructions() <> Kogen.ShapeContext.guidance()
+      )
+
     response =
       Kogen.ShapeEvidence.provider(
         "shape",
@@ -496,6 +511,7 @@ defmodule Kogen.Refine do
     {outputs, outcome, s} =
       Enum.reduce(calls, {[], nil, s}, fn call, {outputs, outcome, s} ->
         Bridge.check_cancel()
+        Kogen.RefineWorkingContext.validate!(s.working_context, s.root)
 
         {text, next, s} =
           cond do
@@ -516,12 +532,20 @@ defmodule Kogen.Refine do
                     end),
                   else: Tools.run(call["name"], args, ctx)
 
-              if call["name"] == "documentation" do
-                retained = Kogen.ShapeEvidence.retain_documentation(args, text)
-                {started, finished} = Kogen.ShapeEvidence.documentation_progress(retained)
-                Bridge.progress(started)
-                Bridge.progress(finished)
-              end
+              s =
+                if call["name"] == "documentation" do
+                  retained = Kogen.ShapeEvidence.retain_documentation(args, text)
+                  {started, finished} = Kogen.ShapeEvidence.documentation_progress(retained)
+                  Bridge.progress(started)
+                  Bridge.progress(finished)
+
+                  put_in(
+                    s.working_context.documentation,
+                    s.working_context.documentation ++ [retained]
+                  )
+                else
+                  s
+                end
 
               {text, nil, s}
           end
@@ -533,7 +557,7 @@ defmodule Kogen.Refine do
 
     case outcome do
       {:ready, files, ready} ->
-        {files, ready, usage}
+        {files, ready, usage, s}
 
       :observations ->
         converse(s, role, tools, input, invalid, usage)

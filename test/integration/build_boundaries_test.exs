@@ -46,9 +46,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
           ] ++
           window_growth() ++
           [
-            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}},
-            {:function, "write_file", %{"path" => "app.txt", "content" => "reviewer repaired\n"}},
-            {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
+            {:pause, self(), {:function, "read_file", %{"path" => "app.txt"}}}
           ]
       )
 
@@ -57,19 +55,41 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     [_, hash] = Regex.run(~r/SHA-256: ([0-9a-f]{64})/, card)
     {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash])
 
-    {output, status} = Helpers.run_kogen(context, ["intent", "build", "fixture"])
+    port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
+    assert_receive {:provider_paused, provider}, 30_000
+    parts = Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*/review-source/*/*.json"))
+    assert parts != []
+    reads = Enum.map(parts, &{:function, "read_file", %{"path" => &1}})
+
+    actions =
+      reads ++
+        [
+          {:function, "submit_review", %{"verdict" => "approve", "findings" => []}},
+          {:function, "write_file", %{"path" => "app.txt", "content" => "reviewer repaired\n"}},
+          {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
+        ]
+
+    Agent.update(context.server.state, fn state ->
+      %{state | script: Enum.take(state.script, state.next) ++ actions}
+    end)
+
+    send(provider, :continue)
+    {output, status} = Helpers.await_exit(port, "", 30_000)
     assert status == 0, output
     assert git_value!(context, ["show", "HEAD:app.txt"]) == "reviewer repaired"
     assert result(context)["passes"] == 3
     assert result(context)["reviews"] == 1
     requests = FakeProvider.review_requests(context.server)
-    assert length(requests) == 7
+    assert length(requests) == 8 + length(parts)
     [reset] = reset_messages(requests)
     assert reset["checks"]["status"] == "stale"
 
-    assert FakeProvider.input_text(Enum.at(requests, 5)) =~ "Final verification"
+    assert FakeProvider.input_text(Enum.at(requests, 6 + length(parts))) =~ "Final verification"
 
-    assert Enum.any?(Enum.at(requests, 5).json["input"], &(&1["type"] == "function_call_output"))
+    assert Enum.any?(
+             Enum.at(requests, 6 + length(parts)).json["input"],
+             &(&1["type"] == "function_call_output")
+           )
   end
 
   test "preflight missing packages and malformed approval remain structured read observations", %{

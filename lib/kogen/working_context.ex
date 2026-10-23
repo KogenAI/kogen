@@ -66,6 +66,7 @@ defmodule Kogen.WorkingContext do
   end
 
   def prepare(b, owner, role, instructions, input, tools) do
+    validate!(b)
     states = b.working_context
 
     state =
@@ -82,6 +83,15 @@ defmodule Kogen.WorkingContext do
     if measured.fits do
       {Map.put(b, :working_context, Map.put(states, owner, state)), input}
     else
+      b = %{b | working_context: Map.put(states, owner, state)}
+
+      b =
+        if owner == "review",
+          do: Kogen.ReviewMaterial.relocate(b, role, instructions, tools),
+          else: b
+
+      states = b.working_context
+      state = states[owner]
       observations = Enum.uniq(state.observations ++ observations(input))
       tree = Snapshot.tree(b.root, b.start, b.excluded)
       pass = b.last_pass
