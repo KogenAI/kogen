@@ -123,6 +123,7 @@ defmodule Kogen.WorkingContext do
           "not_run" => if(pass, do: Map.get(pass, :not_run, []), else: [])
         },
         "unfinished" => observations,
+        "stage_navigation" => Kogen.Stages.navigation(b),
         "findings" => if(b.last_review, do: b.last_review.findings, else: []),
         "history" => history,
         "frozen_material" =>

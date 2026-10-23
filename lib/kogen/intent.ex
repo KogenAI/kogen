@@ -245,7 +245,13 @@ defmodule Kogen.Intent do
         |> Enum.uniq()
       end
 
-    title ++ slug ++ model ++ tests ++ acceptance ++ decisions ++ feasibility ++ scen
+    stages =
+      case Kogen.Stages.parse(i.text) do
+        {:ok, _} -> []
+        {:error, problem} -> [problem]
+      end
+
+    title ++ slug ++ model ++ tests ++ acceptance ++ decisions ++ feasibility ++ scen ++ stages
   end
 
   defp then?(steps), do: Enum.any?(steps, &(&1.keyword == "Then "))

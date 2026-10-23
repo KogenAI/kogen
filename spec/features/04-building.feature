@@ -198,3 +198,16 @@ Feature: Building
     And request 1 contains "current proof"
     And request 1 offers exactly the tools "shell, read_file, view_image, write_file, finish, report_blocker"
     And the fake ChatGPT server received 2 requests
+
+  @LOOP-1 @LOOP-6 @LOOP-10 @model:stages
+  Scenario: One approved staged Intent keeps the builder until whole delivery
+    Given the Intent "is-even" from fixture "is-even-staged" is approved
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 0
+    And request 1 contains "Active stage 1/2"
+    And request 2 contains "Active stage 2/2"
+    And request 2 contains the text of the file ".kogen/intents/is-even/intent.md"
+    And stderr contains "stage calculation gate passed"
+    And stderr contains "stage compatibility gate passed"
+    And the fake ChatGPT server received 3 requests

@@ -94,6 +94,8 @@ defmodule Kogen.Run do
       b.intent.root == b.root and b.intent.slug == b.slug and
       is_binary(b.intent.title) and is_binary(b.intent.text) and
       b.model == Kogen.Intent.model(b.intent) and b.model != nil and
+      Map.get(doc, "stage_progress") == Map.get(b, :stage_progress) and
+      Kogen.Stages.valid?(b) and
       valid_pass?(b.last_pass) and
       (b.last_pass == nil or not b.last_pass.green or
          complete_pass?(b.last_pass, b.config, b.intent, b.model)) and

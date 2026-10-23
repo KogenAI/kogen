@@ -1265,6 +1265,9 @@ defmodule Kogen.Shape do
       ## Tests
       - <each behavioral rule the request adds, changes or removes>: <the test to add or update> (<layer>)
 
+      ## Stages
+      Optional: choose a sequential staged plan only when coherent milestones materially improve feedback and each has a real scoped executable gate that can pass before whole delivery. Inspect dependencies; explain the division and what each stage proves. Do not ask human engineering questions or automatically split requests. Absence means the unchanged single whole-Intent route. Include exactly one fenced json object with exactly version (integer 1) and stages (ordered array of at least two entries). Each entry has exactly id (unique slug ^[a-z0-9]+(-[a-z0-9]+)*$), title, goal (nonblank strings), checks (nonempty ordered array of nonblank shell commands). Example: {"version":1,"stages":[{"id":"foundation","title":"Foundation","goal":"First runnable section","checks":["command one"]},{"id":"surface","title":"Surface","goal":"Integrate surface","checks":["command two"]}]}. Stage gate helper files belong in Acceptance or project protection. Scoped proof never replaces complete final acceptance/model/configured checks or fresh whole review; preserve the complete requested outcome and prerequisites. One exact approval, one final commit; substantive plan changes require Refine and fresh approval.
+
       ## Feasibility
       - none
       ```

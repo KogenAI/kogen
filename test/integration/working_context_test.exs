@@ -103,6 +103,40 @@ defmodule Kogen.Integration.WorkingContextTest do
           groups
         end
 
+      plan = [
+        %{
+          "id" => "foundation",
+          "title" => "Foundation",
+          "goal" => "Runnable core",
+          "checks" => ["true"]
+        },
+        %{"id" => "surface", "title" => "Surface", "goal" => "Integrate", "checks" => ["true"]}
+      ]
+
+      milestone =
+        Kogen.Stages.retain(b, %{
+          n: 1,
+          stage_id: "foundation",
+          stage_index: 1,
+          tree: tree,
+          green: true,
+          failing: [],
+          not_run: [],
+          contract: b.approval_bytes
+        })
+
+      b =
+        Map.merge(b, %{
+          stage_plan: plan,
+          stage_progress: %{
+            "total" => 2,
+            "completed" => ["foundation"],
+            "active" => "surface",
+            "phase" => "stage"
+          },
+          stage_evidence: [milestone]
+        })
+
       input = [authority, diagnostic] ++ List.flatten(groups)
       File.write!(Path.join(b.root, "app.txt"), "edited after green\n")
 
@@ -125,6 +159,11 @@ defmodule Kogen.Integration.WorkingContextTest do
         |> JSON.decode!()
 
       assert reset["phase"] == "review"
+      assert reset["stage_navigation"] =~ "Active stage 2/2"
+      assert reset["stage_navigation"] =~ "historical"
+      assert reset["stage_navigation"] =~ tree
+      assert saved.stage_progress == b.stage_progress
+      assert saved.stage_evidence == [milestone]
 
       assert reset["checks"] == %{
                "status" => "stale",

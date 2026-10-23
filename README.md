@@ -10,6 +10,23 @@ Kogen takes one requested feature through five steps in your own Git repository:
 
 Reviews keep exact authority and check results in the working window, with complete candidate source/diff in private hash-bound parts when necessary, including when an initially fitting inline review later runs out of continuation room. The reviewer reads every part before approval; missing or changed custody stops safely. This preserves the current context ceiling rather than silently clipping source.
 
+Shape may publish an optional sequential `## Stages` plan before approval when
+coherent scoped milestones improve feedback. Its single fenced JSON object has
+`version: 1` and an ordered `stages` array (at least two), each with unique slug
+`id`, nonblank `title` and `goal`, and a nonempty ordered `checks` command array.
+The approval card displays the complete plan; gate helpers belong in Acceptance
+or project protection. No plan keeps the ordinary whole-gate route.
+
+Build keeps one approval and the same builder through scoped stages. Each finish
+runs fixers, fresh scratch setup and the active stage gate; red repairs stay there.
+Clean green milestones retain tree-bound historical evidence and durable
+`stage_progress` in result/checkpoint/inspect. Explicit same-checkout Resume keeps
+completed milestones without replay; incomplete gates rerun fresh setup. After the
+last stage, complete whole-Intent acceptance/model/checks and fresh independent
+review are still required before the single commit. Final red stays in finalization.
+Stage progress is never delivery or proof for a later edited tree. Substantive plan
+changes require ordinary Refine and fresh exact approval; drift refuses continuation.
+
 To explicitly continue a stopped checkpoint-capable Build in the same checkout, run
 `kogen intent resume <build-id> [--project <checkout>]`. Resume keeps the candidate and
 saved builder or independent reviewer conversation, and reuses only exact completed

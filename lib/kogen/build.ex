@@ -141,6 +141,9 @@ defmodule Kogen.Build do
                Intent.baseline(root, b.slug, b.config) == b.baseline,
              do: refuse!(id, "baseline/configuration changed")
 
+      unless b.intent.text == Intent.read(root, b.slug).text,
+        do: refuse!(id, "saved Intent differs from exact approved contract")
+
       saved_index = Base.decode64!(doc["index"])
 
       unless File.read(b.git_index) == {:ok, saved_index},
@@ -229,7 +232,7 @@ defmodule Kogen.Build do
         |> Map.put(:prompt_cache_states, Process.get(:prompt_cache_states, %{}))
       )
 
-    Run.checkpoint(b.run, %{
+    checkpoint = %{
       "version" => 3,
       "identity" => identity(b.root),
       "candidate" => Snapshot.tree(b.root, b.start, []),
@@ -238,7 +241,14 @@ defmodule Kogen.Build do
       "index" => Base.encode64(File.read!(b.git_index)),
       "approval" => b.approval_bytes,
       "state" => Base.encode64(:erlang.term_to_binary(b))
-    })
+    }
+
+    checkpoint =
+      if Map.get(b, :stage_progress),
+        do: Map.put(checkpoint, "stage_progress", b.stage_progress),
+        else: checkpoint
+
+    Run.checkpoint(b.run, checkpoint)
 
     b
   end
@@ -334,6 +344,7 @@ defmodule Kogen.Build do
 
     intent = Intent.read(root, slug)
     model = Intent.model(intent)
+    {:ok, stage_plan} = Kogen.Stages.parse(intent.text)
     Kogen.Provider.require_roles!(Enum.map(~w(build review), &config.models[&1]))
     Readiness.tools!(root, config)
     if model != :none, do: Checks.require_quint!()
@@ -378,6 +389,9 @@ defmodule Kogen.Build do
       unknown_requests: 0,
       attempt_usage: Usage.zero(),
       working_context: %{},
+      stage_plan: stage_plan,
+      stage_progress: Kogen.Stages.initial(stage_plan),
+      stage_evidence: [],
       source_provenance: source
     }
 
@@ -543,6 +557,7 @@ defmodule Kogen.Build do
       Enum.reduce(calls, {[], nil}, fn call, {outs, finish} ->
         Bridge.check_cancel()
         args = Shape.decode(call)
+        Kogen.Stages.validate!(b)
         Kogen.WorkingContext.validate!(b)
         Kogen.SourceProvenance.validate_bound!(b.source_provenance)
 
@@ -658,7 +673,74 @@ defmodule Kogen.Build do
       baseline_intact!(b)
     end
 
-    verify_and_review(b)
+    if Map.get(b, :stage_progress) && b.stage_progress["phase"] == "stage" do
+      verify_stage(b)
+    else
+      verify_and_review(b)
+    end
+  end
+
+  defp verify_stage(b) do
+    p = b.stage_progress
+    index = length(p["completed"]) + 1
+    stage = Enum.at(b.stage_plan, index - 1)
+    Bridge.progress("kogen: stage #{index}/#{p["total"]}: #{stage["id"]}")
+    {b, pass} = verify(b, stage)
+
+    evidence =
+      Map.merge(pass, %{stage_id: stage["id"], stage_index: index, contract: b.approval_bytes})
+
+    evidence = Kogen.Stages.retain(b, evidence)
+    b = Map.update!(b, :stage_evidence, &(&1 ++ [evidence]))
+
+    Run.log(b.run, %{
+      "event" => "stage_pass",
+      "stage_id" => stage["id"],
+      "stage_index" => index,
+      "tree" => pass.tree,
+      "green" => pass.green,
+      "failing" => pass.failing,
+      "not_run" => pass.not_run
+    })
+
+    Bridge.progress(
+      "kogen: stage #{stage["id"]} gate #{if pass.green, do: "passed", else: "failed"}"
+    )
+
+    if pass.green do
+      completed = p["completed"] ++ [stage["id"]]
+      active = Enum.at(b.stage_plan, index)
+
+      p = %{
+        p
+        | "completed" => completed,
+          "active" => active && active["id"],
+          "phase" => if(active, do: "stage", else: "final")
+      }
+
+      b = track(%{b | stage_progress: p})
+      # The verified milestone and its navigation are durable before the next request.
+      if active do
+        feedback =
+          "Stage #{stage["id"]} passed. Continue the next stage. " <> Kogen.Stages.navigation(b)
+
+        c = b.continuation
+
+        output =
+          if c.finish,
+            do: Shape.output(c.finish, feedback),
+            else: %{"role" => "user", "content" => feedback}
+
+        b = save(b, %{stage: :builder, input: c.input ++ [output]})
+        {b, feedback}
+      else
+        b = save(b, b.continuation)
+        verify_and_review(b)
+      end
+    else
+      {track(%{b | repairs: b.repairs + 1}),
+       "Stage #{stage["id"]} failed; remain at this stage.\n" <> pass_feedback(b, pass)}
+    end
   end
 
   defp verify_and_review(b) do
@@ -674,7 +756,7 @@ defmodule Kogen.Build do
 
   # ---- Verification (VER-1..10) ----
 
-  defp verify(b) do
+  defp verify(b, stage \\ nil) do
     b = track(%{b | pass: b.pass + 1})
     Kogen.LocalFacts.update(b, "verifying")
     n = b.pass
@@ -694,9 +776,14 @@ defmodule Kogen.Build do
 
         items =
           items ++
-            [{"acceptance", :acceptance}] ++
-            if(b.model == :none, do: [], else: [{"model", :model}]) ++
-            Enum.map(b.config.checks, fn {name, cmd} -> {name, {:check, cmd}} end)
+            if stage do
+              Enum.with_index(stage["checks"], 1)
+              |> Enum.map(fn {cmd, i} -> {"stage-#{stage["id"]}-#{i}", {:check, cmd}} end)
+            else
+              [{"acceptance", :acceptance}] ++
+                if(b.model == :none, do: [], else: [{"model", :model}]) ++
+                Enum.map(b.config.checks, fn {name, cmd} -> {name, {:check, cmd}} end)
+            end
 
         {evidence, not_run} =
           Enum.reduce(
@@ -786,7 +873,7 @@ defmodule Kogen.Build do
       "files_changed_while_checks_ran" => moved
     })
 
-    {track(%{b | last_pass: pass}), pass}
+    {track(%{b | last_pass: if(stage, do: b.last_pass, else: pass)}), pass}
   end
 
   defp verification_command(b, root, name, cmd) do
@@ -857,6 +944,7 @@ defmodule Kogen.Build do
   # files (a new file in the Intent's folder or matching `protect` joins it) with the same bytes.
   @doc false
   def baseline_intact!(b) do
+    Kogen.Stages.validate!(b)
     Kogen.WorkingContext.validate!(b)
     Kogen.SourceProvenance.validate_bound!(b.source_provenance)
     now = Intent.baseline(b.root, b.slug, b.config)
@@ -987,6 +1075,7 @@ defmodule Kogen.Build do
     Bridge.check_cancel()
     Process.delete(:kogen_committing)
     File.rm(Intent.approval_path(b.root, b.slug))
+    b = Kogen.Stages.phase(b, "landed")
     b = save(b, %{stage: :landed, commit: new})
     sha8 = String.slice(new, 0, 8)
     notes = for f <- review.findings, f["severity"] == "note", do: f
@@ -1167,13 +1256,20 @@ defmodule Kogen.Build do
       },
       extra
     )
+    |> then(fn result ->
+      if Map.get(b, :stage_progress),
+        do: Map.put(result, "stage_progress", b.stage_progress),
+        else: result
+    end)
   end
 
   # ---- Requests ----
 
   @doc false
   def request(b, role_name, role, instructions, input, tools) do
+    instructions = instructions <> Kogen.Stages.navigation(b)
     Bridge.check_cancel()
+    Kogen.Stages.validate!(b)
     Kogen.WorkingContext.validate!(b)
     Kogen.SourceProvenance.validate_bound!(b.source_provenance)
 
@@ -1271,6 +1367,7 @@ defmodule Kogen.Build do
 
     #{Kogen.testing_rules()}
 
+    #{Kogen.Stages.navigation(b)}
     # Configured commands
 
     setup: #{inspect(b.config.setup)}

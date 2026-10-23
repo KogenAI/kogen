@@ -167,6 +167,17 @@ defmodule Kogen.Approve do
     observations = Readiness.observations(slug, ready)
     if observations != "", do: Bridge.puts("\n" <> observations <> "\n")
 
+    {:ok, stages} = Kogen.Stages.parse(ready.intent.text)
+
+    if stages do
+      Bridge.puts("Staged plan")
+
+      for {stage, index} <- Enum.with_index(stages, 1) do
+        Bridge.puts("  #{index}. #{stage["title"]} (#{stage["id"]}): #{stage["goal"]}")
+        for cmd <- stage["checks"], do: Bridge.puts("    - #{cmd}")
+      end
+    end
+
     Bridge.puts("Files")
     for p <- baseline, do: Bridge.puts("  - #{p}")
     Bridge.puts("Approve with:")

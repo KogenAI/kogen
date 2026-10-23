@@ -148,6 +148,11 @@ defmodule Kogen.LocalFacts do
     r = Process.get(:local_record)
 
     if r && r["run_id"] == b.run.id do
+      r =
+        if Map.get(b, :stage_progress),
+          do: Map.put(r, "stage_progress", b.stage_progress),
+          else: r
+
       phase = phase || r["phase"]
 
       if clock = Process.get(:usage_phase_clock) do

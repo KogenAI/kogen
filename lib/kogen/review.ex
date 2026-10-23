@@ -97,6 +97,7 @@ defmodule Kogen.Review do
   end
 
   defp finish(b, pass, session, verify) do
+    b = Kogen.Stages.phase(b, "review")
     b = Build.save(b, %{stage: :review, pass: pass, session: session})
     Kogen.LocalFacts.update(b, "reviewing")
 
