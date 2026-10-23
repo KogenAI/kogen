@@ -396,7 +396,13 @@ defmodule Kogen.Tools do
     end
   end
 
-  @doc "Typed image results pass unchanged; text results are at most 16 KiB, the first 4 KiB and the last part (LOOP-8)."
+  @doc """
+  Bound model-facing text to 16384 UTF-8 bytes including the omission marker (LOOP-8).
+  Fitting text is unchanged. Oversized text keeps the first 4096 bytes and a suffix,
+  backing off incomplete UTF-8 characters. The marker counts original absent bytes;
+  conservative marker-width reservation may leave unused room. Idempotent.
+  Typed image results pass unchanged. Private originals are not transformed.
+  """
   def cut(result) when is_list(result), do: result
 
   def cut(text) when byte_size(text) <= @max, do: text

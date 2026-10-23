@@ -167,6 +167,19 @@ not proof of a hit, effective TTL or live account qualification. See
 
 ## Private working continuity and source provenance
 
+All native model-facing text tool results (Shape, Refine, Build, independent Review
+and optional Shape workers), including errors and control feedback, share a 16384
+UTF-8 byte bound **including** the omission marker. Fitting text is unchanged.
+Oversized displays preserve the first 4096 bytes and a suffix, backing off incomplete
+characters, with `\n[... N bytes omitted ...]\n` counting actual original bytes absent.
+Conservative marker reservation may leave a few bytes unused. The display is
+idempotent and retained exactly with its tool call for replay, not recut on resets.
+Line ranges do not bound bytes: explicitly selected ignored custody remains readable,
+but large reads are visibly incomplete. Private originals, archives, structured
+documentation records, native probe evidence, complete authority and required complete
+pinned Review source delivery are unchanged. Typed images pass unchanged under their
+existing limits. This does not make arbitrary authority, arguments or batches fit.
+
 Build and its independent reviewer preflight the **complete rendered next JSON request**
 against a fixed **524288 UTF-8 byte** ceiling (equality fits), with **131072 tokens**
 reserved for output/reasoning. This is a conservative byte proxy, not observed usage,

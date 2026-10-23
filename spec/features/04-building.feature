@@ -103,7 +103,7 @@ Feature: Building
     And HEAD is unchanged
 
   @LOOP-8
-  Scenario: Long tool output is cut to 16 KiB
+  Scenario: Long model-facing text includes an honest omission marker within 16 KiB
     Given the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-runs-command" with command "seq 1 100000"
     When the caller runs "kogen intent build is-even"

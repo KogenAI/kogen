@@ -749,8 +749,13 @@ defmodule Kogen.Shape do
 
   def replay_item(_), do: nil
 
+  @doc "Construct the delivered tool result: bounded text or unchanged typed content (LOOP-8)."
   def output(call, text),
-    do: %{"type" => "function_call_output", "call_id" => call["call_id"], "output" => text}
+    do: %{
+      "type" => "function_call_output",
+      "call_id" => call["call_id"],
+      "output" => Tools.cut(text)
+    }
 
   def decode(call) do
     case JSON.decode(call["arguments"] || "") do

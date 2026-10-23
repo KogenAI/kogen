@@ -1,0 +1,24 @@
+Feature: Bounded model-facing tool results
+  Native tool presentation must not reintroduce the overflow that working windows removed.
+
+  Background:
+    Given this bounded tool-result contract:
+      """json
+      {"limit":16384,"head":4096,"ceiling":524288,"reserve":131072,"sizes":[16383,16384,16385],"fixtureBytes":514440,"growthTurns":36,"question":"Continue bounded inspection?","ordinary":"2\t  Δ🙂\r\n3\tlast","statuses":{"shape":5,"refine":0,"build-review":0},"packet":"# Bounded model-tool results — native request\nNative slug: bounded-tool-results. Product: Kogen core (this repository). Kogen Shape investigates the retained failure and decides the minimal coherent contract, design, specifications and tests. This request supplies the human's words and actual facts; it does not prescribe a design.\n\n## Exact human originals (highest authority)\n### 23 October\n\"**47 minutes across two Builds**, each stopped by a different incorrect test expectation.\" - Why are builds stopping tho? When something is shaped, why doesn't build go on until it's completed? Or was it the problem in incorrect shaping? Whatever it is, make sure we have one intent that fixes these problems in Kogen so that we unblock builds.\n### 22 October (human-steering-14)\nI won't be there to check on you tonight, so please have some kind of 30 minute interval check for how it's going. But still, the old rules apply: you shouldn't interfere if possible and if you do make sure the Kogen is fixed so you don't have to in the future.\n\n## Retained facts (operator observations, not design)\nNative Shape staged-intent-builds on installed kogen 48bc5efc ended exit 1 after 552 s: candidate/context_budget_exceeded: Shape complete next request 634079 bytes; mandatory 76190; ceiling 524288; reserve 131072 tokens. Shape has no persistent resume: 18 model requests, 7 probes, a typechecked model and syntax-checked driver were lost. After request 18: Shape local working-window reset 534085 -> 93166 bytes; custody .kogen/local/shaping/staged-intent-builds/working-context/31b018e7f1f0530ef7bdf78d3b527ec5/1.json. The next read_file used that path, start_line 1, end_line 35. The 514440-byte single-line JSON returned 514348 characters as line 1. Retained unsent 2.json was 614660 bytes; its one function_call_output was 538761 bytes, larger than the 524288-byte ceiling. The next request was refused before sending and Shape ended. tools.ex reads the whole file and numbers requested lines; no byte bound on this read was found. Shape, Refine, Build and Review expose read_file. list_files/search_text/other bounds were not established by the operator. Ignored .kogen/local custody remains readable by path; rereading recovery custody reproduced the overflow. Evidence SHA-256: 1.json c64c6294d5eca32bf6c096678de2f616538240e920c3238366010f8b4ccdcc0b; 2.json 4aad09c847e5c58e4bc874b39804cf9d41f97579c1ed7807e4445f56d019404b. Copies, stdout/stderr and result are at /Users/almirsarajcic/Areas/Kogen/studio-work/provider-subscriptions-20261022/staged-core/staged-intent-builds/shape-1-context-exceeded/. This is retained diagnostic metadata, not local fixture custody.\nAlready delivered and to keep: Shape working windows 44c2e06d; constant Shape navigation 65640c64; Review/Refine working room 0e43500b; builder-reported protected-blocker recovery a6a1083f; bounded transient in-stream retry 2137fa9b; deterministic Mix test gate 48bc5efc.\n\n## Boundaries\nKeep the 524288-byte inclusive ceiling and 131072-token reserve. Keep authoritative contract inclusions unclipped, exact authority/history/literals/tool pairs/opaque replay/honest refusals and existing working-window custody. One model tool result must not be able to end Shape, Refine, Build or Review by itself. Normal ordinary repository reads keep working. Deterministic tests use local fixtures only. Staged one-Intent Builds (next Intent), Go migration, Studio, release and deployment are out of scope. Parallel approval-card recovery and Claude API-provider lanes are separately owned; do not implement their outcomes here."}
+      """
+
+  Scenario: Bound text at the shared output boundary without changing fitting or typed results
+    When I exercise bounded tool results through "boundary"
+    Then the bounded tool-result observations satisfy the contract
+
+  Scenario: Continue Shape after reading working-window custody and large discovery results
+    When I exercise bounded tool results through "shape"
+    Then the bounded tool-result observations satisfy the contract
+
+  Scenario: Continue Refine after a large single-line read
+    When I exercise bounded tool results through "refine"
+    Then the bounded tool-result observations satisfy the contract
+
+  Scenario: Continue Build and independent Review after their own large reads
+    When I exercise bounded tool results through "build-review"
+    Then the bounded tool-result observations satisfy the contract
