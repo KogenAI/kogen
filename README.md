@@ -184,6 +184,19 @@ version 2 and older are explicitly unsupported, inspectable and refused without 
 Missing, altered or unsafe bound custody is a refusal, not a new Build. Editing makes old
 green evidence stale, and a reviewer reset neither clears blockers nor starts a new critique.
 
+Native Shape can continue across bounded local working windows within one invocation.
+At a completed provider/tool boundary it preflights the complete next request, archives
+oversized active input privately under
+`.kogen/local/shaping/<slug>/working-context/<attempt-id>/` (0700 new directories,
+0600 files, SHA-256 links), and tries one deterministic smaller window. It keeps exact
+initial authority and request/Q&A, cumulative proposals, discovery/documentation state,
+readiness identity, invalid count, assistant observations and the newest complete exchange.
+Handoffs and archives confer no approval or discovery authority. Missing, altered or
+unsafe linked custody refuses further inference/publication. Irreducible input is retained
+exactly unsent with `candidate/context_budget_exceeded`: a fresh identical retry is not
+recovery; correct the request/scope or prepare images externally. There is no summarizer,
+automatic splitting or persistent Shape resume, and not every large request fits.
+
 Successful Shape keeps exact request/Q&A and source identity privately at
 `.kogen/local/provenance/<slug>/current.json` (0600 files, 0700 custody directories).
 Successful Refine archives the previous receipt, retains originals and appends the exact
@@ -232,9 +245,8 @@ Frozen outputs survive changed/deleted paths in private ordered replay, Build/Re
 archives and version-3 checkpoints (0700 directories/0600 files). Missing, altered or
 unsafe custody refuses resume before inference/mutation. Complete serialized JSON,
 including base64, envelopes, policy, tools, cache controls and replay, retains the
-524288-byte inclusive ceiling and 131072-token reserve. Build/Review keep completed
-safe working windows; image-bearing Shape adds only a guard, not reset or persistent
-resume. Irreducible requests stop before sending with retained custody and external
+524288-byte inclusive ceiling and 131072-token reserve. Build/Review and Shape keep completed
+safe working windows; Shape has no persistent resume. Irreducible requests stop before sending with retained custody and external
 image preparation or ordinary Refine/new-approval guidance. Images cannot change
 approval, protected contracts, failed/stale/unknown checks, blockers or exact-final-tree
 commit eligibility. Local scripted-provider tests establish plumbing/custody, not

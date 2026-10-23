@@ -276,7 +276,8 @@ defmodule Kogen.Shape do
       declared_steps: [],
       ready: nil,
       inspected: false,
-      docs: []
+      docs: [],
+      working_context: Kogen.ShapeWorkingContext.new(root, slug, input)
     }
 
     {result, sh, usage} =
@@ -318,6 +319,7 @@ defmodule Kogen.Shape do
         print_blocked(paths, reason)
 
       :ready ->
+        Kogen.ShapeWorkingContext.validate!(sh.working_context, root)
         Kogen.SourceProvenance.capture(root, slug, config, state)
         Readiness.record_pass!(root, slug, config, sh.ready)
         File.rm(Path.join(state_dir, "state.json"))
@@ -395,15 +397,14 @@ defmodule Kogen.Shape do
 
     Kogen.ShapeContext.measure(input, manifest)
 
-    Kogen.Image.guard!(
-      ChatGPT.request_body(
-        sh.role,
-        instructions() <> Kogen.ShapeContext.guidance(),
+    {sh, input} =
+      Kogen.ShapeWorkingContext.prepare(
+        sh,
         input,
-        sh.tools
-      ),
-      "shape"
-    )
+        invalid,
+        manifest,
+        instructions() <> Kogen.ShapeContext.guidance()
+      )
 
     resp =
       Kogen.Image.delivery(input, "shape", nil, fn ->
@@ -451,6 +452,7 @@ defmodule Kogen.Shape do
             {outs ++ [output(call, JSON.encode!(result))], nil, Map.put(sh, :batch_used, true)}
 
           call["name"] == "submit" ->
+            Kogen.ShapeWorkingContext.validate!(sh.working_context, sh.root)
             {text, result, sh} = submit(decode(call), sh)
             {outs ++ [output(call, text)], result, sh}
 
@@ -639,7 +641,9 @@ defmodule Kogen.Shape do
       else
         ready =
           Kogen.ShapeEvidence.timed("readiness", fn ->
-            Readiness.check!(sh.root, sh.slug, sh.config)
+            Readiness.check!(sh.root, sh.slug, sh.config, fn ->
+              Kogen.ShapeWorkingContext.validate!(sh.working_context, sh.root)
+            end)
           end)
 
         sh = %{sh | ready: ready}

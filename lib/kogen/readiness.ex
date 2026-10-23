@@ -260,7 +260,7 @@ defmodule Kogen.Readiness do
   Checks the Intent on disk. Returns `%{intent, model, scenarios}` with each scenario's dry-run
   status, or raises `intent/parse`, `intent/lint` or `intent/not_ready`.
   """
-  def check!(root, slug, %Config{} = config) do
+  def check!(root, slug, %Config{} = config, before_record \\ fn -> :ok end) do
     File.rm(readiness_path(root, slug))
     {baseline, sha, head, tree} = inputs(root, slug, config)
 
@@ -274,6 +274,7 @@ defmodule Kogen.Readiness do
       if mutations != [],
         do: Error.raise!("intent", "not_ready", "readiness changed candidate files", 1, mutations)
 
+      before_record.()
       record_pass!(root, slug, config, ready)
       ready
     after

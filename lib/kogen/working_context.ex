@@ -165,7 +165,7 @@ defmodule Kogen.WorkingContext do
     end
   end
 
-  defp observations(input) do
+  def observations(input) do
     Enum.flat_map(input, fn
       %{"role" => "assistant", "content" => _} = item ->
         [Map.take(item, ~w(id phase content))]
@@ -181,7 +181,7 @@ defmodule Kogen.WorkingContext do
     end)
   end
 
-  defp newest_exchange(input) do
+  def newest_exchange(input) do
     # Completed output batches delimit exchanges; never split a parallel call batch.
     boundaries =
       input
