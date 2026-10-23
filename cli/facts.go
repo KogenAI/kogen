@@ -445,7 +445,7 @@ func localRead(args []string) (bool, int) {
 	}
 	packages := []object{}
 	// Run operations use only the fixed-size candidate index, never package bodies.
-	if kind != "complete" || (pos[0] != "resume" && pos[0] != "inspect") {
+	if kind != "complete" || (pos[0] != "resume" && pos[0] != "inspect" && pos[0] != "recover") {
 		packages = packageRows(c)
 	}
 	if kind == "complete" {
@@ -569,8 +569,11 @@ func packageRows(c object) []object {
 }
 func completeCandidates(op string, packages, runs []object) int {
 	candidates := []object{}
-	if op == "resume" || op == "inspect" {
+	if op == "resume" || op == "inspect" || op == "recover" {
 		for _, r := range runs {
+			if op == "recover" && r["state"] != "build_blocked" {
+				continue
+			}
 			if op == "resume" && (r["resume_status"] == "unsupported" || r["state"] == "landed") {
 				continue
 			}
@@ -618,10 +621,11 @@ _kogen() {
     return
   fi
   if [[ $words[2] == intent ]] && (( CURRENT == 3 )); then
-    compadd shape refine approve build resume list inspect preflight usage
+    compadd shape refine approve build resume recover list inspect preflight usage
     return
   fi
   if [[ $words[CURRENT-1] == --project ]]; then _directories; return; fi
+  if [[ $words[CURRENT-1] == --output ]]; then _directories; return; fi
   if [[ $words[CURRENT-1] == --context ]]; then _files; return; fi
   case $words[2] in
     context) options=(--project --json --help) ;;
@@ -636,6 +640,7 @@ _kogen() {
       if [[ $op == usage ]]; then options+=(--json --lineage --limit --slug --phase --role --model --effective-model --effort --effective-effort --outcome --pass --repair --since --until --group-by); fi
       case $op in
         build) options+=(--context) ;;
+        recover) options+=(--output) ;;
         approve) options+=(--by) ;;
         list) options+=(--json --limit --cursor) ;;
         inspect|preflight) options+=(--json) ;;
@@ -651,13 +656,13 @@ _kogen() {
     case $word in
       --project) project=$words[i+1]; skip=1 ;;
       --project=*) project=${word#--project=} ;;
-      --context|--by|--limit|--cursor) skip=1 ;;
+      --output|--context|--by|--limit|--cursor) skip=1 ;;
       --) endopts=1 ;;
       --*) ;;
       *) positionals+=("$word") ;;
     esac
   done
-  if (( $#positionals == 0 )) && [[ $op == (build|approve|refine|preflight|inspect|resume) ]]; then
+  if (( $#positionals == 0 )) && [[ $op == (build|approve|refine|preflight|inspect|resume|recover) ]]; then
     if [[ -n $project ]]; then
       candidates=("${(@f)$(kogen __complete $op --project "$project")}")
     else

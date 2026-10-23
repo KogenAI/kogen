@@ -43,6 +43,32 @@ defmodule Kogen.FeasibilityTest do
     assert_raise Kogen.Error, fn -> Feasibility.declarations(intent([observer])) end
   end
 
+  test "observer polarity cannot be waived by matching successful or rejected controls" do
+    d = %{capability() | "kind" => "observer", "observers" => ["observer.cjs"]}
+
+    checks =
+      for {name, status} <- [{"good", 0}, {"bad", 1}],
+          do: %{"name" => name, "exit" => status, "command" => "probe", "output" => ""}
+
+    observer = Map.put(d, "checks", checks)
+    assert Feasibility.declarations(intent([observer])) == [observer]
+
+    for {i, status} <- [{0, 1}, {1, 0}] do
+      invalid =
+        Map.put(observer, "checks", List.update_at(checks, i, &Map.put(&1, "exit", status)))
+
+      error =
+        assert_raise Kogen.Error, fn ->
+          Feasibility.declarations(intent([invalid]))
+        end
+
+      assert Enum.join(error.lines) =~ "observer good must expect"
+      refute Feasibility.valid?("unused", intent([invalid]), [])
+    end
+
+    assert Feasibility.declarations(intent([capability()])) == [capability()]
+  end
+
   test "rejection evidence binds command, bytes and complete actual outcome" do
     root = Kogen.tmp_path("feasibility-unit")
     File.mkdir_p!(root)

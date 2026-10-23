@@ -233,6 +233,8 @@ defmodule Kogen.Build do
       "version" => 3,
       "identity" => identity(b.root),
       "candidate" => Snapshot.tree(b.root, b.start, []),
+      "recovery_raw" =>
+        if(b.blocker, do: Kogen.Recover.raw_identity(b.root, b.start_tree), else: nil),
       "index" => Base.encode64(File.read!(b.git_index)),
       "approval" => b.approval_bytes,
       "state" => Base.encode64(:erlang.term_to_binary(b))
@@ -1131,6 +1133,16 @@ defmodule Kogen.Build do
     Bridge.puts(
       "  #{b.slug} Build #{b.run.id} stopped in #{Process.get(:local_record)["phase"]}: #{reason}; candidate: #{b.root}; evidence: #{b.run.dir}; index: #{b.run.dir}/index-at-start"
     )
+
+    if b.blocker do
+      Bridge.puts(
+        "  kogen intent recover #{b.run.id} --output <new-external-directory> --project #{Kogen.Init.shell_quote(b.root)}"
+      )
+
+      Bridge.puts(
+        "  Recovery preserves and clears only implementation; the builder-reported claim is unproven. Independently Refine, freshly approve and start a fresh Build; resume cannot override a protected blocker."
+      )
+    end
 
     Bridge.puts("  kogen intent inspect #{b.run.id} --project #{Kogen.Init.shell_quote(b.root)}")
   end

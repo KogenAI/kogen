@@ -53,6 +53,8 @@ Feature: Building
     Then the exit code is 1
     And stdout contains "candidate/build_blocked"
     And stdout contains "BUILDER-REPORTED"
+    And stdout contains "kogen intent recover"
+    And stdout contains "freshly approve"
     And stdout contains "not independently proven"
     And stdout contains "observed protected fixture evidence"
     And the file "late.txt" does not exist

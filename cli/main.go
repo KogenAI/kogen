@@ -39,6 +39,7 @@ Commands:
   refine <slug> <sha256> <file|->  Correct existing files; require fresh approval
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
+  recover <build-id> --output <directory>  Preserve a protected blocker and clear implementation only
   resume <build-id>         Continue a stopped Build in this checkout
   list                     List packages and Build attempts
   usage [run-id]          Explain local retained provider usage
@@ -49,6 +50,7 @@ Options:
   --project <checkout>  Project checkout (default: current directory)
   --by <name>           Approver (default: your Git identity)
   --context <file>      Fresh Build diagnostic data only (not resume)
+  --output <directory>  Recover only: NEW directory outside the checkout (required)
 `
 
 const providerPage = `Usage: kogen provider <command>
@@ -74,6 +76,7 @@ type invocation struct {
 	by       string
 	project  string
 	context  *string
+	output   string
 }
 
 type usageError struct{ msg, page string }
@@ -95,6 +98,7 @@ var leaves = map[string]spec{
 	"intent shape":   {path: "intent shape", command: "shape", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<file|->"}},
 	"intent refine":  {path: "intent refine", command: "refine", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<sha256>", "<file|->"}},
 	"intent approve": {path: "intent approve", command: "approve", page: "intent", options: []string{"project", "by"}, positional: []string{"<slug>", "<hash>"}, optional: 1},
+	"intent recover": {path: "intent recover", command: "recover", page: "intent", options: []string{"project", "output"}, positional: []string{"<build-id>"}},
 	"intent resume":  {path: "intent resume", command: "resume", page: "intent", options: []string{"project"}, positional: []string{"<build-id>"}},
 	"intent build":   {path: "intent build", command: "build", page: "intent", options: []string{"project", "context"}, positional: []string{"<slug>"}},
 	"provider login": {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
@@ -189,6 +193,12 @@ func parse(args []string) (*invocation, string, *usageError) {
 	if value, ok := opts["context"]; ok {
 		inv.context = &value
 	}
+	if leaf.command == "recover" {
+		if opts["output"] == "" {
+			return fail("missing --output <directory>")
+		}
+		inv.output = opts["output"]
+	}
 	switch leaf.command {
 	case "login":
 		inv.provider = pos[0]
@@ -202,7 +212,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 		if len(inv.hash) != 64 || !hashRe.MatchString(inv.hash) {
 			return fail("<sha256> must be 64 lowercase hex characters")
 		}
-	case "build", "resume":
+	case "build", "resume", "recover":
 		inv.slug = pos[0]
 	case "approve":
 		inv.slug = pos[0]
@@ -279,8 +289,8 @@ func main() {
 		run["context"] = diagnostic
 	}
 	switch inv.command {
-	case "shape", "refine", "approve", "build", "resume":
-		if inv.command != "resume" && (!slugRe.MatchString(inv.slug) || len(inv.slug) < 3 || len(inv.slug) > 48) {
+	case "shape", "refine", "approve", "build", "resume", "recover":
+		if inv.command != "resume" && inv.command != "recover" && (!slugRe.MatchString(inv.slug) || len(inv.slug) < 3 || len(inv.slug) > 48) {
 			fail(2, "intent/invalid_slug: Slug must be 3 to 48 characters and use lowercase letters, digits and dashes.")
 		}
 		project := cwd
@@ -291,6 +301,9 @@ func main() {
 			}
 		}
 		run["project"], run["slug"] = project, inv.slug
+		if inv.command == "recover" {
+			run["output"] = absFrom(cwd, inv.output)
+		}
 		if inv.hash != "" {
 			run["hash"] = inv.hash
 		}

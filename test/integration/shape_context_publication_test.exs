@@ -2,7 +2,7 @@ Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.ShapeContextPublicationTest do
   use ExUnit.Case, async: true
-  alias Kogen.{Config, Intent, Integration.Helpers}
+  alias Kogen.{Config, Intent, Integration.Helpers, Integration.FakeProvider}
   @moduletag :integration
 
   setup_all do
@@ -84,7 +84,7 @@ defmodule Kogen.Integration.ShapeContextPublicationTest do
       List.duplicate({:function, "read_file", %{path: "padding.txt"}}, 40) ++
         [{:function, "submit", %{files: files}}]
 
-    Agent.update(c.server.state, &%{&1 | script: Enum.take(&1.script, &1.next) ++ actions})
+    FakeProvider.append(c.server, actions)
     request = Path.join(c.root, "request.txt")
     File.write!(request, "Preserve the fixture with intact local custody.")
     {output, status} = Helpers.run_kogen(c, ["intent", "shape", slug, request])

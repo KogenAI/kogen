@@ -97,3 +97,17 @@ of protected contradictions, and `run_test.exs` covers decode/publication.
 candidate or green evidence; `run_control.qnt` includes lock reacquisition after
 an ended attempt. Existing Safety invariants and non-vacuity counterexamples
 continue to cover commit eligibility, independent review and live-owner refusal.
+
+
+### Protected-blocker recovery trace
+
+LOOP-7/LOOP-10 explicit recovery is covered through the installed command by
+`.kogen/intents/build-unblocking-recovery/acceptance.feature` and its independent
+archive/lifecycle controls. `test/integration/recovery_test.exs` exercises raw Git
+filters, binary/mode/symlink custody and publication before a controlled filesystem
+cleanup failure. `quint/recovery.qnt` models archive-before-cleanup, non-reapproval
+and fresh final-commit proof (`Preserved`, `NoReapproval`, `SafeCommit`). Its bounded
+trace uses seed 11, 100 samples, 30 steps, matching the approved recovery model;
+this is bounded evidence rather than exhaustive proof. Observer polarity is enforced
+by callable Feasibility validation and actual final-byte installed card controls;
+invalid good-nonzero/bad-zero declarations cannot become readiness or reuse evidence.

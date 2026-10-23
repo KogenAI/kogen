@@ -950,10 +950,7 @@ defmodule Kogen.Integration.RefinementTest do
   defp submission(files), do: {:function, "submit_refinement", %{"files" => files}}
 
   defp script!(context, actions),
-    do:
-      Agent.update(context.server.state, fn state ->
-        %{state | script: Enum.take(state.script, state.next) ++ actions}
-      end)
+    do: FakeProvider.append(context.server, actions)
 
   defp request!(context) do
     path = Path.join(context.root, "correction.txt")

@@ -214,12 +214,7 @@ defmodule Kogen.Integration.BuilderBlockerTest do
       "arguments" => JSON.encode!(args)
     }
 
-  defp script!(context, actions),
-    do:
-      Agent.update(
-        context.server.state,
-        &%{&1 | script: Enum.take(&1.script, &1.next) ++ actions}
-      )
+  defp script!(context, actions), do: FakeProvider.append(context.server, actions)
 
   defp authority(context),
     do:

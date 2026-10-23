@@ -170,15 +170,10 @@ defmodule Kogen.Integration.BuildContextFilesTest do
     assert parts != []
     reads = Enum.map(parts, &{:function, "read_file", %{"path" => &1}})
 
-    Agent.update(c.server.state, fn state ->
-      %{
-        state
-        | script:
-            Enum.take(state.script, state.next) ++
-              reads ++
-              [{:function, "submit_review", %{"verdict" => "approve", "findings" => []}}]
-      }
-    end)
+    FakeProvider.append(
+      c.server,
+      reads ++ [{:function, "submit_review", %{"verdict" => "approve", "findings" => []}}]
+    )
 
     send(reviewer, :continue)
     {output, 0} = Helpers.await_exit(port, "", 30_000)

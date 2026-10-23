@@ -69,9 +69,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
           {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
         ]
 
-    Agent.update(context.server.state, fn state ->
-      %{state | script: Enum.take(state.script, state.next) ++ actions}
-    end)
+    FakeProvider.append(context.server, actions)
 
     send(provider, :continue)
     {output, status} = Helpers.await_exit(port, "", 30_000)

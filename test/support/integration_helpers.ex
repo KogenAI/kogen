@@ -20,6 +20,13 @@ defmodule Kogen.Integration.FakeProvider do
     %{listener: listener, port: port, pid: server, state: state}
   end
 
+  def append(%{state: state}, tail) do
+    Agent.update(state, fn s ->
+      used = Enum.take(s.script, s.next)
+      %{s | script: used ++ List.duplicate(nil, max(0, s.next - length(used))) ++ tail}
+    end)
+  end
+
   def stop(%{listener: listener, state: state}) do
     :gen_tcp.close(listener)
     Agent.stop(state)

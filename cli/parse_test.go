@@ -39,6 +39,7 @@ Commands:
   refine <slug> <sha256> <file|->  Correct existing files; require fresh approval
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
+  recover <build-id> --output <directory>  Preserve a protected blocker and clear implementation only
   resume <build-id>         Continue a stopped Build in this checkout
   list                     List packages and Build attempts
   usage [run-id]          Explain local retained provider usage
@@ -49,6 +50,7 @@ Options:
   --project <checkout>  Project checkout (default: current directory)
   --by <name>           Approver (default: your Git identity)
   --context <file>      Fresh Build diagnostic data only (not resume)
+  --output <directory>  Recover only: NEW directory outside the checkout (required)
 `},
 		{name: "provider page", args: []string{"provider"}, want: `Usage: kogen provider <command>
 
@@ -195,6 +197,23 @@ func TestResumeGrammar(t *testing.T) {
 		t.Fatalf("resume: %+v %v", inv, err)
 	}
 	for _, args := range [][]string{{"intent", "resume"}, {"intent", "resume", "abc", "extra"}, {"intent", "resume", "abc", "--by", "other"}} {
+		if _, _, err := parse(args); err == nil {
+			t.Fatalf("accepted %v", args)
+		}
+	}
+}
+
+func TestRecoverUsage(t *testing.T) {
+	inv, _, err := parse([]string{"intent", "recover", "abcdef12", "--output", "../archive", "--project", "/checkout"})
+	if err != nil || inv.command != "recover" || inv.slug != "abcdef12" || inv.output != "../archive" || inv.project != "/checkout" {
+		t.Fatalf("recover: %+v %v", inv, err)
+	}
+	for _, args := range [][]string{
+		{"intent", "recover"}, {"intent", "recover", "abcdef12"},
+		{"intent", "recover", "abcdef12", "extra", "--output", "archive"},
+		{"intent", "recover", "abcdef12", "--output", "archive", "--context", "file"},
+		{"intent", "recover", "abcdef12", "--output", "archive", "--by", "person"},
+	} {
 		if _, _, err := parse(args); err == nil {
 			t.Fatalf("accepted %v", args)
 		}

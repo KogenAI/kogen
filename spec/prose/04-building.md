@@ -74,3 +74,46 @@ Scenarios: `features/04-building.feature`. Model: `quint/build.qnt`.
 Fresh Build diagnostics have private local custody in `diagnostic-context.json` in the run directory: exactly `text`, `source_path`, `sha256`, preserving original UTF-8 bytes independently of approval. Fresh Build reads once; resume accepts no new context. Every new working window retains this diagnostic, never check-state or protected-byte import. After protected-contract correction, archive native production externally with absolute paths/hashes, obtain new exact approval, then use production-clean fresh `build --context FILE` for selective inspection/reproduction only. No automatic stash/patch/tree replay or old green evidence.
 
 The decoded version 3 saved Build exposes `working_context` and `source_provenance`. Its active window, ordered archive hashes, owner, observations/findings and bound source receipt are atomically checkpointed with existing candidate/HEAD/index/approval/configuration guards. Missing, changed, unsafe or unreadable referenced custody refuses before inference/mutation. Pre-window versions remain inspectable but unsupported. Existing uncertain-effect safeguards remain unchanged. Source absence is explicitly legacy, not reconstruction from prose; bound corruption is never absence.
+
+
+Under LOOP-7/LOOP-10, `kogen intent recover <build-id> --output <new-directory>
+[--project <checkout>]` explicitly preserves then clears only a completed protected
+blocker's implementation delta. The caller-relative destination must be new, outside
+the resolved checkout and nonsymlinked. Unsupported/missing/extra arguments including
+`--context` are usage errors (2). The normal Build lock guards exact version-3
+checkpoint/result/BUILDER-REPORTED blocker, same checkout identity, start HEAD,
+protected baseline/configuration, approval, complete candidate, original index and
+bound working-context/image/source custody. A completed blocker may retain its tool
+continuation; other uncertain tools/commits are refused. Missing/legacy checkpoints
+are candidate/recovery_unsupported (1); drift, malformed or unsafe facts are
+candidate/recovery_refused (1), naming inspection/correction guidance before cleanup.
+No provider, setup/check command, stash or commit runs.
+
+A complete private archive is published before cleanup: 0700 directories and 0600
+regular files, manifest.json version 1 with build/slug/absolute project/start_head/
+start_tree/candidate_tree/full contract_sha256/classification BUILDER-REPORTED,
+sorted changes (path, before/after null or Git mode and exact raw SHA-256), and sorted
+artifacts covering every regular file except manifest itself. before/ and candidate/
+retain binary bytes, executable modes, additions/deletions and symlink target bytes
+(mode 120000, never followed). All protected and excluded other-Intent paths are
+excluded from the delta, as are unrelated ignored outputs. index-at-start, approval.json,
+checkpoint.json and result.json are byte-exact; blocker.json retains the report.
+Bounded UTF-8 correction.md/context.md contain run, original contract hash, absolute
+archive and evidence references/hashes; context is nonblank and at most 262144 bytes.
+They label the report unproven and archived production lower-authority diagnostic
+information, not authority or current proof; large artifacts are referenced, not clipped.
+
+Print the absolute manifest path/hash; retain a private receipt under
+.kogen/local/recoveries/<build-id>.json with archive/hash and preserved/cleaned state.
+After publication, recheck source identity, restore only recorded implementation bytes
+and modes and remove only recorded additions. Keep HEAD, original index, protected files,
+approval and run evidence unchanged. Failure after publication retains durable custody
+and an honest incomplete diagnostic; caught cleanup failure validates/restores candidate
+bytes. Never overwrite an output or reconcile a drifted partial cleanup by guessing.
+Print (but do not invoke) ordinary Refine of the same slug with ORIGINAL full hash and
+correction.md, review/fresh exact approval, and a production-clean FRESH Build with
+context.md. Refine independently investigates and passes readiness; correction revokes
+old approval, so Build refuses until fresh approval. No automatic import or old green
+reuse is allowed; normal setup/verification/model/independent review/final-tree checks
+and approval consumption on landing remain unchanged. context/inspect are read-only
+observation, not polling, scheduling, cancellation or retry authority.

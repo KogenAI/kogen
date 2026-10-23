@@ -655,11 +655,7 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
   end
 
   defp script!(context, actions),
-    do:
-      Agent.update(
-        context.server.state,
-        &%{&1 | script: Enum.take(&1.script, &1.next) ++ actions}
-      )
+    do: FakeProvider.append(context.server, actions)
 
   defp request!(context) do
     path = Path.join(context.root, "request.txt")

@@ -53,7 +53,7 @@ kogen intent approve my-feature                # shows the card; approve with th
 kogen intent build my-feature                  # builds, verifies, reviews and commits
 ```
 
-To correct an existing **ready** package without regenerating it, take the full SHA-256 from `kogen intent approve <slug>` and run `kogen intent refine <slug> <sha256> ../correction.md`. It changes existing owned files only, checks the merged package in scratch and preserves the original on refusal/failure. Within a run, retries retain earlier well-formed proposals and may submit only corrections for edits; publication requires the complete accumulated package to be ready. New/deleted files, shared step edits, changed acceptance paths and model addition/removal need a new shaping request. For an approved package, first preserve and stash unfinished implementation changes; only the normal Build-clean paths are allowed. Its approval must match the full current hash. A successful correction archives and revokes that approval; failure retains it. Refinement never approves; review and approve its resulting package normally. Refinement audit evidence stays under `.kogen/local/refinements/`. Successful stable shaping, published refinement and card checks supply readiness evidence under `.kogen/local/readiness/`; unchanged cards and hash approval reuse it only for the same complete protected baseline hash, HEAD and Snapshot candidate tree. Missing or invalid evidence runs normal readiness. This does not reuse Build verification or review. Refinement also uses a valid complete version3 record for its exact original-ready precondition, including projects with nonempty setup. A hit skips only the fresh original setup/model/acceptance execution; it is retained evidence, not proof of current environment readiness. Missing, malformed, stale or invalid evidence follows the normal mutation-guarded original scratch check. Every changed complete candidate runs fresh configured setup and normal readiness, even after a hit; environment drift can fail it. After inspecting legitimate missing-feature red, submit the smallest eligible owned artifact with its exact current candidate whole body, including previously proposed corrections. The files array must be nonempty; if only one eligible large artifact exists, submit its entire body. Omitted well-formed proposals remain retained: do not retransmit large unchanged prose/helpers or restore original disk bytes for acknowledgment. Publication and acknowledgment still concern the exact complete package. Exact unchanged acknowledgment does not repeat that gate. Raw index checks remain operation safety; exact candidate tree identity also controls reuse. See [optional Shape workers](docs/configuration.md#optional-native-shape-workers) for the opt-in trial and context/evidence guidance.
+To correct an existing **ready** package without regenerating it, take the full SHA-256 from `kogen intent approve <slug>` and run `kogen intent refine <slug> <sha256> ../correction.md`. It changes existing owned files only, checks the merged package in scratch and preserves the original on refusal/failure. Within a run, retries retain earlier well-formed proposals and may submit only corrections for edits; publication requires the complete accumulated package to be ready. New/deleted files, shared step edits, changed acceptance paths and model addition/removal need a new shaping request. For an approved package with a stopped protected blocker, use `intent recover` below to preserve and clear its implementation first; only the normal Build-clean paths are allowed. Its approval must match the full current hash. A successful correction archives and revokes that approval; failure retains it. Refinement never approves; review and approve its resulting package normally. Refinement audit evidence stays under `.kogen/local/refinements/`. Successful stable shaping, published refinement and card checks supply readiness evidence under `.kogen/local/readiness/`; unchanged cards and hash approval reuse it only for the same complete protected baseline hash, HEAD and Snapshot candidate tree. Missing or invalid evidence runs normal readiness. This does not reuse Build verification or review. Refinement also uses a valid complete version3 record for its exact original-ready precondition, including projects with nonempty setup. A hit skips only the fresh original setup/model/acceptance execution; it is retained evidence, not proof of current environment readiness. Missing, malformed, stale or invalid evidence follows the normal mutation-guarded original scratch check. Every changed complete candidate runs fresh configured setup and normal readiness, even after a hit; environment drift can fail it. After inspecting legitimate missing-feature red, submit the smallest eligible owned artifact with its exact current candidate whole body, including previously proposed corrections. The files array must be nonempty; if only one eligible large artifact exists, submit its entire body. Omitted well-formed proposals remain retained: do not retransmit large unchanged prose/helpers or restore original disk bytes for acknowledgment. Publication and acknowledgment still concern the exact complete package. Exact unchanged acknowledgment does not repeat that gate. Raw index checks remain operation safety; exact candidate tree identity also controls reuse. See [optional Shape workers](docs/configuration.md#optional-native-shape-workers) for the opt-in trial and context/evidence guidance.
 
 Within a shaping conversation, corrective file submissions retain earlier well-formed proposals; omitted paths are kept. Previously declared proposed JavaScript steps and a proposed model must stay declared. To discard an earlier new artifact, preserve and park the partial package and its exclusively owned new step files, remove the empty Intent directory, then shape again with the same slug or a new one. Failed shaping does not provide a cross-invocation proposal resume.
 
@@ -256,11 +256,46 @@ changes require ordinary Refine and new exact approval. Legacy projects explicit
 `Source provenance: unavailable (legacy)`; originals are never reconstructed from Intent prose.
 Do not place credentials in these private receipts or handoffs.
 
-For protected-contract corrections, preserve native production externally with absolute
-archive paths and hashes, then obtain fresh exact approval and use production-clean fresh
-`build --context FILE` for selective inspection/reproduction. There is no automatic stash,
-patch or tree import, protected-byte replay, approval transfer or reuse of old green results.
-The new candidate receives normal verification and independent review.
+For a stopped `candidate/build_blocked` Build, explicitly run:
+
+```sh
+kogen intent recover <build-id> --output ../new-private-archive [--project <checkout>]
+```
+
+`--output` is required and caller-relative: it must name a NEW directory outside the
+resolved checkout, with no symlinked custody. Recovery takes the normal Build lock,
+validates a complete version-3 checkpoint, retained BUILDER-REPORTED blocker/result,
+checkout/HEAD/index/protected baseline/configuration/approval/candidate and bound
+working-context/image/source custody. Missing/legacy checkpoints are
+`candidate/recovery_unsupported`; other unsafe facts are `candidate/recovery_refused`
+(exit 1). Unsupported arguments (including `--context`) are usage errors (exit 2).
+This is a completed native protected stop, not permission to resume uncertain tools.
+Other provider, login, resource and interrupt stops keep their ordinary explicit
+resume behavior. Ordinary implementation failures still return to the builder.
+
+Before removing any implementation bytes, recovery publishes a private archive
+(0700 directories, 0600 regular files) with exact before/candidate data and Git modes,
+a hashed `manifest.json`, unchanged approval/index/checkpoint/result, retained blocker,
+and bounded `correction.md`/`context.md` handoffs. Symlinks are regular archive data,
+not followed. The printed absolute manifest path and SHA-256 identify preservation.
+Only the recorded implementation delta is restored to start-tree bytes/modes; recorded
+additions are removed. Protected files, other Intents, ignored outputs, HEAD, original
+index, approval and prior run evidence stay unchanged. No stash, commit, provider call
+or project command runs. Inspect `.kogen/local/recoveries/<build-id>.json` for archive
+path/hash and `preserved` or `cleaned`: an incomplete cleanup is NOT success. Never
+retry over an archive or guess reconciliation after a partial cleanup.
+
+Run the printed Refine command with the ORIGINAL full contract hash and correction.md.
+Refine must independently investigate this builder-reported, unproven claim and pass its
+normal readiness gate; successful correction revokes the old approval. Review and freshly
+approve the exact corrected package, then start a production-clean FRESH Build with the
+generated `--context context.md`. Archived production is lower-authority diagnostic data,
+not authority or current proof. Selective tool inspection is allowed, but there is no
+automatic stash/patch/tree import, protected-byte replay, approval transfer or reuse of old
+green/model/reviewer results. Full normal setup, checks, acceptance/model, independent
+review and final changed-tree verification apply; landing consumes the new approval.
+Recovery invokes none of these next commands. Read-only `context` and `intent inspect`
+are the observation path for long work; no scheduler, polling or automatic retries are added.
 
 ## Selected native image evidence
 

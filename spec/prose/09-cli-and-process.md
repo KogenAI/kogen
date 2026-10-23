@@ -16,6 +16,7 @@ kogen intent shape <slug> <file|->
 kogen intent refine <slug> <sha256> <file|->
 kogen intent approve <slug> [<hash>] [--by <name>]
 kogen intent build <slug> [--context <file>]
+kogen intent recover <build-id> --output <directory>
 kogen intent resume <build-id>
 kogen provider login chatgpt
 kogen provider login supergrok
@@ -57,6 +58,7 @@ Commands:
   refine <slug> <sha256> <file|->  Correct existing files; require fresh approval
   approve <slug> [<hash>]   Show the review card, or approve the Intent
   build <slug>              Build, verify, review and commit the approved Intent
+  recover <build-id> --output <directory>  Preserve a protected blocker and clear implementation only
   resume <build-id>         Continue a stopped Build in this checkout
   list                     List packages and Build attempts
   usage [run-id]          Explain local retained provider usage
@@ -67,6 +69,7 @@ Options:
   --project <checkout>  Project checkout (default: current directory)
   --by <name>           Approver (default: your Git identity)
   --context <file>      Fresh Build diagnostic data only (not resume)
+  --output <directory>  Recover only: NEW directory outside the checkout (required)
 ```
 
 `kogen provider`:
@@ -109,3 +112,7 @@ interfaces observe facts and never approve, recover or authorize a Build. Local
 metadata is ignored private integration evidence, not checkpoint authority.
 
 The usage subcommand is a separate bounded history scan with human and version 1 JSON output, exact filters, grouping and lineage. Its full interface and uncertainty rules are maintained in [usage.md](../../docs/usage.md); context and completion never start that scan.
+
+`intent recover <build-id> --output <directory> [--project <checkout>]` is the explicit
+LOOP-7 preservation/implementation-cleanup command, not resume, approval or automatic
+Refine. Help and standalone completion expose `recover` and its required output directory.

@@ -56,10 +56,7 @@ defmodule Kogen.Integration.ShapeWorkerBoundsTest do
         question
       ]
 
-      Agent.update(
-        context.server.state,
-        &%{&1 | script: Enum.take(&1.script, &1.next) ++ actions}
-      )
+      FakeProvider.append(context.server, actions)
 
       request = Path.join(context.root, "request.txt")
 
