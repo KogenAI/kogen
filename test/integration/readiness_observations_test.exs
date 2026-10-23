@@ -1,9 +1,10 @@
 Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.ReadinessObservationsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :installed_release
   alias Kogen.{Config, Intent, Integration.FakeProvider, Integration.Helpers}
   @moduletag :integration
+  @moduletag timeout: 300_000
 
   setup_all do
     suite = Helpers.setup_suite!()
@@ -371,7 +372,7 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     port = Helpers.start_kogen(context, ["intent", "shape", "observed", request!(context)])
     Helpers.wait_for_file!(marker)
     {_, 0} = Helpers.git!(context, ["commit", "--allow-empty", "-qm", "External HEAD change"])
-    {output, 0} = Helpers.await_exit(port, "", 20_000)
+    {output, 0} = Helpers.await_exit(port, "", 60_000)
     assert output =~ "1 fail now"
     assert executions(context) == 2
     feedback = FakeProvider.tool_outputs(context.server) |> Enum.join("\n")
@@ -450,7 +451,7 @@ defmodule Kogen.Integration.ReadinessObservationsTest do
     for {path, bytes} <- original, do: assert(File.read!(Path.join(context.repo, path)) == bytes)
     assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
     assert File.read!(String.trim(index_path)) == index
-    {output, 0} = Helpers.await_exit(port, "", 20_000)
+    {output, 0} = Helpers.await_exit(port, "", 60_000)
     assert output =~ "refined fixture"
     assert File.read!(Path.join(context.repo, intent)) == corrected_intent
     assert File.read!(Path.join(context.repo, feature)) == changed_feature

@@ -1,11 +1,12 @@
 Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.ReleaseBehaviorTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :installed_release
 
   alias Kogen.Integration.{FakeProvider, Helpers}
 
   @moduletag :integration
+  @moduletag timeout: 300_000
 
   setup_all do
     suite = Helpers.setup_suite!()
@@ -165,7 +166,7 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
     Helpers.wait_for_file!(marker)
     Helpers.signal!(context, port, "INT")
-    {output, status} = Helpers.await_exit(port, "", 15_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
 
     assert status == 130
     assert output =~ "stopped fixture: interrupted"
@@ -207,7 +208,7 @@ defmodule Kogen.Integration.ReleaseBehaviorTest do
     assert FakeProvider.auth_requests(context.server) == []
 
     File.rm!(lock)
-    {output, status} = Helpers.await_exit(port, "", 20_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
 
     assert status == 4, output
     assert length(FakeProvider.auth_requests(context.server)) == 1

@@ -1,9 +1,10 @@
 Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.BuildContextFilesTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :installed_release
   alias Kogen.Integration.{FakeProvider, Helpers}
   @moduletag :integration
+  @moduletag timeout: 300_000
 
   setup_all do
     suite = Helpers.setup_suite!()
@@ -68,11 +69,11 @@ defmodule Kogen.Integration.BuildContextFilesTest do
       args = if unquote(diagnostic?), do: args ++ ["--context", file], else: args
       before = custody(c)
       port = Helpers.start_kogen(c, args)
-      assert_receive {:provider_paused, provider}, 15_000
+      assert_receive {:provider_paused, provider}, 60_000
 
       try do
         Helpers.signal!(c, port, "INT")
-        {output, code} = Helpers.await_exit(port, "", 15_000)
+        {output, code} = Helpers.await_exit(port, "", 60_000)
         assert code == 130, output
         assert output =~ "interrupted"
       after
@@ -162,10 +163,10 @@ defmodule Kogen.Integration.BuildContextFilesTest do
     text = "  frozen selective reuse Δ🙂\r\nnot approval or old green proof\n"
     File.write!(file, text)
     port = Helpers.start_kogen(c, ["intent", "build", "fixture", "--context", file])
-    assert_receive {:provider_paused, provider}, 15_000
+    assert_receive {:provider_paused, provider}, 60_000
     File.write!(file, "POISON replacement")
     send(provider, :continue)
-    assert_receive {:provider_paused, reviewer}, 30_000
+    assert_receive {:provider_paused, reviewer}, 60_000
     parts = Path.wildcard(Path.join(c.repo, ".kogen/local/runs/*/review-source/*/*.json"))
     assert parts != []
     reads = Enum.map(parts, &{:function, "read_file", %{"path" => &1}})
@@ -176,7 +177,7 @@ defmodule Kogen.Integration.BuildContextFilesTest do
     )
 
     send(reviewer, :continue)
-    {output, 0} = Helpers.await_exit(port, "", 30_000)
+    {output, 0} = Helpers.await_exit(port, "", 60_000)
     assert output =~ "review local reset"
     reviews = FakeProvider.review_requests(c.server)
     assert length(reviews) == 5 + length(parts)

@@ -1,12 +1,13 @@
 Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.FailFastVerificationTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :installed_release
 
   alias Kogen.{Checks, Config, Gherkin, Run}
   alias Kogen.Integration.{FakeProvider, Helpers}
 
   @moduletag :integration
+  @moduletag timeout: 300_000
 
   setup_all do
     suite = Helpers.setup_suite!()

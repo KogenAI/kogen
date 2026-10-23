@@ -1,11 +1,12 @@
 Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.BuildBoundariesTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :installed_release
 
   alias Kogen.Integration.{FakeProvider, Helpers}
 
   @moduletag :integration
+  @moduletag timeout: 300_000
 
   setup_all do
     suite = Helpers.setup_suite!()
@@ -56,7 +57,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash])
 
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
-    assert_receive {:provider_paused, provider}, 30_000
+    assert_receive {:provider_paused, provider}, 60_000
     parts = Path.wildcard(Path.join(context.repo, ".kogen/local/runs/*/review-source/*/*.json"))
     assert parts != []
     reads = Enum.map(parts, &{:function, "read_file", %{"path" => &1}})
@@ -72,7 +73,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     FakeProvider.append(context.server, actions)
 
     send(provider, :continue)
-    {output, status} = Helpers.await_exit(port, "", 30_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
     assert status == 0, output
     assert git_value!(context, ["show", "HEAD:app.txt"]) == "reviewer repaired"
     assert result(context)["passes"] == 3
@@ -138,7 +139,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
     Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/paused"))
     Helpers.signal!(context, port, "INT")
-    {output, 130} = Helpers.await_exit(port, "", 15_000)
+    {output, 130} = Helpers.await_exit(port, "", 60_000)
     assert output =~ "interrupted"
     {snapshot, 0} = Helpers.run_kogen(context, ["context"])
     data = JSON.decode!(snapshot)["data"]
@@ -298,7 +299,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
       port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
       Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/repair-waiting"))
       Helpers.signal!(context, port, "INT")
-      {output, 130} = Helpers.await_exit(port, "", 15_000)
+      {output, 130} = Helpers.await_exit(port, "", 60_000)
       assert output =~ "interrupted"
       assert state(context) == before
       assert File.read!(Path.join(context.repo, "app.txt")) == "candidate\n"
@@ -329,7 +330,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
     Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/repair-waiting"))
     Helpers.signal!(context, port, "INT")
-    {_, 130} = Helpers.await_exit(port, "", 15_000)
+    {_, 130} = Helpers.await_exit(port, "", 60_000)
     assert result(context)["still_failing"] == ["setup-1"]
 
     assert Enum.any?(FakeProvider.tool_outputs(context.server), fn text ->
@@ -356,7 +357,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
     Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/repair-waiting"))
     Helpers.signal!(context, port, "INT")
-    {_, 130} = Helpers.await_exit(port, "", 15_000)
+    {_, 130} = Helpers.await_exit(port, "", 60_000)
     assert state(context) == before
     assert File.read!(Path.join(context.repo, "app.txt")) == "drift\n"
     assert "verification" in result(context)["still_failing"]
@@ -511,7 +512,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
     Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/reviewer-waiting"))
     Helpers.signal!(context, port, "INT")
-    {output, status} = Helpers.await_exit(port, "", 15_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
 
     assert status == 130, output
     assert state(context) == before
@@ -686,7 +687,7 @@ defmodule Kogen.Integration.BuildBoundariesTest do
     port = Helpers.start_kogen(context, ["intent", "build", "fixture"])
     Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/startup-waiting"))
     Helpers.signal!(context, port, "INT")
-    {output, status} = Helpers.await_exit(port, "", 15_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
 
     assert status == 130, output
     assert output =~ "stopped fixture: interrupted"
@@ -717,16 +718,55 @@ defmodule Kogen.Integration.BuildBoundariesTest do
 
     File.chmod!(wrapper, 0o755)
 
+    # A test-only release wrapper acknowledges the reader's actual delivery of
+    # cancellation to the main process. The blocked Git query cannot run ahead of it.
+    ack = Path.join(context.root, "cancel-delivered")
+    core = Path.join(suite.prefix, "lib/kogen/lib/release/bin/kogen")
+    real = core <> ".postcommit-real"
+    File.rename!(core, real)
+
+    on_exit(fn ->
+      File.rm!(core)
+      File.rename!(real, core)
+    end)
+
+    trace = """
+    tracer = spawn(fn ->
+      loop = fn loop ->
+        receive do
+          {:trace, _, :receive, {:proto, %{"type" => "cancel"}}} ->
+            File.write!(#{inspect(ack)}, "delivered")
+          _ -> loop.(loop)
+        end
+      end
+      loop.(loop)
+    end)
+    :erlang.trace(self(), true, [:receive, {:tracer, tracer}])
+    Kogen.Main.main()
+    """
+
+    script = Path.join(context.root, "postcommit-trace.exs")
+    File.write!(script, trace)
+    expression = "Code.eval_file(#{inspect(script)})"
+
+    File.write!(
+      core,
+      "#!/bin/sh\nexport RELEASE_PROG=kogen\nexec #{Kogen.Init.shell_quote(real)} eval #{Kogen.Init.shell_quote(expression)}\n"
+    )
+
+    File.chmod!(core, 0o755)
+
     port =
       Helpers.start_kogen(context, ["intent", "build", "fixture"],
         env: [{"PATH", bin <> ":" <> context.env["PATH"]}]
       )
 
+    Helpers.await_output(port, "kogen: building (round 1)")
     Helpers.wait_for_file!(Path.join(context.repo, ".kogen/local/postcommit-waiting"))
     Helpers.signal!(context, port, "INT")
-    Process.sleep(200)
+    Helpers.wait_for_file!(ack)
     File.write!(Path.join(context.repo, ".kogen/local/release-query"), "")
-    {output, status} = Helpers.await_exit(port, "", 15_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
 
     assert status == 130, output
     assert output =~ "stopped fixture: interrupted"

@@ -1,9 +1,10 @@
 Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.ShapeWorkerBoundsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :installed_release
   alias Kogen.{Config, Integration.FakeProvider, Integration.Helpers, ShapeContext}
   @moduletag :integration
+  @moduletag timeout: 300_000
 
   setup_all do
     suite = Helpers.setup_suite!()

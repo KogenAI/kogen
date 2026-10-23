@@ -305,6 +305,176 @@ defmodule Kogen.Integration.FakeProvider do
   end
 end
 
+defmodule Kogen.Integration.Custodian do
+  @moduledoc false
+  use GenServer
+
+  @launcher Path.expand("fixture_process.py", __DIR__)
+  @python System.find_executable(System.get_env("KOGEN_TEST_PYTHON_BIN") || "python3")
+
+  def start(opts \\ []), do: GenServer.start(__MODULE__, opts)
+
+  def init(opts) do
+    owner_ref = if owner = opts[:owner], do: Process.monitor(owner)
+    {:ok, %{ports: %{}, owner_ref: owner_ref, after_owner_exit: opts[:after_owner_exit]}}
+  end
+
+  def handle_call({:open, executable, options, caller}, _from, state) do
+    ports = state.ports
+
+    custody =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-process-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir!(custody)
+
+    opened =
+      try do
+        executable = System.find_executable(executable) || executable
+
+        args =
+          [
+            String.to_charlist(@launcher),
+            String.to_charlist(custody),
+            String.to_charlist(executable)
+          ] ++ elem(List.keyfind(options, :args, 0, {:args, []}), 1)
+
+        {:ok,
+         Port.open(
+           {:spawn_executable, String.to_charlist(@python)},
+           [{:args, args} | List.keydelete(options, :args, 0)]
+         )}
+      rescue
+        error ->
+          File.rm_rf!(custody)
+          {:error, error}
+      end
+
+    case opened do
+      {:error, error} ->
+        {:reply, {:error, error}, %{state | ports: ports}}
+
+      {:ok, port} ->
+        entry = %{caller: caller, custody: custody, exited: false}
+        ports = Map.put(ports, port, entry)
+        # Keep custody even if startup or its acknowledgment fails.
+        result =
+          try do
+            case await_ready(port, entry, System.monotonic_time(:millisecond) + 60_000) do
+              %{"error" => error} -> {:error, RuntimeError.exception(error)}
+              %{} -> port
+            end
+          rescue
+            error -> {:error, error}
+          end
+
+        {:reply, result, %{state | ports: ports}}
+    end
+  end
+
+  def handle_call(:prepared, _from, state) do
+    if state.owner_ref, do: Process.demonitor(state.owner_ref, [:flush])
+    {:reply, :ok, %{state | owner_ref: nil, after_owner_exit: nil}}
+  end
+
+  def handle_call(:cleanup, _from, state) do
+    try do
+      Enum.each(state.ports, fn {port, entry} -> stop!(port, entry) end)
+      {:reply, :ok, %{state | ports: %{}}}
+    rescue
+      error -> {:reply, {:error, error}, state}
+    end
+  end
+
+  def handle_info({:DOWN, ref, :process, _owner, _reason}, %{owner_ref: ref} = state) do
+    Enum.each(state.ports, fn {port, entry} -> stop!(port, entry) end)
+    if state.after_owner_exit, do: state.after_owner_exit.()
+    {:stop, :normal, %{state | ports: %{}}}
+  end
+
+  def handle_info({port, message}, state) when is_port(port) do
+    case Map.fetch(state.ports, port) do
+      {:ok, entry} ->
+        send(entry.caller, {port, message})
+
+        if match?({:exit_status, _}, message) do
+          if File.exists?(Path.join(entry.custody, "stopped")) do
+            File.rm_rf!(entry.custody)
+            {:noreply, %{state | ports: Map.delete(state.ports, port)}}
+          else
+            {:noreply, %{state | ports: Map.put(state.ports, port, %{entry | exited: true})}}
+          end
+        else
+          {:noreply, state}
+        end
+
+      :error ->
+        {:noreply, state}
+    end
+  end
+
+  defp await_ready(port, entry, deadline) do
+    case File.read(Path.join(entry.custody, "ready")) do
+      {:ok, bytes} ->
+        case JSON.decode(bytes) do
+          {:ok, ready} -> ready
+          {:error, _} -> wait_ready(port, entry, deadline)
+        end
+
+      {:error, :enoent} ->
+        wait_ready(port, entry, deadline)
+    end
+  end
+
+  defp wait_ready(port, entry, deadline) do
+    if System.monotonic_time(:millisecond) >= deadline do
+      raise "fixture process did not establish custody"
+    end
+
+    Process.sleep(5)
+    await_ready(port, entry, deadline)
+  end
+
+  defp stop!(port, entry) do
+    if not entry.exited do
+      case Port.info(port, :os_pid) do
+        {:os_pid, pid} ->
+          {output, status} =
+            System.cmd("/bin/kill", ["-TERM", to_string(pid)], stderr_to_stdout: true)
+
+          if status != 0 and Port.info(port) != nil,
+            do: raise("could not stop fixture process: #{output}")
+
+        nil ->
+          :ok
+      end
+
+      receive_exit!(port, entry, System.monotonic_time(:millisecond) + 25_000)
+    end
+
+    if not File.exists?(Path.join(entry.custody, "stopped")),
+      do: raise("fixture descendant termination was not established: #{entry.custody}")
+
+    File.rm_rf!(entry.custody)
+  end
+
+  defp receive_exit!(port, entry, deadline) do
+    receive do
+      {^port, {:exit_status, _} = message} ->
+        send(entry.caller, {port, message})
+
+      {^port, message} ->
+        send(entry.caller, {port, message})
+        receive_exit!(port, entry, deadline)
+    after
+      max(0, deadline - System.monotonic_time(:millisecond)) ->
+        raise("fixture process did not terminate: #{entry.custody}")
+    end
+  end
+end
+
 defmodule Kogen.Integration.Helpers do
   @moduledoc false
 
@@ -318,39 +488,55 @@ defmodule Kogen.Integration.Helpers do
   def setup_suite! do
     archive = shared_archive!()
     suite_root = temp_dir!("kogen-integration-suite")
-    build_home = Path.join(suite_root, "build-home")
-    install_home = Path.join(suite_root, "install-home")
-    prefix = Path.join(suite_root, "prefix")
-    tmp = Path.join(suite_root, "tmp")
-    Enum.each([build_home, install_home, tmp], &File.mkdir_p!/1)
-    global_config = Path.join(build_home, ".gitconfig")
-    File.write!(global_config, "")
+    ports = preparation_custodian!(fn -> File.rm_rf!(suite_root) end)
 
-    extraction = Path.join(suite_root, "extract")
-    File.mkdir_p!(extraction)
+    try do
+      build_home = Path.join(suite_root, "build-home")
+      install_home = Path.join(suite_root, "install-home")
+      prefix = Path.join(suite_root, "prefix")
+      tmp = Path.join(suite_root, "tmp")
+      Enum.each([build_home, install_home, tmp], &File.mkdir_p!/1)
+      global_config = Path.join(build_home, ".gitconfig")
+      File.write!(global_config, "")
 
-    command!(["/usr/bin/tar", "-xzf", archive, "-C", extraction],
-      cd: project_root(),
-      env: suite_env(build_home, global_config, tmp)
-    )
+      extraction = Path.join(suite_root, "extract")
+      File.mkdir_p!(extraction)
 
-    [release_dir] = File.ls!(extraction) |> Enum.map(&Path.join(extraction, &1))
+      command!(["/usr/bin/tar", "-xzf", archive, "-C", extraction],
+        cd: project_root(),
+        env: suite_env(build_home, global_config, tmp),
+        custodian: ports
+      )
 
-    command!("/bin/sh", [Path.join(release_dir, "install.sh"), "--prefix", prefix],
-      cd: release_dir,
-      env: suite_env(install_home, Path.join(install_home, ".gitconfig"), tmp)
-    )
+      [release_dir] = File.ls!(extraction) |> Enum.map(&Path.join(extraction, &1))
 
-    %{
-      root: suite_root,
-      release: Path.join([prefix, "bin", "kogen"]),
-      prefix: prefix,
-      cucumber: cucumber_paths(project_root()),
-      path: @toolchain_path
-    }
+      command!("/bin/sh", [Path.join(release_dir, "install.sh"), "--prefix", prefix],
+        cd: release_dir,
+        env: suite_env(install_home, Path.join(install_home, ".gitconfig"), tmp),
+        custodian: ports
+      )
+
+      :ok = GenServer.call(ports, :prepared)
+
+      %{
+        ports: ports,
+        root: suite_root,
+        release: Path.join([prefix, "bin", "kogen"]),
+        prefix: prefix,
+        cucumber: cucumber_paths(project_root()),
+        path: @toolchain_path
+      }
+    rescue
+      error ->
+        cleanup_suite(%{root: suite_root, ports: ports})
+        reraise error, __STACKTRACE__
+    end
   end
 
-  def cleanup_suite(%{root: root}), do: File.rm_rf(root)
+  def cleanup_suite(%{root: root, ports: ports}) do
+    cleanup_custodian!(ports)
+    File.rm_rf!(root)
+  end
 
   # Build once even when `mix test` runs the integration modules concurrently. Each
   # module still installs its own prefix: one regression deliberately removes its core.
@@ -361,31 +547,33 @@ defmodule Kogen.Integration.Helpers do
       case :persistent_term.get(key, nil) do
         nil ->
           root = temp_dir!("kogen-integration-build")
+          ports = preparation_custodian!(fn -> File.rm_rf!(root) end)
           home = Path.join(root, "home")
           tmp = Path.join(root, "tmp")
           Enum.each([home, tmp], &File.mkdir_p!/1)
 
           try do
-            ensure_cucumber!(project_root(), home, tmp)
+            ensure_cucumber!(project_root(), home, tmp, ports)
 
             archive =
               case System.get_env("KOGEN_ARCHIVE") do
-                nil -> package_release!(project_root(), home, tmp, root)
+                nil -> package_release!(project_root(), home, tmp, root, ports)
                 path -> Path.expand(path)
               end
 
             if not File.regular?(archive), do: raise("release archive not found: #{archive}")
+            :ok = GenServer.call(ports, :prepared)
             :persistent_term.put(key, archive)
 
             ExUnit.after_suite(fn _ ->
               :persistent_term.erase(key)
-              File.rm_rf(root)
+              cleanup_suite(%{root: root, ports: ports})
             end)
 
             archive
           rescue
             error ->
-              File.rm_rf(root)
+              cleanup_suite(%{root: root, ports: ports})
               reraise error, __STACKTRACE__
           end
 
@@ -438,22 +626,31 @@ defmodule Kogen.Integration.Helpers do
          server,
          isolated
        ) do
-    ports = start_port_registry!()
+    ports =
+      preparation_custodian!(fn ->
+        FakeProvider.stop(server)
+        File.rm_rf!(root)
+      end)
 
     try do
       File.write!(Path.join(repo, "README.md"), "# Fixture project\n")
       File.write!(Path.join(repo, "app.txt"), "baseline\n")
-      git!(%{repo: repo, env: isolated}, ["init", "-q", "--initial-branch=main"])
-      git!(%{repo: repo, env: isolated}, ["config", "user.name", "Kogen Integration"])
+      git!(%{repo: repo, env: isolated, ports: ports}, ["init", "-q", "--initial-branch=main"])
 
-      git!(%{repo: repo, env: isolated}, [
+      git!(%{repo: repo, env: isolated, ports: ports}, [
+        "config",
+        "user.name",
+        "Kogen Integration"
+      ])
+
+      git!(%{repo: repo, env: isolated, ports: ports}, [
         "config",
         "user.email",
         "kogen-integration@example.invalid"
       ])
 
-      git!(%{repo: repo, env: isolated}, ["add", "README.md", "app.txt"])
-      git!(%{repo: repo, env: isolated}, ["commit", "-q", "-m", "fixture baseline"])
+      git!(%{repo: repo, env: isolated, ports: ports}, ["add", "README.md", "app.txt"])
+      git!(%{repo: repo, env: isolated, ports: ports}, ["commit", "-q", "-m", "fixture baseline"])
 
       context = %{
         suite: suite,
@@ -474,48 +671,19 @@ defmodule Kogen.Integration.Helpers do
       write_intent!(context)
       if opts[:staged_intent] != false, do: stage_other_intent!(context)
       approve!(context)
+      :ok = GenServer.call(ports, :prepared)
       context
     rescue
       error ->
-        FakeProvider.stop(server)
-        Agent.stop(ports)
-        File.rm_rf(root)
+        cleanup_case(%{ports: ports, server: server, root: root})
         reraise error, __STACKTRACE__
     end
   end
 
   def cleanup_case(context) do
-    ports =
-      try do
-        Agent.get(context.ports, & &1)
-      catch
-        :exit, _ -> []
-      end
-
-    Enum.each(ports, fn port ->
-      try do
-        case Port.info(port, :os_pid) do
-          {:os_pid, pid} ->
-            System.cmd("/bin/kill", ["-KILL", Integer.to_string(pid)],
-              env: env_for(context),
-              stderr_to_stdout: true
-            )
-
-            await_exit(port, "", 3_000)
-
-          _ ->
-            :ok
-        end
-      rescue
-        _ -> :ok
-      end
-    end)
-
+    cleanup_custodian!(context.ports)
     FakeProvider.stop(context.server)
-    Agent.stop(context.ports)
-    File.rm_rf(context.root)
-  catch
-    :exit, _ -> File.rm_rf(context.root)
+    File.rm_rf!(context.root)
   end
 
   def env_for(context), do: env_for(context, %{})
@@ -528,36 +696,43 @@ defmodule Kogen.Integration.Helpers do
   end
 
   def run_kogen(context, args, opts \\ []) do
-    System.cmd(context.suite.release, args,
-      cd: opts[:cd] || context.repo,
-      env: env_for(context, Map.new(opts[:env] || [])),
-      stderr_to_stdout: true
-    )
+    context |> start_kogen(args, opts) |> await_exit()
   end
 
   def start_kogen(context, args, opts \\ []) do
     env = env_for(context, Map.new(opts[:env] || []))
 
     port =
-      Port.open({:spawn_executable, String.to_charlist(context.suite.release)}, [
-        :binary,
-        :exit_status,
-        :stderr_to_stdout,
-        {:args, Enum.map(args, &String.to_charlist/1)},
-        {:cd, String.to_charlist(opts[:cd] || context.repo)},
-        {:env,
-         Enum.map(env, fn {name, value} ->
-           {String.to_charlist(name),
-            if(value == nil, do: false, else: String.to_charlist(value))}
-         end)}
-      ])
+      GenServer.call(
+        context.ports,
+        {:open, context.suite.release,
+         [
+           :binary,
+           :exit_status,
+           :stderr_to_stdout,
+           {:args, Enum.map(args, &String.to_charlist/1)},
+           {:cd, String.to_charlist(opts[:cd] || context.repo)},
+           {:env,
+            Enum.map(env, fn {name, value} ->
+              {String.to_charlist(name),
+               if(value == nil, do: false, else: String.to_charlist(value))}
+            end)}
+         ], self()},
+        65_000
+      )
 
-    Agent.update(context.ports, &[port | &1])
-    port
+    case port do
+      {:error, error} -> raise error
+      port -> port
+    end
   end
 
   def git!(context, args) do
-    command!("git", ["-C", context.repo | args], env: env_for(context), stderr_to_stdout: true)
+    command!("git", ["-C", context.repo | args],
+      env: env_for(context),
+      custodian: context[:ports],
+      stderr_to_stdout: true
+    )
   end
 
   def signal!(context, port, signal) do
@@ -609,7 +784,7 @@ defmodule Kogen.Integration.Helpers do
     File.chmod!(Path.join(directory, "chatgpt.json"), 0o600)
   end
 
-  def await_output(port, needle, timeout \\ 10_000), do: await_output(port, needle, timeout, "")
+  def await_output(port, needle, timeout \\ 60_000), do: await_output(port, needle, timeout, "")
 
   defp await_output(port, needle, timeout, output) do
     receive do
@@ -627,7 +802,7 @@ defmodule Kogen.Integration.Helpers do
     end
   end
 
-  def await_exit(port, output \\ "", timeout \\ 20_000),
+  def await_exit(port, output \\ "", timeout \\ 60_000),
     do: await_exit(port, output, timeout, System.monotonic_time(:millisecond))
 
   defp await_exit(port, output, timeout, started) do
@@ -640,7 +815,7 @@ defmodule Kogen.Integration.Helpers do
     end
   end
 
-  def wait_for_file!(path, timeout \\ 10_000) do
+  def wait_for_file!(path, timeout \\ 60_000) do
     deadline = System.monotonic_time(:millisecond) + timeout
     wait_file(path, deadline)
   end
@@ -728,7 +903,7 @@ defmodule Kogen.Integration.Helpers do
     if status != 0, do: raise("kogen approval failed: #{output}")
   end
 
-  defp ensure_cucumber!(repo, home, tmp) do
+  defp ensure_cucumber!(repo, home, tmp, ports) do
     node_modules = Path.join([repo, "test/acceptance/node_modules"])
 
     if not File.regular?(Path.join(node_modules, "@cucumber/cucumber/bin/cucumber.js")) do
@@ -738,12 +913,13 @@ defmodule Kogen.Integration.Helpers do
       command!("npm", ["ci", "--no-audit", "--no-fund"],
         cd: Path.join(repo, "test/acceptance"),
         env: suite_env(home, global, tmp),
+        custodian: ports,
         stderr_to_stdout: true
       )
     end
   end
 
-  defp package_release!(repo, home, tmp, suite_root) do
+  defp package_release!(repo, home, tmp, suite_root, ports) do
     global = Path.join(home, ".gitconfig")
     File.write!(global, "")
 
@@ -758,6 +934,7 @@ defmodule Kogen.Integration.Helpers do
 
     {output, 0} =
       command!("/bin/sh", ["packaging/package.sh"],
+        custodian: ports,
         cd: source,
         # The isolated HOME has no Hex: keep this user's Mix and Hex homes so Mix never prompts.
         env:
@@ -801,17 +978,41 @@ defmodule Kogen.Integration.Helpers do
   end
 
   defp command!(executable, args, opts) when is_binary(executable) do
-    System.cmd(executable, args,
-      cd: opts[:cd] || project_root(),
-      env: opts[:env] || [],
-      stderr_to_stdout: opts[:stderr_to_stdout] || false
-    )
-    |> case do
-      {output, 0} ->
-        {output, 0}
+    # Preparation can fail or its ExUnit owner can die just like a CLI test.
+    # Its Port and session must survive until bounded cleanup is complete.
+    custodian =
+      if opts[:custodian] do
+        opts[:custodian]
+      else
+        {:ok, pid} = Kogen.Integration.Custodian.start(owner: self())
+        pid
+      end
 
-      {output, status} ->
-        raise("command #{executable} #{Enum.join(args, " ")} failed (#{status}): #{output}")
+    try do
+      options = [
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        {:args, Enum.map(args, &String.to_charlist/1)},
+        {:cd, String.to_charlist(opts[:cd] || project_root())},
+        {:env,
+         Enum.map(opts[:env] || [], fn {key, value} ->
+           {String.to_charlist(key), if(value == nil, do: false, else: String.to_charlist(value))}
+         end)}
+      ]
+
+      port = GenServer.call(custodian, {:open, executable, options, self()}, 65_000)
+      if match?({:error, _}, port), do: raise(elem(port, 1))
+
+      case await_exit(port, "", 300_000) do
+        {output, 0} ->
+          {output, 0}
+
+        {output, status} ->
+          raise("command #{executable} #{Enum.join(args, " ")} failed (#{status}): #{output}")
+      end
+    after
+      if is_nil(opts[:custodian]), do: cleanup_custodian!(custodian)
     end
   end
 
@@ -822,9 +1023,18 @@ defmodule Kogen.Integration.Helpers do
     Map.merge(unset, Map.new(values)) |> Map.to_list()
   end
 
-  defp start_port_registry! do
-    {:ok, registry} = Agent.start_link(fn -> [] end)
+  defp preparation_custodian!(after_owner_exit) do
+    {:ok, registry} =
+      Kogen.Integration.Custodian.start(owner: self(), after_owner_exit: after_owner_exit)
+
     registry
+  end
+
+  defp cleanup_custodian!(ports) do
+    case GenServer.call(ports, :cleanup, 60_000) do
+      :ok -> GenServer.stop(ports)
+      {:error, error} -> raise error
+    end
   end
 
   defp temp_dir!(prefix) do

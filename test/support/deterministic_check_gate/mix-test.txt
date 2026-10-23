@@ -1,0 +1,19 @@
+Running ExUnit with seed: 807887, max_cases: 24
+
+..............kogen: Shape local working-window reset 571586 -> 191771 bytes; custody /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/shape-window-39248b30b33bb86e/.kogen/local/shaping/fixture/working-context/002cc20bebb3205160dfb5edcd5cf374/1.json (0 s)
+..kogen: Shape local working-window reset 571586 -> 191771 bytes; custody /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/shape-window-746a6abfee353f88/.kogen/local/shaping/fixture/working-context/8af9a1b4b6a5112b05a69d339ac04cb0/1.json (0 s)
+.kogen: Shape local working-window reset 571586 -> 191786 bytes; custody /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/shape-window-ffe1c8ca12b84524/.kogen/local/shaping/fixture/working-context/e0922c1821cf80dcc357e365e9d71539/1.json (0 s)
+kogen: Shape local working-window reset 572688 -> 192583 bytes; custody /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/shape-window-ffe1c8ca12b84524/.kogen/local/shaping/fixture/working-context/e0922c1821cf80dcc357e365e9d71539/2.json (0 s)
+.....kogen: Shape local working-window reset 571586 -> 191771 bytes; custody /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/shape-window-4f298e94c12f94d2/.kogen/local/shaping/fixture/working-context/4b528ad09dcba3fec55fe5f778451439/1.json (0 s)
+....................................kogen: Shape local working-window reset 571637 -> 191969 bytes; custody /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/shape-window-dfd13f1ec867b1a4/.kogen/local/shaping/fixture/working-context/dce16c4c1cf440acb0d0373ba8d96446/1.json (0 s)
+..kogen: review local reset 571448 -> 192006 bytes; ceiling 524288; reserve 131072; history /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/window-custody-61909fa10dab2005/.kogen/local/runs/e8a72158/working-context/review/1.json
+...kogen: Shape local working-window reset 571586 -> 191771 bytes; custody /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/shape-window-c3c0dc91d769d459/.kogen/local/shaping/fixture/working-context/2f9ef273cc51df5afb351ab5d578e795/1.json (0 s)
+.........kogen: review local reset 571247 -> 191899 bytes; ceiling 524288; reserve 131072; history /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/window-custody-c7419bb7e968b4f1/.kogen/local/runs/023df64e/working-context/review/1.json
+...............kogen: review local reset 1270473 -> 70042 bytes; ceiling 524288; reserve 131072; history /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/review-material-61b0bb4ee0a598ec/.kogen/local/runs/502a1445/working-context/review/110.json
+....kogen: review local reset 1300707 -> 70362 bytes; ceiling 524288; reserve 131072; history /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/review-material-610ac4cdf7874256/.kogen/local/runs/3ee815d9/working-context/review/110.json
+..kogen: review local reset 625579 -> 256720 bytes; ceiling 524288; reserve 131072; history /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/review-material-2d65526702f8b497/.kogen/local/runs/d180ab36/working-context/review/64.json
+..kogen: review local reset 625579 -> 252757 bytes; ceiling 524288; reserve 131072; history /var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/review-material-2526a9df08022636/.kogen/local/runs/b2bb3114/working-context/review/64.json
+...............................................................................................................................................................................
+Finished in 726.0 seconds (694.4s async, 31.5s sync)
+
+Result: 270 passed (3 properties, 267 tests)

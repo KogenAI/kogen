@@ -5,6 +5,7 @@ defmodule Kogen.Integration.OpenCodeGoLoginTest do
   import ExUnit.CaptureIO
   alias Kogen.{Error, Lock, OpenCodeGo}
   @moduletag :integration
+  @moduletag timeout: 300_000
   setup_all do
     suite = Kogen.Integration.Helpers.setup_suite!()
     on_exit(fn -> Kogen.Integration.Helpers.cleanup_suite(suite) end)

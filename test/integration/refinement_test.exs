@@ -1,9 +1,10 @@
 Code.require_file(Path.expand("../support/integration_helpers.ex", __DIR__))
 
 defmodule Kogen.Integration.RefinementTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :installed_release
   alias Kogen.{Config, Intent, Integration.FakeProvider, Integration.Helpers}
   @moduletag :integration
+  @moduletag timeout: 300_000
 
   setup_all do
     suite = Helpers.setup_suite!()
@@ -102,7 +103,7 @@ defmodule Kogen.Integration.RefinementTest do
              &String.contains?(&1, "model: the Model: line must be")
            )
 
-    {output, 0} = Helpers.await_exit(port, "", 20_000)
+    {output, 0} = Helpers.await_exit(port, "", 60_000)
     assert output =~ "refined fixture"
     assert package(context) == Map.merge(before, Map.put(proposals, intent, corrected_intent))
     assert index(context) == original_index
@@ -504,7 +505,7 @@ defmodule Kogen.Integration.RefinementTest do
         {output, 3} = Helpers.run_kogen(context, ["intent", "approve", "fixture"])
         assert output =~ "environment/build_running"
         Helpers.signal!(context, port, "INT")
-        {_output, 130} = Helpers.await_exit(port, "", 20_000)
+        {_output, 130} = Helpers.await_exit(port, "", 60_000)
       else
         {output, status} = refine(context)
         assert status != 0, output
@@ -549,7 +550,7 @@ defmodule Kogen.Integration.RefinementTest do
     mode = File.stat!(Path.join(context.repo, path)).mode
     [evidence] = Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*"))
     File.mkdir!(Path.join(evidence, "revoked-approval.json"))
-    {output, status} = Helpers.await_exit(port, "", 20_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
     assert status != 0, output
     assert package(context) == before
     assert File.stat!(Path.join(context.repo, path)).mode == mode
@@ -600,7 +601,7 @@ defmodule Kogen.Integration.RefinementTest do
 
       approval = File.read!(Intent.approval_path(context.repo, "fixture"))
       index = index(context)
-      {output, 1} = Helpers.await_exit(port, "", 20_000)
+      {output, 1} = Helpers.await_exit(port, "", 60_000)
       assert output =~ "intent/refinement_stale"
       assert package(context) == before
       assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
@@ -631,7 +632,7 @@ defmodule Kogen.Integration.RefinementTest do
     feature = Intent.feature("fixture")
     external = before[feature] <> "\n# external edit\n"
     File.write!(Path.join(context.repo, feature), external)
-    {output, status} = Helpers.await_exit(port, "", 20_000)
+    {output, status} = Helpers.await_exit(port, "", 60_000)
     assert status == 1, output
     assert output =~ "intent/refinement_stale"
     assert package(context) == Map.put(before, feature, external)
@@ -657,7 +658,7 @@ defmodule Kogen.Integration.RefinementTest do
 
       Helpers.wait_for_file!(marker)
       Helpers.signal!(context, port, signal)
-      {_output, status} = Helpers.await_exit(port, "", 20_000)
+      {_output, status} = Helpers.await_exit(port, "", 60_000)
       assert status == expected
       assert package(context) == before
 
@@ -859,7 +860,7 @@ defmodule Kogen.Integration.RefinementTest do
       updated = before[path] <> "\nClarified only.\n"
       script!(context, [{:pause, self(), submission([%{"path" => path, "content" => updated}])}])
       port = Helpers.start_kogen(context, ["intent", "refine", "fixture", sha, request!(context)])
-      assert_receive {:provider_paused, provider}, 15_000
+      assert_receive {:provider_paused, provider}, 60_000
 
       if drift == :changed,
         do: File.write!(source, File.read!(source) <> " "),
@@ -867,7 +868,7 @@ defmodule Kogen.Integration.RefinementTest do
 
       drifted = File.read(source)
       send(provider, :continue)
-      {output, 1} = Helpers.await_exit(port, "", 20_000)
+      {output, 1} = Helpers.await_exit(port, "", 60_000)
       assert output =~ "source_provenance_changed"
       assert package(context) == before
       assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
