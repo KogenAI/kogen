@@ -549,6 +549,33 @@ defmodule Kogen.Integration.ProviderWaitTest do
     assert length(FakeProvider.provider_requests(server)) == 2
   end
 
+  test "overload retries the complete request and discards failed output", %{home: home} do
+    failure = %{
+      "type" => "error",
+      "error" => %{
+        "code" => "server_is_overloaded",
+        "type" => "service_unavailable_error",
+        "message" => "Our servers are currently overloaded"
+      }
+    }
+
+    partial = Map.put(tool(), "call_id", "failed-tool")
+
+    server =
+      connect(home, [
+        {:events,
+         [
+           %{"type" => "response.output_item.done", "output_index" => 0, "item" => partial},
+           failure
+         ]},
+        {:events, [done(%{"output" => [tool()]})]}
+      ])
+
+    assert respond([]).items == [tool()]
+    [first, retry] = FakeProvider.provider_requests(server)
+    assert first.json == retry.json
+  end
+
   test "single attempt does not retry unreadable output or transient failures", %{home: home} do
     server = connect(home, [{:events, [done(%{})]}, {:http, 500, %{}}])
 

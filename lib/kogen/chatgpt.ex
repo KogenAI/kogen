@@ -1381,12 +1381,18 @@ defmodule Kogen.ChatGPT do
     cond do
       f["code"] in [
         "server_error",
+        "server_is_overloaded",
         "rate_limit_exceeded",
         "subscription_sharing_usage_unavailable",
         "subscription_sharing_user_unavailable"
       ] ->
         {:transient,
          %{detail: "#{f["code"]}: #{text(f["message"])}", provider_failure: diagnostics(error)}}
+
+      supergrok?() and f["code"] in [nil, ""] and f["type"] in [nil, ""] and
+        f["message"] == "Internal error during token generation" and
+          event_kind in ["error", "response.failed"] ->
+        {:transient, %{detail: f["message"], provider_failure: diagnostics(error)}}
 
       true ->
         {:error, error}

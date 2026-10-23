@@ -282,6 +282,11 @@ class FakeServers {
       res.end(JSON.stringify({ error: outcome.error }));
       return;
     }
+    if (outcome.streamError) {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(responseEvent('error', { error: outcome.streamError }));
+      return;
+    }
     if (outcome.invalidTool) {
       const item = functionCall('write_file', { path: 'unauthorized.txt', content: 'must not execute' }, 'unfinished');
       if (outcome.invalidTool === 'malformed') item.arguments = '{"path":';
@@ -407,6 +412,8 @@ class FakeServers {
     if (name === 'model-unavailable') return { status: 400, error: { code: 'subscription_sharing_unsupported_capability', message: 'model unavailable', param: 'model' } };
     if (name === '400-bad-request') return { status: 400, error: { code: 'invalid_request', message: 'bad request' } };
     if (name === '500-always' || (name === 'build-then-500-always' && record.kind === 'build' && this.hasToolOutput(record, 'write_file', args => args.path === 'calc.py'))) return { status: 500, error: { code: 'server_error', message: 'server error' } };
+    if (name === 'stream-overload-always' || (name === 'stream-overload-then-ok' && this.requests.length === 1)) return { streamError: { code: 'server_is_overloaded', type: 'service_unavailable_error', message: 'Our servers are currently overloaded' } };
+    if (name === 'stream-codeless-always' || (name === 'stream-codeless-then-ok' && this.requests.length === 1)) return { streamError: { message: 'Internal error during token generation' } };
     if (name === '401-then-ok' && this.requests.length === 1) return { status: 401, error: { code: 'unauthorized', message: 'unauthorized' } };
     if (['unfinished-tool', 'malformed-tool', 'unfinished-tool-empty-final', 'malformed-tool-empty-final'].includes(name)) return { invalidTool: name.startsWith('unfinished') ? 'unfinished' : 'malformed', emptyFinal: name.endsWith('-empty-final') };
     if (name === 'shape-asks-one-empty-final' && record.kind === 'shape') return this.shapeResponse('shape-asks-one', ordinal, record);

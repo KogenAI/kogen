@@ -113,6 +113,7 @@ function setConfigKey(world, key, value) {
     'commands.acceptance.run': /^    run:.*$/m,
     'commands.acceptance.steps_dir': /^    steps_dir:.*$/m,
     protect: /^protect:.*$/m,
+    'models.shape': /^  shape:.*$/m,
   };
   const line = lineMap[key];
   assert.ok(line, `unsupported config setting in fixture: ${key}`);

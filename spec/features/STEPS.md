@@ -83,6 +83,8 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `build-leaves-old-helper-then-removes-it` | the fixture has an unchanged `legacy_parity.py`; the reviewer reads it and finds `legacy_parity.py:1: obsolete parity helper; remove it`; the builder deletes it; review 2 `approve` |
 | `build-review-invalid-twice` | two malformed verdicts |
 | `build-review-demands-baseline-change` | every review asks to change the acceptance feature; the builder tries `write_file` on it |
+| `stream-overload-then-ok`, `stream-overload-always` | nested SSE `error` with code `server_is_overloaded`, subtype `service_unavailable_error` and message `Our servers are currently overloaded`, on the first or every request respectively; recovery continues like `shape-ready-is-even` |
+| `stream-codeless-then-ok`, `stream-codeless-always` | nested SSE `error` with only message `Internal error during token generation`, on the first or every request respectively; recovery continues like `shape-ready-is-even` |
 | `401-then-ok`, `500-always`, `stream-cut-then-ok`, `usage-limit` (resets 2030-01-01T00:00:00Z), `model-unavailable`, `400-bad-request` | as named; where they succeed, like `shape-ready-is-even` |
 
 ## Patterns

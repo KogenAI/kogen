@@ -171,10 +171,35 @@ Feature: ChatGPT connection
     Examples:
       | script             | exit | line                                                                             | requests |
       | 500-always         | 4    | provider/unavailable: ChatGPT did not answer after 3 attempts                   | 3        |
+      | stream-overload-always | 4 | provider/unavailable: ChatGPT did not answer after 3 attempts | 3 |
+      | stream-overload-then-ok | 0 | Next: kogen intent approve is-even | 3 |
       | stream-cut-then-ok | 0    | Next: kogen intent approve is-even                                               | 3        |
       | 401-then-ok        | 0    | Next: kogen intent approve is-even                                               | 3        |
       | model-unavailable  | 4    | provider/model_unavailable: gpt-6.1-sol is not available to this ChatGPT account | 1        |
       | 400-bad-request    | 4    | provider/refused: ChatGPT refused the request: 400                               | 1        |
+
+  @GPT-8
+  Scenario Outline: SuperGrok retries the exact codeless token-generation failure
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    And the project config sets "models.shape" to "{provider: supergrok, model: grok-4.7, effort: low}"
+    And the file "{home}/.kogen/credentials/supergrok.json" contains:
+      """
+      {"client_id":"fixture","referrer":"kogen","access_token":"KOGEN_ACCEPTANCE_FAKE_ACCESS_TOKEN_DO_NOT_LEAK_20261016","refresh_token":"synthetic-refresh","expires_at":4102444800}
+      """
+    And the fake ChatGPT server plays script "<script>"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is <exit>
+    And stdout contains "<line>"
+    And the fake ChatGPT server received 3 requests
+
+    Examples:
+      | script                         | exit | line                                                         |
+      | stream-codeless-then-ok         | 0    | Next: kogen intent approve is-even                            |
+      | stream-codeless-always          | 4    | provider/unavailable: SuperGrok did not answer after 3 attempts |
 
   @GPT-8 @GIT-8
   Scenario: A provider outage during a Build ends it without a commit

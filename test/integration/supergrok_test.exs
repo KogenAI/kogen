@@ -129,6 +129,53 @@ defmodule Kogen.Integration.SuperGrokTest do
     end
   end
 
+  test "exact codeless generation errors require empty code and subtype on SuperGrok", c do
+    File.write!(
+      c.path,
+      JSON.encode!(%{@credentials | "expires_at" => System.system_time(:second) + 3600})
+    )
+
+    message = "Internal error during token generation"
+
+    cases = [
+      {%{"message" => message}, "unavailable"},
+      {%{"code" => nil, "type" => nil, "message" => message}, "unavailable"},
+      {%{"code" => "", "type" => "", "message" => message}, "unavailable"},
+      {%{"code" => "unknown_capacity", "message" => message}, "refused"},
+      {%{"code" => %{}, "message" => message}, "refused"},
+      {%{"type" => "service_unavailable_error", "message" => message}, "refused"},
+      {%{"message" => message <> " later"}, "refused"}
+    ]
+
+    frames =
+      Enum.flat_map(cases, fn {error, reason} ->
+        failure = {:events, [%{"type" => "response.failed", "response" => %{"error" => error}}]}
+        if reason == "unavailable", do: [failure, {:text, "recovered"}], else: [failure]
+      end)
+
+    server = connect(c.home, frames)
+
+    for {_, reason} <- cases do
+      call = fn ->
+        Kogen.ChatGPT.respond(
+          %{provider: "supergrok", model: "grok-4.7", effort: "low"},
+          "policy",
+          [],
+          []
+        )
+      end
+
+      if reason == "unavailable" do
+        assert call.().items != []
+      else
+        error = assert_raise Error, call
+        assert error.reason == reason
+      end
+    end
+
+    assert length(FakeProvider.provider_requests(server)) == 10
+  end
+
   test "SuperGrok workers refresh once after 401 and preserve routed attempt identity", c do
     server =
       connect(c.home, [
@@ -160,6 +207,7 @@ defmodule Kogen.Integration.SuperGrokTest do
   end
 
   for {status, error} <- [
+        {400, %{"message" => "Internal error during token generation"}},
         {400, %{"code" => "unknown_parameter", "param" => "other"}},
         {400, %{"code" => "invalid_parameter", "param" => "prompt_cache_key"}},
         {400, %{"message" => "unsupported prompt_cache_key"}},
