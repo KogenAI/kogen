@@ -18,7 +18,7 @@ archive=$(sh packaging/package.sh 2>/dev/null | tail -1)
 say "packaged $archive"
 
 mkdir -p "$work/suite-home"
-MIX_HOME="${MIX_HOME:-$HOME/.mix}" HEX_HOME="${HEX_HOME:-$HOME/.hex}" HOME="$work/suite-home" KOGEN_ARCHIVE="$archive" sh test/suite.sh > "$work/suite.out" 2>&1 || { tail -40 "$work/suite.out"; say "FAIL: the self-built deterministic suite"; exit 1; }
+GOMODCACHE="${GOMODCACHE:-$(go env GOMODCACHE)}" GOCACHE="${GOCACHE:-$(go env GOCACHE)}" HOME="$work/suite-home" KOGEN_ARCHIVE="$archive" sh test/suite.sh > "$work/suite.out" 2>&1 || { tail -40 "$work/suite.out"; say "FAIL: the self-built deterministic suite"; exit 1; }
 tail -4 "$work/suite.out"
 say "ok: the self-built deterministic suite passes"
 

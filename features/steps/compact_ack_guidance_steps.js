@@ -1,132 +1,86 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { isDeepStrictEqual } = require('node:util');
 const { When, Then } = require('@cucumber/cucumber');
-const REPO = path.resolve(__dirname, '../..');
+const H = require('./go_driver_support.js');
 let exercise;
 
-// Reuse the installed-release fixture and fake provider, but do not depend on
-// implementation tests or their assertions. Only these steps are frozen.
-const driver = String.raw`
-ExUnit.start(autorun: false)
-Code.require_file("test/support/integration_helpers.ex")
-alias Kogen.{Config, Intent, Readiness, Integration.Helpers, Integration.FakeProvider}
-suite = Helpers.setup_suite!()
-try do
- results = for mode <- ["shape", "refine"], into: %{} do
-  c = Helpers.project!(suite, [], staged_intent: false)
-  try do
-   slug = if mode == "shape", do: "compact-observed", else: "fixture"
-   intent = Intent.intent_md(slug)
-   feature = Intent.feature(slug)
-   helper = if mode == "shape", do: "features/steps/compact_observed.js", else: "features/steps/integration_steps.js"
-   trace = Path.join(c.root, "compact-readiness-runs")
-   config = Config.load!(c.repo)
-   run = "if grep -q 'Scenario:' \"$KOGEN_ACCEPTANCE_FEATURES\"; then printf 'run\\n' >> '#{trace}'; fi; " <> config.acceptance_run
-   File.write!(Path.join(c.repo, Config.path()), Config.render(%{setup: [], fix: [], checks: [], protect: config.protect, acceptance: %{run: run, steps_dir: config.steps_dir}}))
-   {_, 0} = Helpers.git!(c, ["add", Config.path()])
-   {_, 0} = Helpers.git!(c, ["commit", "-qm", "Count compact readiness executions"])
-   hash = fn -> Intent.hash(c.repo, Intent.baseline(c.repo, slug, Config.load!(c.repo))) end
-   # Refresh approval for the changed configuration, before freezing Refine.
-   if mode == "refine" do
-    {_, 0} = Helpers.run_kogen(c, ["intent", "approve", slug, hash.()])
-   end
-   count = fn ->
-    case File.read(trace) do
-     {:ok, text} -> length(String.split(text, "\n", trim: true))
-     _ -> 0
-    end
-   end
-   before_count = count.()
-   original_baseline = if mode == "refine", do: Map.new(Intent.baseline(c.repo, slug, Config.load!(c.repo)), &{&1, File.read!(Path.join(c.repo, &1))}), else: %{Config.path() => File.read!(Path.join(c.repo, Config.path()))}
-   md = if mode == "shape" do
-    "# Observe compact acknowledgements\n\nSlug: #{slug}\nModel: not applicable — no state changes\nAcceptance:\n- #{feature}\n- #{helper}\n\n## Tests\n- compact fixture: actual scenario (regression)\n\n## Feasibility\n- none\n"
-   else
-    File.read!(Path.join(c.repo, intent))
-   end
-   ft = "Feature: Compact acknowledgement\n  Scenario: Legitimate product red\n    Then compact product behavior exists\n"
-   body = fn message ->
-    "const { Then } = require('@cucumber/cucumber');\nThen('compact product behavior exists', function () { throw new Error('#{message}'); });\n" <> "// large helper body\n" <> String.duplicate("// retained fixture padding\n", 100)
-   end
-   initial_helper = body.("incorrect fixture input")
-   corrected_helper = body.("legitimate missing product behavior")
-   initial = [%{"path" => intent, "content" => md}, %{"path" => feature, "content" => ft}, %{"path" => helper, "content" => initial_helper}]
-   tool = if mode == "shape", do: "submit", else: "submit_refinement"
-   submit = fn files -> {:function, tool, %{"files" => files}} end
-   unsafe = [%{"path" => helper, "content" => "throw new Error('POISON MUST NOT SURVIVE');\n"}, %{"path" => "../outside", "content" => "unsafe"}]
-   ack = [%{"path" => feature, "content" => ft}]
-   actions = [submit.([]), submit.(initial), submit.(unsafe), submit.([%{"path" => helper, "content" => corrected_helper}]), submit.(ack)]
-   Agent.update(c.server.state, &%{&1 | script: Enum.take(&1.script, &1.next) ++ actions})
-   request = Path.join(c.root, "compact-request.txt")
-   File.write!(request, "Inspect readiness; correct fixture inputs and acknowledge legitimate missing-feature red with the smallest eligible current-candidate artifact.")
-   args = if mode == "shape", do: ["intent", "shape", slug, request], else: ["intent", "refine", slug, hash.(), request]
-   {output, status} = Helpers.run_kogen(c, args)
-   if status != 0, do: raise("#{mode} failed: #{output}")
-   requests = FakeProvider.provider_requests(c.server) |> Enum.map(& &1.json) |> Enum.filter(fn req -> Enum.any?(req["tools"] || [], &(&1["name"] == tool)) end)
-   first = hd(requests)
-   definition = Enum.find(first["tools"], &(&1["name"] == tool))
-   prompt = (first["instructions"] || "") <> "\n" <> (definition["description"] || "")
-   feedback = FakeProvider.tool_outputs(c.server)
-   observations = Enum.filter(feedback, &String.contains?(&1, "Readiness observations")) |> Enum.join("\n")
-   expected = Map.merge(original_baseline, %{intent => md, feature => ft, helper => corrected_helper})
-   baseline = Intent.baseline(c.repo, slug, Config.load!(c.repo))
-   actual = Map.new(baseline, &{&1, File.read!(Path.join(c.repo, &1))})
-   record = Path.join(c.repo, ".kogen/local/readiness/#{slug}.json") |> File.read!() |> JSON.decode!()
-   ready = Readiness.cached(c.repo, slug, Config.load!(c.repo))
-   submitted_smallest = byte_size(ft) == Enum.min(Enum.map([md, ft, corrected_helper], &byte_size/1)) and length(ack) == 1
-   {mode, %{
-    "files minItems" => get_in(definition, ["parameters", "properties", "files", "minItems"]) || 0,
-    "empty submission rejected" => Enum.any?(feedback, &((String.starts_with?(&1, "invalid:") or String.starts_with?(&1, "invalid submission:")) and not String.contains?(&1, "Readiness observations"))),
-    "unsafe submission rejected" => Enum.any?(feedback, &(String.contains?(&1, "No proposals from this submission were retained") or String.contains?(&1, "no proposals from this submission were retained"))),
-    "candidate readiness executions" => count.() - before_count,
-    "smallest artifact submitted" => submitted_smallest,
-    "exact complete package retained" => actual == expected and not File.exists?(Path.join(c.root, "outside")),
-    "evidence matches complete inputs" => ready != nil and record["sha256"] == hash.() and record["head"] == Kogen.Git.head(c.repo) and record["baseline"] == baseline,
-    "no approval" => not File.exists?(Intent.approval_path(c.repo, slug)),
-    "prompt" => String.downcase(prompt),
-    "feedback" => String.downcase(observations)
-   }}
-  after
-   Helpers.cleanup_case(c)
-  end
- end
- IO.puts("COMPACT_ACK_RESULT=" <> JSON.encode!(results))
-after
- Helpers.cleanup_suite(suite)
-end
-ExUnit.run()
-`;
-
-function runExercise() {
-  return new Promise((resolve, reject) => {
-    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-ack-driver-'));
-    const file = path.join(scratch, 'driver.exs');
-    fs.writeFileSync(file, driver);
-    const child = spawn('mix', ['run', file], {
-      cwd: REPO, detached: true,
-      env: { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let output = '';
-    child.stdout.on('data', b => { output += b; });
-    child.stderr.on('data', b => { output += b; });
-    const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }, 240000);
-    child.on('error', e => { clearTimeout(timer); fs.rmSync(scratch, { recursive: true, force: true }); reject(e); });
-    child.on('close', code => {
-      clearTimeout(timer);
-      fs.rmSync(scratch, { recursive: true, force: true });
-      try {
-        assert.equal(code, 0, output);
-        const line = output.split('\n').find(s => s.startsWith('COMPACT_ACK_RESULT='));
-        assert.ok(line, output);
-        resolve(JSON.parse(line.slice('COMPACT_ACK_RESULT='.length)));
-      } catch (e) { reject(e); }
-    });
-  });
+// Reuse the installed-release fixture and fake provider, but do not depend on implementation tests or their
+// assertions. Only these steps are frozen. The installed `kogen` (the one Go program) is driven and its files are read.
+async function runMode(suite, mode) {
+  const c = await H.project(suite, [], { stagedIntent: false });
+  try {
+    const slug = mode === 'shape' ? 'compact-observed' : 'fixture';
+    const intent = H.intentMd(slug), feature = H.featurePath(slug);
+    const helper = mode === 'shape' ? 'features/steps/compact_observed.js' : 'features/steps/integration_steps.js';
+    const trace = path.join(c.root, 'compact-readiness-runs');
+    const original = fs.readFileSync(path.join(c.repo, '.kogen/project.yaml'), 'utf8');
+    const stepsDir = /steps_dir: '?([^'\n]+)'?/.exec(original)[1];
+    const acceptanceRun = /^    run: '((?:[^']|'')*)'$/m.exec(original)[1].replaceAll("''", "'");
+    const run = `if grep -q 'Scenario:' "$KOGEN_ACCEPTANCE_FEATURES"; then printf 'run\\n' >> '${trace}'; fi; ${acceptanceRun}`;
+    H.configure(c, { acceptance: { run, stepsDir } });
+    await H.gitBang(c, ['add', '.kogen/project.yaml']);
+    await H.gitBang(c, ['commit', '-qm', 'Count compact readiness executions']);
+    const hash = () => H.baselineHash(c, slug);
+    // Refresh approval for the changed configuration, before freezing Refine.
+    if (mode === 'refine') { const r = await H.runKogen(c, ['intent', 'approve', slug, await hash()]); assert.equal(r.code, 0, r.out); }
+    const count = () => fs.existsSync(trace) ? fs.readFileSync(trace, 'utf8').split('\n').filter(Boolean).length : 0;
+    const beforeCount = count();
+    const readAll = async () => Object.fromEntries((await H.baselinePaths(c, slug)).map(p => [p, fs.readFileSync(path.join(c.repo, p), 'utf8')]));
+    const originalBaseline = mode === 'refine' ? await readAll() : { '.kogen/project.yaml': fs.readFileSync(path.join(c.repo, '.kogen/project.yaml'), 'utf8') };
+    const md = mode === 'shape'
+      ? `# Observe compact acknowledgements\n\nSlug: ${slug}\nModel: not applicable \u2014 no state changes\nAcceptance:\n- ${feature}\n- ${helper}\n\n## Source comparison\n- addressed: compact acknowledgement stays observable; source request; contract Tests and acceptance.feature.\n\n## Tests\n- compact fixture: actual scenario (regression)\n\n## Feasibility\n- none\n`
+      : fs.readFileSync(path.join(c.repo, intent), 'utf8');
+    const ft = 'Feature: Compact acknowledgement\n  Scenario: Legitimate product red\n    Then compact product behavior exists\n';
+    const body = message => `const { Then } = require('@cucumber/cucumber');\nThen('compact product behavior exists', function () { throw new Error('${message}'); });\n// large helper body\n${'// retained fixture padding\n'.repeat(100)}`;
+    const initialHelper = body('incorrect fixture input'), correctedHelper = body('legitimate missing product behavior');
+    const initial = [{ path: intent, content: md }, { path: feature, content: ft }, { path: helper, content: initialHelper }];
+    const tool = mode === 'shape' ? 'submit' : 'submit_refinement';
+    const submit = files => H.fn(tool, { files });
+    const unsafe = [{ path: helper, content: "throw new Error('POISON MUST NOT SURVIVE');\n" }, { path: '../outside', content: 'unsafe' }];
+    const ack = [{ path: feature, content: ft }];
+    // A shaper inspects the repository before it declares readiness (shape/uninspected otherwise).
+    c.server.setScript([H.fn('read_file', { path: 'README.md' }), submit([]), submit(initial), submit(unsafe), submit([{ path: helper, content: correctedHelper }]), submit(ack)]);
+    const request = path.join(c.root, 'compact-request.txt');
+    fs.writeFileSync(request, 'Inspect readiness; correct fixture inputs and acknowledge legitimate missing-feature red with the smallest eligible current-candidate artifact.');
+    const args = mode === 'shape' ? ['intent', 'shape', slug, request] : ['intent', 'refine', slug, await hash(), request];
+    const { out: output, code: status } = await H.runKogen(c, args);
+    if (status !== 0) throw new Error(`${mode} failed: ${output}`);
+    const requests = c.server.providerRequests().map(r => r.json).filter(req => (req.tools || []).some(t => t.name === tool));
+    const first = requests[0];
+    const definition = first.tools.find(t => t.name === tool);
+    const prompt = `${first.instructions || ''}\n${definition.description || ''}`;
+    const feedback = c.server.toolOutputs();
+    const observations = feedback.filter(x => x.includes('Readiness observations')).join('\n');
+    const expected = { ...originalBaseline, [intent]: md, [feature]: ft, [helper]: correctedHelper };
+    const baseline = await H.baselinePaths(c, slug);
+    const actual = await readAll();
+    const record = JSON.parse(fs.readFileSync(path.join(c.repo, `.kogen/local/readiness/${slug}.json`), 'utf8'));
+    const head = await H.git(c, ['rev-parse', 'HEAD']);
+    // Cached readiness is usable when its record is a ready version-3 record for this baseline hash and HEAD.
+    const ready = record.version === 3 && record.outcome === 'ready' && record.sha256 === await hash() && record.head === head;
+    const size = x => Buffer.byteLength(x);
+    const submittedSmallest = size(ft) === Math.min(...[md, ft, correctedHelper].map(size)) && ack.length === 1;
+    return {
+      'files minItems': (((definition.parameters || {}).properties || {}).files || {}).minItems || 0,
+      'empty submission rejected': feedback.some(x => (x.startsWith('invalid:') || x.startsWith('invalid submission:')) && !x.includes('Readiness observations')),
+      'unsafe submission rejected': feedback.some(x => x.includes('No proposals from this submission were retained') || x.includes('no proposals from this submission were retained')),
+      'candidate readiness executions': count() - beforeCount,
+      'smallest artifact submitted': submittedSmallest,
+      'exact complete package retained': isDeepStrictEqual(actual, expected) && !fs.existsSync(path.join(c.root, 'outside')),
+      'evidence matches complete inputs': ready && isDeepStrictEqual(record.baseline, baseline),
+      'no approval': !fs.existsSync(H.approvalPath(c.repo, slug)),
+      prompt: prompt.toLowerCase(), feedback: observations.toLowerCase(),
+    };
+  } finally { await H.cleanupCase(c); }
 }
-When('I exercise compact acknowledgement through installed {string}', { timeout: 250000 }, async function (operation) {
+async function runExercise() {
+  const suite = await H.setupSuite();
+  try { const results = {}; for (const mode of ['shape', 'refine']) results[mode] = await runMode(suite, mode); return results; }
+  finally { H.cleanupSuite(suite); }
+}
+When('I exercise compact acknowledgement through installed {string}', { timeout: 400000 }, async function (operation) {
   if (!exercise) exercise = runExercise();
   const results = await exercise;
   assert.ok(Object.hasOwn(results, operation), operation);

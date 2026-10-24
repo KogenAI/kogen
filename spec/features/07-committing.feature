@@ -58,6 +58,7 @@ Feature: Committing
       """
       environment/dirty_tree: 1 changed path(s) are not part of an Intent; commit, stash or discard them first
         notes.txt
+        no newly created Build run; correct the named prerequisite before trying again
       """
 
   @GIT-3 @model:build

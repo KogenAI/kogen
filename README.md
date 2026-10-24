@@ -42,7 +42,7 @@ Resume is not automatic recovery or reapproval of a protected-contract blocker.
 
 A builder that observes a contradiction in protected fixtures can report it and stop with `candidate/build_blocked`. The report is labelled builder-reported, with evidence retained alongside the candidate, original index and approval; it does not authorize edits or skip successful checks. Ordinary implementation failures continue through repair.
 
-Kogen supports ChatGPT ("Sign in with ChatGPT", using your plan), SuperGrok subscription sign-in, explicitly selected OpenCode Go (`kimi-k3`, requested `high` or `default`), and Anthropic Claude via API key (`claude-opus-5-5` or `claude-sonnet-5-5`, `low`/`medium`/`high`/`max`). Save your own Go workspace key through stdin with `kogen provider login opencode-go`; local status is `key saved (not verified)`, not subscription eligibility. Omitted per-role `provider` keeps ChatGPT; `provider: supergrok` selects `grok-4.7` with `low`, `medium`, `high` or `xhigh` effort. Sign in with `kogen provider login supergrok`: follow the printed HTTPS address and code; Kogen does not open a browser for this device flow. `kogen provider list` shows all four local logins without network access. No API-key or paid-route fallback is used. See [provider configuration and qualification](docs/configuration.md#providers). Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
+Kogen supports ChatGPT ("Sign in with ChatGPT", using your plan), SuperGrok subscription sign-in, explicitly selected OpenCode Go, Anthropic Claude via API key, and local or self-hosted OpenAI-compatible servers (Ollama, LM Studio, vLLM). Any nonempty `model` and `effort` is accepted for every provider and sent unchanged; known models are only recommended defaults (`gpt-6.1-sol` for ChatGPT, `grok-4.7` for SuperGrok, `kimi-k3` for OpenCode Go, `claude-opus-5-5` or `claude-sonnet-5-5` for Anthropic). If a provider refuses the model or effort, Kogen says what it sent, does not retry, and tells you to set another model or effort for that role in `.kogen/project.yaml`. Save your own Go workspace key through stdin with `kogen provider login opencode-go`; local status is `key saved (not verified)`, not subscription eligibility. Omitted per-role `provider` keeps ChatGPT; `provider: supergrok` is recommended with `grok-4.7` and `low`, `medium`, `high` or `xhigh` effort. Sign in with `kogen provider login supergrok`: follow the printed HTTPS address and code; Kogen does not open a browser for this device flow. `provider: openai-compatible` needs a `base_url` per role, for example `'http://localhost:11434/v1'` for Ollama, and an optional key from `kogen provider login openai-compatible`. `kogen provider list` shows the saved local logins without network access. No API-key or paid-route fallback is used. See [provider configuration and qualification](docs/configuration.md#providers). Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
 
 Claude uses separate API billing, not a consumer Claude/Max subscription. Save a key
 privately with `kogen provider login anthropic` (stdin or echo-suppressed terminal).
@@ -70,10 +70,9 @@ Kogen is in active development. There is no published release yet: you build the
 
 ## Getting started
 
-You need Git, a supported subscription (bare `kogen init` discovery requires ChatGPT; see [configuration-first bootstrap](docs/configuration.md#opencode-go-and-role-presets)), and the toolchain in `.tool-versions` (Elixir 1.20.4 on Erlang/OTP 29.1.1, Go 1.27, Node 24; for example with [mise](https://mise.jdx.dev): `mise install`).
+Kogen is one Go program. You need Git, a supported subscription (bare `kogen init` discovery requires ChatGPT; see [configuration-first bootstrap](docs/configuration.md#opencode-go-and-role-presets)), and to build it Go 1.27 and Node 24 (for Quint and Cucumber); no Erlang or Elixir. The toolchain is in `.tool-versions`, for example with [mise](https://mise.jdx.dev): `mise install` (it also lists Elixir for the Elixir fixture project and the Tiny Tasks example, which are projects Kogen builds, not part of Kogen).
 
 ```sh
-mix local.hex --force                          # Elixir's package manager, once per machine
 sh packaging/package.sh                        # builds dist/kogen-<version>-<platform>.tar.gz
 tar -xzf dist/kogen-*.tar.gz -C /tmp
 sh /tmp/kogen-*/install.sh                     # installs into ~/.local; needs no administrator rights
@@ -107,8 +106,6 @@ For a generated project, commit the runnable scaffold first; `kogen init` then m
 Set up once, with the toolchain from `.tool-versions` on `PATH`:
 
 ```sh
-mix local.hex --force
-mix deps.get
 (cd spec && npm ci)
 (cd test/acceptance && npm ci)
 ```
@@ -116,9 +113,7 @@ mix deps.get
 Checks for an ordinary change, as [docs/testing-strategy.md](docs/testing-strategy.md) describes (the tests a change needs follow [docs/testing-rules.md](docs/testing-rules.md)):
 
 ```sh
-mix test test/kogen                            # unit tests
-mix test test/integration                      # integration tests against a freshly installed release
-(cd cli && go test -race ./...)                # Go tests of the kogen command
+(cd cli && go test -race ./...)                # Go tests: unit and integration, against real git in temp repos
 (cd spec && sh check.sh)                       # the specification's own checks
 sh packaging/package.sh                        # the release the scenarios install (they use the newest in dist/)
 (cd test/acceptance && npx cucumber-js --strict --tags "not @live" --require "steps/*.js" --require "support/*.js" ../../spec/features/04-building.feature)   # the chapter you changed
@@ -136,20 +131,19 @@ sh examples/tiny_tasks-qualification/qualify.sh               # qualifies the ex
 
 During development, fix Kogen directly with an external coding agent when needed. Self-hosting is a qualification path, not a prerequisite for repairing the tool. Preserve failed-attempt evidence and verify the candidate independently. An uncommitted development build is not a qualified release; the release checks above still apply.
 
-The scenarios run Python from `.tool-versions`; set `KOGEN_TEST_PYTHON_BIN` to use another Python 3.13. `sh test/suite.sh` takes about two minutes with dependencies installed.
+The scenarios run Python from `.tool-versions`; set `KOGEN_TEST_PYTHON_BIN` to use another Python 3.13. Read `sh test/suite.sh` layer timings for the actual scope and host load. The
+24 October migration candidate took 516.8 seconds for that complete deterministic
+layer under concurrent local work; focused checks remain the development loop.
 
 ## Folder map
 
 | Path | What |
 | --- | --- |
-| `lib/` | the Elixir core (`Kogen.Application`): shaping, ChatGPT, the build loop, verification, review, commit |
-| `config/`, `rel/` | the core's configuration and release settings |
-| `cli/` | the Go `kogen` command: arguments, the bridge to the core, project commands in process groups, the login listener |
+| `cli/` | the `kogen` program (Go, standard library only): the command line, providers and sign-in, shaping, the build loop, verification, review and commit, project commands in process groups under a watchdog; its packages sit beside `main` and carry their own tests |
 | `packaging/` | `package.sh`, `install.sh`, the release README, the pinned Quint and Cucumber packages, third-party licences |
 | `spec/` | prose, Gherkin and Quint specification, and its checks |
 | `docs/` | `configuration.md`, `testing-rules.md` (the test-selection rules Kogen gives its models and follows itself), `testing-strategy.md` (Kogen's own test layers and gates) |
 | `examples/` | the example app for real-use tests, with the qualification of its checks |
-| `test/kogen/`, `test/integration/` | ExUnit unit and integration tests |
 | `test/acceptance/` | the deterministic scenario suite: step definitions, the fake ChatGPT server, fixtures |
 | `test/live/` | release acceptance (real use), the product export and its checks |
 
@@ -186,7 +180,7 @@ Use `kogen context` for JSON checkout activity and last-started Build facts,
 `kogen intent list`, `kogen intent inspect <run-id>` and
 `kogen intent preflight <slug>` for discovery and read-only investigation.
 The latter three accept `--json`; all four accept `--project <checkout>`.
-Context and completion run without the installed core. See
+Context and completion are local reads that need no login, provider or network. See
 [the version 1 contract and standalone Zsh installation](docs/checkout-facts.md).
 Preflight is not authorization: Build still performs its normal safety checks.
 
@@ -196,11 +190,8 @@ Preflight is not authorization: Build still performs its normal safety checks.
 local retained transport evidence without credentials or inference. It reports
 weighted cache ratios, nullable writes/lifetimes, unknown/inconsistent counts,
 failures and provenance; totals cover selected evidence, not just displayed rows.
-This is not account or weekly usage. Go uses a generated `x-opencode-session`; SuperGrok requests `prompt_cache_key` with a bounded named-parameter refusal fallback. Neither establishes a cache benefit. ChatGPT Responses sends a stable public conversation `prompt_cache_key` from the
-first request, never explicit options/breakpoints, while keeping full stateless encrypted replay,
-independent reviewers and fresh safety/verification gates. Anthropic requests ephemeral caching on the unchanged system policy and growing
-conversation with the default five-minute lifetime. Cache acceptance is
-not proof of a hit, effective TTL or live account qualification. See
+This is not account or weekly usage. Every model conversation has one cache identity (at most 64 characters, kept across retries, resets and resume, never shared with another conversation). ChatGPT sends it as `prompt_cache_key` without a private-backend session header, SuperGrok as `prompt_cache_key` (with one bounded refusal retry), OpenCode Go as `x-opencode-session`, and Anthropic marks ephemeral `cache_control` breakpoints on the last tool, last system block and newest message (at most four); OpenAI-compatible hosts get no vendor field or header (a host with prefix caching still benefits from the frozen front and append-only history). Kogen keeps full stateless encrypted replay, independent reviewers and fresh safety/verification gates, and the usage report shows the cached share from each provider's raw cache fields. Cache acceptance is
+not proof of a hit, effective lifetime or live account qualification. See
 [usage scope, filters and uncertainty](docs/usage.md).
 
 ## Private working continuity and source provenance

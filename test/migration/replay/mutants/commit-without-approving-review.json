@@ -1,0 +1,8 @@
+{
+  "id": "commit-without-approving-review",
+  "case": "verification-review",
+  "description": "A review verdict of changes (a blocking finding) is treated like an approval: the Build goes on to commit.",
+  "edits": [
+    { "file": "build/review.go", "old": "\tif verdict.Verdict == \"changes\" {\n\t\te := sys.Fail(\"candidate\", \"review_blocked\",", "new": "\tif false && verdict.Verdict == \"changes\" {\n\t\te := sys.Fail(\"candidate\", \"review_blocked\"," }
+  ]
+}

@@ -4,11 +4,11 @@
 // (a background server outlives the command that started it). Detached processes are
 // outside the contract and are not modelled. The Build's own endings are listed in
 // chapter 04; here a Build ends normally with exit 0 (committed) or 1, 3, 4 (not
-// committed), by a signal (130, 143, 129), or by a core crash (70).
+// committed), by a signal (130, 143, 129), or by an internal error (70).
 module run_control {
   type Status = Idle | Running | Stopping | Ended
   type Lock = Free | LiveHolder | DeadHolder
-  type Signal = NoSignal | SigInt | SigTerm | SigHup | CoreCrash
+  type Signal = NoSignal | SigInt | SigTerm | SigHup | InternalError
 
   var status: Status
   var lock: Lock
@@ -64,10 +64,10 @@ module run_control {
     setAll(status, lock, running, signal, false, 0, committed, exitCode, refusal),
   }
 
-  // CLI-7 / CLI-8: SIGINT, SIGTERM, SIGHUP, or the core crashing.
+  // CLI-7 / CLI-8: SIGINT, SIGTERM, SIGHUP, or an internal error in kogen.
   action interrupt = all {
     status == Running,
-    nondet sg = Set(SigInt, SigTerm, SigHup, CoreCrash).oneOf()
+    nondet sg = Set(SigInt, SigTerm, SigHup, InternalError).oneOf()
     setAll(Stopping, lock, running, sg, active, groupAlive, committed, exitCode, refusal),
   }
 
@@ -87,17 +87,17 @@ module run_control {
     setAll(status, lock, running, signal, false, 0, committed, exitCode, refusal),
   }
 
-  // The stop completes once nothing is left: lock released. A signal stop makes no commit; a core
-  // crash may end with or without the Build's commit (CLI-8).
+  // The stop completes once nothing is left: lock released. A signal stop makes no commit; an
+  // internal error may end with or without the Build's commit (CLI-8).
   action stopDone = all {
     status == Stopping,
     not(active),
     groupAlive == 0,
     nondet c = Set(true, false).oneOf()
-    val code = if (signal == SigInt) 130 else if (signal == SigHup) 129 else if (signal == CoreCrash) 70
+    val code = if (signal == SigInt) 130 else if (signal == SigHup) 129 else if (signal == InternalError) 70
                else if (signal == SigTerm) 143 else exitCode
     setAll(Ended, Free, running - 1, signal, false, 0,
-           if (signal == NoSignal) committed else (signal == CoreCrash and c), code, ""),
+           if (signal == NoSignal) committed else (signal == InternalError and c), code, ""),
   }
 
   // LOOP-10: an explicit resumed attempt acquires the same ordinary lock.
@@ -123,7 +123,7 @@ module run_control {
     (signal == SigInt implies exitCode == 130) and
     (signal == SigTerm implies exitCode == 143) and
     (signal == SigHup implies exitCode == 129) and
-    (signal == CoreCrash implies exitCode == 70) and
+    (signal == InternalError implies exitCode == 70) and
     (signal == NoSignal implies Set(0, 1, 3, 4).contains(exitCode)))
   // AUT-4: a second Build is refused while the first runs.
   val RunningBuildRefusesSecond = (refusal == "build_running") implies (lock == LiveHolder and running == 1 and exitCode == 3)

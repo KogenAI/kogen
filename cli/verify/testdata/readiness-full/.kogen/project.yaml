@@ -1,0 +1,5 @@
+version: 1
+commands:
+  acceptance:
+    run: './accept.sh'
+    steps_dir: 'features/steps'

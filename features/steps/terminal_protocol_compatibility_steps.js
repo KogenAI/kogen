@@ -2,136 +2,147 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const ROOT = path.resolve(__dirname, '../..');
-// Independent harness: reuse real HTTP fake/installer, never implementation test assertions.
-const common = String.raw`
-ExUnit.start(autorun: false)
-Code.require_file("test/support/integration_helpers.ex")
-alias Kogen.{ChatGPT, Error, ShapeEvidence, Integration.FakeProvider, Integration.Helpers}
-[home, mode, boundary] = System.argv()
-items = home |> Path.join("items.json") |> File.read!() |> JSON.decode!()
-usage = %{"input_tokens" => 100, "output_tokens" => 20, "input_tokens_details" => %{"cached_tokens" => 5}, "output_tokens_details" => %{"reasoning_tokens" => 10}}
-unknown = %{"input" => nil, "cached" => nil, "output" => nil, "reasoning" => nil}
-complete = fn r -> %{"type" => "response.completed", "response" => r} end
-done = fn i, item -> %{"type" => "response.output_item.done", "output_index" => i, "item" => item} end
-added = fn i, item -> %{"type" => "response.output_item.added", "output_index" => i, "item" => item} end
-frames = fn values ->
- values |> Enum.with_index() |> Enum.flat_map(fn {item, i} ->
-   partial = if item["type"] == "function_call", do: Map.put(item, "arguments", ""), else: item
-   delta = if item["type"] == "function_call", do: [%{"type" => "response.function_call_arguments.delta", "output_index" => i, "item_id" => item["id"], "delta" => item["arguments"]}], else: []
-   [added.(i, partial)] ++ delta
- end) |> Kernel.++(values |> Enum.with_index() |> Enum.reverse() |> Enum.map(fn {item, i} -> done.(i, item) end))
-end
+// Independent harness: reuse real HTTP fake/installer, never implementation test assertions. The stream scenarios call
+// Kogen's provider and shaping-evidence packages from a tiny Go program; the native scenarios drive the installed `kogen`.
+const H = require('./go_driver_support.js');
+const httpSource = String.raw`package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"kogen/project"
+	"kogen/provider"
+	"kogen/shape"
+	"kogen/sys"
+)
+
+func must(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func main() {
+	home, url := os.Args[1], os.Args[2]
+	s := sys.NewWith([]string{"HOME=" + home, "KOGEN_PROVIDER_URL=" + url}, home)
+	ev, err := shape.NewEvidence(filepath.Join(home, "evidence"), "fixture")
+	must(err)
+	role := provider.Role{Provider: "chatgpt", Model: "fixture", Effort: "medium"}
+	client := provider.NewClient("kogen test (driver)")
+	start := time.Now()
+	call := ev.BeginCall("shape", "", "fixture", "", project.Role{Provider: role.Provider, Model: role.Model, Effort: role.Effort})
+	resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: "local compatibility fixture", Input: []any{}, Tools: []any{}, Budget: 1500 * time.Millisecond, Single: true, Scope: "fixture"}, call)
+	call.End(resp, err)
+	result := map[string]any{}
+	if err == nil {
+		result["outcome"] = "ok"
+		result["items"] = resp.Items
+		result["usage"] = map[string]any{"input": resp.Usage.Input, "cached": resp.Usage.Cached, "output": resp.Usage.Output, "reasoning": resp.Usage.Reasoning}
+		result["known_usage"] = resp.Known.Map()
+	} else {
+		var e *sys.Error
+		if !errors.As(err, &e) {
+			must(err)
+		}
+		result["outcome"], result["detail"] = e.Class+"/"+e.Reason, e.Detail
+		if k, ok := e.ProviderFailure["event_kind"]; ok {
+			result["failure_event"] = k
+		}
+	}
+	result["elapsed"] = time.Since(start).Milliseconds()
+	raw, err := os.ReadFile(filepath.Join(home, "evidence", "events.ndjson"))
+	must(err)
+	events := []any{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row any
+		must(json.Unmarshal([]byte(line), &row))
+		events = append(events, row)
+	}
+	result["evidence"] = events
+	out, err := json.Marshal(result)
+	must(err)
+	fmt.Println("COMPAT_RESULT=" + string(out))
+	time.Sleep(50 * time.Millisecond)
+}
 `;
-const driver = common + String.raw`
-if boundary == "http" do
- File.mkdir_p!(Path.join(home, ".kogen/credentials"))
- File.write!(Path.join(home, ".kogen/credentials/chatgpt.json"), JSON.encode!(%{client_id: "oaiapp_fixture", access_token: "fake-access", refresh_token: "fake-refresh", expires_at: System.system_time(:second) + 3600}))
- values = if mode == "malformed", do: List.update_at(items, 2, &Map.put(&1, "arguments", "{\"path\":")), else: items
- stream = frames.(values)
- stream = case mode do
-  "empty" -> []
-  "gap" -> Enum.reject(stream, &(&1["output_index"] == 0))
-  "pending" -> stream ++ [added.(4, Enum.at(items, 2)), %{"type" => "response.function_call_arguments.delta", "output_index" => 4, "delta" => "{\"path\":"}]
-  "sticky" -> [done.(-1, hd(items)) | stream]
-  _ -> stream
- end
- terminal = %{"status" => "completed", "output" => [], "usage" => usage}
- terminal = case mode do
-  "usage" -> Map.put(terminal, "usage", %{"input_tokens_details" => 42})
-  "status" -> Map.put(terminal, "status", "incomplete")
-  "response-error" -> Map.put(terminal, "error", %{"code" => "fixture_error"})
-  _ -> terminal
- end
- failure = case mode do
-  "failed" -> [%{"type" => "response.failed", "response" => %{"error" => %{}}}]
-  "incomplete" -> [%{"type" => "response.incomplete", "response" => %{"incomplete_details" => %{}}}]
-  "error" -> [%{"type" => "error", "error" => %{}}]
-  _ -> []
- end
- events = stream ++ failure ++ [complete.(terminal)]
- action = if mode == "complete", do: {:open_events, self(), events}, else: {:events, events}
- server = FakeProvider.start([action])
- try do
-  :persistent_term.put(:kogen_caller, %{env: %{"HOME" => home, "KOGEN_PROVIDER_URL" => "http://127.0.0.1:#{server.port}"}})
-  ShapeEvidence.start(Path.join(home, "evidence"))
-  model = %{model: "fixture", effort: "medium"}
-  start = System.monotonic_time(:millisecond)
-  result = try do
-   value = ShapeEvidence.provider("shape", nil, "fixture", [], model, fn -> ChatGPT.respond(model, "local compatibility fixture", [], [], single_attempt: true, response_budget_ms: 1500) end)
-   %{outcome: "ok", items: value.items, usage: value.usage, known_usage: value.known_usage}
-  rescue
-   e in Error -> %{outcome: e.class <> "/" <> e.reason, detail: e.detail, failure_event: e.provider_failure["event_kind"]}
-  end
-  elapsed = System.monotonic_time(:millisecond) - start
-  opened = if mode == "complete", do: (receive do {:provider_open, _} -> true after 1000 -> false end), else: false
-  closed = if mode == "complete", do: (receive do {:provider_closed, {:error, :closed}} -> true after 1500 -> false end), else: false
-  evidence = Path.join(home, "evidence/events.ndjson") |> File.read!() |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
-  calls = Enum.filter(evidence, &(&1["event"] == "provider_call"))
-  result = Map.merge(result, %{requests: length(FakeProvider.provider_requests(server)), socket_open_seen: opened, socket_closed: closed, returned_before_hold: elapsed < 1500, failed_usage_unknown: length(calls) == 1 and Enum.all?(calls, &(&1["status"] == "failed" and &1["usage"] == unknown))})
-  IO.puts("COMPAT_RESULT=" <> JSON.encode!(result))
- after
-  FakeProvider.stop(server)
- end
-else
- suite = Helpers.setup_suite!()
- try do
-  tool = %{"type" => "function_call", "id" => "read-compat", "call_id" => "read-compat", "status" => "completed", "name" => "read_file", "arguments" => JSON.encode!(%{"path" => "app.txt"})}
-  prefix = Enum.take(items, 2)
-  stream = case mode do
-   "pending" -> frames.(prefix) ++ [added.(2, Map.put(tool, "arguments", "")), %{"type" => "response.function_call_arguments.delta", "output_index" => 2, "delta" => "{\"path\":"}]
-   "malformed" -> frames.(prefix ++ [Map.put(tool, "arguments", "{\"path\":")])
-   _ -> frames.(prefix ++ [tool])
-  end
-  first = {:events, stream ++ [complete.(%{"status" => "completed", "output" => [], "usage" => usage})]}
-  question = {:function, "submit", %{"questions" => [%{"question" => "Fixture tool reached?", "options" => [%{"label" => "Yes", "recommended" => true}]}]}}
-  script = if mode == "complete", do: [first, question], else: [first, first]
-  c = Helpers.project!(suite, script, staged_intent: false)
-  try do
-   authority = fn -> {Kogen.Git.head(c.repo), File.read!(Path.join(c.repo, ".git/index")), File.read!(Kogen.Intent.approval_path(c.repo, "fixture"))} end
-   before = authority.()
-   helpers = fn -> File.ls!(Path.join(c.repo, "features/steps")) |> Enum.sort() end
-   helpers_before = helpers.()
-   request = Path.join(c.root, "request.txt")
-   File.write!(request, "Read app.txt then ask the fixture question; publish no files.")
-   {output, status} = Helpers.run_kogen(c, ["intent", "shape", "compat-next", request])
-   IO.puts("COMPAT_RESULT=" <> JSON.encode!(%{exit: status, question_displayed: String.contains?(output, "Fixture tool reached?"), read_effect: FakeProvider.tool_outputs(c.server), requests_after_init: length(FakeProvider.provider_requests(c.server)) - 1, authority_unchanged: authority.() == before, no_intent_or_helper: not File.exists?(Path.join(c.repo, ".kogen/intents/compat-next")) and helpers.() == helpers_before}))
-  after
-   Helpers.cleanup_case(c)
-  end
- after
-  Helpers.cleanup_suite(suite)
- end
-end
-ExUnit.run()
-`;
-function run(items, mode, boundary) {
-  return new Promise((resolve, reject) => {
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'terminal-compat-'));
-    const file = path.join(temp, 'driver.exs');
-    fs.writeFileSync(file, driver);
-    fs.writeFileSync(path.join(temp, 'items.json'), JSON.stringify(items));
-    const child = spawn('mix', ['run', '--no-deps-check', file, temp, mode, boundary], {
-      cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' },
-    });
-    let output = '';
-    child.stdout.on('data', b => { output += b; });
-    child.stderr.on('data', b => { output += b; });
-    const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }, 240000);
-    child.once('error', e => { clearTimeout(timer); fs.rmSync(temp, { recursive: true, force: true }); reject(e); });
-    child.once('close', code => {
-      clearTimeout(timer); fs.rmSync(temp, { recursive: true, force: true });
-      try {
-        assert.equal(code, 0, output);
-        const line = output.split('\n').find(l => l.startsWith('COMPAT_RESULT='));
-        assert.ok(line, output);
-        resolve(JSON.parse(line.slice('COMPAT_RESULT='.length)));
-      } catch (e) { reject(e); }
-    });
-  });
+const USAGE = { input_tokens: 100, output_tokens: 20, input_tokens_details: { cached_tokens: 5 }, output_tokens_details: { reasoning_tokens: 10 } };
+const UNKNOWN = { input: null, cached: null, output: null, reasoning: null };
+const complete = r => ({ type: 'response.completed', response: r });
+const done = (i, item) => ({ type: 'response.output_item.done', output_index: i, item });
+const added = (i, item) => ({ type: 'response.output_item.added', output_index: i, item });
+const frames = values => [
+  ...values.flatMap((item, i) => {
+    const partial = item.type === 'function_call' ? { ...item, arguments: '' } : item;
+    const delta = item.type === 'function_call' ? [{ type: 'response.function_call_arguments.delta', output_index: i, item_id: item.id, delta: item.arguments }] : [];
+    return [added(i, partial), ...delta];
+  }),
+  ...values.map((item, i) => [item, i]).reverse().map(([item, i]) => done(i, item)),
+];
+async function httpRun(items, mode) {
+  const values = mode === 'malformed' ? items.map((x, i) => i === 2 ? { ...x, arguments: '{"path":' } : x) : items;
+  let stream = frames(values);
+  stream = { empty: () => [], gap: () => stream.filter(e => e.output_index !== 0), pending: () => [...stream, added(4, items[2]), { type: 'response.function_call_arguments.delta', output_index: 4, delta: '{"path":' }], sticky: () => [done(-1, items[0]), ...stream] }[mode]?.() ?? stream;
+  let terminal = { status: 'completed', output: [], usage: USAGE };
+  if (mode === 'usage') terminal = { ...terminal, usage: { input_tokens_details: 42 } };
+  if (mode === 'status') terminal = { ...terminal, status: 'incomplete' };
+  if (mode === 'response-error') terminal = { ...terminal, error: { code: 'fixture_error' } };
+  const failure = { failed: [{ type: 'response.failed', response: { error: {} } }], incomplete: [{ type: 'response.incomplete', response: { incomplete_details: {} } }], error: [{ type: 'error', error: {} }] }[mode] || [];
+  const events = [...stream, ...failure, complete(terminal)];
+  const server = await new H.FakeProvider([mode === 'complete' ? { openEvents: events } : { events }]).start();
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'terminal-compat-')));
+  try {
+    fs.mkdirSync(path.join(home, '.kogen/credentials'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.kogen/credentials/chatgpt.json'), JSON.stringify({ client_id: 'oaiapp_fixture', access_token: 'fake-access', refresh_token: 'fake-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600 }));
+    const driver = await H.goDriver('terminal-compat', httpSource);
+    const r = await driver([home, `http://127.0.0.1:${server.port}`]);
+    assert.equal(r.code, 0, r.out);
+    const line = r.out.split('\n').find(l => l.startsWith('COMPAT_RESULT='));
+    assert.ok(line, r.out);
+    const result = JSON.parse(line.slice('COMPAT_RESULT='.length));
+    const opened = mode === 'complete' ? await server.waitOpen(1000).then(() => true, () => false) : false;
+    const closed = mode === 'complete' ? await server.waitClosed(1500).then(x => x === 'closed', () => false) : false;
+    const calls = result.evidence.filter(e => e.event === 'provider_call');
+    // A provider that reports the categories it knows: the unreported ones are not part of the usage the response carries.
+    if (result.known_usage) result.known_usage = Object.fromEntries(Object.entries(result.known_usage).filter(([, v]) => v !== null));
+    delete result.evidence;
+    return { ...result, requests: server.providerRequests().length, socket_open_seen: opened, socket_closed: closed, returned_before_hold: result.elapsed < 1500, failed_usage_unknown: calls.length === 1 && calls.every(e => e.status === 'failed' && same(e.usage, UNKNOWN)) };
+  } finally { await server.stop(); fs.rmSync(home, { recursive: true, force: true }); }
+}
+const sortKeys = x => Array.isArray(x) ? x.map(sortKeys) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map(k => [k, sortKeys(x[k])])) : x;
+const same = (a, b) => JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+async function nativeRun(items, mode) {
+  const suite = await H.setupSuite(); let c;
+  try {
+    const tool = { type: 'function_call', id: 'read-compat', call_id: 'read-compat', status: 'completed', name: 'read_file', arguments: JSON.stringify({ path: 'app.txt' }) };
+    const prefix = items.slice(0, 2);
+    let stream;
+    if (mode === 'pending') stream = [...frames(prefix), added(2, { ...tool, arguments: '' }), { type: 'response.function_call_arguments.delta', output_index: 2, delta: '{"path":' }];
+    else if (mode === 'malformed') stream = frames([...prefix, { ...tool, arguments: '{"path":' }]);
+    else stream = frames([...prefix, tool]);
+    const first = { events: [...stream, complete({ status: 'completed', output: [], usage: USAGE })] };
+    const question = H.fn('submit', { questions: [{ question: 'Fixture tool reached?', options: [{ label: 'Yes', recommended: true }] }] });
+    c = await H.project(suite, mode === 'complete' ? [first, question] : [first, first], { stagedIntent: false });
+    const authority = async () => [await H.git(c, ['rev-parse', 'HEAD']), fs.readFileSync(path.join(c.repo, '.git/index')).toString('latin1'), fs.readFileSync(H.approvalPath(c.repo, 'fixture'), 'latin1')];
+    const before = await authority();
+    const helpers = () => fs.readdirSync(path.join(c.repo, 'features/steps')).sort();
+    const helpersBefore = helpers();
+    const request = path.join(c.root, 'request.txt');
+    fs.writeFileSync(request, 'Read app.txt then ask the fixture question; publish no files.');
+    const { out, code } = await H.runKogen(c, ['intent', 'shape', 'compat-next', request]);
+    return { exit: code, question_displayed: out.includes('Fixture tool reached?'), read_effect: c.server.toolOutputs(), requests_after_init: c.server.providerRequests().length - 1, authority_unchanged: same(await authority(), before), no_intent_or_helper: !fs.existsSync(path.join(c.repo, '.kogen/intents/compat-next')) && same(helpers(), helpersBefore) };
+  } finally { await H.cleanupCase(c); H.cleanupSuite(suite); }
 }
 Given('these documented compatibility items:', function (text) {
   this.compatItems = JSON.parse(text);
@@ -139,11 +150,11 @@ Given('these documented compatibility items:', function (text) {
 });
 When('I run the compatibility HTTP stream {string}', { timeout: 250000 }, async function (mode) {
   assert.ok(['complete','pending','malformed','empty','sticky','usage','status','response-error','gap','failed','incomplete','error'].includes(mode));
-  this.compatResult = await run(this.compatItems, mode, 'http');
+  this.compatResult = await httpRun(this.compatItems, mode);
 });
 When('I run installed compatibility Shape in mode {string}', { timeout: 250000 }, async function (mode) {
   assert.ok(['complete','pending','malformed'].includes(mode));
-  this.compatResult = await run(this.compatItems, mode, 'native');
+  this.compatResult = await nativeRun(this.compatItems, mode);
 });
 Then('the compatibility response contains exactly the documented items', function () {
   assert.deepEqual(this.compatResult.items, this.compatItems, JSON.stringify(this.compatResult));

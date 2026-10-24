@@ -56,6 +56,9 @@ Exercise an installed readiness card with mixed current scenario results.
 ## Decisions
 - Keep both passing and failing examples. (source: request)
 
+## Source comparison
+- addressed: passing and failing examples both stay visible; source request; contract Tests and acceptance.feature.
+
 ## Tests
 - Current results are visible: readiness fixture scenarios (scenario)
 
@@ -95,7 +98,7 @@ models:
     const refinedStep = pkg.find(f => f.path === step).content.replace('assert.ok(true)', "assert.fail('refined current failure')");
     this.server.configure('independent-ready-evidence');
     this.server.scriptResponse = (record, ordinal) => {
-      if (record.kind === 'shape') return { items: [call('submit', { files: pkg }, `shape_${ordinal}`)] };
+      if (record.kind === 'shape') return { items: [call('read_file', { path: 'README.md' }, `shape_${ordinal}_readme`), call('submit', { files: pkg }, `shape_${ordinal}`)] };
       if (record.kind === 'refine') return { items: [call('submit_refinement', { files: [{ path: step, content: refinedStep }] }, `refine_${ordinal}`)] };
       throw new Error('Readiness must not request ' + record.kind);
     };
@@ -152,6 +155,9 @@ models:
       else if (mode === 'malformed') fs.writeFileSync(evidence, '{not json');
       else if (mode === 'legacy') fs.writeFileSync(evidence, JSON.stringify({ sha256: hash, head: this.head() }));
       else if (mode === 'baseline') {
+        // The shaped source provenance is bound to the contract it was shaped with and a changed baseline refuses before
+        // readiness; this scenario is about readiness, so the project is the one without recorded provenance.
+        fs.rmSync(path.join(this.project, '.kogen/local/provenance', slug), { recursive: true, force: true });
         put(this, step, "const { Then } = require('@cucumber/cucumber');\nThen('a different unrelated step', function () {});\n");
       } else if (mode === 'head') {
         put(this, 'readiness-runner.cjs', runner.split('const r = spawnSync')[0] + "console.log('fresh HEAD readiness runner failure'); process.exit(17);\n");
@@ -181,9 +187,9 @@ models:
   async function candidate() {
     if (!installation) installation = (async () => {
       installRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-ready-candidate-'));
-      // Package the current worktree AFTER Build edits. Never use latestArchive,
+      // Package the current worktree AFTER Build edits (the one Go program). Never use latestArchive,
       // KOGEN_ARCHIVE, or the driving engine's installation as the candidate.
-      const packed = await run('/bin/sh', ['packaging/package.sh'], { cwd: REPO, env: { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' } });
+      const packed = await run('/bin/sh', ['packaging/package.sh'], { cwd: REPO, env: process.env });
       assert.equal(packed.code, 0, packed.stdout + packed.stderr);
       const archive = packed.stdout.trim().split('\n').at(-1);
       assert.ok(path.isAbsolute(archive) && fs.existsSync(archive), packed.stdout);

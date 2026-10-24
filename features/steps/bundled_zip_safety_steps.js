@@ -70,6 +70,8 @@ async function installedBoundary(b, receipts) {
   put(repo, dir + '/intent.md', intent('Nonnegative'));
   put(repo, dir + '/model.qnt', modelText);
   put(repo, dir + '/acceptance.feature', 'Feature: Compatibility\n  Scenario: Ready\n    Then packaged compatibility works\n');
+  // Readiness keeps its local observations in .kogen/local, which a project ignores as `kogen init` configures it.
+  put(repo, '.gitignore', '.kogen/local/\n');
   put(repo, 'features/steps/compat.js', "const {Then}=require('@cucumber/cucumber'); Then('packaged compatibility works', function() {});\n");
   put(repo, '.kogen/project.yaml', `version: 1
 commands:
@@ -81,7 +83,8 @@ commands:
     steps_dir: features/steps
 protect: []
 `);
-  for (const args of [['init', '-q'], ['add', '.'], ['commit', '-qm', 'compatibility fixture']]) receipts.push(ok(await run('git', args, repo)));
+  // The fixture repository has its own test identity: it must not depend on the caller's global Git configuration.
+  for (const args of [['init', '-q'], ['config', 'user.name', 'Kogen Fixture'], ['config', 'user.email', 'fixture@example.invalid'], ['add', '.'], ['commit', '-qm', 'compatibility fixture']]) receipts.push(ok(await run('git', args, repo)));
   const cli = path.join(b.prefix, 'bin/kogen');
   const good = await run(cli, ['intent', 'approve', 'compat', '--by', 'Probe'], repo); receipts.push(good);
   put(repo, dir + '/intent.md', intent('FalseClaim'));

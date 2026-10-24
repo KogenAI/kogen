@@ -5,24 +5,23 @@ const path = require('node:path');
 const {isDeepStrictEqual: same} = require('node:util');
 const {spawn} = require('node:child_process');
 const {FakeServers} = require('../../test/acceptance/support/fake-servers');
+const H=require('./go_driver_support.js');
 const ROOT = path.resolve(__dirname, '../..');
 const KEY = 'SYNTHETIC_ANTHROPIC_PRIVATE_KEY';
 const BORROWED = 'SYNTHETIC_BORROWED_KEY';
 const runner = 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"';
 function put(p,s) {fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,s);}
 function run(file,args,cwd,env={},input='') {return new Promise((resolve,reject)=>{
- const p=spawn(file,args,{cwd,env:{...process.env,ERL_FLAGS:'+S 2:2 +SDcpu 1 +SDio 1',...env},detached:true,stdio:['pipe','pipe','pipe']});let out='';
+ const p=spawn(file,args,{cwd,env:{...process.env,...env},detached:true,stdio:['pipe','pipe','pipe']});let out='';
  const t=setTimeout(()=>{try{process.kill(-p.pid,'SIGKILL');}catch{}},180000);
  p.stdout.on('data',b=>out+=b);p.stderr.on('data',b=>out+=b);p.stdin.on('error',()=>{});p.stdin.end(input);
  p.once('error',e=>{clearTimeout(t);reject(e);});p.once('close',code=>{clearTimeout(t);resolve({code,out});});
 });}
 async function must(file,args,cwd,env,input) {const r=await run(file,args,cwd,env,input);assert.equal(r.code,0,r.out);return r.out;}
-let installed,installTemp;
-async function install() {if(!installed)installed=(async()=>{
- installTemp=fs.mkdtempSync(path.join(os.tmpdir(),'kogen-claude-install-'));const extract=path.join(installTemp,'extract');fs.mkdirSync(extract);
- const suffix=process.platform==='darwin'?'darwin-arm64':'linux-amd64';const archives=fs.readdirSync(path.join(ROOT,'dist')).filter(n=>n.endsWith('-'+suffix+'.tar.gz')).map(n=>path.join(ROOT,'dist',n)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs);assert.ok(archives.length,'setup must package current candidate');
- await must('tar',['-xzf',archives[0],'-C',extract],ROOT);const release=path.join(extract,fs.readdirSync(extract)[0]);const prefix=path.join(installTemp,'prefix');await must('sh',[path.join(release,'install.sh'),'--prefix',prefix],ROOT,{HOME:installTemp});return path.join(prefix,'bin/kogen');
- })();return installed;}
+let installed;
+// The packaged Go program, installed once into a private prefix by the shared support code.
+async function install() {if(!installed)installed=H.setupSuite();return (await installed).release;}
+async function cleanup() {if(installed){const suite=await installed;installed=null;H.cleanupSuite(suite);}}
 function role(provider,effort='high',model) {return {provider,model:model||({'anthropic':'claude-opus-5-5','opencode-go':'kimi-k3',supergrok:'grok-4.7',chatgpt:'gpt-6.1-sol'}[provider]),effort};}
 function yaml(roles) {return `version: 1\ncommands:\n  setup: ['printf setup >> "$CLAUDE_TRACE"']\n  fix: []\n  checks:\n    - {name: local-check, run: 'printf check >> "$CLAUDE_TRACE"'}\n  acceptance:\n    run: '${runner}'\n    steps_dir: features/steps\nprotect: []\nmodels:\n${['shape','build','review'].map((n,i)=>'  '+n+': {'+Object.entries(roles[i]).filter(([,v])=>v!==undefined).map(([k,v])=>k+': '+v).join(', ')+'}').join('\n')}\nshape_workers:\n  enabled: false\n`;}
 function intent() {return '# Preserve the native provider fixture\n\nSlug: fixture\nModel: not applicable — plain fixture wiring\nAcceptance:\n- .kogen/intents/fixture/acceptance.feature\n- features/steps/fixture_steps.js\n\nAllow baseline or candidate text in app.txt.\n\n## Decisions\n- Preserve fixture text (source: request)\n\n## Source comparison\n- addressed: fixture request; prose and scenario preserve text.\n\n## Tests\n- Fixture text: local scenario (scenario)\n\n## Feasibility\n- none\n';}
@@ -81,19 +80,26 @@ async function workflow(roles) {
  if(!journeyObserver(observed))observed.diagnostic=publicOutputs;return observed;
  }finally{await c.fake.close();fs.rmSync(c.d,{recursive:true,force:true});}
 }
-async function nativeRun(c,settings) {const p=path.join(c.d,'native.json'),receipt=path.join(c.d,'native-receipt.json');put(p,JSON.stringify({...settings,home:c.home,url:c.fake.providerUrl}));const r=await run('mix',['run','--no-deps-check',path.join(ROOT,'features/steps/claude_api_key_driver.exs'),p,receipt],ROOT);assert.equal(r.code,0,r.out);return JSON.parse(fs.readFileSync(receipt,'utf8'));}
+// The Go driver of test/migration/drivers/claude-api-key: the answer one logical provider call returns and the exact
+// size of the complete next request, which have no installed-command form. It is built once with the local toolchain.
+let driverBuild;
+function driverBinary() {if(!driverBuild)driverBuild=(async()=>{const out=path.join(H.workDir(),'claude-driver');
+ const r=await run('go',['build','-o',out,'.'],path.join(ROOT,'test/migration/drivers/claude-api-key'),{GOFLAGS:'-buildvcs=false',GOPROXY:'off',GOTOOLCHAIN:'local',GOWORK:'off'});assert.equal(r.code,0,'go build of the Claude driver failed:\n'+r.out);return out;})();return driverBuild;}
+async function nativeRun(c,settings) {const p=path.join(c.d,'native.json'),receipt=path.join(c.d,'native-receipt.json');put(p,JSON.stringify({...settings,home:c.home,url:c.fake.providerUrl}));const r=await run(await driverBinary(),[p,receipt],ROOT);assert.equal(r.code,0,r.out);return JSON.parse(fs.readFileSync(receipt,'utf8'));}
 async function exercise(mode,settings) {
  const provider=settings.provider||'anthropic',selected=role(provider,settings.effort||'high',settings.model||'claude-opus-5-5');if(provider==='omitted')delete selected.provider;const c=await context([selected,selected,selected]);try{
  const safe=v=>![KEY,BORROWED].some(s=>JSON.stringify(v).includes(s));
- if(mode==='config'){const f=path.join(c.d,'config.yaml');let y=yaml([selected,selected,selected]);if(settings.workers)y=y.replace('  enabled: false','  enabled: true\n'+['read','probe','draft'].map(n=>`  ${n}: {provider: ${provider}, model: ${selected.model}, effort: ${selected.effort}}`).join('\n'));put(f,y);return await nativeRun(c,{...settings,mode,yaml:f});}
- if(mode==='budget')return await nativeRun(c,{...settings,mode});
+ if(mode==='config'){let y=yaml([selected,selected,selected]);if(settings.workers)y=y.replace('  enabled: false','  enabled: true\n'+['read','probe','draft'].map(n=>`  ${n}: {provider: ${provider}, model: ${selected.model}, effort: ${selected.effort}}`).join('\n'));put(path.join(c.repo,'.kogen/project.yaml'),y);
+ // The installed program validates the configuration before it looks for any Intent package.
+ const r=await c.cli(['intent','approve','config-probe']);const refused=r.out.includes('environment/project_config_invalid');if(!refused)assert.notEqual(r.code,3,r.out);return {outcome:refused?'refused':'parsed',exit:r.code,requests:c.records.length};}
+if(mode==='budget')return await nativeRun(c,{...settings,provider,model:selected.model,effort:selected.effort,mode});
  if(mode==='missing-login'){put(path.join(c.home,'.claude/credentials.json'),JSON.stringify({api_key:BORROWED}));const p=path.join(c.d,'request');put(p,'Preserve fixture');const r=await c.cli(['intent','shape','missing',p]);return {exit:r.code,login_guidance:r.out.includes('provider/login:')&&r.out.includes('kogen provider login anthropic'),requests:c.records.length,safe:safe(r.out)};}
  if(mode==='login'){
  const login=await c.cli(['provider','login','anthropic'],KEY+'\n'),p=path.join(c.home,'.kogen/credentials/anthropic.json'),before=fs.existsSync(p)?fs.readFileSync(p):null;const list=await c.cli(['provider','list']);const empty=await c.cli(['provider','login','anthropic'],'\n'),multi=await c.cli(['provider','login','anthropic'],'first\nsecond\n');const line=list.out.split('\n').find(s=>s.startsWith('anthropic:'));return {exits:[login.code,list.code,empty.code,multi.code],saved:before?JSON.parse(before):null,status:line||null,modes:before?[p,path.dirname(p),path.dirname(path.dirname(p))].map(f=>fs.statSync(f).mode&511):[],previous_kept:before!==null&&fs.readFileSync(p).equals(before),providers:list.out.split('\n').filter(s=>/^(chatgpt|supergrok|opencode-go|anthropic):/.test(s)).map(s=>s.split(':')[0]),requests:c.records.length,safe:safe([login.out,list.out,empty.out,multi.out])};}
  if(provider==='anthropic'){const l=await c.cli(['provider','login','anthropic'],KEY+'\n');assert.equal(l.code,0,l.out);}else seed(c,provider);
  let n=0;const held=new Set();c.fake.handleProvider=async(req,res)=>{const body=await decode(req);n++;const r={body,phase:n===3?'review':'build',n,path:req.url,headers:req.headers,provider};c.records.push(r);if(settings.hold){held.add(res);res.on('close',()=>held.delete(res));return;}if(settings.status){res.writeHead(settings.status,{'content-type':'application/json','request-id':'req_refusal'});res.end(JSON.stringify({type:'error',error:{type:settings.type,message:KEY},request_id:'req_refusal'}));return;}send(res,r,[['read_file',{path:'app.txt'}],['read_file',{path:'README.md'}]],settings.completion||'ok',settings.usage);};
- const result=await nativeRun(c,{...settings,provider,mode}),rs=result.results,first=rs[0],md=rs.map(x=>x.metadata).filter(Boolean),items=first.value?.items||[];const answer=items.flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('');
- for(const s of held)s.destroy();return {outcomes:rs.map(x=>x.outcome),completed:!!first.value,requests:c.records.length,calls:items.filter(x=>x.type==='function_call').length,text:answer,wire:provider==='anthropic'?observer(c.records):true,usage:first.value?.usage,writes:md[0]?[md[0].usage.write,md[0].usage.write_30m,md[0].usage.write_12h]:null,unknown_effective_effort:md.length>0&&md.every(m=>m.effective_effort===null),safe:safe([rs.map(x=>x.detail),md]),only_anthropic:c.records.length>0&&c.records.every(r=>r.path==='/v1/messages'),bounded:first.elapsed>=200&&first.elapsed<1800,external_handoff:/extern|prepar|pixel/i.test(first.detail||'')};
+ const result=await nativeRun(c,{...settings,provider,model:selected.model,effort:selected.effort,mode}),rs=result.results,first=rs[0],md=rs.map(x=>x.records&&x.records.at(-1)).filter(Boolean),items=first.items||[];const answer=items.flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('');
+ for(const s of held)s.destroy();const usage=first.value?first.usage:undefined;return {outcomes:rs.map(x=>x.outcome),completed:!!first.value,requests:c.records.length,calls:items.filter(x=>x.type==='function_call').length,text:answer,wire:provider==='anthropic'?observer(c.records):true,usage:usage&&{input:usage.input,cached:usage.cached,output:usage.output,reasoning:usage.reasoning},writes:first.value&&md[0]?[md[0].usage.write,md[0].usage.write_30m,md[0].usage.write_12h]:null,unknown_effective_effort:md.length>0&&md.every(m=>m.effective_effort===null),safe:safe([rs.map(x=>x.detail),md]),only_anthropic:c.records.length>0&&c.records.every(r=>r.path==='/v1/messages'),bounded:first.elapsed>=200&&first.elapsed<1800,external_handoff:/extern|prepar|pixel/i.test(first.detail||'')};
  }finally{await c.fake.close();fs.rmSync(c.d,{recursive:true,force:true});}
 }
 function syntheticRecords(){const body={model:'claude-opus-5-5',stream:true,max_tokens:128000,thinking:{type:'adaptive'},output_config:{effort:'high'},tool_choice:{type:'auto'},system:'policy',tools:[{name:'read_file',input_schema:{type:'object'}}],messages:[{role:'user',content:'contract'}]};const sent=blocks([['read_file',{path:'app.txt'}]],'control');const next=structuredClone(body);next.messages.push({role:'assistant',content:structuredClone(sent)},{role:'user',content:[{type:'tool_result',tool_use_id:sent[2].id,content:'baseline\n'}]});return [body,next].map((body,i)=>({phase:'build',path:'/v1/messages',headers:{'x-api-key':KEY,'anthropic-version':'2026-10-21'},body,sent:i?blocks([['finish',{}]],'last'):sent}));}
@@ -102,7 +108,7 @@ async function control(bad) {
  if(bad){const changed=structuredClone(wire);changed[1].body.messages[1].content[0].signature='changed';assert.equal(observer(changed),false);const missing=structuredClone(wire);missing[1].body.messages[2].content=[];assert.equal(observer(missing),false);const duplicate=structuredClone(wire);duplicate[1].body.messages.push(structuredClone(duplicate[1].body.messages[1]));assert.equal(observer(duplicate),false);const sampling=structuredClone(wire);sampling[0].body.temperature=1;assert.equal(observer(sampling),false);const header=structuredClone(wire);header[0].headers['anthropic-version']='wrong';assert.equal(observer(header),false);journey.exits[3]=1;}
  const ok=journeyObserver(journey)&&observer(wire);process.stdout.write(ok?'accepted\n':'rejected\n');process.exitCode=ok?0:1;
 }
-if(require.main===module){control(process.argv[3]==='bad').catch(e=>{console.error(e.message);process.exitCode=2;}).finally(()=>{if(installTemp)fs.rmSync(installTemp,{recursive:true,force:true});});}
+if(require.main===module){control(process.argv[3]==='bad').catch(e=>{console.error(e.message);process.exitCode=2;}).finally(()=>cleanup());}
 else {
  const {When,Then,AfterAll}=require('@cucumber/cucumber');
  When('I run the native Claude mixed journey with roles {string}',{timeout:240000},async function(s){this.claude=await workflow(s.split(',').map((p,i)=>role(p,p==='opencode-go'?'high':i===1?'medium':'high')));});
@@ -110,5 +116,5 @@ else {
  Then('the native Claude observations include:',function(table){for(const[k,v]of table.raw())assert.deepEqual(this.claude[k],JSON.parse(v),JSON.stringify(this.claude));});
  When('I read native Claude guidance',function(){this.claudeGuidance=['README.md','docs/configuration.md'].map(f=>fs.readFileSync(path.join(ROOT,f),'utf8')).join('\n');});
  Then('native Claude guidance includes:',function(table){for(const[s]of table.raw())assert.ok(this.claudeGuidance.includes(s),'missing guidance: '+s);});
- AfterAll(()=>{if(installTemp)fs.rmSync(installTemp,{recursive:true,force:true});});
+ AfterAll(()=>cleanup());
 }

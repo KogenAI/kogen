@@ -1,6 +1,6 @@
 Feature: CLI and process
   The command tree and grammar, errors and exit codes, interruption that
-  stops a Build without a commit, and the Go/Elixir bridge.
+  stops a Build without a commit, and the one-program installation.
 
   Background:
     Given a clean Kogen home
@@ -108,7 +108,7 @@ Feature: CLI and process
       | kogen intent build              | kogen intent build: missing <slug>                                 | intent   |
       | kogen intent build a --detach   | kogen intent build: unknown option '--detach'                      | intent   |
       | kogen intent shape a b c        | kogen intent shape: unexpected argument 'c'                        | intent   |
-      | kogen provider login grok       | kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok) | provider |
+      | kogen provider login grok       | kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic, openai-compatible) | provider |
 
   @CLI-2
   Scenario: The last repeated option wins and a missing project folder is an environment error
@@ -125,16 +125,16 @@ Feature: CLI and process
       environment/project_unavailable: {abs:nowhere}
       """
 
-  @CLI-4 @CLI-9
-  Scenario: Core logging never reaches stdout
+  @CLI-4
+  Scenario: Debug logging never reaches stdout
     Given a Git project from fixture "py-calc"
     And the project is initialized and configured
     And the Intent "is-even" from fixture "is-even" is shaped
-    And the Kogen core logs at debug level
+    And kogen logs at debug level
     When the caller runs "kogen intent approve is-even"
     Then the first line of stdout is "Source provenance: unavailable (legacy)"
     And stdout contains "Intent: is-even — Add an is-even helper"
-    And stderr contains core log lines
+    And stderr contains debug log lines
     And stdout does not contain "[debug]"
 
   @CLI-5 @CLI-6
@@ -176,8 +176,8 @@ Feature: CLI and process
       | tool command running   | SIGHUP  | 129  |
       | git commit running     | SIGINT  | 130  |
 
-  @CLI-7 @model:run_control
-  Scenario: When the kogen command dies, the core cancels the Build by itself
+  @CLI-8 @model:run_control
+  Scenario: Killing kogen stops its commands and leaves no commit
     Given a Git project from fixture "py-calc"
     And the project is initialized and configured
     And the caller is signed in to ChatGPT
@@ -188,7 +188,6 @@ Feature: CLI and process
     When the caller sends SIGKILL to the kogen command
     Then within 15 seconds no process of the Build command's process group is running
     And HEAD is unchanged
-    And the file ".kogen/local/build.lock" does not exist
 
   @CLI-7
   Scenario: An interrupt during a readiness dry run stops its commands
@@ -216,59 +215,45 @@ Feature: CLI and process
     Then within 15 seconds the kogen command has exited
     And no process of the Build command's process group is running
 
-  @CLI-8 @model:run_control
-  Scenario: A core crash is reported and nothing is committed
-    Given a Git project from fixture "py-calc"
-    And the project is initialized and configured
-    And the caller is signed in to ChatGPT
-    And the Intent "is-even" from fixture "is-even" is approved
-    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 600"
-    And the caller runs "kogen intent build is-even" in the background
-    And the fake ChatGPT server reaches "tool command running"
-    When the caller sends SIGKILL to the Kogen core
-    Then within 15 seconds the kogen command has exited
-    And the exit code is 70
-    And stdout contains "controller/internal_error: the Kogen core stopped unexpectedly (status "
-    And stdout contains "nothing was committed"
-    And no process of the Build command's process group is running
-    And HEAD is unchanged
-
   @CLI-8
-  Scenario: A core crash right after the commit reports the commit honestly
+  Scenario: Kogen killed right after it created the commit is reported honestly by the next resume
     Given a Git project from fixture "py-calc"
     And the project is initialized and configured
     And the caller is signed in to ChatGPT
     And the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-correct-first-try"
-    And the test build of the core pauses right after creating the commit
+    And a post-commit hook that sleeps for 600 seconds
     And the caller runs "kogen intent build is-even" in the background
-    When the core reaches the pause after the commit
-    And the caller sends SIGKILL to the Kogen core
-    Then within 15 seconds the kogen command has exited
-    And the exit code is 70
-    And stdout contains "after creating commit "
-    And stdout contains "before checking it; inspect it with git show "
+    When the post-commit hook is running
+    And the caller sends SIGKILL to the kogen command
+    Then within 15 seconds no process of the Build command's process group is running
+    And HEAD has 1 new commit
+    When the caller runs "kogen intent resume {build_id}"
+    Then the output names the commit on HEAD
+    And HEAD is unchanged
     And HEAD has 1 new commit
 
   @CLI-9
-  Scenario: A missing core is an environment error
-    Given the installed core release is missing
+  Scenario: A damaged installation is an environment error
+    Given the installed kogen has no lib/VERSION
     When the caller runs "kogen version"
     Then the exit code is 3
-    And stdout contains "environment/core_unavailable: "
+    And stdout matches "^environment/[a-z_]+: "
+    And stdout contains "reinstall Kogen"
 
-  @CLI-9
-  Scenario: SIGINT sent straight to the core changes nothing; cancellation comes only from kogen
+  @CLI-7 @CLI-9
+  Scenario: SIGINT sent to a command's process group cancels nothing; cancellation comes only from kogen
     Given a Git project from fixture "py-calc"
     And the project is initialized and configured
     And the caller is signed in to ChatGPT
     And the Intent "is-even" from fixture "is-even" is approved
-    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 600"
+    And the fake ChatGPT server plays script "build-runs-command" with command "trap '' INT; sleep 600"
     And the caller runs "kogen intent build is-even" in the background
     And the fake ChatGPT server reaches "tool command running"
-    When the caller sends SIGINT to the Kogen core
+    When the caller sends SIGINT to the process group of the Build's running command
     Then the kogen command is still running
-    And every stdout line so far is protocol output of kogen
+    And the Build's command is still running
+    And every stdout line so far is a result line of kogen
     When the caller sends SIGINT to the kogen command
     Then within 15 seconds the kogen command has exited
     And the exit code is 130

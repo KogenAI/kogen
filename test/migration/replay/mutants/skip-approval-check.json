@@ -1,0 +1,8 @@
+{
+  "id": "skip-approval-check",
+  "case": "approval",
+  "description": "A Build starts although the Intent changed after its approval: the hash comparison against the approval can never refuse.",
+  "edits": [
+    { "file": "build/build.go", "old": "if sha := project.Hash(root, baseline); sha != approval.SHA256 {", "new": "if sha := project.Hash(root, baseline); false && sha != approval.SHA256 {" }
+  ]
+}

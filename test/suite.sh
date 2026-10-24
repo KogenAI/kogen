@@ -1,6 +1,7 @@
 #!/bin/sh
 # The complete deterministic suite (REL-4). Build one current archive, prepare
-# dependencies before workers start, then run independent layers concurrently.
+# dependencies before workers start, then run independent layers concurrently:
+# go, spec, live-helper and acceptance. Needs Go, Node and git; Kogen needs no Erlang or Elixir.
 # Every layer must pass. KOGEN_ARCHIVE selects an already-built archive.
 set -eu
 cd "$(dirname "$0")/.."
@@ -9,7 +10,6 @@ archive=${KOGEN_ARCHIVE:-$(sh packaging/package.sh)}
 KOGEN_ARCHIVE=$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")
 export KOGEN_ARCHIVE
 echo "suite: archive $KOGEN_ARCHIVE"
-mix deps.get --only test >/dev/null
 
 # Reuse only an install made for these exact manifests. Incomplete installs have
 # no stamp and are retried; separate dependency directories never share writes.
@@ -35,7 +35,6 @@ const { spawn, execFileSync } = require('node:child_process');
 const root = process.cwd();
 const logs = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-suite-'));
 const layers = [
-  ['exunit', root, 'mix', ['test']],
   ['go', path.join(root, 'cli'), 'go', ['test', '-race', '-count=1', './...']],
   ['spec', path.join(root, 'spec'), 'sh', ['check.sh']],
   ['live-helper', root, 'sh', ['test/live/check-verify.sh']],
@@ -66,7 +65,7 @@ for (const [signal, status] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 12
   process.on(signal, () => {
     if (interrupted) return;
     interrupted = status;
-    // Acceptance commands can detach their own core groups. Capture only this
+    // Acceptance commands can detach their own process groups. Capture only this
     // suite's descendants before signalling; never kill unrelated host processes.
     includeDetachedChildren();
     signalAll(signal);

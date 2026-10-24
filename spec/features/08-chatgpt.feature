@@ -1,9 +1,5 @@
 Feature: ChatGPT connection
   Kogen's own login, its status, refresh, streaming and precise provider errors.
-  ChatGPT requests a stable public conversation key without explicit negotiation.
-  Anthropic requests ephemeral caching on complete policy and growing replay;
-  SuperGrok body-key and OpenCode Go session affinity remain route-specific.
-  Requested controls and accepted HTTP requests do not establish hits or benefit.
 
   Background:
     Given a clean Kogen home

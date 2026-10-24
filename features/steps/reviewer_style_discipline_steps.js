@@ -2,86 +2,29 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 const { When, Then } = require('@cucumber/cucumber');
 const ROOT = path.resolve(__dirname, '../..');
 
+const H = require('./go_driver_support.js');
+
 // Reuse the existing installed-release fixture and recording fake provider.
 // Capture the request, never scrape the source heredoc or simulate model judgment.
-const driver = String.raw`
-ExUnit.start(autorun: false)
-Code.require_file("test/support/integration_helpers.ex")
-alias Kogen.Integration.{Helpers, FakeProvider}
-suite = Helpers.setup_suite!()
-try do
-  script = [
-    {:function, "write_file", %{"path" => "app.txt", "content" => "verified edit\n"}},
-    {:function, "finish", %{"summary" => "The fixture edit is ready."}},
-    {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}
-  ]
-  c = Helpers.project!(suite, script)
-  try do
-    {output, status} = Helpers.run_kogen(c, ["intent", "build", "fixture"])
-    reviews = FakeProvider.review_requests(c.server)
-    if reviews == [], do: raise("no actual reviewer request: #{output}")
-    request = hd(reviews).json
-    material = request["input"] |> Enum.map_join("\n", &(&1["content"] || ""))
-    {committed, git_status} = Helpers.git!(c, ["show", "HEAD:app.txt"])
-    if git_status != 0, do: raise("cannot read committed fixture: #{committed}")
-    IO.puts("STYLE_POLICY_RESULT=" <> JSON.encode!(%{
-      "instructions" => request["instructions"],
-      "material" => material,
-      "build status" => status,
-      "reviewer requests" => length(reviews),
-      "committed builder contents" => String.trim_trailing(committed, "\n"),
-      "reviewer response tool" => elem(List.last(script), 1)
-    }))
-  after
-    Helpers.cleanup_case(c)
-  end
-finally = :unused
-rescue
-  error -> reraise error, __STACKTRACE__
-after
-  Helpers.cleanup_suite(suite)
-end
-ExUnit.run()
-`;
-
-function capture() {
-  return new Promise((resolve, reject) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reviewer-style-policy-'));
-    const file = path.join(dir, 'capture.exs');
-    fs.writeFileSync(file, driver);
-    // Do not allow an externally selected older archive to stand in for this source.
-    const env = { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' };
-    delete env.KOGEN_ARCHIVE;
-    const child = spawn('mix', ['run', file], { cwd: ROOT, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '';
-    let timedOut = false;
-    child.stdout.on('data', b => { output += b; });
-    child.stderr.on('data', b => { output += b; });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try { process.kill(-child.pid, 'SIGKILL'); } catch {}
-    }, 240000);
-    child.on('error', error => {
-      clearTimeout(timer);
-      fs.rmSync(dir, { recursive: true, force: true });
-      reject(error);
-    });
-    child.on('close', code => {
-      clearTimeout(timer);
-      fs.rmSync(dir, { recursive: true, force: true });
-      try {
-        assert.equal(timedOut, false, output);
-        assert.equal(code, 0, output);
-        const lines = output.split('\n').filter(line => line.startsWith('STYLE_POLICY_RESULT='));
-        assert.equal(lines.length, 1, output);
-        resolve(JSON.parse(lines[0].slice('STYLE_POLICY_RESULT='.length)));
-      } catch (error) { reject(error); }
-    });
-  });
+const contentText = x => typeof x.content === 'string' ? x.content : Array.isArray(x.content) ? x.content.map(b => b.text || '').join('') : '';
+async function capture() {
+  const suite = await H.setupSuite(); let c;
+  try {
+    const script = [H.fn('write_file', { path: 'app.txt', content: 'verified edit\n' }), H.fn('finish', { summary: 'The fixture edit is ready.' }), H.fn('submit_review', { verdict: 'approve', findings: [] })];
+    c = await H.project(suite, script);
+    const { out: output, code: status } = await H.runKogen(c, ['intent', 'build', 'fixture']);
+    const reviews = c.server.reviewRequests();
+    if (reviews.length === 0) throw new Error(`no actual reviewer request: ${output}`);
+    const request = reviews[0].json;
+    // The policy is the request's instructions or, for a model with prompt caching, its developer message.
+    const instructions = request.instructions || request.input.filter(i => i.role === 'developer').map(contentText).join('\n');
+    const material = request.input.filter(i => i.role !== 'developer').map(contentText).join('\n');
+    const committed = await H.gitBang(c, ['show', 'HEAD:app.txt']);
+    return { instructions, material, 'build status': status, 'reviewer requests': reviews.length, 'committed builder contents': committed.replace(/\n+$/, ''), 'reviewer response tool': 'submit_review' };
+  } finally { await H.cleanupCase(c); H.cleanupSuite(suite); }
 }
 
 const normalize = text => text.replace(/\s+/g, ' ').trim().toLowerCase();

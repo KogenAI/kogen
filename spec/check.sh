@@ -58,7 +58,7 @@ refute build.qnt 'phase != Interrupted' 11
 refute run_control.qnt 'not(status == Ended and signal == SigInt)' 3
 refute run_control.qnt 'not(status == Ended and signal == SigTerm)' 3
 refute run_control.qnt 'not(status == Ended and signal == SigHup)' 3
-refute run_control.qnt 'not(status == Ended and signal == CoreCrash)' 3
-refute run_control.qnt 'not(status == Ended and signal == CoreCrash and committed)' 3
+refute run_control.qnt 'not(status == Ended and signal == InternalError)' 3
+refute run_control.qnt 'not(status == Ended and signal == InternalError and committed)' 3
 refute run_control.qnt 'refusal != "build_running"' 3
 echo "spec checks: all ok"

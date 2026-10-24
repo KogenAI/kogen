@@ -2,179 +2,89 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+	"syscall"
 	"testing"
 	"time"
+
+	"kogen/verify"
 )
 
-// TestInstalledProbeDeadline is invoked by the acceptance suite's compiled Go test
-// binary. It exercises the unmodified installed core and the real session executor.
-// Only the observed probe request's deadline is contracted, after checking the
-// production five-minute policy. No timeout reply or elapsed time is fabricated.
+// TestInstalledProbeDeadline is invoked by the acceptance suite's compiled Go test binary
+// (SHP-10). It runs the real `kogen intent shape` command in this process against the
+// installed root, in the project folder the binary was started in. Only the probe deadline
+// is contracted, to 200 ms, after checking that the production deadline is five minutes. No
+// timeout result or elapsed time is fabricated: the production probe code stops the
+// process group, reports the timeout to the model and removes its scratch folder.
 func TestInstalledProbeDeadline(t *testing.T) {
 	if os.Getenv("KOGEN_TEST_PROBE_DEADLINE") != "1" {
 		return
 	}
 	root := os.Getenv("KOGEN_TEST_ROOT")
-	requestBytes, err := os.ReadFile(os.Getenv("KOGEN_TEST_PROBE_REQUEST"))
+	request, err := os.Open(os.Getenv("KOGEN_TEST_PROBE_REQUEST"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var request map[string]any
-	if err := json.Unmarshal(requestBytes, &request); err != nil {
-		t.Fatal(err)
-	}
-	if request["type"] != "run" || request["command"] != "shape" || request["install_root"] != root {
-		t.Fatal("expected a shape run request for the installed core")
-	}
-	if problem := checkSeams(); problem != "" {
-		t.Fatal(problem)
-	}
-	s := newSession(root)
-	s.core, s.in, s.out = coreCommand(root)
-	replies := &probeReplies{WriteCloser: s.in}
-	s.in = replies
-	ended := false
-	t.Cleanup(func() {
-		if !ended {
-			s.killCore()
-		}
-		s.killGroups()
+	defer request.Close()
+	defer func(stdin *os.File) { os.Stdin = stdin }(os.Stdin)
+	os.Stdin = request
+
+	var probes []verify.ProbeObservation
+	production, restore := verify.ContractProbeDeadline(200*time.Millisecond, func(o verify.ProbeObservation) {
+		probes = append(probes, o)
 	})
-
-	messages := make(chan map[string]any)
-	readErrors := make(chan error, 1)
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		for {
-			message, err := s.readMsg()
-			if err != nil {
-				readErrors <- err
-				return
-			}
-			select {
-			case messages <- message:
-			case <-done:
-				return
-			}
-		}
-	}()
-	deadline := time.NewTimer(45 * time.Second)
-	defer deadline.Stop()
-	next := func() map[string]any {
-		select {
-		case message := <-messages:
-			return message
-		case err := <-readErrors:
-			t.Fatalf("installed core protocol: %v", err)
-		case <-deadline.C:
-			t.Fatal("installed probe deadline driver exceeded 45 seconds")
-		}
-		return nil
-	}
-	s.send(map[string]any{"type": "hello"})
-	if hello := next(); hello["type"] != "hello" {
-		t.Fatalf("core did not answer hello: %v", hello)
-	}
-	s.send(request)
-
-	var probe map[string]any
-	for {
-		message := next()
-		if message["type"] == "exec" && message["timeout_ms"] != nil {
-			if probe != nil || message["timeout_ms"] != float64(300000) || message["command"] != "sleep 600" {
-				t.Fatalf("expected one hanging probe with the production deadline: %v", message)
-			}
-			probe = message
-			contracted := make(map[string]any, len(message))
-			for key, value := range message {
-				contracted[key] = value
-			}
-			contracted["timeout_ms"] = float64(200)
-			message = contracted
-		}
-		code, finished := s.handle(message)
-		if !finished {
-			continue
-		}
-		if code != 0 || probe == nil {
-			t.Fatalf("shaping exit %d, observed probe %v", code, probe)
-		}
-		s.endCore()
-		ended = true
-		break
+	defer restore()
+	if production != 5*time.Minute {
+		t.Fatalf("the production probe deadline is %v, want 5m0s", production)
 	}
 
-	// The core has consumed the replies; let any in-flight send finish recording.
-	s.sendMu.Lock()
-	s.sendMu.Unlock()
-	var pgid, status int
-	var started, completed, timedOut bool
-	for _, message := range replies.snapshot() {
-		if message["id"] != probe["id"] {
-			continue
-		}
-		switch message["type"] {
-		case "exec_started":
-			pgid = int(message["pgid"].(float64))
-			started = true
-		case "exec_done":
-			status = int(message["status"].(float64))
-			timedOut, _ = message["timed_out"].(bool)
-			completed = true
-		}
+	exit := make(chan int, 1)
+	args := []string{"intent", "shape", os.Getenv("KOGEN_TEST_PROBE_SLUG"), "-"}
+	go func() { exit <- run(args, func() (string, error) { return root, nil }) }()
+	var code int
+	select {
+	case code = <-exit:
+	case <-time.After(45 * time.Second):
+		t.Fatal("installed probe deadline driver exceeded 45 seconds")
 	}
-	if !started || !completed || pgid <= 0 || status == 0 || !timedOut {
-		t.Fatalf("expected genuine timed-out process: started=%v completed=%v pgid=%d status=%d timed_out=%v", started, completed, pgid, status, timedOut)
+	if code != 0 || len(probes) != 1 {
+		t.Fatalf("shaping exit %d, observed probes %+v", code, probes)
 	}
-	// Check before driver cleanup, so cleanup cannot hide a broken executor.
-	waitForProcessGroupGone(t, pgid, 3*time.Second)
-	scratch, _ := probe["cwd"].(string)
-	if !filepath.IsAbs(scratch) || !strings.HasPrefix(filepath.Base(scratch), "kogen-probe-") {
-		t.Fatalf("probe did not use a scratch folder: %q", scratch)
+	probe := probes[0]
+	if probe.Command != "sleep 600" || probe.Deadline != 200*time.Millisecond {
+		t.Fatalf("expected one hanging probe under the contracted deadline: %+v", probe)
 	}
-	if _, err := os.Stat(scratch); !os.IsNotExist(err) {
-		t.Fatalf("probe scratch remains: %s (%v)", scratch, err)
+	if probe.Group <= 1 || probe.Result.Status == 0 || !probe.Result.TimedOut {
+		t.Fatalf("expected genuine timed-out process: group=%d status=%d timed_out=%v", probe.Group, probe.Result.Status, probe.Result.TimedOut)
 	}
-	receipt := map[string]any{
-		"original_timeout_ms": 300000, "executed_timeout_ms": 200,
-		"command": probe["command"], "scratch": scratch, "pgid": pgid,
-		"exec_status": status, "timed_out": timedOut,
-		"process_group_stopped": true, "scratch_removed": true, "core_exit": 0,
+	// Check before any cleanup, so cleanup cannot hide a broken executor.
+	waitForProcessGroupGone(t, probe.Group, 3*time.Second)
+	if !filepath.IsAbs(probe.Scratch) || !strings.HasPrefix(filepath.Base(probe.Scratch), "kogen-probe-") {
+		t.Fatalf("probe did not use a scratch folder: %q", probe.Scratch)
 	}
-	if err := os.WriteFile(os.Getenv("KOGEN_TEST_PROBE_RECEIPT"), encode(receipt), 0o600); err != nil {
+	if _, err := os.Stat(probe.Scratch); !os.IsNotExist(err) {
+		t.Fatalf("probe scratch remains: %s (%v)", probe.Scratch, err)
+	}
+	receipt, _ := json.Marshal(map[string]any{
+		"original_timeout_ms": production.Milliseconds(), "executed_timeout_ms": probe.Deadline.Milliseconds(),
+		"command": probe.Command, "scratch": probe.Scratch, "pgid": probe.Group,
+		"exec_status": probe.Result.Status, "timed_out": probe.Result.TimedOut,
+		"process_group_stopped": true, "scratch_removed": true, "shape_exit": code,
+	})
+	if err := os.WriteFile(os.Getenv("KOGEN_TEST_PROBE_RECEIPT"), append(receipt, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// Observe only bytes the production executor actually sends to the core.
-// Its writer and JSON protocol remain unchanged.
-type probeReplies struct {
-	io.WriteCloser
-	mu       sync.Mutex
-	messages []map[string]any
-}
-
-func (p *probeReplies) Write(bytes []byte) (int, error) {
-	n, err := p.WriteCloser.Write(bytes)
-	if err == nil && n == len(bytes) {
-		var message map[string]any
-		if json.Unmarshal(bytes, &message) == nil {
-			p.mu.Lock()
-			p.messages = append(p.messages, message)
-			p.mu.Unlock()
+func waitForProcessGroupGone(t *testing.T, pgid int, timeout time.Duration) {
+	t.Helper()
+	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if err := syscall.Kill(-pgid, 0); err != nil {
+			return
 		}
 	}
-	return n, err
-}
-
-func (p *probeReplies) snapshot() []map[string]any {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return append([]map[string]any(nil), p.messages...)
+	syscall.Kill(-pgid, syscall.SIGKILL)
+	t.Fatalf("process group %d is still running after %v", pgid, timeout)
 }

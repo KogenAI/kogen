@@ -1,21 +1,19 @@
-// Command kogen is the command-line front of Kogen (spec chapter 09). It parses the command
-// line, reads caller input, and starts the Elixir core for mutating invocations, exchanging one
-// JSON object per line over the core's stdin and stdout (CLI-9). It runs the project commands
-// the core asks for, each in its own process group, and owns the login loopback listener.
+// Command kogen is Kogen: one Go program (spec chapter 09). It parses the command line, reads
+// the caller's input and runs every command in this process: the read-only commands, sign-in
+// with its loopback listener, init, and shaping, approving and building Intents. Project
+// commands run through package sys, each in its own process group.
 package main
 
 import (
-	"bufio"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
+	"kogen/build"
+	"kogen/sys"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"unicode/utf8"
 )
 
@@ -56,11 +54,12 @@ Options:
 const providerPage = `Usage: kogen provider <command>
 
 Commands:
-  login chatgpt      Sign in with a ChatGPT account
-  login supergrok    Sign in with a SuperGrok subscription
-  login opencode-go  Save your OpenCode Go workspace key from stdin
-  login anthropic    Save your Anthropic API key privately from stdin
-  list               Show which providers Kogen is signed in to
+  login chatgpt            Sign in with a ChatGPT account
+  login supergrok          Sign in with a SuperGrok subscription
+  login opencode-go        Save your OpenCode Go workspace key from stdin
+  login anthropic          Save your Anthropic API key privately from stdin
+  login openai-compatible  Save an optional key for an OpenAI-compatible host from stdin
+  list                     Show which providers Kogen is signed in to
 
 Logins belong to this machine, never to a repo.
 `
@@ -203,8 +202,8 @@ func parse(args []string) (*invocation, string, *usageError) {
 	switch leaf.command {
 	case "login":
 		inv.provider = pos[0]
-		if pos[0] != "chatgpt" && pos[0] != "supergrok" && pos[0] != "opencode-go" && pos[0] != "anthropic" {
-			return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic)", pos[0])
+		if pos[0] != "chatgpt" && pos[0] != "supergrok" && pos[0] != "opencode-go" && pos[0] != "anthropic" && pos[0] != "openai-compatible" {
+			return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic, openai-compatible)", pos[0])
 		}
 	case "shape":
 		inv.slug, inv.file = pos[0], pos[1]
@@ -240,26 +239,31 @@ func isHelpFlag(tok string) bool {
 	return tok == "--help" || tok == "-h"
 }
 
-// fail prints an error line on stdout (CLI-6) and exits.
-func fail(code int, line string) {
-	fmt.Print(line + "\n")
-	os.Exit(code)
+func main() {
+	sys.MaybeSupervise(os.Args[1:])
+	sys.EnableSupervisor()
+	os.Exit(run(os.Args[1:], installRoot))
 }
 
-func main() {
-	if handled, code := localRead(os.Args[1:]); handled {
-		os.Exit(code)
+// run is one kogen invocation and returns its exit code. locate finds the installation root
+// for the commands that need it.
+func run(args []string, locate func() (string, error)) int {
+	if handled, code := localRead(args); handled {
+		return code
 	}
-	inv, page, uerr := parse(os.Args[1:])
+	inv, page, uerr := parse(args)
 	if uerr != nil {
 		fmt.Print(uerr.msg + "\n\n" + pages[uerr.page])
-		os.Exit(2)
+		return 2
 	}
 	if inv == nil {
 		fmt.Print(page)
-		return
+		return 0
 	}
-	root := installRoot()
+	root, err := locate()
+	if err != nil {
+		return exitFor(err)
+	}
 	// LOOP-11: project commands get Kogen's own Node (INS-4) and its bundled Cucumber (SET-13).
 	if node, err := os.ReadFile(filepath.Join(root, "node-path")); err == nil {
 		os.Setenv("KOGEN_NODE", strings.TrimSpace(string(node)))
@@ -267,69 +271,60 @@ func main() {
 	os.Setenv("KOGEN_CUCUMBER", filepath.Join(root, "lib", "cucumber", "node_modules"))
 	os.Setenv("KOGEN_QUINT", filepath.Join(root, "lib", "quint", "node_modules", "@informalsystems", "quint", "dist", "src", "cli.js"))
 	if inv.command == "uninstall" {
-		uninstall(root)
-		return
+		return exitFor(uninstall(root))
 	}
+	if code, ok := runNative(inv, root); ok {
+		return code
+	}
+	return prepare(inv, root)
+}
+
+// prepare validates what the Intent commands and init need from the command line and the
+// caller's files, then runs the command and returns its exit code.
+func prepare(inv *invocation, root string) int {
 	cwd, err := os.Getwd()
 	if err != nil {
-		fail(3, "environment/cwd_unavailable: "+err.Error())
+		return exitFor(sys.Fail("environment", "cwd_unavailable", err.Error(), 3))
 	}
-	var diagnostic map[string]string
+	job := engineJob{inv: inv, root: root}
 	if inv.context != nil {
-		var e error
-		diagnostic, e = readDiagnostic(cwd, *inv.context)
-		if e != nil {
-			fail(2, "intent/context_unavailable: "+e.Error())
+		job.diagnostic, err = readDiagnostic(cwd, *inv.context)
+		if err != nil {
+			return exitFor(sys.Fail("intent", "context_unavailable", err.Error(), 2))
 		}
-	}
-	run := map[string]any{"type": "run", "command": inv.command, "cwd": cwd, "install_root": root, "env": environ()}
-	if inv.command == "login" {
-		run["provider"] = inv.provider
-	}
-	if diagnostic != nil {
-		run["context"] = diagnostic
 	}
 	switch inv.command {
 	case "shape", "refine", "approve", "build", "resume", "recover":
 		if inv.command != "resume" && inv.command != "recover" && (!slugRe.MatchString(inv.slug) || len(inv.slug) < 3 || len(inv.slug) > 48) {
-			fail(2, "intent/invalid_slug: Slug must be 3 to 48 characters and use lowercase letters, digits and dashes.")
+			return exitFor(sys.Fail("intent", "invalid_slug", "Slug must be 3 to 48 characters and use lowercase letters, digits and dashes.", 2))
 		}
-		project := cwd
+		job.project = cwd
 		if inv.project != "" {
-			project = absFrom(cwd, inv.project)
-			if st, err := os.Stat(project); err != nil || !st.IsDir() {
-				fail(3, "environment/project_unavailable: "+project)
+			job.project = absFrom(cwd, inv.project)
+			if st, err := os.Stat(job.project); err != nil || !st.IsDir() {
+				return exitFor(sys.Fail("environment", "project_unavailable", job.project, 3))
 			}
 		}
-		run["project"], run["slug"] = project, inv.slug
 		if inv.command == "recover" {
-			run["output"] = absFrom(cwd, inv.output)
-		}
-		if inv.hash != "" {
-			run["hash"] = inv.hash
-		}
-		if inv.by != "" {
-			run["by"] = inv.by
+			job.output = absFrom(cwd, inv.output)
 		}
 		if inv.command == "shape" || inv.command == "refine" {
-			run["input"] = readRequest(cwd, inv.file)
+			if job.request, err = readRequest(cwd, inv.file); err != nil {
+				return exitFor(err)
+			}
 			if inv.file != "-" {
-				run["input_path"] = absFrom(cwd, inv.file)
+				job.requestPath = absFrom(cwd, inv.file)
 			}
 		}
 	case "init":
-		run["project"] = cwd
-	case "login":
-		if err := checkSeams(); err != "" {
-			fail(3, err)
-		}
+		job.project = cwd
 	}
 	if inv.command == "shape" || inv.command == "refine" || inv.command == "build" || inv.command == "resume" {
-		if err := checkSeams(); err != "" {
-			fail(3, err)
+		if err := checkSeams(); err != nil {
+			return exitFor(err)
 		}
 	}
-	os.Exit(newSession(root).run(run))
+	return runEngine(job)
 }
 
 func absFrom(cwd, p string) string {
@@ -339,9 +334,8 @@ func absFrom(cwd, p string) string {
 	return filepath.Join(cwd, p)
 }
 
-// readRequest reads the request (or the answers) from a file or stdin; it is sent to the
-// core as protocol data, never in argv (SHP-1).
-func readRequest(cwd, file string) string {
+// readRequest reads the request (or the answers) from a file or stdin (SHP-1).
+func readRequest(cwd, file string) (string, error) {
 	name := "stdin"
 	var data []byte
 	var err error
@@ -351,107 +345,67 @@ func readRequest(cwd, file string) string {
 		name = absFrom(cwd, file)
 		data, err = os.ReadFile(name)
 		if os.IsNotExist(err) {
-			fail(2, "intent/request_unavailable: "+name+": not found")
+			return "", sys.Fail("intent", "request_unavailable", name+": not found", 2)
 		}
 	}
 	if err != nil {
-		fail(2, "intent/request_unavailable: "+name+": unreadable")
+		return "", sys.Fail("intent", "request_unavailable", name+": unreadable", 2)
 	}
 	if strings.TrimSpace(string(data)) == "" {
-		fail(2, "intent/request_unavailable: "+name+": empty")
+		return "", sys.Fail("intent", "request_unavailable", name+": empty", 2)
 	}
-	return string(data)
+	return string(data), nil
 }
 
 var seamRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost):[0-9]+$`)
 
 // checkSeams accepts only loopback test URLs (GPT-11).
-func checkSeams() string {
+func checkSeams() error {
 	for _, name := range []string{"KOGEN_PROVIDER_URL", "KOGEN_AUTH_URL"} {
 		if v, ok := os.LookupEnv(name); ok && !seamRe.MatchString(v) {
-			return "environment/invalid_test_seam: " + name + " must be http://127.0.0.1:<port> or http://localhost:<port>"
+			return sys.Fail("environment", "invalid_test_seam", name+" must be http://127.0.0.1:<port> or http://localhost:<port>", 3)
 		}
 	}
-	return ""
-}
-
-func environ() map[string]string {
-	env := map[string]string{}
-	for _, kv := range os.Environ() {
-		if k, v, ok := strings.Cut(kv, "="); ok {
-			env[k] = v
-		}
-	}
-	return env
+	return nil
 }
 
 // installRoot is <prefix>/lib/kogen: the folder holding bin/kogen, found through symlinks (INS-3).
-func installRoot() string {
+func installRoot() (string, error) {
 	self, err := os.Executable()
 	if err == nil {
 		self, err = filepath.EvalSymlinks(self)
 	}
 	if err != nil {
-		fail(3, "environment/core_unavailable: cannot locate the kogen program: "+err.Error()+"; reinstall Kogen")
+		return "", sys.Fail("environment", "installation_damaged", "cannot locate the kogen program: "+err.Error()+"; reinstall Kogen", 3)
 	}
-	return filepath.Dir(filepath.Dir(self))
+	return filepath.Dir(filepath.Dir(self)), nil
 }
 
 // uninstall removes <prefix>/lib/kogen and the <prefix>/bin/kogen link (INS-5).
-func uninstall(root string) {
+func uninstall(root string) error {
 	prefix := filepath.Dir(filepath.Dir(root))
 	link := filepath.Join(prefix, "bin", "kogen")
 	target, err := filepath.EvalSymlinks(link)
 	if filepath.Base(root) != "kogen" || filepath.Base(filepath.Dir(root)) != "lib" || err != nil || target != filepath.Join(root, "bin", "kogen") {
-		fail(3, "environment/not_installed: this kogen runs from "+root+", not from an installation made by install.sh")
+		return sys.Fail("environment", "not_installed", "this kogen runs from "+root+", not from an installation made by install.sh", 3)
 	}
 	if err := os.Remove(link); err != nil {
-		fail(3, "environment/uninstall_failed: "+err.Error())
+		return sys.Fail("environment", "uninstall_failed", err.Error(), 3)
 	}
 	if err := os.RemoveAll(root); err != nil {
-		fail(3, "environment/uninstall_failed: "+err.Error())
+		return sys.Fail("environment", "uninstall_failed", err.Error(), 3)
 	}
 	fmt.Print("Uninstalled kogen from " + prefix + "\n")
-	fmt.Print("Kept your ChatGPT, SuperGrok, OpenCode Go and Anthropic logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock\n")
+	fmt.Print("Kept your ChatGPT, SuperGrok, OpenCode Go, Anthropic and OpenAI-compatible logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock ~/.kogen/credentials/openai-compatible.json ~/.kogen/credentials/openai-compatible.lock\n")
+	return nil
 }
 
-// coreCommand starts the Elixir release in its own process group, so terminal signals reach
-// only kogen. +Bi makes the BEAM ignore SIGINT; +fnu keeps file names UTF-8 (CLI-9). The
-// release's vm.args sends the kernel logger to stderr, so stdout carries only the protocol (CLI-4).
-func coreCommand(root string) (*exec.Cmd, io.WriteCloser, *bufio.Reader) {
-	core := filepath.Join(root, "lib", "release", "bin", "kogen")
-	if _, err := os.Stat(core); err != nil {
-		fail(3, "environment/core_unavailable: "+core+" is missing; reinstall Kogen")
-	}
-	cmd := exec.Command(core, "eval", "Kogen.Main.main()")
-	env := []string{"ELIXIR_ERL_OPTIONS=+Bi +fnu"}
-	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "ELIXIR_ERL_OPTIONS=") {
-			env = append(env, kv)
-		}
-	}
-	cmd.Env = env
-	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	in, _ := cmd.StdinPipe()
-	out, _ := cmd.StdoutPipe()
-	if err := cmd.Start(); err != nil {
-		fail(3, "environment/core_unavailable: "+err.Error()+"; reinstall Kogen")
-	}
-	return cmd, in, bufio.NewReaderSize(out, 1<<20)
-}
-
-func encode(m map[string]any) []byte {
-	b, _ := json.Marshal(m)
-	return append(b, '\n')
-}
-
-// validateDiagnostic counts original bytes, before JSON encoding.
+// validateDiagnostic counts original bytes.
 func validateDiagnostic(data []byte) bool {
 	return len(data) <= 262144 && utf8.Valid(data) && strings.TrimSpace(string(data)) != ""
 }
 
-func readDiagnostic(cwd, file string) (map[string]string, error) {
+func readDiagnostic(cwd, file string) (*build.Diagnostic, error) {
 	path := absFrom(cwd, file)
 	st, err := os.Stat(path)
 	if err != nil || !st.Mode().IsRegular() {
@@ -466,5 +420,5 @@ func readDiagnostic(cwd, file string) (map[string]string, error) {
 	if err != nil || !validateDiagnostic(data) {
 		return nil, fmt.Errorf("file must contain nonblank UTF-8 data of at most 262144 bytes")
 	}
-	return map[string]string{"text": string(data), "source_path": path, "sha256": fmt.Sprintf("%x", sha256.Sum256(data))}, nil
+	return &build.Diagnostic{Text: string(data), SourcePath: path, SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}, nil
 }

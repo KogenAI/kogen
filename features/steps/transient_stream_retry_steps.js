@@ -2,110 +2,167 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
-const ROOT = path.resolve(__dirname, '../..');
-const driver = String.raw`
-ExUnit.start(autorun: false)
-Code.require_file("test/support/integration_helpers.ex")
-alias Kogen.{ChatGPT, Error, ShapeEvidence, Integration.FakeProvider, Integration.Helpers}
-[home, config] = System.argv()
-c = JSON.decode!(File.read!(config))
-error = Map.put(c["error"], "private_payload", "SECRET_RETRY_PAYLOAD")
-partial = %{"type" => "function_call", "call_id" => "unconfirmed", "name" => "shell", "arguments" => JSON.encode!(%{"command" => "touch .kogen/local/partial-tool"})}
-failure = case c["event"] do
-  "flat" -> Map.merge(error, %{"type" => "error"})
-  "response.failed" -> %{"type" => "response.failed", "response" => %{"error" => error}}
-  "response.incomplete" -> %{"type" => "response.incomplete", "response" => %{"incomplete_details" => %{"reason" => "max_output_tokens"}}}
-  _ -> %{"type" => "error", "error" => error}
-end
-bad = {:events, [%{"type" => "response.output_item.done", "output_index" => 0, "item" => partial}, failure]}
-read_rows = fn file -> File.read!(file) |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1) end
-r = if c["entry"] == "build" do
-  suite = Helpers.setup_suite!()
-  script = [{:function, "shell", %{"command" => "printf 'verified edit\\n' > app.txt; printf x >> .kogen/local/tool-count"}}] ++ List.duplicate(bad, c["failures"]) ++ [{:function, "finish", %{"summary" => "Ready"}}, {:function, "submit_review", %{"verdict" => "approve", "findings" => []}}]
-  ctx = Helpers.project!(suite, script, staged_intent: false)
-  try do
-    approval = Kogen.Intent.approval_path(ctx.repo, "fixture")
-    before = %{head: Kogen.Git.head(ctx.repo), index: Base.encode64(File.read!(Path.join(ctx.repo, ".git/index"))), approval: File.read!(approval)}
-    {out, status} = Helpers.run_kogen(ctx, ["intent", "build", "fixture"])
-    [result] = Path.wildcard(Path.join(ctx.repo, ".kogen/local/runs/*/result.json"))
-    rows = read_rows.(Helpers.run_log(ctx))
-    requests = FakeProvider.provider_requests(ctx.server) |> Enum.drop(1) |> Enum.map(& &1.json)
-    %{entry: "build", output: out, exit: status, result: JSON.decode!(File.read!(result)), rows: rows,
-      requests: requests, before: before,
-      after: %{head: Kogen.Git.head(ctx.repo), index: Base.encode64(File.read!(Path.join(ctx.repo, ".git/index"))), approval: if(File.exists?(approval), do: File.read!(approval))},
-      app: File.read!(Path.join(ctx.repo, "app.txt")), count: File.read!(Path.join(ctx.repo, ".kogen/local/tool-count")),
-      partial: File.exists?(Path.join(ctx.repo, ".kogen/local/partial-tool")),
-      status: elem(Helpers.git!(ctx, ["status", "--porcelain"]), 0),
-      committed_app: elem(Helpers.git!(ctx, ["show", "HEAD:app.txt"]), 0)}
-  after
-    Helpers.cleanup_case(ctx)
-    Helpers.cleanup_suite(suite)
-  end
-else
-  File.mkdir_p!(Path.join(home, ".kogen/credentials"))
-  provider = c["provider"] || "chatgpt"
-  creds = %{client_id: "oaiapp_fixture", access_token: "fake-access", refresh_token: "fake-refresh", expires_at: System.system_time(:second) + 3600, referrer: "kogen"}
-  File.write!(Path.join(home, ".kogen/credentials/#{provider}.json"), JSON.encode!(creds))
-  item = %{"type" => "message", "role" => "assistant", "content" => [%{"type" => "output_text", "text" => "recovered", "annotations" => []}]}
-  usage = %{"input_tokens" => 100, "input_tokens_details" => %{"cached_tokens" => 5}, "output_tokens" => 20, "output_tokens_details" => %{"reasoning_tokens" => 10}}
-  good = {:events, [%{"type" => "response.completed", "response" => %{"status" => "completed", "output" => [item], "usage" => usage}}]}
-  server = FakeProvider.start(List.duplicate(bad, c["failures"]) ++ [good])
-  :persistent_term.put(:kogen_caller, %{env: %{"HOME" => home, "KOGEN_PROVIDER_URL" => "http://127.0.0.1:#{server.port}"}})
-  ShapeEvidence.start(Path.join(home, "evidence"))
-  role = if provider == "supergrok", do: %{provider: "supergrok", model: "grok-4.7", effort: "low"}, else: %{model: "gpt-6.1-sol", effort: "medium"}
-  parent = self()
-  canceller = if c["cancel"], do: spawn(fn -> Process.sleep(200); send(parent, {:proto, %{"type" => "cancel", "signal" => "SIGINT"}}) end)
-  started = System.monotonic_time(:millisecond)
-  try do
-    result = try do
-      response = ShapeEvidence.provider("shape", nil, "fixture", [], role, fn ->
-        ChatGPT.respond(role, "retry authority", [%{"role" => "user", "content" => "retry contract"}], [], single_attempt: c["single"] || false, response_budget_ms: c["budget"] || 15000)
-      end)
-      %{outcome: "ok", items: response.items, usage: response.usage}
-    rescue
-      e in Error -> %{outcome: e.class <> "/" <> e.reason, exit: e.exit, diagnostics: e.provider_failure, detail: e.detail}
-    catch
-      {:cancel, signal} -> %{outcome: "cancel/" <> signal}
-    end
-    Map.merge(result, %{entry: "transport", elapsed: System.monotonic_time(:millisecond) - started,
-      requests: Enum.map(FakeProvider.provider_requests(server), & &1.json), rows: read_rows.(Path.join(home, "evidence/events.ndjson"))})
-  after
-    if canceller, do: Process.exit(canceller, :kill)
-    FakeProvider.stop(server)
-  end
-end
-File.write!(Path.join(home, "receipt.json"), JSON.encode!(r))
-ExUnit.run()
-`;
-function run(c) {
-  return new Promise((resolve, reject) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-stream-retry-'));
-    const script = path.join(dir, 'driver.exs'), config = path.join(dir, 'config.json');
-    fs.writeFileSync(script, driver); fs.writeFileSync(config, JSON.stringify(c));
-    // Direct mix callers need the same version source used by SuperGrok's user-agent.
-    fs.writeFileSync(path.join(dir, 'VERSION'), 'kogen fixture\n');
-    const env = { ...process.env, RELEASE_ROOT: dir, ERL_FLAGS: '+S 2:2 +SDcpu 1 +SDio 1' };
-    // Configured setup has just packaged the candidate. Never select an old private candidate.
-    const archives = fs.readdirSync(path.join(ROOT, 'dist')).filter(x => x.endsWith('.tar.gz')).map(x => path.join(ROOT, 'dist', x));
-    archives.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    if (archives[0]) env.KOGEN_ARCHIVE = archives[0];
-    const child = spawn('mix', ['run', '--no-deps-check', script, dir, config], { cwd: ROOT, detached: true, env, stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '';
-    child.stdout.on('data', b => { output += b; }); child.stderr.on('data', b => { output += b; });
-    const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }, 180000);
-    child.once('error', e => { clearTimeout(timer); fs.rmSync(dir, { recursive: true, force: true }); reject(e); });
-    child.once('close', code => {
-      clearTimeout(timer);
-      try {
-        assert.equal(code, 0, output);
-        const r = JSON.parse(fs.readFileSync(path.join(dir, 'receipt.json'), 'utf8'));
-        resolve(r);
-      } catch (e) { reject(e); }
-      finally { fs.rmSync(dir, { recursive: true, force: true }); }
-    });
-  });
+const H = require('./go_driver_support.js');
+
+// Transient stream retry, observed on the installed Go program. The Build entry runs the installed `kogen intent build`
+// against a scripted local provider; the transport entry calls Kogen's provider client (provider.Client.Respond with the
+// shaping evidence recorder) through a tiny Go driver, because the single-attempt flag, the absolute response budget and
+// cancellation have no installed-command form.
+const transportSource = String.raw`package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"kogen/project"
+	"kogen/provider"
+	"kogen/shape"
+	"kogen/sys"
+)
+
+func must(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
+
+func main() {
+	home, url, configPath := os.Args[1], os.Args[2], os.Args[3]
+	raw, err := os.ReadFile(configPath)
+	must(err)
+	var c struct {
+		Provider string
+		Single   bool
+		Budget   int
+		Cancel   bool
+	}
+	must(json.Unmarshal(raw, &c))
+	s := sys.NewWith([]string{"HOME=" + home, "KOGEN_PROVIDER_URL=" + url, "KOGEN_AUTH_URL=" + url}, home)
+	ev, err := shape.NewEvidence(filepath.Join(home, "evidence"), "fixture")
+	must(err)
+	time.AfterFunc(60*time.Second, func() { s.Interrupt("WATCHDOG") })
+	if c.Cancel {
+		time.AfterFunc(200*time.Millisecond, func() { s.Interrupt("SIGINT") })
+	}
+	role := provider.Role{Model: "gpt-6.1-sol", Effort: "medium"}
+	if c.Provider == "supergrok" {
+		role = provider.Role{Provider: "supergrok", Model: "grok-4.7", Effort: "low"}
+	}
+	budget := time.Duration(c.Budget) * time.Millisecond
+	if c.Budget == 0 {
+		budget = 15 * time.Second
+	}
+	started := time.Now()
+	client := provider.NewClient("kogen test (driver)")
+	call := ev.BeginCall("shape", "", "fixture", "", project.Role{Provider: role.Provider, Model: role.Model, Effort: role.Effort})
+	resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: "retry authority", Input: []any{map[string]any{"role": "user", "content": "retry contract"}}, Tools: []any{}, Budget: budget, Single: c.Single, Scope: "retry"}, call)
+	call.End(resp, err)
+	result := map[string]any{}
+	if err == nil {
+		result["outcome"] = "ok"
+		result["items"] = resp.Items
+		result["usage"] = map[string]any{"input": resp.Usage.Input, "cached": resp.Usage.Cached, "output": resp.Usage.Output, "reasoning": resp.Usage.Reasoning}
+	} else {
+		var i *sys.Interrupted
+		var e *sys.Error
+		switch {
+		case errors.As(err, &i):
+			result["outcome"] = "cancel/" + i.Signal
+		case errors.As(err, &e):
+			result["outcome"], result["exit"], result["diagnostics"], result["detail"] = e.Class+"/"+e.Reason, e.Exit, e.ProviderFailure, e.Detail
+		default:
+			must(err)
+		}
+	}
+	result["entry"] = "transport"
+	result["elapsed"] = time.Since(started).Milliseconds()
+	data, err := os.ReadFile(filepath.Join(home, "evidence", "events.ndjson"))
+	must(err)
+	rows := []any{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row any
+		must(json.Unmarshal([]byte(line), &row))
+		rows = append(rows, row)
+	}
+	result["rows"] = rows
+	out, err := json.Marshal(result)
+	must(err)
+	fmt.Println("RETRY_RESULT=" + string(out))
+}
+`;
+
+const readRows = file => fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+function failureEvent(c) {
+  const error = { ...c.error, private_payload: 'SECRET_RETRY_PAYLOAD' };
+  switch (c.event) {
+    case 'flat': return { ...error, type: 'error' };
+    case 'response.failed': return { type: 'response.failed', response: { error } };
+    case 'response.incomplete': return { type: 'response.incomplete', response: { incomplete_details: { reason: 'max_output_tokens' } } };
+    default: return { type: 'error', error };
+  }
+}
+function badAnswer(c) {
+  const partial = { type: 'function_call', call_id: 'unconfirmed', name: 'shell', arguments: JSON.stringify({ command: 'touch .kogen/local/partial-tool' }) };
+  return { events: [{ type: 'response.output_item.done', output_index: 0, item: partial }, failureEvent(c)] };
+}
+
+let sharedSuite;
+const suite = async () => { if (!sharedSuite) sharedSuite = await H.setupSuite(); return sharedSuite; };
+
+async function transport(c) {
+  const item = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'recovered', annotations: [] }] };
+  const usage = { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } };
+  const good = { events: [{ type: 'response.completed', response: { status: 'completed', output: [item], usage } }] };
+  const server = await new H.FakeProvider([...Array(c.failures).fill(badAnswer(c)), good]).start();
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-stream-retry-')));
+  try {
+    const provider = c.provider || 'chatgpt';
+    fs.mkdirSync(path.join(dir, '.kogen/credentials'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.kogen/credentials', `${provider}.json`), JSON.stringify({ client_id: 'oaiapp_fixture', access_token: 'fake-access', refresh_token: 'fake-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, referrer: 'kogen' }));
+    const config = path.join(dir, 'config.json'); fs.writeFileSync(config, JSON.stringify(c));
+    const driver = await H.goDriver('transient-retry', transportSource);
+    const r = await driver([dir, `http://127.0.0.1:${server.port}`, config]);
+    assert.equal(r.code, 0, r.out);
+    const line = r.out.split('\n').find(l => l.startsWith('RETRY_RESULT='));
+    assert.ok(line, r.out);
+    const result = JSON.parse(line.slice('RETRY_RESULT='.length));
+    result.requests = server.providerRequests().map(x => x.json);
+    return result;
+  } finally { await server.stop(); fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+async function build(c) {
+  const script = [H.fn('shell', { command: "printf 'verified edit\\n' > app.txt; printf x >> .kogen/local/tool-count" }), ...Array(c.failures).fill(badAnswer(c)), H.fn('finish', { summary: 'Ready' }), H.fn('submit_review', { verdict: 'approve', findings: [] })];
+  const ctx = await H.project(await suite(), script, { stagedIntent: false });
+  try {
+    const approval = H.approvalPath(ctx.repo, 'fixture');
+    const index = () => fs.readFileSync(path.join(ctx.repo, '.git/index')).toString('base64');
+    const before = { head: await H.git(ctx, ['rev-parse', 'HEAD']), index: index(), approval: fs.readFileSync(approval, 'utf8') };
+    const { out, code } = await H.runKogen(ctx, ['intent', 'build', 'fixture']);
+    const [result] = H.wildcard(path.join(ctx.repo, '.kogen/local/runs/*/result.json'));
+    const rows = readRows(H.runLog(ctx));
+    const requests = ctx.server.providerRequests().slice(1).map(r => r.json);
+    return {
+      entry: 'build', output: out, exit: code, result: JSON.parse(fs.readFileSync(result, 'utf8')), rows, requests, before,
+      after: { head: await H.git(ctx, ['rev-parse', 'HEAD']), index: index(), approval: fs.existsSync(approval) ? fs.readFileSync(approval, 'utf8') : null },
+      app: fs.readFileSync(path.join(ctx.repo, 'app.txt'), 'utf8'), count: fs.readFileSync(path.join(ctx.repo, '.kogen/local/tool-count'), 'utf8'),
+      partial: fs.existsSync(path.join(ctx.repo, '.kogen/local/partial-tool')),
+      status: await H.gitBang(ctx, ['status', '--porcelain']),
+      committed_app: await H.gitBang(ctx, ['show', 'HEAD:app.txt']),
+    };
+  } finally { await H.cleanupCase(ctx); }
+}
+const run = c => c.entry === 'build' ? build(c) : transport(c);
+
 function verify(r, expected) {
   const ps = r.rows.filter(x => x.provider).map(x => x.provider);
   const failed = ps.filter(p => p.outcome !== 'completed');

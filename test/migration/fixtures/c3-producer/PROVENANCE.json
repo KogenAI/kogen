@@ -1,0 +1,548 @@
+{
+  "purpose": "Test-only fixture: the exact historical Kogen producer sources needed to build the c3ee2a8e release (the real C3 producer used by the reopen-blocked-review retained-checkpoint cases). Not part of the installed candidate or any active core.",
+  "contract": ".kogen/intents/go-core-migration/intent.md, \"Historical fixture dependency settled here\"",
+  "source": {
+    "repository": "Kogen",
+    "commit": "c3ee2a8e3dfec33a7f25715757fa4b2e31fcb6ac",
+    "commitShort": "c3ee2a8e",
+    "tree": "1d0fc78ea450eb8ff37d96a509467684375e762b",
+    "subject": "Stop verification at the first failed gate",
+    "committerDate": "2026-10-19T21:43:17+03:00",
+    "releaseDate": "2026-10-19",
+    "version": "c3ee2a8e",
+    "versionLine": "kogen c3ee2a8e (2026-10-19)"
+  },
+  "archive": {
+    "file": "c3ee2a8e-producer-sources.tar.gz",
+    "bytes": 187596,
+    "sha256": "17360d62cfd4c8aafe7e5345077063547d82196ef9a0d798ce165df160896dcf",
+    "command": "git archive --format=tar c3ee2a8e -- .tool-versions LICENSE NOTICE mix.exs mix.lock config lib rel cli/go.mod cli/main.go cli/session.go packaging docs/configuration.md docs/testing-rules.md | gzip -n -9",
+    "selection": "Only what packaging/package.sh at that commit reads to build its release: mix.exs mix.lock config lib rel (Elixir release), cli (Go launcher, non-test sources), packaging (install.sh, README, third-party licences, Quint and Cucumber lockfiles, package.sh), docs/testing-rules.md and docs/configuration.md (copied into the archive), LICENSE and NOTICE, and .tool-versions (toolchain pins)."
+  },
+  "notices": {
+    "license": "LICENSE (Apache License 2.0) and NOTICE (\"Kogen / Copyright 2026 Optimum Tech, LLC\") are carried unmodified inside the archive at its root; their digests are in files[].",
+    "thirdParty": "packaging/licenses/** is carried unmodified."
+  },
+  "build": {
+    "toolchain": "mise per .tool-versions in the archive: elixir 1.20.4-otp-29, erlang 29.1.1, go 1.27.2, node 24.21.0 (legacy fixtures only)",
+    "note": "The original packaging/package.sh derives its version from the Git HEAD of a checkout. A source archive has no history, so test preparation rewrites only that version block of a copy of package.sh to the genuine values above (version c3ee2a8e, line \"kogen c3ee2a8e (2026-10-19)\") and runs the rest of the script unchanged."
+  },
+  "files": [
+    {
+      "path": ".tool-versions",
+      "bytes": 75,
+      "sha256": "487e6fa6278b6957e7f2997075b5559ba820f812783034ff533e0f1414de4277",
+      "gitBlob": "7826620a5ed448a232bcdf652028fa82095dcdc8"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "gitBlob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+    },
+    {
+      "path": "NOTICE",
+      "bytes": 88,
+      "sha256": "84db2376c3592f0e16a5766de44e760279dabbfefb207a6e2a0965c358181679",
+      "gitBlob": "5dc7e5e9811051bfa5f35812ef2d7e16642fb036"
+    },
+    {
+      "path": "cli/go.mod",
+      "bytes": 22,
+      "sha256": "60b00a7c5a1b74f30c375a757f0cdf8d68a4869919c301138532ebf137286682",
+      "gitBlob": "d056d5012d82bffb622420d2134ab9e5552d555c"
+    },
+    {
+      "path": "cli/main.go",
+      "bytes": 13076,
+      "sha256": "6890b119c1a9d0c09c747776607ee63e42c7788d6b5b704950d07bec37ae2846",
+      "gitBlob": "2bf346caed9adb7ad1b72915ba9c26cb8d25e103"
+    },
+    {
+      "path": "cli/session.go",
+      "bytes": 10515,
+      "sha256": "a683e3d1e9277c41517bc2ab9cb5de48029c59a21587471fe009c2a756c5e9c7",
+      "gitBlob": "5b5dc04dd7144bed9df03808d1a27eaed8b72269"
+    },
+    {
+      "path": "config/config.exs",
+      "bytes": 240,
+      "sha256": "7be233ad3d8100587b6656f4602d5ceba3f908e88840177d66f8f45409b7088d",
+      "gitBlob": "a8bca0474ca4b521485df28eb7dbbda03c664325"
+    },
+    {
+      "path": "docs/configuration.md",
+      "bytes": 11056,
+      "sha256": "16d7e14d97945b029aa8ac25fa5a5855a1593d246bf7ead750b5fe9ca6db6909",
+      "gitBlob": "bfc5b18a8953dbf915656647008e7f648c809f08"
+    },
+    {
+      "path": "docs/testing-rules.md",
+      "bytes": 8760,
+      "sha256": "be74f28d8f86d76fb69fe832c638bb6494c4d7c07d747ebcb32b5bd4c79cf477",
+      "gitBlob": "60cdb0f328fa5dd7fb3dcd3b0625802c96658076"
+    },
+    {
+      "path": "lib/kogen.ex",
+      "bytes": 968,
+      "sha256": "67e61e749aa3621d193a2d12ebf77ae13612560c6946469926aa50253150f922",
+      "gitBlob": "1084c65b59fd21c4c19037bd397661de03b56428"
+    },
+    {
+      "path": "lib/kogen/application.ex",
+      "bytes": 376,
+      "sha256": "56b4a2fba990738b1046e1795dfaefe50f9a320c78a3b6ed8ad779786a425d47",
+      "gitBlob": "1809a326537f713f066a9569775da3ad447f3789"
+    },
+    {
+      "path": "lib/kogen/approve.ex",
+      "bytes": 4164,
+      "sha256": "3271c316302b23d01e08a3b4d812ed9d575ef1311f6e38f581a6adb5edb9611f",
+      "gitBlob": "976fadee96313cad08eadfb8d5b6b598076ef719"
+    },
+    {
+      "path": "lib/kogen/bridge.ex",
+      "bytes": 4005,
+      "sha256": "1483a10ee2787a7a760aa04fa1ab75b9903c82f69eaf73a098ce74859e7fd79f",
+      "gitBlob": "ca8e3d987ba54ebaded75dab519b5982f848de91"
+    },
+    {
+      "path": "lib/kogen/build.ex",
+      "bytes": 39724,
+      "sha256": "4b4c8f1ef6cf3599a8318c1323931a0744f74f041ae0ca788bc4b1b7b7c907df",
+      "gitBlob": "8fb9253ae86e08c41ce01144b1510002bad9ec1b"
+    },
+    {
+      "path": "lib/kogen/chatgpt.ex",
+      "bytes": 22338,
+      "sha256": "6621d7058458c3f513792ebcf9df070fd243860b2c417ef562d1950352e6ff5d",
+      "gitBlob": "2123da6c1974bb9421908a6177a4204e3183835e"
+    },
+    {
+      "path": "lib/kogen/checks.ex",
+      "bytes": 14070,
+      "sha256": "710fdc1fcf36696abe849a65e51ffa6b656423a0db0627663b2ecc0a1523761c",
+      "gitBlob": "2c97da5a942b91823e0fb2a1255a29d5276cfad8"
+    },
+    {
+      "path": "lib/kogen/config.ex",
+      "bytes": 12151,
+      "sha256": "4bf99e578d67c1a158a0402e87a1e460e575f19354f612edf137c305f2b493fd",
+      "gitBlob": "f5794312d8b3594805a007dbecd51f36ef12abcd"
+    },
+    {
+      "path": "lib/kogen/detect.ex",
+      "bytes": 4547,
+      "sha256": "d449dd0145ad76363de2e1d3dbf278c4eb8990714465be65e6eebc792fce93e0",
+      "gitBlob": "2a82661168defa459a1808c88db66ec50e39cdd4"
+    },
+    {
+      "path": "lib/kogen/error.ex",
+      "bytes": 596,
+      "sha256": "a5b17f6eb5bdd097ab7eda9e325262cbb8d1ce39d2e8e6666f09ad2d5f7589bb",
+      "gitBlob": "fbcf835ce1849ae074ed2a095cc4d3dd05d2f1ad"
+    },
+    {
+      "path": "lib/kogen/gherkin.ex",
+      "bytes": 7428,
+      "sha256": "b6a65c2d1beb794aef83dbc98318ec472bacade26ab5aace429f215aadad734e",
+      "gitBlob": "66fc4af51e0d8f4b4bd4f2fbf81149528f796433"
+    },
+    {
+      "path": "lib/kogen/git.ex",
+      "bytes": 3821,
+      "sha256": "0fd4e6fee4ea67b4bab1d0f85e0790c7b2f6c01aa5d56ebbfcd1b725ee560245",
+      "gitBlob": "095985cb2f989ac4895b1fe43bd3c16fd3d2af2c"
+    },
+    {
+      "path": "lib/kogen/init.ex",
+      "bytes": 25265,
+      "sha256": "e15ba9196c6c2f59466c719b150fd664f6114d0b78dd79b6f204e25cec0f4afa",
+      "gitBlob": "02d09a531f53cb09ee9b73a3d22bb51c1247e9e1"
+    },
+    {
+      "path": "lib/kogen/intent.ex",
+      "bytes": 10859,
+      "sha256": "bb4fec9598d807b839756624389d6f2191e2f109872a4aff1495132b8bb7a844",
+      "gitBlob": "e5b529015903625de9b1214e636315fae547e79b"
+    },
+    {
+      "path": "lib/kogen/lock.ex",
+      "bytes": 2495,
+      "sha256": "46693383ed88526392e15e969509eea848d80cc3ca3fa98ff0f9756fc3a8d9ac",
+      "gitBlob": "93e478b7aecfe9c1e3f34b7ec80d52e219736541"
+    },
+    {
+      "path": "lib/kogen/main.ex",
+      "bytes": 2696,
+      "sha256": "15dc745b320de41729379cdd965ae101e966c3ce65b1667351f302214e7071e2",
+      "gitBlob": "20b3f73eb6e26a4e3066060b85f77af67759ad03"
+    },
+    {
+      "path": "lib/kogen/readiness.ex",
+      "bytes": 13796,
+      "sha256": "274f28bf01871c89de210cf69cc99c40400e5446aaa02d3545e81dd330a80aea",
+      "gitBlob": "97a101eebebaf88b9be031f545011607f4783db0"
+    },
+    {
+      "path": "lib/kogen/refine.ex",
+      "bytes": 26837,
+      "sha256": "31867290011fc4b14fa73ce3b27a389cf1578c57570bb2ee13c7c7accc40299a",
+      "gitBlob": "1e83e70d6694ac94f8049ad5a2dcf9fdd3586cb3"
+    },
+    {
+      "path": "lib/kogen/review.ex",
+      "bytes": 18012,
+      "sha256": "30652dba2747df6468907d080b0c62742abb85ccd5742403c7262ab641fbfd8d",
+      "gitBlob": "4c42cb7d624f671869378b30a5e0b156532c6eef"
+    },
+    {
+      "path": "lib/kogen/run.ex",
+      "bytes": 8688,
+      "sha256": "f200843caab1763838ab94aab5fce9f53f3e122aa973bd7cb53bf74a6061a396",
+      "gitBlob": "667f98e2c07d25a31ad0cc90295c7d10f502dcc1"
+    },
+    {
+      "path": "lib/kogen/shape.ex",
+      "bytes": 38664,
+      "sha256": "3ed6cae17d1b3ce3d2270679c88938247ce789a661816276d9a86429f78c9d79",
+      "gitBlob": "d217256a02bd3c2469685a513e405e7424c0b996"
+    },
+    {
+      "path": "lib/kogen/shape_batch.ex",
+      "bytes": 14679,
+      "sha256": "fea88e09dcebfb3083fa60cad8d85b975999ecb14ed88bacd768dde965a7576f",
+      "gitBlob": "4ceaadfa3d1813ec8371ddad9579d146cbafba74"
+    },
+    {
+      "path": "lib/kogen/shape_context.ex",
+      "bytes": 7450,
+      "sha256": "19d01e4d7af9031eec6c0b041b86d206cd8fa16b0506714c1d2493e89fd10935",
+      "gitBlob": "34a088e7ce81b66d413bb15117ee0c12c92bbcf1"
+    },
+    {
+      "path": "lib/kogen/shape_evidence.ex",
+      "bytes": 7740,
+      "sha256": "76b02528159e999f73543c156477bdbbbdeda909c82d63d5b218e17def02a953",
+      "gitBlob": "8b169fc3a78d62f3794908d897aaf87192b1edb1"
+    },
+    {
+      "path": "lib/kogen/snapshot.ex",
+      "bytes": 5837,
+      "sha256": "b570ac6e8ea8bab2d0044816e87d876c97c2ac9f5b804a592daa30e91ac2451a",
+      "gitBlob": "c94e6712aae314315128e670ecd07935cbce6037"
+    },
+    {
+      "path": "lib/kogen/tools.ex",
+      "bytes": 11396,
+      "sha256": "ef8a62d40c6111cf6ea6f198057e9c75c2f7e822c4c55ccb925b85e4c0fca366",
+      "gitBlob": "d3b539862beb30f996ec25d731fec3a7f41ef641"
+    },
+    {
+      "path": "lib/kogen/usage.ex",
+      "bytes": 364,
+      "sha256": "e33450c4268e6013020c31f0b93e53563ff30a2a6cd4c1ec3a890cf4ea27ee25",
+      "gitBlob": "c45e9b8d25ca07f375ab03d4fd94d4eaa23cbe9d"
+    },
+    {
+      "path": "lib/kogen/yaml.ex",
+      "bytes": 8015,
+      "sha256": "a35a9a6f3ec98471f29d04ee270756d3b2a6c918c7e13e0a39edf7a54248eb66",
+      "gitBlob": "01c75d8f1ed9beefed985abd7049748e7c07f617"
+    },
+    {
+      "path": "mix.exs",
+      "bytes": 1004,
+      "sha256": "6fee29087ca7d252bb1f9eb5b3210d6c972e42d49a24d6c403966e3a1c1aea68",
+      "gitBlob": "002550f578497c9715fadb8c11de551af6ae42af"
+    },
+    {
+      "path": "mix.lock",
+      "bytes": 210,
+      "sha256": "f17ad3dd9a0e6f9dcb5f702535ab42523186fffc08299b84110ee8c9ba2984c2",
+      "gitBlob": "e1480152d7e0fcd1c5e337e1296babea802aa82c"
+    },
+    {
+      "path": "packaging/README.md",
+      "bytes": 1641,
+      "sha256": "442da99af8757146b99e077280144abf9ccdce494fd75ccd4b40735e7cefb696",
+      "gitBlob": "5995b5e1f700a68258881df73b0bfe6ad46d56c8"
+    },
+    {
+      "path": "packaging/cucumber/package-lock.json",
+      "bytes": 37410,
+      "sha256": "da415b391cc015c4323c40be6444f248af3285692a929c9128464ba31a91c251",
+      "gitBlob": "481a96beca8701dae8140dc9f601ea330937f73f"
+    },
+    {
+      "path": "packaging/cucumber/package.json",
+      "bytes": 241,
+      "sha256": "2d81c76ad5ec47930b26b536e40bd7631303368c2a95ad66901e1ab8dca24d7a",
+      "gitBlob": "c5cc35e018cbf881c362e5e7bdc2cebc6ec6a790"
+    },
+    {
+      "path": "packaging/install.sh",
+      "bytes": 2270,
+      "sha256": "ea01252e49861e57ed39fda6775e432a5c20556ce0f1383a48be74afb9e72402",
+      "gitBlob": "0d32471c9fd392b975f7cef51f5700a4d3a0c43d"
+    },
+    {
+      "path": "packaging/licenses/README.md",
+      "bytes": 2320,
+      "sha256": "29846dad0aa3589ecef191b880ee7db126a1508f9c41d9a9af0cc2720a4799f1",
+      "gitBlob": "09df055b3955851a89363068f6ce3231d7d5659a"
+    },
+    {
+      "path": "packaging/licenses/elixir/LICENSE",
+      "bytes": 10173,
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "gitBlob": "d9a10c0d8e868ebf8da0b3dc95bb0be634c34bfe"
+    },
+    {
+      "path": "packaging/licenses/elixir/LICENSES/Apache-2.0.txt",
+      "bytes": 10280,
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff",
+      "gitBlob": "137069b823873b8bcf42979bcf8e9371052d26a2"
+    },
+    {
+      "path": "packaging/licenses/elixir/LICENSES/LicenseRef-elixir-trademark-policy.txt",
+      "bytes": 4505,
+      "sha256": "d52fe154626be590f93d113d67df1ca44d855af3c4427b9e114eb5dfb6f0b673",
+      "gitBlob": "b94911196dcd69ba05e58a934a33aeb8ddb24581"
+    },
+    {
+      "path": "packaging/licenses/elixir/LICENSES/LicenseRef-scancode-unicode.txt",
+      "bytes": 3013,
+      "sha256": "d0ab4cc0cd8bbe5ae75353dba75a91797f738f60173a032fec3eeecd1a9d68b7",
+      "gitBlob": "24438a47d731806dc667dc62430c5a17dcdfb75a"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "gitBlob": "e454a52586f29b8ce8a6799163eac1f875e9ac01"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/BSD-2-Clause.txt",
+      "bytes": 1235,
+      "sha256": "06413eaf2855d173db853258579d9f8013d1599c8d7340adc32383ce658352af",
+      "gitBlob": "1984945fcd4958c596081e0b6a669689de21bc7b"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/BSD-3-Clause.txt",
+      "bytes": 1446,
+      "sha256": "8fff43829a246bf63d422e0bde3ae6300ceed0be445a5d4d0a553f2781002d52",
+      "gitBlob": "b26beea4c278e3659060880ebffdc21b75d489ac"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-IETF-MIB.txt",
+      "bytes": 463,
+      "sha256": "9085f92f25a385ef53dba4ca26c5d770fe3fb18041746574544f619375509e2c",
+      "gitBlob": "d94d1fb152bb73605fcc6cc889a6dd4c3869a34a"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-RSA-PKCS3.txt",
+      "bytes": 1318,
+      "sha256": "7ffa15804690e9fb3538301963adb8a80a420568322d5028dc41ed9a7d5d03a9",
+      "gitBlob": "c89b9cd56a5a263701d4fb3eee7dab07b9f2ddbd"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-RSA-PKCS5v2-0.txt",
+      "bytes": 717,
+      "sha256": "d607ae3934f9a407a5ae0f00eda4302e482f7e48d50da5215f3b218bd5a4362c",
+      "gitBlob": "d08dfa414959ca2c9dbbbf83ea6e84fd740b778b"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-ietf-trust.txt",
+      "bytes": 26634,
+      "sha256": "30a48fff768daa1518c8fed2262315eb61b952951a4470fdac5e212a2f50791d",
+      "gitBlob": "d5305fefbf08555b3be575738f33946e62a35f2d"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-ietf.txt",
+      "bytes": 1318,
+      "sha256": "7ffa15804690e9fb3538301963adb8a80a420568322d5028dc41ed9a7d5d03a9",
+      "gitBlob": "c89b9cd56a5a263701d4fb3eee7dab07b9f2ddbd"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-w3c-docs-19990405.txt",
+      "bytes": 3541,
+      "sha256": "f561fd8183fd37f8f38b8f0c1d6d24e3354dc483b4a757033003498c1122105b",
+      "gitBlob": "6b29cf10a7f0d5d629ba6ebe39bec202ef591ea8"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/LicenseRef-scancode-wxwindows-free-doc-3.txt",
+      "bytes": 3148,
+      "sha256": "2005d5130f8748c4073d33c2699f9e46f3c11846df8cc83849971b53d59277bd",
+      "gitBlob": "e075f0ba473dac8a3ccbd9c05a48bd930fc421b2"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/MIT.txt",
+      "bytes": 1022,
+      "sha256": "c181eed254a608399a1059ddf5cb72cb1f1a5841a083aaa30f3e6713853ddf9f",
+      "gitBlob": "e14c37141c506a74bd4a5e09cbc785ab0ac1bbbd"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/SGI-B-2.0.txt",
+      "bytes": 1356,
+      "sha256": "a846ca68baa78531e85b6622e64ae979a2a9a0d9e69b234c12d44bcb915f2f12",
+      "gitBlob": "fb1e98c468c8a40519aedb3998adadf6c1118477"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/LICENSES/W3C-19980720.txt",
+      "bytes": 3052,
+      "sha256": "3df9c937249ffca4fbce93d3eb6aa8fa3f7b93cf52af8d596792abd9db141bda",
+      "gitBlob": "d4827f4f86d7342373e618859abcc6b53a16007b"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/components/asmjit-LICENSE.md",
+      "bytes": 858,
+      "sha256": "13870bd53bce53fb9a9bd72e72dcceeffc547c84d9a00d3d4833737a79651828",
+      "gitBlob": "7818b21e52a8e29caa5a5643dfe46d0fac726e6e"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/components/pcre-LICENCE",
+      "bytes": 4011,
+      "sha256": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811",
+      "gitBlob": "f6fba35db25ba5a4326fa2f4a86a536a24392b30"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/components/public_key-notices.md",
+      "bytes": 51477,
+      "sha256": "8486ebc1309e22914265a13464003834ce966819e5e310f1a1de55a8fd3febaa",
+      "gitBlob": "add7a195eaddf6356808e9ad86a96407642851f7"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/components/ryu-LICENSE-Apache2",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "gitBlob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/components/ryu-LICENSE-Boost",
+      "bytes": 1338,
+      "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+      "gitBlob": "36b7cd93cdfbac762f5be4c6ce276df2ea6305c2"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/components/zstd-COPYING",
+      "bytes": 18091,
+      "sha256": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505",
+      "gitBlob": "ecbc0593737be657aef92e3adcf3bcbd6fdb812e"
+    },
+    {
+      "path": "packaging/licenses/erlang-otp/components/zstd-LICENSE",
+      "bytes": 1549,
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8",
+      "gitBlob": "75800288cc243f164b9d130f125e2ffae28f8e39"
+    },
+    {
+      "path": "packaging/licenses/go/LICENSE",
+      "bytes": 1453,
+      "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+      "gitBlob": "2a7cf70da6e498df9c11ab6a5eaa2ddd7af34da4"
+    },
+    {
+      "path": "packaging/licenses/go/PATENTS",
+      "bytes": 1303,
+      "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+      "gitBlob": "733099041f84fa1e58611ab2e11af51c1f26d1d2"
+    },
+    {
+      "path": "packaging/licenses/npm/informalsystems__quint.txt",
+      "bytes": 11548,
+      "sha256": "c5230504a044c58317ada794590ee6006a60fa8f4265f2c078d5c1eba651c6f6",
+      "gitBlob": "f7f59efa55ec29793e6809caa13f113d77968538"
+    },
+    {
+      "path": "packaging/licenses/npm/isarray.txt",
+      "bytes": 1173,
+      "sha256": "ce4eaa584edc2dc8a4d0168f9f71e34f8aaf80330fcd55ae9dfd198fdc34313d",
+      "gitBlob": "14b83daffe2748962580d8a4f2e360ccfaea573f"
+    },
+    {
+      "path": "packaging/licenses/npm/seedrandom.txt",
+      "bytes": 1146,
+      "sha256": "659c541c5ddc520860089c6c20b2b05887791962c8cbc92c9b1451f7e4631bb8",
+      "gitBlob": "7b4fcddeb53d9b4adc683b0dd643720bda4fbb02"
+    },
+    {
+      "path": "packaging/licenses/npm/spdx-exceptions.txt",
+      "bytes": 19733,
+      "sha256": "c9268787e0a37d578cc278fa90ad2b766920f14eeead564c60bf57c3350d0239",
+      "gitBlob": "b1dc8e23f27110919b8794b0b7fa043056283ec2"
+    },
+    {
+      "path": "packaging/licenses/npm/spdx-license-ids.txt",
+      "bytes": 7184,
+      "sha256": "caebe92c018bb69fd9b29c4edb8466b5e5f038c6d051483a85433b6d952ae341",
+      "gitBlob": "e5a2ffb072b1faeb9fbd7082f4d2c85a5a4c8727"
+    },
+    {
+      "path": "packaging/licenses/npm/sweet-monads__either.txt",
+      "bytes": 1163,
+      "sha256": "835a5c595b8a586cf38438ee24ce42dd92ad244e91665bec588e9839499a138f",
+      "gitBlob": "a7401abfb735bd55e1285758b91f7b02aad5b5d0"
+    },
+    {
+      "path": "packaging/licenses/npm/sweet-monads__maybe.txt",
+      "bytes": 1162,
+      "sha256": "86e5c7356d9284490909bcf3c98acd6e663bbbbaab211f83c11ebc94c3465a8d",
+      "gitBlob": "3d7dd1f6b5b62354b0982a7c8960c75597e11313"
+    },
+    {
+      "path": "packaging/licenses/npm/teppeis__multimaps.txt",
+      "bytes": 1199,
+      "sha256": "c51343e8a1de717a2f8b96f3ccee1d01a096d8d040460a65fd7eac6a14d52cfa",
+      "gitBlob": "a5bd924bcbaa4360eb94d61a3af55c3096d9f015"
+    },
+    {
+      "path": "packaging/licenses/npm/tiny-case.txt",
+      "bytes": 1192,
+      "sha256": "463fbe62350cd5cf1cef97fd5f7ad83d13a894f6eba75440e20b242af28d75f3",
+      "gitBlob": "9ab059675d3441a6798285a6b9f579cf72541c41"
+    },
+    {
+      "path": "packaging/licenses/npm/type-fest.txt",
+      "bytes": 8333,
+      "sha256": "420c4e088d607fc4eea0023a8df1f253085a26a68c7e256575d18564a556427f",
+      "gitBlob": "fc9115fde00496397fef5b2cf1c017b9748fdd0f"
+    },
+    {
+      "path": "packaging/licenses/npm/types__lodash.clonedeep.txt",
+      "bytes": 1271,
+      "sha256": "eba91bb7698f657441c6bf92bba4772359f16a84b2201607538bba088faa3572",
+      "gitBlob": "c6f898c8e3e8a8052adc83a0ddc65933028ea500"
+    },
+    {
+      "path": "packaging/licenses/openssl/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+      "gitBlob": "49cc83d2ee29d13453188217f0e4edd70c7f842f"
+    },
+    {
+      "path": "packaging/package.sh",
+      "bytes": 4706,
+      "sha256": "4ff15ea0f5ea0ea92bb14d157d10cde81b8624f22df0e12a779318a0106fd557",
+      "gitBlob": "9f01fd855c3d2037feb1ea96d16513a19412d4e7"
+    },
+    {
+      "path": "packaging/quint/package-lock.json",
+      "bytes": 30956,
+      "sha256": "a9edbb742201d205457bc6abd8bcd736415b0410c30673c0f53493853ce37fdb",
+      "gitBlob": "5a0ade65bf7849c91a2b0213b052f32ce6480bd6"
+    },
+    {
+      "path": "packaging/quint/package.json",
+      "bytes": 268,
+      "sha256": "2d62241703d21bfcd5217491eb7933ac497f91f7e0c1854e30555efea359d4aa",
+      "gitBlob": "934ad20e0230c2b3c22c23ac4eb5c014e382cefe"
+    },
+    {
+      "path": "rel/vm.args.eex",
+      "bytes": 423,
+      "sha256": "d7b15e625528ad29ea27534bf1bcf606c2b1ba7454ccf85671667c2e6c181454",
+      "gitBlob": "3829d31680f8cd666b0202537763104662fa28fc"
+    }
+  ]
+}

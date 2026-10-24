@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const H = require('./go_driver_support.js');
 const { isDeepStrictEqual: same } = require('node:util');
 const { FakeServers } = require('../../test/acceptance/support/fake-servers');
 const ROOT = path.resolve(__dirname, '../..');
@@ -67,24 +68,16 @@ if (require.main === module) {
   function write(p,s) { fs.mkdirSync(path.dirname(p),{recursive:true}); fs.writeFileSync(p,s); }
   function command(file,args,cwd,env={},input='') {
     return new Promise((resolve,reject) => {
-      const p = spawn(file,args,{cwd,detached:true,env:{...process.env,ERL_FLAGS:'+S 2:2 +SDcpu 1 +SDio 1',...env},stdio:['pipe','pipe','pipe']});
+      const p = spawn(file,args,{cwd,detached:true,env:{...process.env,...env},stdio:['pipe','pipe','pipe']});
       let out=''; const timer=setTimeout(()=>{try{process.kill(-p.pid,'SIGKILL');}catch{}},180000);
       p.stdout.on('data',b=>{out+=b;}); p.stderr.on('data',b=>{out+=b;}); p.stdin.on('error',()=>{}); p.stdin.end(input);
       p.once('error',e=>{clearTimeout(timer);reject(e);}); p.once('close',code=>{clearTimeout(timer);resolve({code,out});});
     });
   }
   async function must(file,args,cwd,env,input) { const r=await command(file,args,cwd,env,input); assert.equal(r.code,0,r.out); return r.out; }
+  // The installed program of the one archive packaged for this run (KOGEN_ARCHIVE or `sh packaging/package.sh`).
   async function install() {
-    if (!installed) installed=(async()=>{
-      const d=temp(), extract=path.join(d,'extract'); fs.mkdirSync(extract);
-      const platform=process.platform==='darwin'?'darwin-arm64':'linux-amd64';
-      const names=fs.readdirSync(path.join(ROOT,'dist')).filter(n=>n.endsWith(`-${platform}.tar.gz`)).map(n=>path.join(ROOT,'dist',n)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs);
-      assert.ok(names.length,'setup must build the current archive');
-      await must('tar',['-xzf',names[0],'-C',extract],ROOT);
-      const release=path.join(extract,fs.readdirSync(extract)[0]), prefix=path.join(d,'prefix'), home=path.join(d,'home'); fs.mkdirSync(home);
-      await must('sh',[path.join(release,'install.sh'),'--prefix',prefix],ROOT,{HOME:home});
-      return path.join(prefix,'bin/kogen');
-    })();
+    if (!installed) installed=(async()=>{ const suite=await H.setupSuite(); temps.push(suite.root); return suite.release; })();
     return installed;
   }
   const runner = 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"';
@@ -109,62 +102,166 @@ if (require.main === module) {
   async function login(c,input) { return c.cli(['provider','login','opencode-go'],input.key+'\n'); }
   function credential(c) { return path.join(c.home,'.kogen/credentials/opencode-go.json'); }
   function publicSafe(input,output) { return [input.key,input.borrowed,'SYNTHETIC_PRIVATE_REASONING'].every(s=>!JSON.stringify(output).includes(s)); }
-  const native=String.raw`
-[cfg, receipt] = System.argv()
-c = JSON.decode!(File.read!(cfg))
-:persistent_term.put(:kogen_caller, %{env: %{"HOME" => c["home"], "KOGEN_PROVIDER_URL" => c["url"]}, install_root: File.cwd!(), cwd: File.cwd!()})
-System.put_env("RELEASE_ROOT", c["home"])
-File.write!(Path.join(c["home"], "VERSION"), "kogen fixture (local)\n")
-role = %{provider: c["provider"] || "opencode-go", model: c["model"], effort: c["effort"]}
-tools = [%{"type" => "function", "name" => "read_file", "description" => "Read the fixture", "parameters" => %{"type" => "object", "properties" => %{"path" => %{"type" => "string"}}, "required" => ["path"], "additionalProperties" => false}, "strict" => true}]
-base = [%{"role" => "user", "content" => c["contract"]}]
-mode = c["mode"]
-r = cond do
- mode == "config" or mode == "preset" ->
-  try do
-   config = Kogen.Config.parse!(File.read!(c["yaml"]), c["yaml"])
-   %{outcome: "parsed", roles: Enum.map(~w(shape build review), fn name -> v=config.models[name]; [Kogen.Provider.name(v),v.model,v.effort] end), workers: config.shape_workers.enabled}
-  rescue e in Kogen.Error -> %{outcome: e.class <> "/" <> e.reason} end
- mode == "budget" ->
-  render = fn s -> Kogen.ChatGPT.request_body(role,c["policy"],[%{"role"=>"user","content"=>s}],tools) end
-  overhead = byte_size(JSON.encode!(render.("")))
-  bodies = Enum.map([524287,524288,524289],fn n -> render.(String.duplicate("x",n-overhead)) end)
-  ms = Enum.map(bodies,&Kogen.WorkingContext.measure/1)
-  %{body_is_chat: Enum.all?(bodies,&(is_list(&1["messages"]) and not Map.has_key?(&1,"input"))), bytes: Enum.map(ms,& &1.rendered_bytes), fits: Enum.map(ms,& &1.fits), reserve: Enum.map(ms,& &1.output_reserve_tokens)}
- true ->
-  Process.put(:provider_conversation_scope,"local-build")
-  input = if c["image"] == "true", do: base ++ [%{"type"=>"function_call_output","call_id"=>"image","output"=>[%{"type"=>"input_text","text"=>"{}"},%{"type"=>"input_image","image_url"=>"data:image/png;base64,synthetic"}]}], else: base
-  if role.provider == "supergrok" do
-   dir=Path.join(c["home"],".kogen/credentials");File.mkdir_p!(dir)
-   File.write!(Path.join(dir,"supergrok.json"),JSON.encode!(%{client_id: "fixture",referrer: "kogen",access_token: "SYNTHETIC_SG_ACCESS",refresh_token: "SYNTHETIC_SG_REFRESH",expires_at: System.system_time(:second)+3600,scope: "api:access"}))
-  end
-  invoke = fn items ->
-   t=System.monotonic_time(:millisecond)
-   try do
-    v=Kogen.ChatGPT.respond(role,c["policy"],items,tools,response_budget_ms: String.to_integer(c["budget"] || "15000"))
-    %{outcome: "completed",value: v,metadata: Process.get(:provider_attempt_metadata),elapsed: System.monotonic_time(:millisecond)-t}
-   rescue e in Kogen.Error -> %{outcome: e.class<>"/"<>e.reason,detail: e.detail,value: nil,metadata: Process.get(:provider_attempt_metadata),elapsed: System.monotonic_time(:millisecond)-t} end
-  end
-  first=invoke.(input)
-  results=if first.outcome == "completed" do
-   replay=Enum.map(first.value.items,&Kogen.Shape.replay_item/1)|>Enum.reject(&is_nil/1)
-   call=Enum.find(first.value.items,&(&1["type"]=="function_call"))
-   next=input++replay++[Kogen.Shape.output(call,"PRIVATE_TOOL_BODY")]
-   saved=:erlang.term_to_binary(Process.get(:prompt_cache_states,%{}))
-   Process.delete(:prompt_cache_states)
-   Process.put(:prompt_cache_states,:erlang.binary_to_term(saved,[:safe]))
-   second=invoke.(next)
-   Process.put(:provider_conversation_scope,"local-independent-review")
-   [first,second,invoke.(base)]
-  else [first] end
-  %{results: results}
-end
-File.write!(receipt,JSON.encode!(r))
+  // The few observations that need an internal function (configuration parsing, the rendered request body and the provider
+  // client with its prompt-cache state) run in a tiny Go program on Kogen's packages; everything else uses the installed command.
+  const native=String.raw`package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"kogen/agent"
+	"kogen/project"
+	"kogen/provider"
+	"kogen/sys"
+)
+
+func must(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+type collector struct{ last map[string]any }
+
+func (c *collector) Attempt(rec map[string]any) { c.last = rec }
+
+func str(c map[string]any, key string) string { s, _ := c[key].(string); return s }
+
+func main() {
+	raw, err := os.ReadFile(os.Args[1])
+	must(err)
+	var c map[string]any
+	must(json.Unmarshal(raw, &c))
+	home := str(c, "home")
+	role := provider.Role{Provider: str(c, "provider"), Model: str(c, "model"), Effort: str(c, "effort")}
+	if role.Provider == "" {
+		role.Provider = "opencode-go"
+	}
+	tools := []any{map[string]any{"type": "function", "name": "read_file", "description": "Read the fixture", "parameters": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []any{"path"}, "additionalProperties": false}, "strict": true}}
+	base := []any{map[string]any{"role": "user", "content": str(c, "contract")}}
+	mode := str(c, "mode")
+	var result any
+	switch mode {
+	case "config", "preset":
+		file := str(c, "yaml")
+		text, err := os.ReadFile(file)
+		must(err)
+		config, err := project.ParseConfig(string(text), file)
+		var e *sys.Error
+		switch {
+		case errors.As(err, &e):
+			result = map[string]any{"outcome": e.Class + "/" + e.Reason}
+		case err != nil:
+			must(err)
+		default:
+			roles := []any{}
+			for _, name := range []string{"shape", "build", "review"} {
+				v := config.Models[name]
+				roles = append(roles, []any{provider.Name(provider.Role{Provider: v.Provider}), v.Model, v.Effort})
+			}
+			result = map[string]any{"outcome": "parsed", "roles": roles, "workers": config.ShapeWorkers.Enabled}
+		}
+	case "budget":
+		client := provider.NewClient("kogen test (driver)")
+		render := func(text string) map[string]any {
+			return client.Body(provider.Request{Role: role, Instructions: str(c, "policy"), Input: []any{map[string]any{"role": "user", "content": text}}, Tools: tools, Scope: "budget"})
+		}
+		empty, err := agent.Measure(render(""))
+		must(err)
+		isChat, bytes, fits, reserve := true, []any{}, []any{}, []any{}
+		for _, n := range []int{524287, 524288, 524289} {
+			body := render(strings.Repeat("x", n-empty.RenderedBytes))
+			_, hasInput := body["input"]
+			_, hasMessages := body["messages"].([]any)
+			isChat = isChat && hasMessages && !hasInput
+			m, err := agent.Measure(body)
+			must(err)
+			bytes, fits, reserve = append(bytes, m.RenderedBytes), append(fits, m.Fits), append(reserve, m.OutputReserveTokens)
+		}
+		result = map[string]any{"body_is_chat": isChat, "bytes": bytes, "fits": fits, "reserve": reserve}
+	default:
+		url, authURL := str(c, "url"), str(c, "authUrl")
+		s := sys.NewWith([]string{"HOME=" + home, "KOGEN_PROVIDER_URL=" + url, "KOGEN_AUTH_URL=" + authURL}, home)
+		time.AfterFunc(60*time.Second, func() { s.Interrupt("WATCHDOG") })
+		input := base
+		if str(c, "image") == "true" {
+			input = append(append([]any{}, base...), map[string]any{"type": "function_call_output", "call_id": "image", "output": []any{map[string]any{"type": "input_text", "text": "{}"}, map[string]any{"type": "input_image", "image_url": "data:image/png;base64,synthetic"}}})
+		}
+		if role.Provider == "supergrok" {
+			dir := filepath.Join(home, ".kogen/credentials")
+			must(os.MkdirAll(dir, 0o700))
+			cred, _ := json.Marshal(map[string]any{"client_id": "fixture", "referrer": "kogen", "access_token": "SYNTHETIC_SG_ACCESS", "refresh_token": "SYNTHETIC_SG_REFRESH", "expires_at": time.Now().Unix() + 3600, "scope": "api:access"})
+			must(os.WriteFile(filepath.Join(dir, "supergrok.json"), cred, 0o600))
+		}
+		budget := 15000
+		if b := str(c, "budget"); b != "" {
+			budget, err = strconv.Atoi(b)
+			must(err)
+		}
+		client := provider.NewClient("kogen fixture (local)")
+		invoke := func(items []any, scope string) map[string]any {
+			obs := &collector{}
+			t := time.Now()
+			resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: str(c, "policy"), Input: items, Tools: tools, Budget: time.Duration(budget) * time.Millisecond, Scope: scope}, obs)
+			r := map[string]any{"value": nil, "metadata": obs.last, "elapsed": time.Since(t).Milliseconds()}
+			var e *sys.Error
+			switch {
+			case err == nil:
+				r["outcome"] = "completed"
+				r["items"] = resp.Items
+				r["value"] = map[string]any{"usage": map[string]any{"input": resp.Usage.Input, "cached": resp.Usage.Cached, "output": resp.Usage.Output, "reasoning": resp.Usage.Reasoning}}
+			case errors.As(err, &e):
+				r["outcome"], r["detail"] = e.Class+"/"+e.Reason, e.Detail
+			default:
+				must(err)
+			}
+			return r
+		}
+		first := invoke(input, "local-build")
+		results := []any{first}
+		if first["outcome"] == "completed" {
+			items, _ := first["items"].([]map[string]any)
+			replay := agent.Replay(items)
+			var call map[string]any
+			for _, it := range items {
+				if it["type"] == "function_call" {
+					call = it
+					break
+				}
+			}
+			next := append(append([]any{}, input...), replay...)
+			next = append(next, agent.OutputItem(call["call_id"], "PRIVATE_TOOL_BODY"))
+			// The conversation's cache identity is saved with its checkpoint and restored by a resumed process.
+			saved, err := json.Marshal(client.Cache.States())
+			must(err)
+			var states map[string]provider.CacheState
+			must(json.Unmarshal(saved, &states))
+			client.Cache = provider.NewCache(states)
+			second := invoke(next, "local-build")
+			results = append(results, second, invoke(base, "local-independent-review"))
+		}
+		result = map[string]any{"results": results}
+	}
+	out, err := json.Marshal(result)
+	must(err)
+	fmt.Println("NATIVE_RESULT=" + string(out))
+}
 `;
   async function nativeRun(c,input,settings) {
-    const config=path.join(c.d,'native.json'),script=path.join(c.d,'native.exs'),receipt=path.join(c.d,'receipt.json');
-    write(config,JSON.stringify({...input,...settings,home:c.home,url:c.fake.providerUrl})); write(script,native);
-    const r=await command('mix',['run','--no-deps-check',script,config,receipt],ROOT); assert.equal(r.code,0,r.out); return JSON.parse(fs.readFileSync(receipt,'utf8'));
+    const config=path.join(c.d,'native.json');
+    write(config,JSON.stringify({...input,...settings,home:c.home,url:c.fake.providerUrl,authUrl:c.fake.authUrl}));
+    const driver=await H.goDriver('opencode-native',native);
+    const r=await driver([config]); assert.equal(r.code,0,r.out);
+    const line=r.out.split('\n').find(l=>l.startsWith('NATIVE_RESULT=')); assert.ok(line,r.out);
+    return JSON.parse(line.slice('NATIVE_RESULT='.length));
   }
   Given('the Go subscription fixture inputs:',function(doc){this.goInput=JSON.parse(doc);});
   When('I exercise the Go subscription {string}',{timeout:240000},async function(mode){await exercise(this,mode,{});});

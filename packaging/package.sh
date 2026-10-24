@@ -2,8 +2,8 @@
 # Builds the release archive for this machine's platform (INS-2):
 #   dist/kogen-<version>-<target>.tar.gz holding install.sh, README.md, LICENSE, NOTICE, licenses/ (third
 #   party), docs/ (testing rules, configuration),
-#   bin/kogen (Go) and lib/ (the Elixir release with ERTS, Quint 0.33.0 and Cucumber 13.3.0).
-# Needs Elixir/OTP, Go and Node (npm) on PATH; prints the archive path.
+#   bin/kogen (the one Go program) and lib/ (VERSION, VERSION.json, Quint 0.33.0 and Cucumber 13.3.0).
+# Needs Go and Node (npm) on PATH, no Erlang or Elixir; prints the archive path.
 set -eu
 src=$(cd "$(dirname "$0")/.." && pwd)
 cd "$src"
@@ -14,16 +14,24 @@ case "$os-$arch" in
   *) echo "package: unsupported platform $os-$arch"; exit 1 ;;
 esac
 
-# CLI-10: the commit the release is built from, or a hash of uncommitted source.
-sources() { find mix.exs LICENSE NOTICE config lib rel cli packaging docs -type f ! -name kogen ! -path '*/node_modules/*' | LC_ALL=C sort; }
-if git rev-parse --verify -q HEAD >/dev/null 2>&1 && [ -z "$(git status --porcelain --untracked-files=all -- mix.exs LICENSE NOTICE config lib rel cli packaging docs)" ]; then
-  sha=$(git rev-parse HEAD | cut -c1-8)
+# CLI-10: the commit the release is built from, or a hash of uncommitted source. The source files
+# are LICENSE, NOTICE, cli/, packaging/ and docs/. lib/VERSION is the one line `kogen version`
+# prints; lib/VERSION.json carries the same facts for tools, with the full commit (null when the
+# source is not exactly a commit).
+sources() { find LICENSE NOTICE cli packaging docs -type f ! -name kogen ! -path '*/node_modules/*' | LC_ALL=C sort; }
+if git rev-parse --verify -q HEAD >/dev/null 2>&1 && [ -z "$(git status --porcelain --untracked-files=all -- LICENSE NOTICE cli packaging docs)" ]; then
+  commit=$(git rev-parse HEAD)
+  sha=$(printf '%s' "$commit" | cut -c1-8)
+  date=$(git log -1 --format=%cd --date=format:%Y-%m-%d)
   version="$sha"
-  line="kogen $sha ($(git log -1 --format=%cd --date=format:%Y-%m-%d))"
+  line="kogen $sha ($date)"
+  json=$(printf '{"version":"%s","commit":"%s","date":"%s","uncommitted":false}' "$version" "$commit" "$date")
 else
   hash=$(sources | while read -r f; do printf '%s\0%s\n' "$f" "$(shasum -a 256 "$f" | cut -d' ' -f1)"; done | shasum -a 256 | cut -c1-8)
+  date=$(date -u +%Y-%m-%d)
   version="dev+$hash"
-  line="kogen dev+$hash ($(date -u +%Y-%m-%d), uncommitted source)"
+  line="kogen dev+$hash ($date, uncommitted source)"
+  json=$(printf '{"version":"%s","commit":null,"date":"%s","uncommitted":true}' "$version" "$date")
 fi
 
 name="kogen-$version-$target"
@@ -31,8 +39,8 @@ work="$src/dist/$name"
 rm -rf "$work" "$work.tar.gz"
 mkdir -p "$work/bin" "$work/lib"
 
-MIX_ENV=prod mix release --overwrite --quiet --path "$work/lib/release" >&2
-printf '%s\n' "$line" > "$work/lib/release/VERSION"
+printf '%s\n' "$line" > "$work/lib/VERSION"
+printf '%s\n' "$json" > "$work/lib/VERSION.json"
 (cd cli && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o "$work/bin/kogen" .)
 mkdir -p "$work/lib/quint"
 cp packaging/quint/package.json packaging/quint/package-lock.json "$work/lib/quint/"
@@ -41,7 +49,7 @@ mkdir -p "$work/lib/cucumber"
 cp packaging/cucumber/package.json packaging/cucumber/package-lock.json "$work/lib/cucumber/"
 (cd "$work/lib/cucumber" && npm ci --ignore-scripts --omit=dev --no-audit --no-fund --silent >&2)
 cp packaging/install.sh packaging/README.md LICENSE NOTICE "$work/"
-# Third-party licences: the runtimes' texts, and every bundled npm package with its licence.
+# Third-party licences: the Go runtime's text, and every bundled npm package with its licence.
 cp -R packaging/licenses "$work/licenses"
 node - "$work/lib" "$work/licenses" > "$work/licenses/npm-packages.md" <<'JS'
 const fs = require('node:fs');

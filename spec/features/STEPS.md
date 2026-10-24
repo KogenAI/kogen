@@ -1,6 +1,6 @@
 # Step vocabulary, fixtures and the fake ChatGPT server
 
-Kogen's own scenarios execute against the real `kogen` command: the installed release where the Background says "the installed kogen command", a real Git, real processes, and a fake ChatGPT server. The implementer writes one step definition per pattern below in the Cucumber 13.3.0 harness; a step definition checks only what its sentence says, and expected values live in the feature files. `tools/check.mjs` checks that every step matches exactly one pattern. That is a well-formedness check, not execution evidence: only running the scenarios counts (REL-4).
+Kogen's own scenarios execute against the real `kogen` command: the installed release (the one Go program) where the Background says "the installed kogen command", a real Git, real processes, and a fake ChatGPT server. The implementer writes one step definition per pattern below in the Cucumber 13.3.0 harness; a step definition checks only what its sentence says, and expected values live in the feature files. `tools/check.mjs` checks that every step matches exactly one pattern. That is a well-formedness check, not execution evidence: only running the scenarios counts (REL-4).
 
 ## Conventions
 
@@ -10,7 +10,7 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 - **Fixture installs.** Commands that install npm packages use the suite's own npm cache (`npm_config_cache`, offline first), so the fixtures' pinned Cucumber 13.3.0 needs no network.
 - **Kogen home.** "a clean Kogen home" gives every command an empty temporary `HOME` (`{home}`); no real credentials ever exist there.
 - **Placeholders in expected text.** `{sha8}`, `{sha256}`, `{id8}` lowercase hex of that length; `{build_id}` the last Build's id; `{n}` an integer; `{dur}` a duration like `6m12s`; `{model}`, `{effort}` configured values; `{ident}` `Name <email>`; `{url}` one URL; `{abs:<rel>}` the absolute path of `<rel>` in the project; `{home}`; `{path_node}` the absolute path of the `node` that the step "node 22 or newer is on PATH" put on `PATH`. All other text matches byte for byte; `stdout is:` compares all of stdout; `stdout contains:` compares a multiline section, preserving placeholder identity checks.
-- **Signals.** "the kogen command" is the Go process (signalled like a terminal would); "the Kogen core" is its Elixir child.
+- **Signals.** "the kogen command" is the one `kogen` process (signalled like a terminal would). "the Build's running command" is the project command the Build is running (the active command of the Build, of shaping or of approval, as recorded when it started); a signal "to its process group" goes to that command's process group only, never to `kogen`. "kogen logs at debug level" sets `KOGEN_LOG_LEVEL=debug`. "a post-commit hook that sleeps for <n> seconds" holds `git commit` open after the commit exists, so the test can kill `kogen` at that moment; "the post-commit hook is running" waits until the hook has started.
 - **Initialized projects.** "the project is initialized" commits the configuration template unchanged and the `.kogen/local/` ignore line, as `kogen init` writes them in an empty repository without commits, without running `init` (whose own behavior chapter 01 tests); "and configured" then commits the fixture's configuration.
 - **Project configuration.** "the project config sets <key> to <value>" edits `.kogen/project.yaml` (the value is YAML) and commits the file, so it must come before an Intent is approved (the file is part of the approval). The steps "the acceptance command is replaced by fixture runner" and "records its environment" swap what the harness executes; they do not touch `.kogen/project.yaml`. "the readiness command is running" waits until the acceptance command of a readiness dry run has started.
 - **Process groups.** "the Build command's process group" is the group of the active command of the Build, of shaping or of approval; "processes started by the Build's commands" are the members of every process group the Build's commands ran in. The test records them when the commands start and checks them itself.
@@ -66,7 +66,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `shape-not-ready-then-asks` | submits `is-even` with an undefined step; after the readiness feedback it asks one UI/UX question |
 | `shape-undefined-step`, `shape-failing-invariant` | valid format; readiness fails as named; the same files are submitted 3 times (SHP-4) |
 | `shape-probes-then-writes` | `probe python3 -c 'print(1.5 % 2)'`, then submits `is-even` with the probe in `## Feasibility` |
-| `shape-probe-hangs-then-writes` | `probe sleep 600`, then submits `is-even` recording the timed-out probe. Its SHP-10 scenario uses a test-only Go driver around the actual installed core: it verifies the outgoing 300000 ms policy, shortens only that execution request's deadline to 200 ms, and returns the real production executor's timeout result. The scenario asserts process-group death, scratch removal and continued shaping. This composes policy and real timeout-path evidence; it does not measure 300 seconds of elapsed time. |
+| `shape-probe-hangs-then-writes` | `probe sleep 600`, then submits `is-even` recording the timed-out probe. Its SHP-10 scenario uses a test-only Go driver that runs the real `kogen intent shape` command in its own process against the installed root: it verifies that the production probe deadline is five minutes (300000 ms), shortens only that probe's deadline to 200 ms through an unexported variable and a test hook, and lets the production probe code stop the process group and return its timeout result. The scenario asserts process-group death, scratch removal and continued shaping. This composes policy and real timeout-path evidence; it does not measure 300 seconds of elapsed time. |
 | `build-reports-blocker` | builder-only protected-path report with evidence, then forbidden later write/finish in the same response; stops as builder-reported, not independently proven |
 | `build-correct-first-try` | correct implementation; `finish` |
 | `build-wrong-then-repair` | wrong `is_even`; after feedback, the correct one |
@@ -127,13 +127,13 @@ One JavaScript regular expression per line.
 ^no\ Kogen\ process\ had\ the\ fake\ access\ token\ in\ its\ arguments\ or\ environment$
 ^no\ Kogen\ process\ had\ the\ request\ text\ in\ its\ arguments$
 ^no\ Kogen\ process\ is\ alive\ and\ no\ credential\ token\ appears\ in\ any\ project\ or\ log\ file$
-^no\ erl,\ elixir\ or\ go\ program\ is\ on\ PATH$
+^no\ erl,\ elixir,\ mix\ or\ go\ program\ is\ on\ PATH$
 ^no\ file\ in\ "([^"]*)"\ outside\ "([^"]*)"\ changed$
 ^no\ file\ under\ "([^"]*)"\ contains\ the\ fake\ access\ token$
 ^no\ process\ of\ the\ Build\ command's\ process\ group\ is\ running$
 ^no\ request\ contains\ "([^"]*)"$
 ^no\ request\ was\ sent\ after\ that\ command$
-^mix\ test\ and\ go\ test\ \./\.\.\.\ pass\ on\ both\ platforms$
+^go\ test\ \./\.\.\.\ passes\ on\ both\ platforms$
 ^no\ required\ scenario\ is\ pending,\ skipped,\ undefined\ or\ excluded\ and\ spec/check\.sh\ passes$
 ^no\ review\ request\ was\ sent$
 ^nothing\ is\ staged$
@@ -144,7 +144,8 @@ One JavaScript regular expression per line.
 ^request\ (\d+)\ uses\ model\ "([^"]*)"\ with\ effort\ "([^"]*)"$
 ^stderr\ contains\ "([^"]*)"$
 ^stderr\ matches\ "([^"]*)"$
-^stderr\ contains\ core\ log\ lines$
+^stderr\ contains\ debug\ log\ lines$
+^stderr\ does\ not\ contain\ "([^"]*)"$
 ^stdout\ contains\ "([^"]*)"$
 ^stdout\ contains:$
 ^stdout\ does\ not\ contain\ "([^"]*)"$
@@ -157,7 +158,7 @@ One JavaScript regular expression per line.
 ^the\ Intent\ "([^"]*)"\ from\ fixture\ "([^"]*)"\ is\ approved\ and\ then\ edited$
 ^the\ Intent\ "([^"]*)"\ from\ fixture\ "([^"]*)"\ is\ shaped$
 ^the\ Intent\ "([^"]*)"\ from\ fixture\ "([^"]*)"\ has\ landed$
-^the\ Kogen\ core\ logs\ at\ debug\ level$
+^kogen\ logs\ at\ debug\ level$
 ^the\ acceptance\ command\ is\ replaced\ by\ fixture\ runner\ "([^"]*)"$
 ^the\ acceptance\ command\ records\ its\ environment$
 ^the\ authorization\ request\ used\ PKCE\ S256\ and\ a\ fresh\ state$
@@ -187,7 +188,7 @@ One JavaScript regular expression per line.
 ^the\ caller\ runs\ "([^"]*)"\ with\ the\ sign\-in\ redirect\ URL\ on\ stdin$
 ^the\ caller\ runs\ kogen\ init\ and\ configures\ the\ project's\ commands$
 ^the\ caller\ runs\ kogen\ uninstall$
-^the\ caller\ sends\ (SIGINT|SIGKILL)\ to\ the\ Kogen\ core$
+^the\ caller\ sends\ (SIGINT)\ to\ the\ process\ group\ of\ the\ Build's\ running\ command$
 ^the\ caller\ sends\ (SIGINT|SIGTERM|SIGHUP|SIGKILL)\ to\ the\ kogen\ command$
 ^the\ caller\ shapes\ the\ project's\ request\ and\ answers\ any\ question\ it\ asks$
 ^the\ caller\ signs\ in\ with\ the\ real\ ChatGPT\ browser\ flow\ and\ kogen\ provider\ list\ shows\ the\ login$
@@ -199,7 +200,7 @@ One JavaScript regular expression per line.
 ^a\ clean\ checkout\ of\ the\ release\ commit$
 ^the\ release\ built\ from\ that\ checkout\ reports\ the\ commit's\ short\ hash$
 ^the\ exit\ code\ is\ (\d+)$
-^the\ extracted\ archive\ has\ a\ broken\ core\ release$
+^the\ extracted\ archive\ has\ no\ lib/VERSION$
 ^the\ fake\ ChatGPT\ authorization\ server\ is\ running$
 ^the\ fake\ ChatGPT\ server\ continues$
 ^the\ fake\ ChatGPT\ server\ has\ sent\ the\ feedback\ of\ verification\ pass\ (\d+)$
@@ -226,7 +227,7 @@ One JavaScript regular expression per line.
 ^the\ folder\ "([^"]*)"\ exists$
 ^the\ full\ deterministic\ suite\ and\ the\ packaging\ run\ from\ that\ checkout$
 ^the\ installed\ Kogen\ shapes\ and\ builds\ one\ small\ Kogen\ change\ there$
-^the\ installed\ core\ release\ is\ missing$
+^the\ installed\ kogen\ has\ no\ lib/VERSION$
 ^the\ installed\ kogen\ command$
 ^the\ kogen\ command\ is\ still\ running$
 ^the\ readiness\ command\ is\ running$
@@ -280,15 +281,17 @@ One JavaScript regular expression per line.
 ^the working tree has no changes outside the Intent's files$
 ^the probe ran outside the project folder$
 ^no probe scratch folder is left behind$
-^the installed core shapes "([^\"]*)" through the contracted-deadline driver with stdin:$
+^the installed kogen shapes "([^\"]*)" through the contracted-deadline driver with stdin:$
 ^the deadline driver verified the five-minute policy and real timeout cleanup at 200 milliseconds$
-^every stdout line so far is protocol output of kogen$
+^every stdout line so far is a result line of kogen$
+^the\ Build's\ command\ is\ still\ running$
+^the\ output\ names\ the\ commit\ on\ HEAD$
 ^the new commit is not signed$
 ^no process started by the Build's commands is running$
 ^the review request 1 used read_file on "([^"]*)"$
 ^the new commit changes "([^"]*)"$
-^the test build of the core pauses right after creating the commit$
-^the core reaches the pause after the commit$
+^a\ post\-commit\ hook\ that\ sleeps\ for\ (\d+)\ seconds$
+^the\ post\-commit\ hook\ is\ running$
 ^a broken program "([^"]*)" is first on PATH$
 ^the run log shows Quint ran with the Node recorded in the installation's node-path file$
 ^the fake authorization server grants only "([^"]*)"$
@@ -307,4 +310,4 @@ the saved initial conversation, not a replacement context or external file read.
 
 ## Prompt reuse evidence
 
-The GPT-7/GPT-9 loopback and local usage scenarios exercise full replay and retained request accounting. The approved prompt-cache usage acceptance vocabulary (`exercise prompt reuse through native`, `retained usage files for prompt reuse`, `run prompt reuse usage with arguments`, `prompt reuse report has`) is implemented in `features/steps/prompt_cache_usage_steps.js`, separately from this chapter harness. Fixtures are guide-shaped synthetic responses, not live account captures.
+The GPT-7/GPT-9 loopback and local usage scenarios exercise full replay and retained request accounting. Since prompt caching (KOGEN-054) they are written against the requirement in [08-chatgpt.md](../prose/08-chatgpt.md#prompt-caching-kogen-054) (one cache identity per conversation, `prompt_cache_key` without a private-backend session header for ChatGPT, no `prompt_cache_options`), not the earlier pre-caching ChatGPT request bytes. The approved prompt-cache usage acceptance vocabulary (`exercise prompt reuse through native`, `retained usage files for prompt reuse`, `run prompt reuse usage with arguments`, `prompt reuse report has`) is implemented in `features/steps/prompt_cache_usage_steps.js`, separately from this chapter harness. Fixtures are guide-shaped synthetic responses, not live account captures.

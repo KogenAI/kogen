@@ -1,0 +1,100 @@
+# Testing rules
+
+These rules decide which tests a change needs, and how a change is specified so that it can be built and tested (section 6). They apply to every change made with Kogen, in Kogen's own code and in every product built with it. Follow them exactly. Choose tests from the requested behavior, not from the number of functions, modules or files that changed.
+
+## 1. Identify what changed
+
+List the behavioral rules the request adds, changes or removes. For each rule, name the existing test to update or the new test to add. Do not add rules, validation or error handling only to create more test cases.
+
+## 2. Choose the test
+
+Use this table. Use the narrowest test that exercises the rule. Add another layer only when it catches a named mistake that the first test would miss.
+
+| Change | Required evidence |
+| --- | --- |
+| A calculation, transformation, filtering or validation rule | Focused unit tests of the result through a callable interface. |
+| Behavior involving files, database queries, Git, processes or communication between components | An integration test using the relevant local dependency. |
+| User interaction or command-line behavior | A scenario through the actual UI or CLI boundary. |
+| Wiring existing, already-tested behavior into another entry point | An integration, UI or CLI test that proves the connection. No new unit tests unless logic also changes. |
+| A bug fix | A regression test that reproduces the reported failure. |
+| A refactor without behavior changes | The existing behavior tests pass unchanged. Add a test only for an identified gap. |
+| Copy, styling or documentation | Verify the changed output or appearance. No unit test unless executable behavior changes. |
+
+Native Shape, Build and fresh independent Review share explicit `view_image(path)`. Only that operation delivers typed pixels: a selected static non-interlaced RGB8 PNG (1..131072 original bytes, dimensions 1..2048). Shell/read_file remain text-only: reading a file, printing paths/base64 or capturing an image is not pixel delivery. Successful selection, completed provider delivery, explicit fallible visual observations and human/designer approval are distinct.
+
+For programmatic UI evidence, exercise actual browser DOM and interactions, accessible text, computed styles and layout at required viewports. Keep required browser checks and artifact exports. Name pages, states and viewports actually inspected and retain final candidate-bound evidence. Hashes identify bytes, not the served candidate. When capture provenance is unknown/stale or native input is refused, obtain fresh capture through existing means or report an honest outside pixel-review handoff. No browser/capture tool or automatic design approval is added. Local scripted-provider tests qualify plumbing and custody, not actual visual interpretation.
+
+Layers used in an Intent's `## Tests` section: `unit`, `integration`, `scenario`, `regression`, `existing` (an existing test already covers the rule).
+
+## 3. Derive the cases from the contract
+
+- A condition with two specified outcomes: test both outcomes.
+- A specified boundary: test the boundary and its adjacent valid values.
+- Explicitly rejected input: test the rejection and its specified effect.
+- A state transition: test the resulting state and its observable effect.
+- A bug: test the reproducing input.
+
+Invent no other input categories, failure modes or combinations. An existing test can satisfy a case. A separate test function per case is not required.
+
+## 4. Restrictions
+
+- Assert outputs, observable effects and contractual state. Never assert private helper calls, internal call order or module structure, unless they are a public contract.
+- Add no production abstraction only to allow mocking.
+- Reuse existing test tools and fixtures before adding a dependency.
+- Keep useful existing tests. Update the tests of changed behavior. Delete the tests of removed behavior.
+- A new regression test must fail on the unfixed behavior. A new feature test must distinguish the requested implementation from the old behavior.
+
+## 5. Fixed sequence
+
+1. During implementation: run the affected tests.
+2. Before a commit: run the configured fast regression suite and the change's acceptance scenarios.
+3. Before a release: run the full suite and the supported-platform checks.
+4. Run live external-service tests only when changing that integration, or for release acceptance.
+
+## 6. Specify the change so it can be built and tested
+
+Shaping writes the Intent, its scenarios and its model by these principles. Each one prevents a mistake that, left in a specification, makes a correct Build impossible or lets a wrong one pass.
+
+- **Precise interfaces.** Name every interface the scenarios and tests call: the command, function or endpoint, its arguments, its output and error shapes, and exact formats. Where a real response has been observed (a probe, an external service), quote its exact shape, and make any fake serve that recorded shape.
+- **Consistent preconditions.** State the state each rule starts from. Where two rules touch the same files or state, say which one wins, with one example. Check cheap preconditions (setup, tools, a check that already fails on the unchanged tree) before expensive work. Every loop or retry without a limit names what makes it end, and fails fast when it cannot.
+- **Complete execution inputs.** Every value a step uses comes from something an earlier step can observe. Name every file, setting, tool and version the commands need. Run each command once in the environment the scenarios use before writing it into the Intent.
+- **Observable outcomes.** State guarantees as an end state a user can check, such as "no new commit on the branch". Check lists exactly and in order. A pass depends on what must have run, not on an exit status alone. Check every output format against each state of its inputs: empty and non-empty, first and later runs.
+- **Acceptance that exercises the central claim.** At least one scenario runs the requested behavior end to end through its real entry point; checks of single components do not replace it. The scenarios tell the requested behavior apart from the old behavior and from a plausible wrong implementation.
+- **Nothing without a present need.** Every option, fallback or setting answers a sentence of the request. Summaries point to the rule they summarize instead of restating it.
+
+## The reviewer
+
+The reviewer checks that meaningful tests establish each required outcome and makes scoped repairs. A false-passing fixture, missing evidence of required behavior, or flakiness that breaks a supported use case is substantive. Existing coverage may establish the outcome; a missing preferred layer alone is not an application defect.
+
+Review is against the approved Intent and explicit existing project conventions, including documented requirements without a deterministic tool rule. Delegate mechanical formatting and style to the existing configured formatters, linters, checks and fixers, preserving their checks and settings. Repair demonstrated current correctness, safety, scope and meaningful-test defects and violations of those requirements or conventions. Every substantive concern identifies its applicable requirement, concrete counterexample or violating path, and observable consequence.
+
+Do not make preference-only renamings, rearrangements, abstraction changes, speculative refactors or harmless nearby dead-code cleanup. Minimal incidental changes necessary for a demonstrated repair or configured style or project requirement are allowed; proximity or personal preference alone is not justification. Test duplication and implementation coupling are notes unless a demonstrated current consequence makes them substantive. Harmless preferences may be nonblocking notes, never required edits. Approving unchanged correct code is success, with no edit quota.
+
+Make scoped repairs and add or update useful regression coverage; do not remove useful tests or weaken configured checks to obtain a pass. Kogen externally verifies changed final contents, returning failures to the same reviewer conversation.
+
+## Adopting Kogen in an existing project
+
+Do these steps in order. Do not do a project-wide cleanup first.
+
+1. Sign in with `kogen provider login chatgpt`, then run `kogen init`.
+2. Review the setup, fixers, checks and acceptance runner that `init` selected and checked in `.kogen/project.yaml`, including what it left out. Correct project-specific omissions and commit the configuration changes. `init` adds the Gherkin bridge when needed and keeps the existing test framework.
+3. Make the project's `README.md` useful to Kogen: its purpose, how to run and check it, its conventions, links to maintained specifications, and this testing policy. Shaping and review read it.
+4. Request one real feature or fix. Shaping inspects its implementation, callers, tests and documentation.
+5. Fill the specification gap around that change: the desired behavior and the existing behavior it must preserve, executable scenarios, and a Quint model where state or interacting rules warrant one (not for copy changes or plain wiring). Existing code and tests are evidence of current behavior, not proof of intended behavior: shaping separates "the code does this now" from "the product should do this".
+6. Review, approve and build. The Build changes the implementation and its tests, and removes obsolete paths and tests within that change. Keep useful existing tests. Update tests for changed behavior. Replace brittle implementation-detail assertions when you touch them. Delete tests of removed behavior.
+
+A change needs, besides a Quint model and Gherkin scenarios where they apply: short prose (outcome, boundaries, decisions, what is replaced or removed), executable step definitions, implementation tests chosen by the rules above, and the project's relevant checks.
+
+## Declared shaping evidence
+
+Declared shaping evidence is optional and selected by shaping judgment, not a universal registry or coverage claim. Before expensive implementation, identify genuinely uncertain outcome-critical dependencies. Probe the actual proposed request on its supported target route, authentication scope and model, or use a real relevant local fixture; a working old driver or exclusion-list silence does not prove a changed request. Distinguish observed support, explicit rejection and untested uncertainty. Unsupported requests need an honest supported outcome/fallback or clarification of a material UX choice. No blanket paid probes or endpoint sweep.
+
+In `## Feasibility`, add one single-line JSON bullet per explicit obligation, for example:
+`- evidence: {"id":"route","kind":"capability","inputs":["route.json","route.cjs"],"observers":[],"checks":[{"name":"support","command":"node route.cjs","exit":23,"output":"explicit rejection\n"}]}`
+Ids are unique. Paths name exact repository-relative regular files, including local executable fixtures. A capability has one `support` check. A generated risky protected fixture/driver (multiple assertions, scripted transport replay, subprocess generation, or lifecycle-sensitive evidence) must declare and run final-byte observer controls in Feasibility. Controls must reach deeper assertions independently of masked missing-feature red. This is shaping judgment, not a universal registry or source-code heuristic. Simple local work without such risk needs no probes. An observer names the final generated protected observer file(s) in `observers` and has exactly two checks in order, `good` and `bad`: those same observer bytes must accept the known-good fixture and reject the known-bad fixture. Observer good must expect exit 0; bad must expect a NONZERO integer exit. Capability support may legitimately expect nonzero. Invalid polarity is rejected before readiness can be recorded or reused; exact red acknowledgment cannot waive it. Every check declares a shell command, expected integer exit and exact combined output string. Nonzero expected exit is legitimate observed rejection; timeout never discharges an obligation. These are small targeted controls, not product implementation or a second acceptance suite. Scratch overlays can explore, but final proof identifies submitted final formatted input/observer bytes. Fresh actual evidence can qualify only identical commands, bytes and outcomes. Narrative, fabricated records, model-only green and missing-feature red cannot qualify a declaration. Readiness executes outstanding checks and retains actual mismatches. Exact red acknowledgment cannot waive an unsatisfied obligation; ordinary no-obligation work needs no probes.
+
+Preserve the complete original request, settled scope and supplied reproducing examples and counterexamples in executable acceptance, not only prose. Do not narrow whole-UI requests to one section or substitute an unconsumed prior-candidate pointer. Advice, proposals and host observations are lower-authority evidence, not product authority. Qualify risky protected observers using actual known-good and known-bad controls even when an earlier missing-feature failure masks them; baseline need not pass the unimplemented feature. Ground fixture/history actors in actual seed output; observe Search before resetting it; compare rendered HTML to rendered expectations, not raw Markdown; account for computed OKLCH rather than assuming RGB; distinguish compiler/process diagnostics from rendered payload; compare JSON objects semantically while preserving meaningful array and string order. A broken fixture is not legitimate product red.
+
+Keep supplied historical evidence truthful: the changed installed cache request rejected `prompt_cache_options` in 17 seconds with HTTP 400, type `invalid_request_error`, code `invalid_parameter`, message "prompt_cache_options is not supported on this model", although old-driver Shape/Build calls succeeded. Its historical parameter field is UNKNOWN; omission in a local synthetic control is not evidence of historical absence. The paused f463 record retains completed84/failed0/unknown_usage0 plus one unknown failed request: separate `data.coverage.summary_unknown_requests` and `data.coverage.unrepresented_unknown_requests` are both 1. Arithmetic-only totals miss that uncertainty when coverage is omitted or zeroed; do not fabricate a retained failed or unknown-usage row. The completed legacy correction owns its eight installed-CLI cases; local readiness controls qualify the observer, not that product again.
+
+Native shell/read_file tools remain text-only; explicit view_image alone delivers bounded typed PNG pixels. DOM/action/data/contrast/overflow predicates, screenshot paths and exports do not establish actual pixel interpretation or visual approval. Distinguish successful selection, completed delivery, explicit fallible observations and required human/designer decisions. Retain a truthful external pixel-review handoff when native input is unavailable or refused. The Studio 45-image review found duplicate account shells, excessive mobile headers, raw metadata and weak history hierarchy despite 17 predicates; failed candidates did not reach formal independent review. Studio wholeUI b925 is now completed with root actual 45-image/canonical proof; historical visualhold descriptions are not current status. Cache042 remains OPEN: 20.624% and 0.9168% from different sessions prove neither benefit, quota effects nor miss causes. These historical controls do not authorize account probing; unchanged provider transport keeps its existing f91 qualification. Do not resume paused Go/014 work or duplicate completed Studio/legacy corrections.

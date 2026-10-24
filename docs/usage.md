@@ -1,7 +1,7 @@
 # Retained prompt usage
 
 `kogen intent usage [RUN-ID] [--lineage] [--project DIR] [--json]` reads local
-retained evidence, without credentials, the core, inference or account queries.
+retained evidence, without credentials, inference or account queries.
 The project is one canonical Git checkout (current checkout by default).
 Without a run ID it scans bounded Build, Shape and refinement history. A run ID
 selects one attempt; `--lineage` includes its root and descendants and requires
@@ -58,47 +58,52 @@ classifications, not explanations inferred from local fingerprints.
 
 ## Best-effort reuse, correctness independent
 
-ChatGPT uses automatic provider caching with a stable public `prompt_cache_key`
-equal to its generated conversation ID, from the first request in every process.
-Policy remains the first developer input_text block and the complete ordered
-contract/replay is unchanged. No options, breakpoints, comparison IDs, retention,
-server conversation loading or session headers are sent. The key partitions by
-owner/provider/model/policy/tools/contract/window; checkpoints retain it. It is a
-best-effort routing hint, not sticky routing or a hit guarantee; official GPT-5.6+
-guidance says it is unnecessary for optimization. Its effect on this sign-in
-route is unproven until observed. Public Responses stays stream:true/store:false
-with complete encrypted stateless replay and independent roles.
+Every model conversation has one cache identity (at most 64 characters), created
+when it starts and kept across retries, working-context resets and resume;
+different conversations, including independent reviewers, never share one. The
+identity goes to the provider as ChatGPT `prompt_cache_key` without a private-backend session
+header with the same value, SuperGrok `prompt_cache_key`, OpenCode Go
+`x-opencode-session`, and Anthropic ephemeral `cache_control` breakpoints on the
+last tool, last system block and newest message's last block (at most four).
+OpenAI-compatible hosts get no vendor field or header; the frozen front and
+append-only history still let a host with prefix caching reuse the prefix. No
+filler, prewarm, model/effort switch or extra inference is used. Public
+Responses stays `store:false,stream:true`, with full manual replay, including
+valid encrypted reasoning and assistant phase; no server conversation loading.
+Responses requests include `reasoning.encrypted_content` so stateless continuation
+can retain the returned opaque item rather than relying on stored server state.
+ChatGPT never sends `prompt_cache_options` or `prompt_cache_breakpoint` and has no
+cache-refusal retry; only SuperGrok has one bounded `prompt_cache_key` retry.
 
-Only synchronous HTTP 400 with param exactly `prompt_cache_key` permits one
-compatibility retry for unknown_parameter/unsupported_parameter, or
-invalid_parameter with message exactly `prompt_cache_key is not supported on this model`.
-Only the key is removed, under the original deadline, including single_attempt.
-Removal stays in that conversation/checkpoint. Null/absent/wrong params, other
-messages, 401/403, network failures and partial/failed streams never permit it.
-No persistent registry is needed for explicit options that are never sent.
+Raw cache fields are kept as the provider reports them: Responses
+`input_tokens_details.cached_tokens`; chat-compatible
+`prompt_tokens_details.cached_tokens`, `prompt_cache_hit_tokens` or `cached_tokens`;
+Anthropic `cache_read_input_tokens` (cached) and `cache_creation_input_tokens`
+(writes), where total input is input + creation + read. `cached_input_percent`
+above is computed from them.
 
-Anthropic sends the complete unchanged policy as one system text block with
-cache_control:{type:"ephemeral"}, and the same control at the top level for the
-growing conversation (default five-minute lifetime). No one-hour TTL or beta
-diagnostics. Signed/redacted/tool assistant blocks replay exactly once, unchanged,
-with all paired ordered results. A generic 400 never disables caching or changes
-route. Historical req_011CgLShD4UpAk64MM4867GE is an unknown-cause 400.
+Saved continuation retains the conversation's identity through safe resume. Old
+v2 checkpoints default optional cache metadata to unknown; all existing exact
+approval/tree/index/tool uncertainty checks remain mandatory. A refused attempt
+is recorded with unknown usage; missing or malformed optional diagnostics need no
+retry, and unrelated refusals and uncertain stream execution never cause a
+key-stripping replay.
 
-SuperGrok retains its stable body prompt_cache_key and exact-param
-unknown_parameter/unsupported_parameter fallback only (not invalid_parameter),
-without x-grok-conv-id. OpenCode Go retains stable x-opencode-session, complete raw
-reasoning/tool replay, stream:false/store:false and high/default effort omission.
-Endpoints, models, authentication and configured effort remain unchanged on all
-four routes. No controls from another route are added.
+`applied` records that the request carried the controls and the answer
+completed, not a physical write, hit, or proven lifetime. Effective
+configuration and applied lifetime are null absent response evidence.
+Policy/tools/schema/contract/prefix fingerprints are **local UTF-8 byte** hashes,
+not provider tokens, rendered prompts or cache facts. IDs are analytical
+identifiers, not bearer authorization. Analytical evidence excludes prompts,
+tool bodies, credentials and encrypted continuation (which remains solely in
+existing conversation/checkpoint custody).
 
-Requested control, accepted request, observed hit and measured benefit are distinct.
-Applied mode/lifetime stay null unless explicitly reported; key-only success proves
-neither. Reads/writes/unknowns stay separate; absent or failed usage is unknown,
-not zero. Fingerprints and token equality do not identify a provider miss cause.
-Deterministic fixtures establish plumbing, not live support or savings. One
-explicitly authorized installed journey is a separate delivery gate, never a paid
-readiness test or a savings promise.
-
+Provider write counts, including any 12h counts, are retained. A cache hit is
+never a deletion or expiry guarantee. Synthetic loopback fixtures do not prove
+live account support. This report is not an account ledger or weekly
+quota conversion, and promises no percentage, speed or dollar savings. Cache
+reuse never substitutes for inference, tools, verification, independent review
+or authorization. Combining exported reports is not automatic account accounting.
 
 ## Retained observations and summary coverage
 
@@ -208,8 +213,8 @@ visual/design approval or bypasses checks. Fresh Review inspects its own pixels.
 New transport attempts and JSON `data.requests` rows carry `provider: "chatgpt"`
 or `"supergrok"` from the routed role. Older records without that field remain
 null; model names and endpoints never fill in missing provenance. SuperGrok
-requests omit cache options/breakpoints and developer policy messages, retaining
-nullable applied cache mode/lifetime with no explicit boundaries. Missing token categories remain null,
+requests omit cache options/breakpoints and developer policy messages and send
+`prompt_cache_key`, retaining cache status `unknown` with no boundaries. Missing token categories remain null,
 not zero. There is no cost, quota, dollar, charge-meter or savings field.
 
 These local rows cannot prove which subscription pool was charged. Account usage
@@ -232,8 +237,13 @@ and unknown coverage, deduplication and lineage apply unchanged. A refused attem
 is not a cache miss with zero cost. Analytical events contain no key, prompt,
 reasoning, tool output or raw envelope. Complete replay lives only in private custody.
 
-Go uses x-opencode-session with no inferred explicit controls/TTL. SuperGrok sends
-prompt_cache_key in the Responses body with the narrowly guarded one-time
+Go sends the conversation's cache identity as x-opencode-session with no inferred explicit controls/TTL. SuperGrok sends
+it as prompt_cache_key in the Responses body with the narrowly guarded one-time
 unsupported-parameter fallback (see configuration.md). Acceptance is not a benefit
-or savings claim. ChatGPT's recognized in-conversation/checkpoint fallback remains;
-there is no cross-run registry. Cache042 remains OPEN, with miss causes UNKNOWN.
+or savings claim. ChatGPT has no cache-refusal fallback; there is no cross-run registry. Cache042 remains OPEN, with miss causes UNKNOWN.
+
+OpenAI-compatible roles use the same Chat Completions counts as Go. They send no
+cache field or header, and the cached count is read from
+`prompt_tokens_details.cached_tokens`, `prompt_cache_hit_tokens` or `cached_tokens`
+when the host reports one; otherwise it stays unknown. A host that does no prefix
+caching reports none, which is not an error.

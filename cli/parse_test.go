@@ -55,11 +55,12 @@ Options:
 		{name: "provider page", args: []string{"provider"}, want: `Usage: kogen provider <command>
 
 Commands:
-  login chatgpt      Sign in with a ChatGPT account
-  login supergrok    Sign in with a SuperGrok subscription
-  login opencode-go  Save your OpenCode Go workspace key from stdin
-  login anthropic    Save your Anthropic API key privately from stdin
-  list               Show which providers Kogen is signed in to
+  login chatgpt            Sign in with a ChatGPT account
+  login supergrok          Sign in with a SuperGrok subscription
+  login opencode-go        Save your OpenCode Go workspace key from stdin
+  login anthropic          Save your Anthropic API key privately from stdin
+  login openai-compatible  Save an optional key for an OpenAI-compatible host from stdin
+  list                     Show which providers Kogen is signed in to
 
 Logins belong to this machine, never to a repo.
 `},
@@ -173,7 +174,7 @@ func TestParseGrammarCLI2(t *testing.T) {
 		{name: "version extra positional", args: []string{"version", "extra"}, msg: "kogen version: unexpected argument 'extra'", page: "top"},
 		{name: "list extra positional", args: []string{"provider", "list", "extra"}, msg: "kogen provider list: unexpected argument 'extra'", page: "provider"},
 		{name: "double dash makes option-looking token positional", args: []string{"intent", "build", "feature", "--", "--project"}, msg: "kogen intent build: unexpected argument '--project'", page: "intent"},
-		{name: "unknown provider", args: []string{"provider", "login", "grok"}, msg: "kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic)", page: "provider"},
+		{name: "unknown provider", args: []string{"provider", "login", "grok"}, msg: "kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic, openai-compatible)", page: "provider"},
 		{name: "refine needs full hash", args: []string{"intent", "refine", "feature", "abcdef", "-"}, msg: "kogen intent refine: <sha256> must be 64 lowercase hex characters", page: "intent"},
 		{name: "hash too short", args: []string{"intent", "approve", "feature", "abcde"}, msg: "kogen intent approve: <hash> must be 6 to 64 lowercase hex characters", page: "intent"},
 		{name: "hash too long", args: []string{"intent", "approve", "feature", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"}, msg: "kogen intent approve: <hash> must be 6 to 64 lowercase hex characters", page: "intent"},

@@ -1,5 +1,7 @@
-elixir 1.20.4-otp-29
-erlang 29.1.1
 go 1.27.2
 nodejs 24.21.0
 python 3.13.16
+# Kogen itself needs only Go, Node and Python (for the test fixtures). Erlang and Elixir are here
+# for the Elixir fixture project and the Tiny Tasks example that Kogen builds, not for Kogen.
+elixir 1.20.4-otp-29
+erlang 29.1.1

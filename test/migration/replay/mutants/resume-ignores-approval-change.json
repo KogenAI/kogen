@@ -1,0 +1,8 @@
+{
+  "id": "resume-ignores-approval-change",
+  "case": "interruption-resume",
+  "description": "A resume does not compare the approval file with the approval the checkpoint saved.",
+  "edits": [
+    { "file": "build/resume.go", "old": "if err != nil || derr != nil || !bytes.Equal(approval, saved) {", "new": "if err != nil || derr != nil || (false && !bytes.Equal(approval, saved)) {" }
+  ]
+}

@@ -175,7 +175,20 @@ Feature: Approval and starting a Build
     And stdout contains "environment/build_running: a Build is running in this repository (pid "
 
   @AUT-4 @model:run_control
-  Scenario: The lock of a Build that is no longer running is removed
+  Scenario: A killed Build leaves no lock behind and the next Build proceeds without a notice
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 600"
+    And the caller runs "kogen intent build is-even" in the background
+    And the Build reaches "tool command running"
+    When the caller sends SIGKILL to the kogen command
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    And the caller runs "kogen intent build is-even"
+    Then the exit code is 0
+    And stderr does not contain "removed the lock"
+    And stdout does not contain "build_running"
+
+  @AUT-4 @model:run_control
+  Scenario: The lock an earlier Kogen left for a Build that is no longer running is removed
     Given the Intent "is-even" from fixture "is-even" is approved
     And the project has a build lock of a process that is not running
     And the fake ChatGPT server plays script "build-correct-first-try"

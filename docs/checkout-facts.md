@@ -67,7 +67,7 @@ No plugin manager or startup-file modification is required. The standalone
 definition supports commands, options, files/directories and checkout-local
 positionals. Its native private `kogen __complete OP [--project DIR]` helper emits
 at most 100 stable tab-separated value/description candidates, without starting
-the core, Node, providers or services. OP is build, approve, refine, preflight,
+Node, providers or services. OP is build, approve, refine, preflight,
 inspect or resume. Resume candidates exclude known unsupported and landed runs;
 a candidate is never a safety guarantee. Static completion works outside projects.
 Context and run completion read fixed integration files; run completion never opens
@@ -81,7 +81,7 @@ Context and completion use local integration records, not historical log streams
 
 `intent usage [RUN-ID] [--lineage] [--project DIR] [--json]` is a separate,
 bounded retained-history scan, not part of context or completion. It uses the
-same version 1 facts envelope with `kind:"usage"`; it requires neither installed
-core nor credentials. See [the scoped usage contract](usage.md) for exact
-filters/grouping, limits, nullable measurements, deduplication and provenance.
+same version 1 facts envelope with `kind:"usage"`; it requires no credentials.
+See [the scoped usage contract](usage.md) for exact filters/grouping, limits,
+nullable measurements, deduplication and provenance.
 It observes one canonical checkout, never an account or authorization to resume.

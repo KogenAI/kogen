@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { REPO, NODE24, PYTHON_BIN, ERL_FLAGS, findProgram } = require('./world');
+const { REPO, NODE24, PYTHON_BIN, findProgram } = require('./world');
 
 // Cucumber workers are threads in this process; coordinator hooks prepare and clean this handoff.
 const sharedManifest = path.join(os.tmpdir(), `kogen-acceptance-shared-${process.pid}.json`);
@@ -41,14 +41,14 @@ BeforeAll({ on: HookTarget.COORDINATOR }, async function () {
   if (!shared.archive) {
     const source = path.join(shared.root, 'source');
     fs.mkdirSync(source, { recursive: true });
-    for (const name of ['mix.exs', 'mix.lock', 'LICENSE', 'NOTICE', 'config', 'lib', 'rel', 'cli', 'packaging', 'docs']) {
+    for (const name of ['LICENSE', 'NOTICE', 'cli', 'packaging', 'docs']) {
       fs.cpSync(path.join(REPO, name), path.join(source, name), { recursive: true, dereference: false });
     }
     shared.source = source;
     const result = execFileSync('/bin/sh', [path.join(source, 'packaging/package.sh')], {
       cwd: source,
       encoding: 'utf8',
-      env: { ...process.env, HOME: shared.root, TMPDIR: buildTemp, PATH: installPath() },
+      env: { ...process.env, HOME: shared.root, TMPDIR: buildTemp, PATH: [path.dirname(findProgram('go') || '/usr/local/go/bin/go'), installPath()].join(path.delimiter) },
       stdio: ['ignore', 'pipe', 'inherit'],
     });
     shared.archive = result.trim().split('\n').at(-1);
@@ -66,21 +66,9 @@ BeforeAll({ on: HookTarget.COORDINATOR }, async function () {
   execFileSync('/bin/sh', [path.join(shared.source, 'install.sh'), '--prefix', shared.prefix], {
     cwd: shared.source,
     encoding: 'utf8',
-    env: { HOME: installHome, TMPDIR: buildTemp, PATH: installPath(), ERL_FLAGS, KOGEN_NO_BROWSER: '1', GIT_CONFIG_NOSYSTEM: '1' },
+    env: { HOME: installHome, TMPDIR: buildTemp, PATH: installPath(), KOGEN_NO_BROWSER: '1', GIT_CONFIG_NOSYSTEM: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const core = path.join(shared.prefix, 'lib/kogen/lib/release/bin/kogen');
-  const coreStat = fs.lstatSync(core);
-  let realCore = fs.realpathSync(core);
-  if (!coreStat.isSymbolicLink()) {
-    realCore = `${core}.acceptance-real`;
-    fs.renameSync(core, realCore);
-  } else {
-    fs.unlinkSync(core);
-  }
-  const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
-  fs.writeFileSync(core, `#!/bin/sh\nprintf '%s\\n' "$$" >> "$KOGEN_CORE_PID_FILE"\nRELEASE_PROG=kogen; export RELEASE_PROG\nexec ${quote(realCore)} "$@"\n`);
-  fs.chmodSync(core, 0o755);
   fs.writeFileSync(sharedManifest, JSON.stringify(shared), { mode: 0o600 });
 });
 

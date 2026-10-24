@@ -11,9 +11,10 @@ const ACCEPTANCE = path.resolve(__dirname, '..');
 // The Node that runs the suite (24) and a Python 3.10+ for the fixtures.
 const NODE24 = path.dirname(process.execPath);
 const PYTHON_BIN = process.env.KOGEN_TEST_PYTHON_BIN || resolvePython();
-// The Elixir fixture needs Mix; npm installs in fixtures use the suite's own cache (STEPS.md).
+// Kogen needs no Erlang or Elixir. Only the `ex-app` fixture project (an Elixir project that Kogen builds)
+// needs Mix; npm installs in fixtures use the suite's own cache (STEPS.md).
 const ELIXIR_DIRS = ['mix', 'erl'].map(name => findProgram(name)).filter(Boolean).map(p => path.dirname(p));
-// Bound threads per test child while preserving an explicitly supplied runtime setting.
+// Bound the threads of that fixture project's own Erlang VM, keeping an explicitly supplied setting.
 const ERL_FLAGS = process.env.ERL_FLAGS ?? '+S 2:2 +SDcpu 1 +SDio 1';
 const NPM_CACHE = process.env.npm_config_cache || path.join(os.homedir(), '.npm');
 const COMMAND_GROUP_CAPTURE_MS = 10000;
@@ -128,8 +129,6 @@ class AcceptanceWorld extends World {
     this.nodePath = null;
     this.processLog = null;
     this.runningPidFile = null;
-    this.corePidFile = null;
-    this.corePids = new Set();
     this.commandWatchers = [];
     this.stateFile = null;
     this.lastResult = null;
@@ -167,7 +166,7 @@ class AcceptanceWorld extends World {
       HOME: this.home,
       PATH: this.basePath(),
       TMPDIR: this.tempDir,
-      ERL_FLAGS,
+      ...(this.projectFixture === 'ex-app' ? { ERL_FLAGS } : {}),
       KOGEN_NO_BROWSER: '1',
       npm_config_cache: NPM_CACHE,
       npm_config_prefer_offline: 'true',
@@ -178,7 +177,6 @@ class AcceptanceWorld extends World {
       KOGEN_PROCESS_LOG: this.processLog,
       KOGEN_PROCESS_CAPTURE_DIR: this.captureDir,
       KOGEN_ACCEPTANCE_RUNNING_PID: this.runningPidFile,
-      KOGEN_CORE_PID_FILE: this.corePidFile,
       KOGEN_OBSERVE_PROCESS_ARGUMENTS: this.observeProcessArguments ? '1' : '0',
       ...(this.extraEnv || {}),
       ...overrides,
@@ -199,8 +197,6 @@ class AcceptanceWorld extends World {
     this.captureDir = path.join(this.workspace, 'process-capture');
     mkdirp(this.captureDir);
     this.runningPidFile = path.join(this.workspace, 'acceptance-running.pid');
-    this.corePidFile = path.join(this.workspace, 'kogen-core.pid');
-    this.corePids = new Set();
     this.wrapperDir = path.join(this.workspace, 'wrappers');
     mkdirp(this.wrapperDir);
     this.writeGitConfig();
@@ -354,7 +350,7 @@ fi\n` : '';
     const record = {
       child, stdout: '', stderr: '', done: null, code: null, signal: null,
       raw, argv: [program, ...argv], env: processEnv, cwd: runCwd, targetRoot,
-      processTexts: new Map(), processArguments: new Map(), corePidsObserved: new Set(), processMonitor: null,
+      processTexts: new Map(), processArguments: new Map(), processMonitor: null,
       isKogen: program === this.kogenPath(),
     };
     record.done = new Promise(resolve => {
@@ -373,9 +369,9 @@ fi\n` : '';
       child.on('close', (code, sig) => {
         record.code = code === null ? 128 : code;
         record.signal = sig;
-        this.trackCoreGroups();
         if (this.observeProcessArguments && record.isKogen) this.pollProcessTree(record);
         this.stopProcessTreeMonitor(record);
+        this.stopSupervisedGroupTracking(record);
         resolve(record);
       });
     });
@@ -383,6 +379,7 @@ fi\n` : '';
     if (child.pid && record.isKogen) {
       this.kogenGroups.add(child.pid);
       if (this.observeProcessArguments) this.startProcessTreeMonitor(record);
+      this.startSupervisedGroupTracking(record);
     }
     if (stdin !== undefined && child.stdin) {
       // A command that refuses before reading its input closes stdin early; that is not a failure.
@@ -494,15 +491,6 @@ fi\n` : '';
       if (!record.processArguments.has(pid)) record.processArguments.set(pid, new Set());
       record.processArguments.get(pid).add(row.command);
     }
-    if (fs.existsSync(this.corePidFile)) {
-      for (const token of fs.readFileSync(this.corePidFile, 'utf8').split(/\s+/)) {
-        const pid = Number(token);
-        if (descendants.has(pid) && Number.isInteger(pid) && pid > 1) {
-          record.corePidsObserved.add(pid);
-          this.corePids.add(pid);
-        }
-      }
-    }
   }
 
   instrumentedProcessRows(record) {
@@ -510,10 +498,6 @@ fi\n` : '';
     const envText = Object.entries(record.env || {}).map(([name, value]) => `${name}=${value}`).join(' ');
     const rootCommand = (record.argv || []).map(value => String(value)).join(' ');
     const rows = [{ pid: rootPid, ppid: 0, pgid: rootPid, command: rootCommand, raw: `${rootCommand} ${envText}` }];
-    const corePids = this.corePidFile && fs.existsSync(this.corePidFile)
-      ? fs.readFileSync(this.corePidFile, 'utf8').split(/\s+/).map(Number).filter(pid => Number.isInteger(pid) && pid > 1)
-      : [];
-    for (const pid of corePids) rows.push({ pid, ppid: rootPid, pgid: rootPid, command: rootCommand, raw: `${rootCommand} ${envText}` });
     const groups = new Set(this.commandGroups);
     for (const item of this.processLogRows()) {
       if (!groups.has(item.pgid)) continue;
@@ -572,6 +556,53 @@ fi\n` : '';
     }
   }
 
+  // Every command kogen runs is led by a `kogen __kogen_supervise` watchdog in a process group of
+  // its own. Record those groups while a kogen command runs, so checks can observe that no command
+  // outlives it.
+  trackSupervisedGroups(record) {
+    if (!record.child.pid) return;
+    let output;
+    try {
+      output = execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,pgid=,command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    } catch { return; }
+    const rows = [];
+    for (const line of output.split('\n')) {
+      const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/);
+      if (match) rows.push({ pid: Number(match[1]), ppid: Number(match[2]), pgid: Number(match[3]), command: match[4] });
+    }
+    const descendants = new Set([record.child.pid]);
+    for (let advanced = true; advanced;) {
+      advanced = false;
+      for (const row of rows) {
+        if (!descendants.has(row.pid) && descendants.has(row.ppid)) { descendants.add(row.pid); advanced = true; }
+      }
+    }
+    for (const row of rows) {
+      if (descendants.has(row.pid) && row.pgid > 1 && row.pgid !== record.child.pid && row.command.includes('__kogen_supervise')) {
+        this.commandGroups.add(row.pgid);
+      }
+    }
+  }
+
+  trackKogenGroups() {
+    for (const record of this.processes) {
+      if (record.isKogen && record.code === null) this.trackSupervisedGroups(record);
+    }
+  }
+
+  startSupervisedGroupTracking(record) {
+    this.trackSupervisedGroups(record);
+    record.groupTracker = setInterval(() => this.trackSupervisedGroups(record), 100);
+    this.pollTimers.add(record.groupTracker);
+  }
+
+  stopSupervisedGroupTracking(record) {
+    if (!record.groupTracker) return;
+    clearInterval(record.groupTracker);
+    this.pollTimers.delete(record.groupTracker);
+    record.groupTracker = null;
+  }
+
   trackProcessGroup(pid, ppid, pgid) {
     const group = this.processGroupFor(pid, ppid, pgid);
     if (group) {
@@ -579,15 +610,6 @@ fi\n` : '';
       this.activeCommandGroup = group;
     }
     return group;
-  }
-
-  trackCoreGroups() {
-    if (!this.corePidFile || !fs.existsSync(this.corePidFile)) return;
-    for (const value of fs.readFileSync(this.corePidFile, 'utf8').split(/\s+/)) {
-      const pid = Number(value);
-      if (!Number.isInteger(pid) || pid <= 1) continue;
-      this.corePids.add(pid);
-    }
   }
 
   watchCommandGroup(command) {
@@ -641,7 +663,6 @@ fi\n` : '';
     ]).finally(() => clearTimeout(timer));
     if (!group) assert.fail(`Build command process group was not recorded: ${command}; elapsed=${Date.now() - watcher.startedAt}ms, rows=${JSON.stringify(this.processLogRows())}`);
     assert.equal(watcher.aliveAtCapture, true, `Build command process group was not alive when captured: ${command}`);
-    this.trackCoreGroups();
     return group;
   }
 
@@ -680,7 +701,6 @@ fi\n` : '';
       record.stderr = '';
       record.processTexts.clear();
       record.processArguments.clear();
-      record.corePidsObserved.clear();
       record.env = null;
       record.argv = [];
     }
@@ -696,7 +716,6 @@ fi\n` : '';
     this.processes.clear();
     this.commandGroups.clear();
     this.kogenGroups.clear();
-    this.corePids.clear();
     this.commandWatchers.length = 0;
     this.projectFolders.clear();
     this.emptyFolders.clear();
@@ -725,7 +744,6 @@ module.exports = {
   ACCEPTANCE,
   NODE24,
   PYTHON_BIN,
-  ERL_FLAGS,
   capture,
   findProgram,
   mkdirp,

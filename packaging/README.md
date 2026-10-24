@@ -10,7 +10,7 @@ sh install.sh --prefix <dir>  # or elsewhere
 export PATH="$HOME/.local/bin:$PATH"   # if install.sh says ~/.local/bin is not on your PATH
 ```
 
-The installer needs no administrator rights and edits no shell files. It needs `git`. If no Node 22 or newer is on `PATH`, it downloads the current Node LTS into Kogen's own folder, for Quint and the acceptance bridge.
+The installer needs no administrator rights and edits no shell files. It needs `git`; no Erlang, Elixir or Go (kogen is one program). If no Node 22 or newer is on `PATH`, it downloads the current Node LTS into Kogen's own folder, for Quint and the acceptance bridge.
 
 Supported platforms: macOS on Apple Silicon and Linux x86-64 with glibc, at the versions release acceptance ran on (macOS 26 on Apple Silicon, Ubuntu 24.04 on x86-64).
 

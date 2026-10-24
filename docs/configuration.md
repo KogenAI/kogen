@@ -29,7 +29,7 @@ models:
 - **Acceptance.** Kogen ships Cucumber 13.3.0 and runs it on its own Node, so the project needs no Node of its own. A project that already has `@cucumber/cucumber` in its `package.json` keeps its own, run as `"$KOGEN_NODE" node_modules/@cucumber/cucumber/bin/cucumber.js ...`. Step files go in `steps_dir` and use `require('@cucumber/cucumber')`.
 - **protect** lists paths or globs of actual verification definitions/settings (linter rules, formatter settings, suppression files). They are part of every Intent's approved baseline, so a Build cannot pass a check by weakening them. Dependency manifests and lockfiles are editable inputs when they only declare dependencies/project metadata: for example ordinary `mix.exs`, `package.json`, nested `go.mod`, `mix.lock`, `package-lock.json`, `npm-shrinkwrap.json` and `go.sum` are not protected merely because setup, format, compile, tests, vet, audit or another check consumes them. `cli/go.mod` is an editable input. A combined manifest is eligible when it embeds verification settings (such as eslintConfig) or itself defines a configured executable check, such as a package.json script used by an npm check or a Mix alias invoked by a configured command; that manifest remains whole-file protected. There is no field-level or dependency-only exception to explicit whole-file protection. Init rejects dependency-only protection with a path-specific correction request rather than silently deleting it. Existing committed configuration remains authoritative and is not migrated automatically.
 - A genuine shaping conflict means a required edit cannot be avoided without changing the requested outcome and a currently protected path is involved. Shaping reports the protected path and reason without writing a ready Intent or starting approval/Build. Revise the request, or review and commit `.kogen/project.yaml` outside Build, then shape again while preserving checks and actual check configuration. That manual review changes the approval baseline; it is not approval of a protected edit. There is no protected-edit override. If a combined manifest is explicitly protected, revising the request is the available Build path.
-- **Models** and efforts live only here; no command takes model flags. Defaults are Sol 6.1 high for shaping/review and Sol 6.1 medium for building. There is no separate planner; an older `models.plan` entry is ignored.
+- **Models** and efforts live only here; no command takes model flags. Defaults are Sol 6.1 high for shaping/review and Sol 6.1 medium for building. Any nonempty `model` and `effort` is accepted for every provider and sent unchanged (see [Providers](#providers)). There is no separate planner; an older `models.plan` entry is ignored.
 
 Init detects Go at the root or under `cli/`; other layouts can be supplied from the README. It deduplicates identical check commands; different commands remain because test paths and filters can change coverage. Machine bootstrap (`mix local.hex`, `mix local.rebar`) belongs in prerequisites rather than recurring setup.
 
@@ -66,7 +66,7 @@ readiness. Sequential work remains valid, especially for small or coupled tasks.
 Luna read/probe medium and draft max are experimental settings, not performance
 or quality claims. Each conversation has one blocking batch, one to three jobs,
 six calls, twelve ordinary tools and two probes per job. Provider HTTP can overlap;
-the original bridge owner alone runs probes, serially. Worker failure is not retried.
+the main shaper alone runs probes, serially. Worker failure is not retried.
 Workers cannot write, submit, approve or publish. A complete common brief and exact
 disjoint draft ownership are required before dispatch. Drift invalidates drafts.
 
@@ -128,50 +128,32 @@ no `--context`: it uses its saved conversation even if the source changes or van
 
 Deterministic prompt and guard tests do not establish live model obedience or performance. Qualification uses a separately packaged frozen private prefix and scoped installed use outside the checkout; no global install, push or release is implied. Root owns Studio recovery qualification and adoption. Preserve short commit subjects and the exact `Kogen-Intent: <slug>` trailer without an appended hash; native approval hashes stay in their binding fields.
 
-### Responses reuse diagnostics
+### Prompt caching
 
-ChatGPT uses automatic provider caching with a stable public `prompt_cache_key`
-equal to its generated conversation ID, from the first request in every process.
-Policy remains the first developer input_text block and the complete ordered
-contract/replay is unchanged. No options, breakpoints, comparison IDs, retention,
-server conversation loading or session headers are sent. The key partitions by
-owner/provider/model/policy/tools/contract/window; checkpoints retain it. It is a
-best-effort routing hint, not sticky routing or a hit guarantee; official GPT-5.6+
-guidance says it is unnecessary for optimization. Its effect on this sign-in
-route is unproven until observed. Public Responses stays stream:true/store:false
-with complete encrypted stateless replay and independent roles.
+There is no cache setting: no TTL, switch or per-role option. Every model
+conversation (shaper, each shape worker, refine, builder, each reviewer, init)
+gets one cache identity of at most 64 characters when it starts. It is saved with
+the conversation's checkpoint or records and reused for every later request,
+including retries, working-context resets and explicit resume; different
+conversations never share one. Instructions and tool definitions stay identical
+for the whole conversation and history is append-only, so the provider can reuse
+the shared prefix. Which model, effort, tools and provider a role uses never
+changes because of caching, and full replay, review independence and every safety
+check remain mandatory.
 
-Only synchronous HTTP 400 with param exactly `prompt_cache_key` permits one
-compatibility retry for unknown_parameter/unsupported_parameter, or
-invalid_parameter with message exactly `prompt_cache_key is not supported on this model`.
-Only the key is removed, under the original deadline, including single_attempt.
-Removal stays in that conversation/checkpoint. Null/absent/wrong params, other
-messages, 401/403, network failures and partial/failed streams never permit it.
-No persistent registry is needed for explicit options that are never sent.
+| Provider | Request |
+| --- | --- |
+| ChatGPT | `store:false`, `include:["reasoning.encrypted_content"]`, body `prompt_cache_key` as the cache identity, without private-backend session headers. Never `prompt_cache_options` or `prompt_cache_breakpoint`. Only a definite HTTP400 naming param exactly prompt_cache_key permits one retry with that key removed; unknown_parameter/unsupported_parameter qualify, and ChatGPT alone also accepts invalid_parameter with message exactly "prompt_cache_key is not supported on this model". The original deadline and complete replay remain; refusal stays with that conversation. |
+| SuperGrok | body `prompt_cache_key` = the cache identity; one bounded retry without that key after a definite refusal (below). |
+| OpenCode Go | header `x-opencode-session` = the cache identity on every request. |
+| Anthropic | `cache_control` ephemeral (five minutes) on the last tool, the last system block and the newest message's last block; at most four. |
+| OpenAI-compatible | no vendor field or header, because strict hosts refuse unknown fields. The frozen front and append-only history still let a host with prefix caching reuse the prefix. |
 
-Anthropic sends the complete unchanged policy as one system text block with
-cache_control:{type:"ephemeral"}, and the same control at the top level for the
-growing conversation (default five-minute lifetime). No one-hour TTL or beta
-diagnostics. Signed/redacted/tool assistant blocks replay exactly once, unchanged,
-with all paired ordered results. A generic 400 never disables caching or changes
-route. Historical req_011CgLShD4UpAk64MM4867GE is an unknown-cause 400.
-
-SuperGrok retains its stable body prompt_cache_key and exact-param
-unknown_parameter/unsupported_parameter fallback only (not invalid_parameter),
-without x-grok-conv-id. OpenCode Go retains stable x-opencode-session, complete raw
-reasoning/tool replay, stream:false/store:false and high/default effort omission.
-Endpoints, models, authentication and configured effort remain unchanged on all
-four routes. No controls from another route are added.
-
-Requested control, accepted request, observed hit and measured benefit are distinct.
-Applied mode/lifetime stay null unless explicitly reported; key-only success proves
-neither. Reads/writes/unknowns stay separate; absent or failed usage is unknown,
-not zero. Fingerprints and token equality do not identify a provider miss cause.
-Deterministic fixtures establish plumbing, not live support or savings. One
-explicitly authorized installed journey is a separate delivery gate, never a paid
-readiness test or a savings promise.
-
-Use `kogen intent usage [RUN-ID] [--lineage] [--project DIR] [--json]` for retained local evidence; see [coverage and uncertainty](usage.md).
+Usage keeps each provider's raw cache fields and `kogen intent usage` reports the
+cached share from them (see [retained usage](usage.md)). Retained write-12h
+counts remain reportable; no 12h setting, prewarm or paid baseline/benchmark call
+is introduced. The GPT-5.6+ model split and the ChatGPT cache-refusal fallback of
+earlier Kogen versions are gone.
 
 ## Declared shaping evidence
 
@@ -183,20 +165,23 @@ Ids are unique. Paths name exact repository-relative regular files, including lo
 
 Preserve the complete original request, settled scope and supplied reproducing examples and counterexamples in executable acceptance, not only prose. Do not narrow whole-UI requests to one section or substitute an unconsumed prior-candidate pointer. Advice, proposals and host observations are lower-authority evidence, not product authority. Qualify risky protected observers using actual known-good and known-bad controls even when an earlier missing-feature failure masks them; baseline need not pass the unimplemented feature. Ground fixture/history actors in actual seed output; observe Search before resetting it; compare rendered HTML to rendered expectations, not raw Markdown; account for computed OKLCH rather than assuming RGB; distinguish compiler/process diagnostics from rendered payload; compare JSON objects semantically while preserving meaningful array and string order. A broken fixture is not legitimate product red.
 
-Keep supplied historical evidence truthful: the changed installed cache request rejected `prompt_cache_options` in 17 seconds with HTTP 400, type `invalid_request_error`, code `invalid_parameter`, message "prompt_cache_options is not supported on this model", although old-driver Shape/Build calls succeeded. Its historical parameter field is UNKNOWN; omission in a local synthetic control is not evidence of historical absence. The paused f463 record retains completed84/failed0/unknown_usage0 plus one unknown failed request: separate `data.coverage.summary_unknown_requests` and `data.coverage.unrepresented_unknown_requests` are both 1. Arithmetic-only totals miss that uncertainty when coverage is omitted or zeroed; do not fabricate a retained failed or unknown-usage row. The completed legacy correction owns its eight installed-CLI cases; local readiness controls qualify the observer, not that product again.
+Historical (before prompt caching, KOGEN-054; not current behaviour): keep supplied historical evidence truthful: the changed installed cache request rejected `prompt_cache_options` in 17 seconds with HTTP 400, type `invalid_request_error`, code `invalid_parameter`, message "prompt_cache_options is not supported on this model", although old-driver Shape/Build calls succeeded; current Kogen sends no `prompt_cache_options` (see [Prompt caching](#prompt-caching)). Its historical parameter field is UNKNOWN; omission in a local synthetic control is not evidence of historical absence. The paused f463 record retains completed84/failed0/unknown_usage0 plus one unknown failed request: separate `data.coverage.summary_unknown_requests` and `data.coverage.unrepresented_unknown_requests` are both 1. Arithmetic-only totals miss that uncertainty when coverage is omitted or zeroed; do not fabricate a retained failed or unknown-usage row. The completed legacy correction owns its eight installed-CLI cases; local readiness controls qualify the observer, not that product again.
 
 Native shell/read_file tools remain text-only; explicit view_image alone delivers bounded typed PNG pixels. DOM/action/data/contrast/overflow predicates, screenshot paths and exports do not establish actual pixel interpretation or visual approval. Distinguish successful selection, completed delivery, explicit fallible observations and required human/designer decisions. Retain a truthful external pixel-review handoff when native input is unavailable or refused. The Studio 45-image review found duplicate account shells, excessive mobile headers, raw metadata and weak history hierarchy despite 17 predicates; failed candidates did not reach formal independent review. Studio wholeUI b925 is now completed with root actual 45-image/canonical proof; historical visualhold descriptions are not current status. Cache042 remains OPEN: 20.624% and 0.9168% from different sessions prove neither benefit, quota effects nor miss causes. These historical controls do not authorize account probing; unchanged provider transport keeps its existing f91 qualification. Do not resume paused Go/014 work or duplicate completed Studio/legacy corrections.
 
 ## Providers
 
 `models.shape`, `models.build`, `models.review` and each `shape_workers.read`,
-`probe`, `draft` selection accept optional `provider: chatgpt`, `provider: supergrok`, `provider: opencode-go` or `provider: anthropic`.
-Omission preserves the exact legacy `{model, effort}` map, defaults and ChatGPT
-validation; explicit `chatgpt` routes identically. No template migration is required.
-SuperGrok supports exactly `model: grok-4.7` and `effort: low`, `medium`, `high` or
-`xhigh`; unsupported providers, models and efforts are configuration errors, not
-rewrites. A provider edit changes the protected approval baseline and prevents
+`probe`, `draft` selection accept optional `provider: chatgpt`, `provider: supergrok`, `provider: opencode-go`,
+`provider: anthropic` or `provider: openai-compatible`.
+Omission preserves the exact legacy `{model, effort}` map and defaults; explicit
+`chatgpt` routes identically. No template migration is required. An unknown provider
+is a configuration error. A role that names a provider needs a nonempty `model` and
+`effort`. A provider edit changes the protected approval baseline and prevents
 old Build resume. Obtain fresh exact approval.
+
+Model and effort are open: see [Open model selection](#open-model-selection) below for
+what is sent, what a refusal looks like and the recommended models.
 
 After installed qualification, the recommended subscription roles are:
 
@@ -224,11 +209,11 @@ Credentials live only in `~/.kogen/credentials/supergrok.json` (0600), within 07
 credentials and Kogen directories, atomically replaced under `supergrok.lock`.
 Refresh occurs 60 seconds before expiry and once after a 401, under the lock with
 re-read; omitted rotation keeps the refresh token. Status checks are offline.
-Uninstall preserves and names all four providers' credential and lock files.
+Uninstall preserves and names all five providers' credential and lock files.
 
 SuperGrok uses streamed `https://api.x.ai/v1/responses` with full stateless encrypted
 replay, typed image outputs, reasoning effort, tools, `stream:true`, `store:false`
-and plain instructions. It sends no ChatGPT cache controls or developer policy,
+and plain instructions. It sends no ChatGPT cache controls, `session-id` header or developer policy,
 conversation header, cookies, harness identity or API key. A 402 billing/credit
 refusal or 403 access denial stops without retry/fallback; 401 refreshes once then
 retries once. Network/429/5xx/cut streams retain the 3-attempt 2s/8s policy. No
@@ -256,14 +241,14 @@ or account charging claim is authorized by this handoff.
 
 ### OpenCode Go and role presets
 
-Select `provider: opencode-go`, `model: kimi-k3`, `effort: high` or `default` explicitly.
-`default` omits `reasoning_effort`; high sends the requested string `high`. Effective
-effort remains null unless actually reported: accepted high is not evidence of
-stronger reasoning. Other Go models and efforts fail configuration before inference.
+Select `provider: opencode-go` explicitly. The recommended setting is `model: kimi-k3`
+with `effort: high` or `default`. `default` omits `reasoning_effort`; any other effort
+sends that string unchanged. Effective effort remains null unless actually reported:
+accepted high is not evidence of stronger reasoning. Any other nonempty model is sent
+unchanged too; Kogen has qualified only `kimi-k3` with retained tools/reasoning
+evidence. If Go refuses the model, the refusal line above applies.
 GPT stays on ChatGPT, Grok on SuperGrok, Claude uses the independently selected Anthropic API-key connection below.
-The initial Kimi-only allowlist reflects documented model and retained tools/reasoning
-evidence, not a qualified general OpenAI-compatible catalogue. The
-[upstream catalogue](https://opencode.ai/docs/go/) is discovery only. Free promotions
+The [upstream catalogue](https://opencode.ai/docs/go/) is discovery only. Free promotions
 are not unlimited: time, region, availability and rate restrictions apply. None is
 a default or fallback. ChatGPT can build again (steering-13 supersedes its temporary
 conservation window); there is no account-credit toggle.
@@ -293,15 +278,15 @@ leave the prior credential unchanged. Login performs no network calls; `opencode
 key saved (not verified)` is local presence only. Offline provider list shows absent,
 locally usable or saved-login-unusable guidance. Selected roles alone require their
 logins; missing Go credentials exit 4 and name the login command. Uninstall keeps and
-names all four providers' credential/lock paths.
+names all five providers' credential/lock paths.
 
 Go sends Kogen Bearer auth only to
 `https://opencode.ai/inference/go/openai/v1/chat/completions`, never pay-as-you-go
 `/inference/openai/` or legacy Zen. The loopback-only test seam retains that Go path.
-Kogen sends its own `User-Agent: kogen/<version id>` and nonsecret generated
-`x-opencode-session`, not another harness's identity. JSON is non-streaming, store
+Kogen sends its own `User-Agent: kogen/<version id>` and the conversation's nonsecret cache
+identity as `x-opencode-session`, not another harness's identity. JSON is non-streaming, store
 false, ordered messages with system policy first, ordered nested function tools and
-auto tool choice. No Responses include/input/cache controls, previous_response_id,
+auto tool choice. No Responses include/input controls, body cache fields, previous_response_id,
 truncation, sampling knobs or guessed max_completion_tokens are sent. Complete raw
 assistant `reasoning` and `reasoning_details` (including unknown fields and order)
 are retained in private `opencode_go_message` replay, alongside normalized tool calls.
@@ -312,7 +297,7 @@ handoff, never substituted text or a delivered-pixels claim. Other providers ret
 native image custody. Full rendered requests, including escaped raw reasoning,
 retain the inclusive 524288-byte ceiling and 131072-token local output/reasoning
 reserve, not a vendor output-token setting. Fresh owners/windows get distinct
-routing; append-only turns and saved-owner resume retain their identity.
+cache identities; append-only turns, retries, window resets and saved-owner resume keep theirs.
 
 401 rejects the Go key without OAuth refresh; 402/403 are honest access/billing
 refusals, not fallback permission. Model/capability refusals do not retry. The
@@ -320,16 +305,18 @@ refusals, not fallback permission. Model/capability refusals do not retry. The
 network/429/5xx alone use bounded 3-attempt 2s/8s retries. Malformed, truncated,
 refused or incomplete completions never execute a partial tool batch.
 
-SuperGrok Responses now sends body `prompt_cache_key`, not a redundant
-Chat Completions header. It is generated per owner/model/authority/tools/window.
+SuperGrok Responses sends body `prompt_cache_key`, not a redundant
+Chat Completions header. Its value is the conversation's cache identity.
 API docs recommend it; subscription acceptance and cache benefit remain unqualified.
 Only synchronous HTTP 400 with code unknown_parameter or unsupported_parameter and
 param exactly prompt_cache_key permits one retry removing just that field. The
 refusal survives the owner's checkpoint; later turns do not retry it. Other 400s,
 402/403s and failed streams never permit stripping. Rejected attempts retain unknown
-usage. ChatGPT uses the exact named-key fallback described above, preserving
-policy/tools/effort and full stateless replay; no Go/xAI controls are copied into it.
-There is no cross-conversation persistent refusal registry or component diagnostics.
+usage. ChatGPT has no cache-refusal fallback: it never sends `prompt_cache_options`
+or `prompt_cache_breakpoint`, and its policy/tools/effort and full stateless replay
+are unchanged; no Go/xAI controls are copied into it beyond the shared
+`prompt_cache_key`. There is no cross-conversation persistent refusal registry or
+component diagnostics.
 
 ### OpenCode Go installed security handoff
 
@@ -349,7 +336,7 @@ with tools/reasoning replay: aggregate input 902, cached 192, output 179, reason
 90. Credits $0.00 and Extra usage/auto-recharge OFF were observed before/after;
 rounded weekly 0% and monthly 11% did not measure consumption. This did not qualify
 Kogen, other efforts/models/images or effective strength. Grok cached tokens do not
-qualify its changed routing key. SuperGrok's observed
+qualify its cache routing key. SuperGrok's observed
 `403 personal-team-blocked:spending-limit` is exhaustion, not route-switch permission.
 Cache042 stays OPEN: 20.624% and 0.9168% from different sessions and same-prefix
 hit/miss examples prove neither benefit, quota effects nor miss causes. Historical
@@ -362,11 +349,11 @@ savings claim, release/global installation or billing change follows.
 ### Anthropic Claude API-key roles
 
 Select `provider: anthropic` explicitly in any role or enabled Shape worker.
-Only `claude-opus-5-5` and `claude-sonnet-5-5`, with `low`, `medium`, `high` or
-`max`, are in Kogen's initial subset. Upstream also documents `xhigh`; it is
-not in this initial subset. These documentation-backed choices do not establish
-live account/model access. Unknown combinations fail with line-numbered config
-errors before inference; no model, effort, provider or account is silently changed.
+The recommended models are `claude-opus-5-5` and `claude-sonnet-5-5`, with `low`,
+`medium`, `high` or `max`. Any other nonempty model or effort (for example `xhigh`,
+which upstream also documents) is sent unchanged. These documentation-backed
+choices do not establish live account/model access. A refusal by Anthropic gets the
+refusal line above; no model, effort, provider or account is silently changed.
 Omission keeps legacy ChatGPT defaults/maps. A role edit changes approval/checkpoint
 identity and cannot authorize old Resume. Refine uses Shape; workers follow their
 own explicit selections. Credentials are required only for invoked roles.
@@ -388,7 +375,7 @@ Kogen does not borrow Claude CLI, browser, subscription or external-agent stores
 This is API billing, not Claude Max or any consumer subscription. Credentials are
 atomically saved at `~/.kogen/credentials/anthropic.json` (0600), under 0700 Kogen
 and credentials directories with `anthropic.lock`. Invalid/interrupted input keeps
-the old bytes. Offline `provider list` shows four providers without inference;
+the old bytes. Offline `provider list` shows the saved logins without inference;
 `anthropic: key saved (not verified)` distinguishes saving from verified access.
 Missing or unusable credentials name the login command and stop with exit 4.
 Uninstall preserves both the credential and lock paths.
@@ -398,7 +385,9 @@ The native route POSTs Messages to `https://api.anthropic.com/v1/messages`, with
 streaming and 128000 max tokens. Client tool schemas and ordered raw assistant
 blocks (including opaque thinking/signatures and redacted thinking) survive replay,
 working windows and v3 checkpoints. Parallel tool results share the immediately
-following user message. Ephemeral cache_control on the full system block and growing conversation requests default five-minute caching. No proxy, Claude subprocess, sampling controls,
+following user message. Cache controls are the ephemeral `cache_control` breakpoints
+of [Prompt caching](#prompt-caching) (last tool, last system block, newest message's
+last block; at most four). No proxy, Claude subprocess, sampling controls,
 beta headers or server tools are used. Complete validation precedes any tool effect.
 Only useful complete end-turn text or a valid tool-use batch succeeds; truncation,
 refusal and other non-success stops never expose partial tools or alter requests.
@@ -429,3 +418,82 @@ private login, and exact selected model/effort/tool/replay/Review outcomes must 
 recorded. Failure stops honestly, not by fallback. No real key or paid sweep is
 part of this feature; Linux deterministic and release real-use qualification remain
 separate, unclaimed obligations.
+
+### Open model selection
+
+No provider has a list of allowed models or efforts. Any nonempty `model` and
+`effort` is accepted for every role and every provider, and Kogen sends them
+unchanged. Known models are only recommended defaults and hints. The one exception to
+sending the effort is `default` on OpenCode Go and OpenAI-compatible: it sends no
+`reasoning_effort`.
+
+Kogen cannot know what an account or host offers. If a provider refuses the model or
+the request, the error keeps its first line, such as
+`provider/model_unavailable: <model> is not available to this <Label> account`, and
+adds one line:
+
+```
+model <model> with effort <effort> was sent to <Label> unchanged and not retried; if <Label> does not offer them, set another model or effort for this role in .kogen/project.yaml
+```
+
+The request is never retried and no other model is tried. Change `model` or `effort`
+for that role in `.kogen/project.yaml`. An OpenAI-compatible host's own error text is
+shown too, as one line `OpenAI-compatible said: …` (control characters removed, at
+most 300 bytes, a saved key redacted), because a local server's message, such as
+Ollama's "try pulling it first", is often the fix. ChatGPT and SuperGrok already put
+their message in the first line; OpenCode Go and Anthropic bodies are never shown.
+
+Recommended model per role and provider (a starting point, not a requirement):
+
+| Provider | Shape | Build | Review |
+| --- | --- | --- | --- |
+| ChatGPT | `gpt-6.1-sol` high | `gpt-6.1-sol` medium | `gpt-6.1-sol` high |
+| SuperGrok | `grok-4.7` high | `grok-4.7` medium | `grok-4.7` high |
+| OpenCode Go | `kimi-k3` high | `kimi-k3` high | `kimi-k3` high |
+| Anthropic | `claude-opus-5-5` high | `claude-opus-5-5` high | `claude-opus-5-5` high |
+| OpenAI-compatible | the model your host serves | the same | the same |
+
+Efforts the provider's own documentation lists: SuperGrok `low`, `medium`, `high`,
+`xhigh`; Anthropic `low`, `medium`, `high`, `max`; OpenCode Go `high` or `default`.
+Shape workers (below) use `gpt-6-luna` as an experimental setting. A model or effort
+outside these still reaches the provider unchanged.
+
+### OpenAI-compatible hosts
+
+`provider: openai-compatible` serves local and self-hosted models through any
+host that speaks the OpenAI Chat Completions API: Ollama, LM Studio, vLLM and others.
+Each role that uses it needs `base_url`, an `http://` or `https://` address with a
+host and no query, ending before `/chat/completions`. A trailing slash is trimmed.
+`base_url` is refused on any other provider. Quote it in a flow mapping.
+
+```yaml
+models:
+  shape: {provider: openai-compatible, model: 'qwen3-coder:30b', effort: default, base_url: 'http://localhost:11434/v1'}
+  build: {provider: openai-compatible, model: 'qwen3-coder:30b', effort: default, base_url: 'http://localhost:11434/v1'}
+  review: {provider: chatgpt, model: gpt-6.1-sol, effort: high}
+```
+
+Usual addresses: Ollama `http://localhost:11434/v1`, LM Studio
+`http://localhost:1234/v1`, vLLM `http://localhost:8000/v1`.
+
+- **Request.** A non-streaming Chat Completions POST to `<base_url>/chat/completions`,
+  the same wire as OpenCode Go. The model is sent unchanged. Effort `default` sends no
+  `reasoning_effort`; any other effort is sent as `reasoning_effort`.
+- **Key.** A key is optional. `kogen provider login openai-compatible` reads one from
+  stdin (not echoed on a terminal) and saves it at
+  `~/.kogen/credentials/openai-compatible.json` (0600); it prints
+  `openai-compatible: key saved (not verified)`. With a saved key Kogen sends
+  `Authorization: Bearer <key>`. Without one it sends no Authorization header, and a
+  keyless local host needs no login.
+- **Provider list.** `kogen provider list` shows `openai-compatible: key saved (not
+  verified)` once a key is saved. Without a key the list is unchanged.
+- **Caching.** No vendor cache field or header is sent (see [Prompt caching](#prompt-caching)).
+  Usage reads `prompt_tokens_details.cached_tokens`, `prompt_cache_hit_tokens` or
+  `cached_tokens` when the host reports one.
+- **Images.** Unsupported, like OpenCode Go: Kogen stops before inference with
+  `provider/unsupported_capability` and the external pixel-review handoff.
+- **Refusals.** A host that refuses the model or request gets the refusal line from
+  [Open model selection](#open-model-selection). There is no retry.
+
+The unknown-provider message, `kogen help`, the Zsh completion and the uninstall
+message all name `openai-compatible`. Roles that omit `provider` stay on ChatGPT.

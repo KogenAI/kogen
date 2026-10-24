@@ -1,0 +1,17 @@
+{
+  "id": "commit-on-red-pass",
+  "case": "verification-review",
+  "description": "A red verification pass goes to review and its tree is committed: the green test is removed both where a pass is turned into feedback and where the commit is allowed.",
+  "edits": [
+    {
+      "file": "build/builder.go",
+      "old": "\tif !pass.Green {\n\t\tb.Repairs++\n\t\treturn b.PassFeedback(pass, \"finish\"), false, nil",
+      "new": "\tif false && !pass.Green {\n\t\tb.Repairs++\n\t\treturn b.PassFeedback(pass, \"finish\"), false, nil"
+    },
+    {
+      "file": "build/commit.go",
+      "old": "if !(pass.Green && pass.Clean && review.Tree == pass.Tree) || tree != pass.Tree {",
+      "new": "if !(pass.Clean && review.Tree == pass.Tree) || tree != pass.Tree {"
+    }
+  ]
+}

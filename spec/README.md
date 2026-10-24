@@ -72,10 +72,10 @@ None of this executes a scenario. Parsing features and matching step patterns on
 
 - **Answers to shaping questions:** one line per answer, `<n>: <answer>` (an option letter or free text). This works the same for a person typing and for an agent writing a file.
 - **One Build per repository:** a lock file, created exclusively, holds the Build's pid. A lock whose process is gone is removed with a notice.
-- **Acceptance runner and Gherkin:** Kogen ships `@cucumber/cucumber` 13.3.0 next to Quint and runs it, or the project's own Cucumber, on its own Node; `kogen init` writes the command (`commands.acceptance.run`, SET-10, SET-13). Kogen reads the Gherkin it needs with its own Elixir parser (VER-3, VER-4).
+- **Acceptance runner and Gherkin:** Kogen ships `@cucumber/cucumber` 13.3.0 next to Quint and runs it, or the project's own Cucumber, on its own Node; `kogen init` writes the command (`commands.acceptance.run`, SET-10, SET-13). Kogen reads the Gherkin it needs with its own parser (VER-3, VER-4).
 - **No time or token limit on Builds or commands.** Every command runs with stdin closed, so a prompt fails at once. The builder starts dev servers and watch modes in the background with output to a log file, reads the log and stops them itself. Ctrl-C stops the Build, and every process group a Build started is terminated when the Build ends. Shaping probes keep their 5-minute bound (SHP-10).
 - **Testing rules:** `../docs/testing-rules.md` (outside `spec/`, shipped as `docs/testing-rules.md`) chooses the tests for every change, in Kogen's own code and in every product built with Kogen. The shaper, the builder and the reviewer each get its text (SET-6); the fixed test sequence is VER-13; the adoption steps for an existing project are SET-9; Kogen's own tests are REL-7.
-- **Interruption:** SIGINT, SIGTERM or SIGHUP (exit 130, 143, 129) stops the Build without a commit (and stops `shape` and `approve` the same way); so does the death of the `kogen` command, which the core sees as end of its stdin. The active command's process group gets SIGTERM, then SIGKILL after 5 seconds. Kogen makes no claim about processes that left the group.
+- **Interruption:** SIGINT, SIGTERM or SIGHUP (exit 130, 143, 129) stops the Build without a commit (and stops `shape` and `approve` the same way); so does the death of the `kogen` program, because the watchdog of each of its commands then stops that command's process group (CLI-8, CLI-9). The active command's process group gets SIGTERM, then SIGKILL after 5 seconds. Kogen makes no claim about processes that left the group.
 - **Review/fix:** one fresh conversation to `models.review`, with protected file writes, command execution and `submit_review`. Changed contents are verified externally; failures continue in the same reviewer context. Maintenance-only objections are notes. An unresolved substantive blocker stops rather than restarting the builder. An invalid verdict is sent back once.
 - **Install:** to `$HOME/.local` by default. If no Node 22 or newer exists, the current Node LTS is installed into Kogen's own folder; Quint 0.33.0 and Cucumber 13.3.0 ship in the archive.
 - **Uninstall:** removes the program and keeps `~/.kogen` (the login) and every project.
@@ -84,15 +84,16 @@ None of this executes a scenario. Parsing features and matching step patterns on
 
 ## Where this lives
 
-This folder is `spec/` of the Kogen repository, next to the supervised Mix app and the Go command under `cli/`.
+This folder is `spec/` of the Kogen repository, next to the Go program under `cli/`, which is all of Kogen.
 
 ### Continuation trace
 
 LOOP-10 continuation uses the CLI-1 command and AUT-4 lock. The maintained
 `04-building.feature` unknown-checkpoint scenario and installed resume Intent
-scenarios exercise the real CLI; `build_boundaries_test.exs` covers pending final
-verification and same-reviewer custody, `builder_blocker_test.exs` covers refusal
-of protected contradictions, and `run_test.exs` covers decode/publication.
+scenarios exercise the real CLI; the Go tests of `cli/build` (`resume_test.go`,
+`review_test.go`) cover pending final verification and same-reviewer custody,
+`blocker_test.go` covers refusal of protected contradictions, and `legacy_test.go`
+covers decoding of saved checkpoints.
 `build.qnt` includes explicit builder/reviewer resume tests without resetting
 candidate or green evidence; `run_control.qnt` includes lock reacquisition after
 an ended attempt. Existing Safety invariants and non-vacuity counterexamples
@@ -103,8 +104,8 @@ continue to cover commit eligibility, independent review and live-owner refusal.
 
 LOOP-7/LOOP-10 explicit recovery is covered through the installed command by
 `.kogen/intents/build-unblocking-recovery/acceptance.feature` and its independent
-archive/lifecycle controls. `test/integration/recovery_test.exs` exercises raw Git
-filters, binary/mode/symlink custody and publication before a controlled filesystem
+archive/lifecycle controls. The Go tests in `cli/build/recover_test.go` exercise raw
+Git filters, binary/mode/symlink custody and publication before a controlled filesystem
 cleanup failure. `quint/recovery.qnt` models archive-before-cleanup, non-reapproval
 and fresh final-commit proof (`Preserved`, `NoReapproval`, `SafeCommit`). Its bounded
 trace uses seed 11, 100 samples, 30 steps, matching the approved recovery model;

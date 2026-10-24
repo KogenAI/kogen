@@ -1,6 +1,6 @@
 # 08 Subscription provider connections
 
-ChatGPT, SuperGrok, explicitly selected OpenCode Go and Anthropic API-key Claude are supported providers. ChatGPT remains the default when a role omits `provider`. Kogen signs in with its own login flow, stores and refreshes its own credentials, streams responses with tool calls and usage, and reports provider problems precisely. It never borrows another tool's credentials, never automatically falls back to a paid API key and never switches accounts. The route is OpenAI's official "Sign in with ChatGPT" plan usage for open-source apps, with dynamic client registration (developers.openai.com/siwc): authorization at `https://auth.openai.com/api/accounts/authorize`, tokens at `https://auth.openai.com/api/accounts/oauth/token`, inference at `https://api.openai.com/v1/responses`.
+ChatGPT, SuperGrok, explicitly selected OpenCode Go, Anthropic API-key Claude and explicitly selected OpenAI-compatible local or self-hosted servers are supported providers. ChatGPT remains the default when a role omits `provider`. Kogen signs in with its own login flow, stores and refreshes its own credentials, streams responses with tool calls and usage, and reports provider problems precisely. It never borrows another tool's credentials, never automatically falls back to a paid API key and never switches accounts. The route is OpenAI's official "Sign in with ChatGPT" plan usage for open-source apps, with dynamic client registration (developers.openai.com/siwc): authorization at `https://auth.openai.com/api/accounts/authorize`, tokens at `https://auth.openai.com/api/accounts/oauth/token`, inference at `https://api.openai.com/v1/responses`.
 
 **GPT-1 — Own login only.** Kogen uses only credentials from its own `kogen provider login chatgpt`. It never reads Codex, ChatGPT desktop, browser or Claude credential stores, and accepts no token from the environment or arguments.
 
@@ -8,15 +8,15 @@ ChatGPT, SuperGrok, explicitly selected OpenCode Go and Anthropic API-key Claude
 
 **GPT-3 — Storage.** Credentials (issued client ID, tokens, granted scope) live in `~/.kogen/credentials/chatgpt.json` (mode 0600, directory 0700), written atomically; the `ext_agent_host_id` lives in `~/.kogen/host-id`. The user signs in once per machine: every later command reuses these credentials, refreshes them (GPT-6) and saves each rotated refresh token, and a new login is needed only when a refresh fails for good. Kogen holds an exclusive lock on the credentials while it reads, refreshes and saves them: the lock file `~/.kogen/credentials/chatgpt.lock` is created exclusively (`O_EXCL`) and holds the pid; a process that finds it held waits, and a lock whose process is gone is removed. Under the lock Kogen re-reads `chatgpt.json` and uses a newer token if another process already refreshed.
 
-**GPT-4 — Status.** The offline list prints ChatGPT, SuperGrok, OpenCode Go and Anthropic in that order, using the provider-specific statuses described here. `kogen provider list` prints `chatgpt: signed in[ (<email>)]` only when `~/.kogen/credentials/chatgpt.json` contains the issued `client_id`, `refresh_token`, `access_token` and `expires_at`. A missing credentials file prints `chatgpt: not signed in`; a saved file missing any required value prints `chatgpt: saved login cannot be used; run kogen provider login chatgpt` (exit 0). It makes no request.
+**GPT-4 — Status.** The offline list prints ChatGPT, SuperGrok, OpenCode Go and Anthropic in that order, then OpenAI-compatible only once a key for it is saved, using the provider-specific statuses described here. `kogen provider list` prints `chatgpt: signed in[ (<email>)]` only when `~/.kogen/credentials/chatgpt.json` contains the issued `client_id`, `refresh_token`, `access_token` and `expires_at`. A missing credentials file prints `chatgpt: not signed in`; a saved file missing any required value prints `chatgpt: saved login cannot be used; run kogen provider login chatgpt` (exit 0). It makes no request.
 
 **GPT-5 — Login required.** For provider-aware roles, check only the providers used: Shape plus enabled workers, Refine Shape, Build/resume Build and Review. Init remains ChatGPT. `init` (on a repository with commits), shaping and Builds refuse before any request when no credentials file exists: `provider/login: not signed in; run kogen provider login chatgpt`. A saved credentials file missing any required value in GPT-4 is refused as `provider/login: saved login cannot be used; run kogen provider login chatgpt`. Both exit 4.
 
 **GPT-6 — Refresh.** Kogen refreshes the access token (one hour) before it expires and once after a 401, with the issued client ID and without `scope`, saving the rotated refresh token before using the new access token (all of it under the GPT-3 lock). If the Responses API returns 401 and refresh fails, or the authorization server rejects the saved refresh token with `invalid_grant`, Kogen prints `provider/login: the ChatGPT sign-in was rejected; run kogen provider login chatgpt` (exit 4). Other failed proactive refreshes print `provider/login: the ChatGPT sign-in expired and could not be refreshed; run kogen provider login chatgpt` (exit 4).
 
-**GPT-7 — Streaming.** Every ChatGPT/SuperGrok request is a `POST /v1/responses` with `store: false` and `stream: true`, the configured model and effort, the conversation and the tool definitions; Kogen assembles text, tool calls, the end of the response and usage. A stream that ends without its completion event is a transient failure; `[DONE]` alone is not success. Kogen returns promptly on a validated `response.completed` frame and cancels the unneeded HTTP request, without waiting for stream closure. The completion requires a response object, no recorded failure, and complete ordered output items with contiguous nonnegative indexes and no unfinished added item. Current `response.output_item.done` frames carry `output_index` and `item`; completion may contain only `response: {usage: ...}`. Omitted final output and `response.output: []` are metadata only: both retain streamed done items and the pending set. Empty metadata never establishes authority or clears unfinished items. Nonempty final `response.output` replaces streamed items and clears pending only under the existing terminal index coverage and validation rules; it may replace unfinished or invalid streamed items when those rules permit. Message content is validated; function calls require nonempty string call_id/name and string arguments decoding to a JSON object. Partial deltas and malformed output never authorize tools; caller tool authorization and validation remain in force. Observed failure, incomplete and error frames cannot become successful completion. Each request carries the whole conversation: `previous_response_id` is not supported on this route. Correctness does not rely on prompt caching. ChatGPT uses automatic provider caching with a stable public `prompt_cache_key` equal to its generated conversation ID, from the first request in every process. Policy remains the first developer input_text block and the complete ordered contract/replay is unchanged. No options, breakpoints, comparison IDs, retention, server conversation loading or session headers are sent. The key partitions by owner/provider/model/policy/tools/contract/window; checkpoints retain it. It is a best-effort routing hint, not sticky routing or a hit guarantee; official GPT-5.6+ guidance says it is unnecessary for optimization. Its effect on this sign-in route is unproven until observed. Public Responses stays stream:true/store:false with complete encrypted stateless replay and independent roles. Only synchronous HTTP 400 with param exactly `prompt_cache_key` permits one compatibility retry for unknown_parameter/unsupported_parameter, or invalid_parameter with message exactly `prompt_cache_key is not supported on this model`. Only the key is removed, under the original deadline, including single_attempt. Removal stays in that conversation/checkpoint. Null/absent/wrong params, other messages, 401/403, network failures and partial/failed streams never permit it. No persistent registry is needed for explicit options that are never sent. Anthropic sends the complete unchanged policy as one system text block with cache_control:{type:"ephemeral"}, and the same control at the top level for the growing conversation (default five-minute lifetime). No one-hour TTL or beta diagnostics. Signed/redacted/tool assistant blocks replay exactly once, unchanged, with all paired ordered results. A generic 400 never disables caching or changes route. Historical req_011CgLShD4UpAk64MM4867GE is an unknown-cause 400. SuperGrok retains its stable body prompt_cache_key and exact-param unknown_parameter/unsupported_parameter fallback only (not invalid_parameter), without x-grok-conv-id. OpenCode Go retains stable x-opencode-session, complete raw reasoning/tool replay, stream:false/store:false and high/default effort omission. Endpoints, models, authentication and configured effort remain unchanged on all four routes. No controls from another route are added. Requested control, accepted request, observed hit and measured benefit are distinct. Applied mode/lifetime stay null unless explicitly reported; key-only success proves neither. Reads/writes/unknowns stay separate; absent or failed usage is unknown, not zero. Fingerprints and token equality do not identify a provider miss cause. Deterministic fixtures establish plumbing, not live support or savings. One explicitly authorized installed journey is a separate delivery gate, never a paid readiness test or a savings promise.
+**GPT-7 — Streaming.** Every ChatGPT/SuperGrok request is a `POST /v1/responses` with `store: false` and `stream: true`, the configured model and effort, the conversation and the tool definitions; Kogen assembles text, tool calls, the end of the response and usage. A stream that ends without its completion event is a transient failure; `[DONE]` alone is not success. Kogen returns promptly on a validated `response.completed` frame and cancels the unneeded HTTP request, without waiting for stream closure. The completion requires a response object, no recorded failure, and complete ordered output items with contiguous nonnegative indexes and no unfinished added item. Current `response.output_item.done` frames carry `output_index` and `item`; completion may contain only `response: {usage: ...}`. Omitted final output and `response.output: []` are metadata only: both retain streamed done items and the pending set. Empty metadata never establishes authority or clears unfinished items. Nonempty final `response.output` replaces streamed items and clears pending only under the existing terminal index coverage and validation rules; it may replace unfinished or invalid streamed items when those rules permit. Message content is validated; function calls require nonempty string call_id/name and string arguments decoding to a JSON object. Partial deltas and malformed output never authorize tools; caller tool authorization and validation remain in force. Observed failure, incomplete and error frames cannot become successful completion. Each request carries the whole conversation: `previous_response_id` is not supported on this route. Correctness does not rely on prompt caching. Every request follows the prompt caching contract below (KOGEN-054): the conversation's cache identity goes in the body as `prompt_cache_key` without a private-backend session header, the body always carries `include: ["reasoning.encrypted_content"]`, and the request never carries `prompt_cache_options` or content-block `prompt_cache_breakpoint` markers, on any model. The earlier GPT-5.6+ split and the implicit 30m request with explicit policy/contract breakpoints no longer exist. Full valid encrypted reasoning, assistant phase and tool-call fields replay in order, including frozen ordered typed view_image outputs; image content is never stringified or clipped by any text cap. Comparison state is scoped to independent conversations and safe checkpoints; reviewer histories are independent. ChatGPT has no cache-parameter refusal retry, because it sends no field a cache refusal could name. Provider cache diagnostics, when present, are optional bounded classified evidence, never output validity or cache authority.
 
-**GPT-8 — Errors and retries.** One logical `respond/5` call has a fixed 1,800,000 ms absolute monotonic budget established on entry before credentials, refresh and request work. Credential lock waits, refresh after 401, unreadable-response retry and 2 s/8 s backoff share that budget. Bytes, heartbeats and retries cannot renew it; expiry is checked even with a busy mailbox, and no attempt starts after expiry. HTTP waits and pauses use at most the remaining budget, preserving the 30 s connect ceiling and TLS verification. Expiry cancels outstanding Responses or refresh HTTP work and raises `provider/unavailable: ChatGPT response wait exceeded 30 minutes` (exit 4), without retry, invented provider code or fabricated usage. Known completed usage and unknown failed usage remain intact. Explicit Bridge cancellation remains prompt with signal exits 130/143/129, and only owned locks are released on every exit. A later call has its own budget; single-attempt mode retains its semantics.
+**GPT-8 — Errors and retries.** One logical provider response call has a fixed 1,800,000 ms absolute monotonic budget established on entry before credentials, refresh and request work. Credential lock waits, refresh after 401, unreadable-response retry and 2 s/8 s backoff share that budget. Bytes, heartbeats and retries cannot renew it; expiry is checked even with a busy mailbox, and no attempt starts after expiry. HTTP waits and pauses use at most the remaining budget, preserving the 30 s connect ceiling and TLS verification. Expiry cancels outstanding Responses or refresh HTTP work and raises `provider/unavailable: ChatGPT response wait exceeded 30 minutes` (exit 4), without retry, invented provider code or fabricated usage. Known completed usage and unknown failed usage remain intact. Explicit Bridge cancellation remains prompt with signal exits 130/143/129, and only owned locks are released on every exit. A later call has its own budget; single-attempt mode retains its semantics. A 400 is never retried as a cache refusal on ChatGPT, which sends no cache-control field; the only cache-refusal retry is SuperGrok's single bounded `prompt_cache_key` retry (SuperGrok section below). Every transient retry resends the unchanged request with the same cache identity.
 
 | Situation | Behavior | When it stops |
 | --- | --- | --- |
@@ -42,13 +42,35 @@ Documentation-shaped local streaming/function-call fixtures (official Responses 
 
 All exit 4, except context exhaustion in a Build, which is LOOP-9 (exit 1). A retry never repeats a tool call: tools run only after a complete response. A provider failure ends a Build without a commit, edits left.
 
-**GPT-9 — Usage.** Kogen records each transport attempt append-only with real response/request IDs, nullable effective configuration, bounded cache diagnostics, local-byte segment fingerprints, validated nullable token/write/lifetime categories and measured wall time. Failed or unconfirmed streams have unknown usage. Existing compatible summaries remain, linked by operation ID and never counted beside transport rows. The Build result and shaping output print compatible totals. The local report in [usage.md](../../docs/usage.md) counts retained attempts once, excludes inconsistent evidence from arithmetic and never converts to dollars or weekly quota.
+**GPT-9 — Usage.** Kogen records each transport attempt append-only with real response/request IDs, nullable effective configuration, bounded cache diagnostics, each provider's raw cache usage fields (see Prompt caching below), local-byte segment fingerprints, validated nullable token/write/lifetime categories and measured wall time. Failed or unconfirmed streams have unknown usage. Existing compatible summaries remain, linked by operation ID and never counted beside transport rows. The Build result and shaping output print compatible totals. The local report in [usage.md](../../docs/usage.md) counts retained attempts once, excludes inconsistent evidence from arithmetic and never converts to dollars or weekly quota. It reports the cached share of input, weighted over rows with valid counts, from the raw cache fields below.
 
 **GPT-10 — Secrets.** Tokens and authorization codes never appear on stdout or stderr, in run records, error messages, commands' environment or any argv.
 
 **GPT-11 — Test seams.** `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` replace the provider and authorization base URLs for tests and accept only `http://127.0.0.1:<port>` or `http://localhost:<port>`; any other value is `environment/invalid_test_seam: <NAME> must be http://127.0.0.1:<port> or http://localhost:<port>` (exit 3).
 
 Scenarios: `features/08-chatgpt.feature`.
+
+## Prompt caching (KOGEN-054)
+
+This section replaces the earlier prompt-reuse contract (ChatGPT implicit 30m caching with `prompt_cache_options`, `prompt_cache_breakpoint` markers, no cache key for ChatGPT and a cache-refusal retry). It changes the GPT-7, GPT-8 and GPT-9 requirement text above, and nothing else in them. The earlier contract is superseded by it, as follows: all of `cache-capability-fallback`; the `prompt-cache-reuse-and-usage` scenarios "Complete Shape authority and valid replay reach consecutive provider requests", "Build and saved review preserve reuse without sharing authority" and "Cache capability handling uses only safe necessary calls"; and the `opencode-go-subscription` scenario "ChatGPT keeps the exact recognized rejection compatibility without losing replay". Their surviving guarantees (exact ordered replay, a refused attempt recorded with unknown usage, independent reviewer conversations sharing no cache state or authority, SuperGrok's single bounded refusal retry) hold under this section. Caching never changes which model, effort, tools or provider a role uses, and a cache hit never substitutes for inference, tools, verification, independent review or authorization.
+
+**Cache identity.** Every model conversation (shaper, each shape worker, refine, builder, each reviewer, init) has one cache identity of at most 64 characters, created when the conversation starts, saved in its checkpoint or records and reused for every later request of that conversation: retries, transient-stream retries, bounded working-context resets and explicit resume. Different conversations never share an identity, so a reviewer never inherits builder state. An identity longer than 64 characters read from an older checkpoint goes on the wire as a stable 64-character digest of it. It contains no clock time, repository path or personal identifier.
+
+**Frozen front, append-only history.** The front of every request is frozen for the conversation: identical instructions bytes, the same tool definitions in the same order with deterministic JSON, and no clock time, request id, random value or counter in instructions or tool descriptions. History is append-only: each request's input is the previous request's input plus the previous output items plus new items. Tool output is cut once when recorded and replayed as stored; reasoning items with encrypted content and Anthropic thinking blocks replay verbatim. The only planned prefix break is an existing bounded working-context reset, which keeps instructions, tools and cache identity unchanged.
+
+**Per provider.**
+
+| Provider | What the request carries | Refusal handling |
+| --- | --- | --- |
+| ChatGPT | `store: false`, `include: ["reasoning.encrypted_content"]`, body `prompt_cache_key` = the cache identity without private-backend session headers; never `prompt_cache_options` or `prompt_cache_breakpoint` | one exact-param routing-key-only compatibility retry, under the same original deadline; only unknown_parameter/unsupported_parameter or invalid_parameter with the exact documented key-unsupported message |
+| SuperGrok | body `prompt_cache_key` = the cache identity (same stateless Responses request otherwise) | one retry removing only that key after a synchronous HTTP 400 `unknown_parameter`/`unsupported_parameter` with param exactly `prompt_cache_key`; the refusal is remembered in that conversation's checkpoint only |
+| OpenCode Go | header `x-opencode-session` = the cache identity on every request; no cache body field | none |
+| Anthropic | `cache_control: {"type": "ephemeral"}` (default five-minute lifetime) on the last tool definition, the last system block and one rolling breakpoint on the last block of the newest message (never on a thinking block); never more than four | none |
+| OpenAI-compatible | no vendor cache field or header, because strict hosts refuse unknown fields; the frozen front and append-only history still apply | none |
+
+**Usage fields.** Usage records keep each provider's raw cache fields: Responses `input_tokens_details.cached_tokens`; chat-compatible `prompt_tokens_details.cached_tokens`, `prompt_cache_hit_tokens` or `cached_tokens`; Anthropic `cache_read_input_tokens` and `cache_creation_input_tokens`, where total input is input + creation + read. `kogen intent usage` reports the cached share from them (see [usage.md](../../docs/usage.md)). `applied` in a record means the request carried the controls and the answer completed, not a physical hit or a proven lifetime.
+
+Historical records and evidence written before this contract (including the 17-second `prompt_cache_options` HTTP 400 rejection recorded in the shaping chapter) describe what happened then and are not current behaviour.
 
 ## SuperGrok subscription route
 
@@ -59,13 +81,11 @@ exercise login/refusals, Shape/Refine/Build/fresh Review, limits and legacy resu
 
 ### Selection and identity
 
-Every model role and Shape worker accepts optional `provider: chatgpt|supergrok|opencode-go|anthropic`.
-Omission preserves exact legacy maps, request bytes, cache behavior and version-3
-checkpoint comparisons; explicit ChatGPT adds only the selected provider key.
-SuperGrok accepts exactly `grok-4.7`, effort `low|medium|high|xhigh`. Invalid provider
-values report `models.<role>.provider must be chatgpt, supergrok, opencode-go or anthropic`; unsupported
-selections report `models.<role>: supergrok supports model grok-4.7 with effort low,
-medium, high or xhigh` (workers use `shape_workers.<role>`). Both use existing
+Every model role and Shape worker accepts optional `provider: chatgpt|supergrok|opencode-go|anthropic|openai-compatible`.
+Omission preserves exact legacy maps and version-3 checkpoint comparisons and produces exactly the same request as an explicit `chatgpt` role (both carry the caching fields above); explicit ChatGPT adds only the selected provider key.
+No provider has a model or effort allowlist: any nonempty `model` and `effort` is accepted and sent unchanged. SuperGrok recommends `grok-4.7` with effort `low|medium|high|xhigh`; these are defaults and hints, not validation. Invalid provider
+values report `models.<role>.provider must be chatgpt, supergrok, opencode-go, anthropic or openai-compatible`
+(workers use `shape_workers.<role>`). A role naming a provider needs a nonempty `model` and `effort`. It uses the existing
 line-numbered `environment/project_config_invalid`, exit 3. A provider edit changes
 approval and refuses resume; no migration of existing saved configuration occurs.
 
@@ -75,7 +95,7 @@ approval and refuses resume; no migration of existing saved configuration occurs
 exact form fields `client_id=b1a00492-073a-47ea-816f-4c329264a828`,
 `scope=openid profile email offline_access grok-cli:access api:access`,
 `referrer=kogen`, and headers `accept: application/json`, `user-agent: kogen/<id>`
-(the second token of `Kogen.version()`). Non-200 stops after one request with
+(the second token of the `kogen version` line). Non-200 stops after one request with
 `provider/login_failed: the SuperGrok device authorization request failed
 (<status>[ <error>])`. No alternate identity is attempted.
 
@@ -125,8 +145,8 @@ conversation, cookie or API-key header or previous_response_id. The existing
 request body retains model, reasoning.effort, encrypted reasoning include,
 complete ordered input, stream true, store false, plain instructions and tools
 with auto choice when present. SuperGrok never sends cache options/breakpoints or
-a developer policy message; it sends a generated prompt_cache_key in the body, with unknown benefit and empty cache boundaries. A synchronous HTTP 400 unknown_parameter/unsupported_parameter with param exactly prompt_cache_key permits one retry stripping only that key and retaining unknown rejected usage. Suppression stays in the owner checkpoint, not another owner. ChatGPT
-cache retry and subscription_sharing handling are ChatGPT-only.
+a developer policy message; it sends the conversation's cache identity as prompt_cache_key in the body (see Prompt caching above), with unknown benefit and empty cache boundaries. A synchronous HTTP 400 unknown_parameter/unsupported_parameter with param exactly prompt_cache_key permits one retry stripping only that key and retaining unknown rejected usage. Suppression stays in the owner checkpoint, not another owner. ChatGPT
+subscription_sharing handling is ChatGPT-only; ChatGPT preserves the exact-param routing-key-only compatibility retry described above.
 
 Refresh when expires_at - 60 <= now and once after 401, locked with re-read,
 POSTing only grant_type=refresh_token, refresh_token and client_id. Keep old
@@ -170,15 +190,15 @@ Usage/Extra Usage; unobserved facts remain UNKNOWN. No live probe is part of tes
 
 The Go Intent acceptance scenarios exercise the native installed CLI, transport,
 review/resume, presets, inclusive rendered budget and provider-specific cache routing.
-`opencode-go` accepts only kimi-k3 with requested default/high; default omits
+`opencode-go` recommends kimi-k3 with requested default/high and sends any other nonempty model or effort unchanged; default omits
 reasoning_effort. Only Kogen login stdin supplies a key; offline status says key saved
 (not verified), not account eligibility. Atomic private key/lock custody survives
 failed or interrupted input. Selected roles alone need their logins.
 
 Go POSTs only /inference/go/openai/v1/chat/completions at opencode.ai, with Kogen's
-User-Agent, Bearer key and generated x-opencode-session. No paid/model/provider
+User-Agent, Bearer key and x-opencode-session set to the conversation's cache identity. No paid/model/provider
 fallback exists. Ordered Chat Completions messages start with system policy; nested
-function schemas retain order; stream/store are false. No Responses/cache/max-token
+function schemas retain order; stream/store are false. No Responses, body cache or max-token
 controls are sent. Canonical opencode_go_message holds the full assistant message,
 including scalar reasoning and unknown reasoning_details, for exact single replay;
 normalized calls must not duplicate it. All tool calls validate before execution;
@@ -189,9 +209,10 @@ reasoning and raw envelopes never enter analytics. The 30-minute deadline,
 three-attempt transient bounds, 524288-byte inclusive serialized ceiling, 131072-token
 local reserve, source custody, independent review and version-3 resume stay intact.
 
-Routing identity is scoped to provider/model/owner, stable authority/tools and
-working window; append-only turns/resume retain it. Fresh Shape/Refine/reviewer or
-replaced windows isolate it. Caching never establishes approval or verification.
+The routing identity is the conversation's cache identity: one per conversation,
+kept by append-only turns, retries, working-window resets and resume, and never
+shared with another conversation (fresh Shape/Refine/reviewer conversations get
+their own). Caching never establishes approval or verification.
 The four docs/presets templates are explicit choices, workers off, not verified
 project checks. Configuration-first bootstrap uses the existing init leftover path;
 bare discovery still needs ChatGPT. Installed qualification requires explicit human
@@ -203,10 +224,10 @@ images, effort strength, savings, unlimited promotions or cache miss causes.
 ### Native Anthropic Messages adapter
 
 Anthropic is an explicit, independently mixable selection in Shape/Refine, enabled
-workers, Build and independent Review. It accepts exactly `claude-opus-5-5` and
-`claude-sonnet-5-5` with low/medium/high/max. Upstream xhigh is deliberately outside
-this initial subset. Omitted provider maps/defaults and other provider routes stay
-unchanged; invalid selections fail before inference with line-numbered errors.
+workers, Build and independent Review. It recommends `claude-opus-5-5` and
+`claude-sonnet-5-5` with low/medium/high/max and sends any other nonempty model or
+effort (including upstream xhigh) unchanged. Omitted provider maps/defaults and other provider routes stay
+unchanged; an invalid provider fails before inference with a line-numbered error.
 Role edits remain approval/checkpoint drift, not old Resume authority.
 
 Only `kogen provider login anthropic` private secret input supplies the API key.
@@ -214,7 +235,7 @@ Whitespace/one terminal newline trim; blank, invalid UTF-8, internal controls an
 multiline input refuse without replacing old bytes. Cancellation/error preserves
 custody. Atomic 0600 `~/.kogen/credentials/anthropic.json` stores provider/api_key,
 under 0700 directories and `anthropic.lock`. Offline status is `anthropic: key saved
-(not verified)` or `anthropic: not signed in`; provider list includes four entries.
+(not verified)` or `anthropic: not signed in`; provider list includes four entries, plus OpenAI-compatible once its key is saved.
 No borrowed environment, CLI/browser/external-agent or subscription credentials,
 key argument, account switch or automatic fallback exists. Missing/unusable keys
 stop as provider/login (exit 4) naming the login command before inference. API
@@ -223,7 +244,9 @@ billing is separate from consumer Claude/Max subscription access.
 Native POST `/v1/messages` at api.anthropic.com uses x-api-key and version
 2026-10-21, JSON, stream true, max_tokens 128000, adaptive thinking, configured
 output_config effort, top-level system/messages and translated name/description/
-input_schema client tools with tool_choice type auto. The unchanged policy is one system text block with ephemeral cache_control; top-level ephemeral cache_control covers the growing conversation with the default five-minute lifetime. No sampling,
+input_schema client tools with tool_choice type auto. The only cache controls are the
+ephemeral `cache_control` breakpoints of Prompt caching above (last tool, last system
+block, newest message's last block; at most four). No sampling controls,
 beta headers, server tools or OpenAI envelopes. Complete actual rendered JSON
 retains the 524288-byte inclusive ceiling and 131072-token reserve. Typed images
 refuse before inference with external preparation/pixel-review guidance, never
@@ -258,3 +281,9 @@ approval, blocked independent Review and fresh explicit Resume. Focused tests co
 private entry, parsing, arithmetic and transport cancellation. These synthetic local
 fixtures prove plumbing, not live access or pixel interpretation. Human-key installed
 qualification, Linux and release real-use gates remain separate later obligations.
+
+### Open model selection and OpenAI-compatible servers
+
+No provider has a model or effort allowlist. `.kogen/project.yaml` accepts any nonempty `model` and `effort` for every role and every provider, and Kogen sends them unchanged. OpenCode Go and OpenAI-compatible effort `default` sends no `reasoning_effort`. Known models are recommended defaults and hints only. A provider's refusal of the model or request keeps its first error line and adds the line `model <model> with effort <effort> was sent to <Label> unchanged and not retried; if <Label> does not offer them, set another model or effort for this role in .kogen/project.yaml`. The request is never retried and no other model is tried.
+
+`provider: openai-compatible` serves local and self-hosted OpenAI-compatible servers (for example Ollama `http://localhost:11434/v1`, LM Studio `http://localhost:1234/v1`, vLLM `http://localhost:8000/v1`). Each role using it needs `base_url`, an `http://` or `https://` URL with a host and no query; a trailing slash is trimmed. A role on any other provider that has `base_url` is refused. The request is the non-streaming Chat Completions wire of OpenCode Go, POSTed to `<base_url>/chat/completions`. A key is optional: `kogen provider login openai-compatible` reads it from stdin (not echoed on a terminal), saves it privately (0600) and prints `openai-compatible: key saved (not verified)`. With a key the request carries `Authorization: Bearer <key>`; without one it carries no Authorization header. A keyless host needs no login, and `kogen provider list` shows `openai-compatible: key saved (not verified)` only once a key is saved. The request carries no vendor cache field or header; usage reads `prompt_tokens_details.cached_tokens`, `prompt_cache_hit_tokens` or `cached_tokens` when reported. Images are unsupported, as for OpenCode Go. The unknown-provider message, help, Zsh completion and uninstall message name the provider. A role without `provider` stays ChatGPT.

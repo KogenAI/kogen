@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "source_baseline": "76109e1ad0d944bb4ae5786273674e82951cf8b0; reconciled caching commit828dfa5db867ed8d1ffc98725eb6a690b75d0289",
+  "connector_status": "unrecovered; bounded local production replay only",
+  "dependencies": {
+    "go": "1.27.2 (build only; the release ships one static kogen binary)",
+    "node": "24.21.0 (installed with Kogen for acceptance commands)",
+    "quint": "0.33.0 (bundled)",
+    "cucumber": "13.3.0 (bundled)",
+    "erlang_elixir": "none (Kogen itself no longer needs them; Elixir projects still build with their own toolchains)"
+  },
+  "timings": {
+    "measured_with": "sh test/migration/timings.sh <archive>, Mac Studio darwin-arm64, warm Go cache, while a public-suite run and the Go test suite ran concurrently",
+    "forced_go_build_s": 6.541,
+    "cached_go_build_s": 0.441,
+    "focused_unit_check_s": 9.592,
+    "focused_unit_check_scope": "go test -count=1 ./project ./sys",
+    "installed_provider_list_ms": [
+      14.486,
+      15.258,
+      14.366,
+      14.438,
+      15.036
+    ],
+    "baseline_for_comparison": {
+      "mix_forced_compile_s": 0.966452,
+      "go_cli_build_s": 0.533339,
+      "unit_check_s": 1.122504,
+      "installed_provider_list_ms": [
+        157.265,
+        178.298
+      ],
+      "note": "Elixir baseline from d9f621bd under concurrent Studio load; scopes differ (the Go unit check covers two whole packages), so this is not a universal speed claim."
+    }
+  },
+  "platforms": [
+    {
+      "target": "darwin-arm64",
+      "status": "Private current darwin-arm64 qualification passed with scoped composed verification",
+      "public_report": "Current 223-scenario/2970-step public suite passed; earlier owner reports remain historical",
+      "native_report": "accumulated-suites.md current completion section",
+      "suite_log": "Current final gate and targeted observer/package reruns retained by root takeover; raw aggregate red not relabeled green"
+    },
+    {
+      "target": "linux-x86_64-glibc",
+      "status": "missing",
+      "reason": "no Linux run was made in this session"
+    }
+  ],
+  "real_use": [
+    {
+      "project": "example",
+      "status": "missing",
+      "reason": "needs a real provider sign-in; no provider tokens were spent in this session"
+    },
+    {
+      "project": "kogen",
+      "status": "missing",
+      "reason": "needs a real provider sign-in and the REL-3 self-build; not run in this session"
+    },
+    {
+      "project": "disposable mixed-provider fixture",
+      "status": "passed",
+      "run_id": "8f2a72c4",
+      "scope": "Actual installed Go Shape/Build/fresh Sonnet Review/signed fixture commit; not an example-app or full Kogen self-host release qualification"
+    }
+  ],
+  "baseline": "76109e1ad0d944bb4ae5786273674e82951cf8b0 plus current separately reviewed caching repairs",
+  "historical_timing_baseline_note": "Older baseline identifiers in timing records are preserved historical measurements, not current compatibility qualification.",
+  "historical_configuration_commit": "d4a29bd3e1fbf97e0d2df98a6ded06635031a8a2",
+  "configuration_baseline": "Current main .kogen/project.yaml retained byte-for-byte",
+  "current_completion": {
+    "date": "2026-10-24",
+    "authorship": "Preserved externally authored Go implementation completed by root under explicit human handoff; not a native source Build",
+    "parent_caching_commit": "828dfa5db867ed8d1ffc98725eb6a690b75d0289",
+    "candidate_archive_sha256": "eaa60cc4383f25180542bf97f572b653a773dbc46538a48f816e519c0b76beee",
+    "private_scope": "darwin-arm64; no public release or Linux runtime claim",
+    "maintained_contracts": {
+      "required": 405,
+      "initial_passes": 401,
+      "corrected_observers_passed": 4,
+      "predeclared_superseded_rows": 16
+    },
+    "public_acceptance": {
+      "scenarios": 223,
+      "steps": 2970,
+      "status": "passed"
+    },
+    "deterministic_layers": "spec/models/live-helper/public acceptance passed;8Go packages passed broad race run;full verify package passed focused race/count1 after isolating one negative fixture environment. Original red aggregate retained.",
+    "production_replay": {
+      "journeys_passed": 4,
+      "mutants_refuted": 5
+    },
+    "migration_model": "ExactCommit,ProgressIsNotDelivery,ResumeAuthority passed",
+    "independent_review": "Critical production paths independently reviewed; only documentation/observer conditions remained and were fulfilled with bound current proof. Review limitations retained.",
+    "actual_installed_trial": {
+      "run_id": "8f2a72c4",
+      "fixture_commit": "bd800096ab51c34a8a4ce4fca7696122f0152b5b",
+      "shape_build": "ChatGPT gpt-6.1-sol high/medium",
+      "independent_review": "Anthropic claude-sonnet-5-5 medium",
+      "passes": 1,
+      "reviews": 1,
+      "repairs": 0
+    },
+    "cache_claim": "Actual usage/cache reads retained; no comparative quota or universal savings claim"
+  }
+}

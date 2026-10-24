@@ -438,7 +438,7 @@ Feature: Shaping
   @SHP-10
   Scenario: The five-minute probe policy produces a real timeout and cleanup through a contracted-deadline driver
     Given the fake ChatGPT server plays script "shape-probe-hangs-then-writes"
-    When the installed core shapes "is-even" through the contracted-deadline driver with stdin:
+    When the installed kogen shapes "is-even" through the contracted-deadline driver with stdin:
       """
       Add calc.is_even(n).
       """

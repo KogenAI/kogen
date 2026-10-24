@@ -4,7 +4,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { Given, When, Then, Before, After, AfterAll } = require('@cucumber/cucumber');
+const H = require('./go_driver_support.js');
 const REPO = path.resolve(__dirname, '../..');
+// The parent acceptance environment names the Node and Cucumber of the running suite; outside a Kogen acceptance run they are this process and the repository's own.
+const PARENT_NODE = process.env.KOGEN_NODE || process.execPath, PARENT_CUCUMBER = process.env.KOGEN_CUCUMBER || path.join(REPO, 'test/acceptance/node_modules');
 function run(program, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(program, args, { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -38,7 +41,11 @@ if (process.env.KOGEN_RESUME_CHILD === '1') {
     const mode = process.env.KOGEN_RESUME_MODE;
     await this.createProject('notes'); await dispatch(this, '^the caller is signed in to ChatGPT$', []);
     put(this, '.gitignore', '.kogen/local/\n'); put(this, 'app.txt', 'baseline\n');
-    put(this, 'validate.cjs', "const fs=require('node:fs'); fs.mkdirSync('.kogen/local',{recursive:true}); const s=fs.readFileSync('app.txt','utf8').trim(); fs.appendFileSync('.kogen/local/checks',s+'\\n'); process.exit(s==='broken'?1:0);\n");
+    // Checks run in a clean copy of the candidate, so the check keeps its record outside the checkout. Acceptance runs
+    // before the checks and a failed acceptance stops the pass, so the acceptance step also accepts the repair that the
+    // check itself rejects (`broken`); the check then runs on every candidate state.
+    this.checkLog = path.join(this.workspace, 'check-log');
+    put(this, 'validate.cjs', "const fs=require('node:fs'); const s=fs.readFileSync('app.txt','utf8').trim(); fs.appendFileSync(" + JSON.stringify(this.checkLog) + ",s+'\\n'); process.exit(s==='broken'?1:0);\n");
     put(this, '.kogen/project.yaml', `version: 1
 commands:
   setup: []
@@ -77,7 +84,7 @@ Replace baseline text with builder preserved; the reviewer may repair it to revi
 - none
 `);
     put(this, `${dir}/acceptance.feature`, 'Feature: Candidate\n  Scenario: Candidate implementation\n    Then the fixture candidate is implemented\n');
-    put(this, 'features/steps/app_steps.js', "const {Then}=require('@cucumber/cucumber'); const fs=require('node:fs'); const assert=require('node:assert/strict'); Then('the fixture candidate is implemented',()=>assert.match(fs.readFileSync('app.txt','utf8'),/^(builder preserved|reviewer repaired)\\n$/));\n");
+    put(this, 'features/steps/app_steps.js', "const {Then}=require('@cucumber/cucumber'); const fs=require('node:fs'); const assert=require('node:assert/strict'); Then('the fixture candidate is implemented',()=>assert.match(fs.readFileSync('app.txt','utf8'),/^(builder preserved|reviewer repaired|broken)\\n$/));\n");
     const card = await this.invoke(`kogen intent approve ${slug}`); assert.equal(card.code, 5, card.stdout + card.stderr);
     assert.match(card.stdout, /Candidate implementation \(fails now\)/, 'readiness must report real missing-feature red');
     const hash = card.stdout.match(/^SHA-256: ([a-f0-9]{64})$/m)?.[1]; assert.ok(hash, card.stdout);
@@ -120,7 +127,7 @@ Replace baseline text with builder preserved; the reviewer may repair it to revi
       if (['interrupt', 'crash'].includes(mode)) await this.server.waitReached('resume-request');
       else await waitFile(path.join(this.project, '.kogen/local', mode === 'uncertain-tool' ? 'inside-tool' : 'inside-commit'));
       if (mode === 'interrupt') this.sendSignal(first, 'SIGINT');
-      else { await waitFile(this.corePidFile); const pids = fs.readFileSync(this.corePidFile, 'utf8').trim().split(/\s+/).map(Number); process.kill(-pids.at(-1), 'SIGKILL'); }
+      else process.kill(-first.child.pid, 'SIGKILL'); // the one program and everything it started stop at once
       await this.waitFor(first);
     }
     if (mode === 'landed') assert.equal(first.code, 0, first.stdout + first.stderr); else assert.notEqual(first.code, 0, 'fixture must actually stop');
@@ -166,7 +173,7 @@ Replace baseline text with builder preserved; the reviewer may repair it to revi
       commitCount, signed, finalContents, historyPreserved,
       cumulativeUsage: results.some(r => r.outcome === 'landed' && r.usage?.input === known * 100 && r.usage?.output === known * 20),
       secretsAbsent: !/KOGEN_ACCEPTANCE_(?:FAKE_ACCESS_TOKEN|FAKE_REFRESH_TOKEN|ROTATED_REFRESH_TOKEN)/.test(allLocal) && !/"authorization"\s*:/i.test(allLocal),
-      checkContents: fs.readFileSync(path.join(this.project, '.kogen/local/checks'), 'utf8').trim().split('\n'), hooksRan: fs.existsSync(path.join(this.project, '.kogen/local/hooks')),
+      checkContents: fs.readFileSync(this.checkLog, 'utf8').trim().split('\n'), hooksRan: fs.existsSync(path.join(this.project, '.kogen/local/hooks')),
       lineageVisible: text.includes(id) && /resum/i.test(text) && /resum/.test(allLocal),
       refused: expectedRefusal && rejected, untouched: unchanged, noModelOnRefusal: resumedRequests.length === 0,
       actionable: diagnostic && (mode === 'live-lock' ? /pid|running/i.test(text) : /checkpoint|approval|baseline|HEAD|index|staged|checkout|unrelated|candidate|legacy|unsupported/i.test(text)),
@@ -181,19 +188,8 @@ Replace baseline text with builder preserved; the reviewer may repair it to revi
   let installation, installRoot;
   async function candidate() {
     if (!installation) installation = (async () => {
-      installRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-resume-candidate-'));
-      // Package changed worktree now: never latestArchive or the driving CLI.
-      const packed = await run('/bin/sh', ['packaging/package.sh'], { cwd: REPO, env: { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' } });
-      assert.equal(packed.code, 0, packed.stdout + packed.stderr);
-      const archive = packed.stdout.trim().split('\n').at(-1); assert.ok(path.isAbsolute(archive) && fs.existsSync(archive), packed.stdout);
-      const extract = path.join(installRoot, 'extract'); fs.mkdirSync(extract);
-      const unpacked = await run('tar', ['-xzf', archive, '-C', extract]); assert.equal(unpacked.code, 0, unpacked.stderr);
-      const entries = fs.readdirSync(extract); assert.equal(entries.length, 1); const prefix = path.join(installRoot, 'prefix');
-      const installed = await run('/bin/sh', [path.join(extract, entries[0], 'install.sh'), '--prefix', prefix], { env: { ...process.env, HOME: installRoot } }); assert.equal(installed.code, 0, installed.stdout + installed.stderr);
-      // Existing acceptance-style PID instrumentation executes the real core unchanged.
-      const core = path.join(prefix, 'lib/kogen/lib/release/bin/kogen'), real = core + '.resume-real'; fs.renameSync(core, real);
-      const quote = s => "'" + s.replaceAll("'", "'\\''") + "'";
-      fs.writeFileSync(core, '#!/bin/sh\nprintf "%s\\n" "$$" >> "$KOGEN_CORE_PID_FILE"\nexport RELEASE_PROG=kogen\nexec ' + quote(real) + ' "$@"\n', { mode: 0o755 });
+      // The installed candidate: the one Go program, packaged from the changed worktree (KOGEN_ARCHIVE may name a package).
+      const suite = await H.setupSuite(); installRoot = suite.root; const prefix = suite.prefix;
       return prefix;
     })(); return installation;
   }
@@ -201,14 +197,13 @@ Replace baseline text with builder preserved; the reviewer may repair it to revi
   When('I qualify native Build resume in mode {string}', { timeout: 300000 }, async function (mode) {
     const prefix = await candidate(), temp = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-resume-harness-'));
     try {
-      assert.ok(process.env.KOGEN_CUCUMBER && process.env.KOGEN_NODE, 'use the real installed parent acceptance environment');
       const support = path.join(temp, 'test/acceptance/support'); fs.mkdirSync(support, { recursive: true });
       for (const name of ['world.js', 'fake-servers.js', 'handlers.js']) fs.copyFileSync(path.join(REPO, 'test/acceptance/support', name), path.join(support, name));
       fs.symlinkSync(path.join(REPO, 'test/acceptance/fixtures'), path.join(temp, 'test/acceptance/fixtures'), 'dir');
-      fs.symlinkSync(process.env.KOGEN_CUCUMBER, path.join(temp, 'test/acceptance/node_modules'), 'dir');
+      fs.symlinkSync(PARENT_CUCUMBER, path.join(temp, 'test/acceptance/node_modules'), 'dir');
       const feature = path.join(temp, 'exercise.feature'), receipt = path.join(temp, 'receipt.json');
       fs.writeFileSync(feature, 'Feature: Installed native resume\n  Scenario: Exercise\n    Given the native resume fixture has run\n    Then the native resume fixture records observations\n');
-      const child = await run(process.env.KOGEN_NODE, [path.join(process.env.KOGEN_CUCUMBER, '@cucumber/cucumber/bin/cucumber.js'), '--strict', '--require', __filename, '--format', 'progress', feature], { cwd: REPO, env: { ...process.env, NODE_PATH: process.env.KOGEN_CUCUMBER, KOGEN_RESUME_CHILD: '1', KOGEN_RESUME_SUPPORT: support, KOGEN_RESUME_PREFIX: prefix, KOGEN_RESUME_MODE: mode, KOGEN_RESUME_RECEIPT: receipt } });
+      const child = await run(PARENT_NODE, [path.join(PARENT_CUCUMBER, '@cucumber/cucumber/bin/cucumber.js'), '--strict', '--require', __filename, '--format', 'progress', feature], { cwd: REPO, env: { ...process.env, NODE_PATH: PARENT_CUCUMBER, KOGEN_RESUME_CHILD: '1', KOGEN_RESUME_SUPPORT: support, KOGEN_RESUME_PREFIX: prefix, KOGEN_RESUME_MODE: mode, KOGEN_RESUME_RECEIPT: receipt } });
       assert.equal(child.code, 0, child.stdout + child.stderr); this.resumeReceipt = JSON.parse(fs.readFileSync(receipt, 'utf8'));
     } finally { fs.rmSync(temp, { recursive: true, force: true }); }
   });

@@ -1,11 +1,22 @@
+'use strict';
+// Native Review and Refine working room, observed on the installed Go candidate (the one `kogen` program) with a scripted
+// local provider (FakeProvider from go_driver_support). What has no user-visible form (how a received item is replayed,
+// what a production tool delivers to the model, how the complete rendered request is measured) is observed through the
+// Go driver at test/migration/drivers/review_refine_working_room, which imports kogen/agent and kogen/provider.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawn, spawnSync } = require('node:child_process');
-const ROOT = path.resolve(__dirname, '../..');
+const { spawnSync } = require('node:child_process');
+const H = require('./go_driver_support.js');
+const { fn: f } = H;
 const same = (a, b) => { try { assert.deepEqual(a, b); return true; } catch { return false; } };
+const sha = x => crypto.createHash('sha256').update(x).digest('hex');
+const DRIVER = 'review_refine_working_room';
+
+// ------------------------------------------------------------------ the replay observer
+
 function replayCustody(d) {
   if (!d || !d.expected.length || !d.files.length) return false;
   const windows = [];
@@ -29,26 +40,58 @@ function replayCustody(d) {
   if (!same(seen.filter(id => wanted.includes(id)), wanted)) return false;
   return d.expected.every(g => windows.some(w => w.some((_, n) => same(w.slice(n, n + g.length), g))));
 }
-const control = String.raw`
-r = Kogen.tmp_path("working-room-control")
-File.mkdir_p!(r); File.chmod!(r,0o700)
-try do
- File.write!(Path.join(r,"literal.txt"),"  Δ🙂\r\n/path with spaces/診断.txt\n  ")
- calls=for n <- 1..2, do: %{"type"=>"function_call","id"=>"fc#{n}","call_id"=>"c#{n}","name"=>"read_file","arguments"=>JSON.encode!(%{"path"=>"literal.txt"})}
- items=[%{"type"=>"reasoning","id"=>"r","encrypted_content"=>"opaque+/==\nDo not decode Δ","summary"=>[]},%{"type"=>"message","id"=>"m","role"=>"assistant","phase"=>"commentary","content"=>[%{"type"=>"output_text","text"=>"Unfinished native observation"}]}]++calls
- group=Enum.map(items,&Kogen.Shape.replay_item/1)++Enum.map(calls,fn c -> Kogen.Shape.output(c,Kogen.Tools.run(c["name"],JSON.decode!(c["arguments"]),%{root: r,protected: [],tools: ["read_file"]})) end)
- bytes=JSON.encode!(%{version: 1,owner: "refine",input: group,previous: nil})<>"\n"
- p=Path.join(r,"1.json"); File.write!(p,bytes); File.chmod!(p,0o600)
- File.write!(System.fetch_env!("ROOM_RECEIPT"),JSON.encode!(%{requests: [],expected: [group],files: [%{bytes: Base.encode64(File.read!(p)),sha256: Kogen.WorkingContext.hash(bytes),mode: Bitwise.band(File.stat!(p).mode,0o777),dir_mode: Bitwise.band(File.stat!(r).mode,0o777)}]}))
-after File.rm_rf!(r) end
-`;
-if (require.main === module && process.argv[2] === '--control') {
+
+// ------------------------------------------------------------------ the Go driver
+
+async function driver() { return H.driverProgram(DRIVER); }
+// The replayed form of each item (null where the item is not replayed): agent.ReplayItem.
+async function replayAll(items) {
+  const run = await driver();
+  const r = await run(['replay'], { input: JSON.stringify(items) });
+  assert.equal(r.code, 0, r.out);
+  return JSON.parse(r.out);
+}
+// What the model receives for one production tool call in root: the tool's result through the shared bounded delivery.
+async function delivered(root, name, args) {
+  const run = await driver();
+  const r = await run(['tool', root, name, JSON.stringify(args)]);
+  assert.equal(r.code, 0, r.out);
+  return r.out;
+}
+// A Go toolchain for the standalone controls (`node ... --control`), which run outside `mise exec`.
+function ensureGo() {
+  if (spawnSync('go', ['version'], { encoding: 'utf8' }).status === 0) return;
+  const r = spawnSync('mise', ['which', 'go'], { encoding: 'utf8' });
+  if (r.status === 0) process.env.PATH = [path.dirname(r.stdout.trim()), process.env.PATH].join(path.delimiter);
+}
+
+// The known-good receipt of the observer: one unfinished native exchange (opaque reasoning, a commentary message and two
+// read calls that answer with the delivered result of the production read_file), replayed through the production
+// functions and held as a private version-1 history file.
+async function controlReceipt() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'working-room-control-'));
   try {
-    const file = path.join(dir, 'control.exs'), receipt = path.join(dir, 'receipt.json'); fs.writeFileSync(file, control);
-    const r = spawnSync('mix', ['run', file], { cwd: ROOT, env: { ...process.env, ROOM_RECEIPT: receipt }, encoding: 'utf8', timeout: 60000 });
-    if (r.status !== 0) throw new Error(r.stdout + r.stderr);
-    const good = JSON.parse(fs.readFileSync(receipt, 'utf8')); assert.equal(replayCustody(good), true);
+    fs.chmodSync(dir, 0o700);
+    fs.writeFileSync(path.join(dir, 'literal.txt'), '  Δ🙂\r\n/path with spaces/診断.txt\n  ');
+    const calls = [1, 2].map(n => ({ type: 'function_call', id: `fc${n}`, call_id: `c${n}`, name: 'read_file', arguments: JSON.stringify({ path: 'literal.txt' }) }));
+    const items = [
+      { type: 'reasoning', id: 'r', encrypted_content: 'opaque+/==\nDo not decode Δ', summary: [] },
+      { type: 'message', id: 'm', role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text: 'Unfinished native observation' }] },
+      ...calls,
+    ];
+    const text = await delivered(dir, 'read_file', { path: 'literal.txt' });
+    const group = [...(await replayAll(items)), ...calls.map(c => H.outputItem(c, text))];
+    const bytes = JSON.stringify({ version: 1, owner: 'refine', input: group, previous: null }) + '\n';
+    const file = path.join(dir, '1.json');
+    fs.writeFileSync(file, bytes); fs.chmodSync(file, 0o600);
+    return { requests: [], expected: [group], files: [{ bytes: Buffer.from(fs.readFileSync(file)).toString('base64'), sha256: sha(bytes), mode: fs.statSync(file).mode & 0o777, dir_mode: fs.statSync(dir).mode & 0o777 }] };
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+if (require.main === module && process.argv[2] === '--control') {
+  (async () => {
+    ensureGo();
+    const good = await controlReceipt(); assert.equal(replayCustody(good), true);
     if (process.argv[3] === 'good') process.stdout.write('accepted\n');
     else if (process.argv[3] === 'bad') {
       const rewrite = (d, edit) => { const doc = JSON.parse(Buffer.from(d.files[0].bytes, 'base64')); edit(doc.input); d.files[0].bytes = Buffer.from(JSON.stringify(doc)).toString('base64'); d.files[0].sha256 = crypto.createHash('sha256').update(Buffer.from(d.files[0].bytes, 'base64')).digest('hex'); };
@@ -57,231 +100,264 @@ if (require.main === module && process.argv[2] === '--control') {
       }
       process.stdout.write('rejected\n'); process.exitCode = 1;
     } else throw new Error('unknown control');
-  } catch (e) { process.stderr.write(String(e) + '\n'); process.exitCode = 2; }
-  finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  })().catch(e => { process.stderr.write(String(e && e.stack || e) + '\n'); process.exitCode = 2; });
 } else {
-  const { Given, When, Then, AfterAll } = require('@cucumber/cucumber');
-  let work, archivePromise;
-  function run(file, args, options = {}) {
-    return new Promise((resolve, reject) => {
-      const child = spawn(file, args, { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); let out = '';
-      child.stdout.on('data', b => { out += b; }); child.stderr.on('data', b => { out += b; });
-      const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }, 240000);
-      child.on('error', e => { clearTimeout(timer); reject(e); }); child.on('close', code => { clearTimeout(timer); resolve({ code, out }); });
+  const { Given, When, Then } = require('@cucumber/cucumber');
+
+  // ---------------------------------------------------------------- the exercise (the old WorkingRoomExercise)
+
+  // Replace the answers not yet consumed. A retried request may have advanced the cursor past the end of the script
+  // (the transport's default refusal); the appended answers then start right after the retained prefix.
+  function script(c, actions) { const s = c.server; s.next = Math.min(s.next, s.script.length); s.setScript(actions); }
+  function put(c, p, bytes) { const full = path.join(c.repo, p); fs.mkdirSync(path.dirname(full), { recursive: true }); fs.writeFileSync(full, bytes); }
+  const git = async (c, args) => H.git(c, args);
+  const readOrNull = p => { try { return fs.readFileSync(p); } catch { return null; } };
+  const package_ = c => Object.fromEntries([H.intentMd('fixture'), H.featurePath('fixture'), 'features/steps/integration_steps.js'].map(p => [p, fs.readFileSync(path.join(c.repo, p), 'utf8')]));
+  async function custody(c) {
+    return { head: await git(c, ['rev-parse', 'HEAD']), index: fs.readFileSync(path.join(c.repo, '.git/index')), approval: readOrNull(H.approvalPath(c.repo, 'fixture')), package: package_(c) };
+  }
+  const lines = p => { const b = readOrNull(p); return b ? b.toString('utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : []; };
+  const events = c => H.wildcard(path.join(c.repo, '.kogen/local/refinements/*/events.ndjson')).flatMap(lines);
+  // The ordered history files a run keeps: the Review's checkpoint (the Go engine's version 4 keeps its state as JSON)
+  // and the archives named by refinement events.
+  function refs(c) {
+    const cp = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/checkpoint.json')).flatMap(p => {
+      try { const d = JSON.parse(fs.readFileSync(p, 'utf8')); return d.version === 4 && d.state ? ((d.state.working_context || {}).review || {}).history || [] : []; } catch { return []; }
+    });
+    const es = events(c).filter(e => e.archive && typeof e.archive === 'object').map(e => e.archive);
+    const seen = new Set();
+    return [...cp, ...es].filter(r => { if (seen.has(r.path)) return false; seen.add(r.path); return true; });
+  }
+  const files = rs => rs.flatMap(ref => {
+    const b = readOrNull(ref.path);
+    if (!b) return [];
+    return [{ path: ref.path, bytes: b.toString('base64'), sha256: ref.sha256, mode: fs.statSync(ref.path).mode & 0o777, dir_mode: fs.statSync(path.dirname(ref.path)).mode & 0o777 }];
+  });
+  // Unfinished native exchanges with growing tool results: the scripted answers and the exact replay each must leave.
+  async function growth(c, spec, owner, range) {
+    const result = await delivered(c.repo, 'read_file', { path: 'pad.txt' });
+    const groups = [];
+    for (const n of range) {
+      const calls = Array.from({ length: spec.read_batch }, (_, j) => ({ type: 'function_call', id: `fc-${owner}-${n}-${j + 1}`, call_id: `call-${owner}-${n}-${j + 1}`, name: 'read_file', arguments: JSON.stringify({ path: 'pad.txt' }) }));
+      const items = [
+        { type: 'reasoning', id: `rs-${owner}-${n}`, encrypted_content: spec.opaque + String(n), summary: [] },
+        { type: 'message', id: `m-${owner}-${n}`, role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text: `Unfinished ${owner} observation ${n}; unresolved findings and exact authority remain, not a new approval.` }] },
+        ...calls,
+      ];
+      groups.push({ items, calls, result });
+    }
+    const replayed = await replayAll(groups.flatMap(g => g.items));
+    let at = 0;
+    return groups.map(g => {
+      const mine = replayed.slice(at, at += g.items.length);
+      return { action: { items: g.items }, expected: [...mine, ...g.calls.map(call => H.outputItem(call, g.result))] };
     });
   }
-  const driver = String.raw`
-ExUnit.start(autorun: false)
-Code.require_file("test/support/integration_helpers.ex")
-defmodule WorkingRoomExercise do
- alias Kogen.Integration.{Helpers,FakeProvider}
- alias Kogen.{Config,Intent,Shape,Tools,WorkingContext,Run}
- def f(n,a), do: {:function,n,a}
- def script(c,actions), do: Agent.update(c.server.state,fn s -> %{s|script: Enum.take(s.script,s.next)++actions,next: min(s.next,length(s.script))} end)
- def put(c,p,b) do
-  p=Path.join(c.repo,p); File.mkdir_p!(Path.dirname(p)); File.write!(p,b)
- end
- def git(c,a) do
-  {o,0}=Helpers.git!(c,a); String.trim(o)
- end
- def sha(c), do: Intent.hash(c.repo,Intent.baseline(c.repo,"fixture",Config.load!(c.repo)))
- def approve(c) do
-  {o,0}=Helpers.run_kogen(c,["intent","approve","fixture",sha(c)]); o
- end
- def package(c), do: Map.new([Intent.intent_md("fixture"),Intent.feature("fixture"),"features/steps/integration_steps.js"],&{&1,File.read!(Path.join(c.repo,&1))})
- def custody(c), do: %{head: git(c,["rev-parse","HEAD"]),index: File.read!(Path.join(c.repo,".git/index")),approval: File.read(Intent.approval_path(c.repo,"fixture")),package: package(c)}
- def lines(p) do
-  case File.read(p) do {:ok,b}->String.split(b,"\n",trim: true)|>Enum.map(&JSON.decode!/1); _->[] end
- end
- def events(c), do: Path.wildcard(Path.join(c.repo,".kogen/local/refinements/*/events.ndjson")) |> Enum.flat_map(&lines/1)
- def refs(c) do
-  cp=Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/checkpoint.json")) |> Enum.flat_map(fn p ->
-   case Run.decode_checkpoint(File.read!(p)) do {:ok,_,b}->get_in(b.working_context,["review",:history])||[]; _->[] end
-  end)
-  es=for e <- events(c),is_map(e["archive"]),do: e["archive"]
-  Enum.uniq_by(cp++es,& &1["path"])
- end
- def files(rs) do
-  Enum.flat_map(rs,fn ref ->
-   case File.read(ref["path"]) do
-    {:ok,b}->[%{path: ref["path"],bytes: Base.encode64(b),sha256: ref["sha256"],mode: Bitwise.band(File.stat!(ref["path"]).mode,0o777),dir_mode: Bitwise.band(File.stat!(Path.dirname(ref["path"])).mode,0o777)}]
-    _->[]
-   end
-  end)
- end
- def growth(c,spec,owner,range) do
-  Enum.map(range,fn n ->
-   calls=for j <- 1..spec["read_batch"], do: %{"type"=>"function_call","id"=>"fc-#{owner}-#{n}-#{j}","call_id"=>"call-#{owner}-#{n}-#{j}","name"=>"read_file","arguments"=>JSON.encode!(%{"path"=>"pad.txt"})}
-   items=[%{"type"=>"reasoning","id"=>"rs-#{owner}-#{n}","encrypted_content"=>spec["opaque"]<>Integer.to_string(n),"summary"=>[]},%{"type"=>"message","id"=>"m-#{owner}-#{n}","role"=>"assistant","phase"=>"commentary","content"=>[%{"type"=>"output_text","text"=>"Unfinished #{owner} observation #{n}; unresolved findings and exact authority remain, not a new approval."}]}]++calls
-   expected=Enum.map(items,&Shape.replay_item/1)++Enum.map(calls,fn call ->
-    result=Tools.run("read_file",JSON.decode!(call["arguments"]),%{root: c.repo,protected: [],tools: ["read_file"]})
-    Shape.output(call,if(owner=="refine",do: result,else: Tools.cut(result)))
-   end)
-   {{:items,items},expected}
-  end)
- end
- def wait(port,out \\ "") do
-  receive do
-   {:provider_paused,pid}->{:paused,pid,out}
-   {^port,{:data,b}}->wait(port,out<>b)
-   {^port,{:exit_status,k}}->{:done,k,out}
-  after 25000 -> raise("fixture timed out before paused provider") end
- end
- def damage(p,mode,c) do
-  cond do
-   String.ends_with?(mode,"missing")->File.rm!(p)
-   String.ends_with?(mode,"symlink")->b=File.read!(p); q=Path.join(c.root,"replacement.json"); File.write!(q,b); File.rm!(p); File.ln_s!(q,p)
-   String.ends_with?(mode,"mode")->File.chmod!(p,0o644)
-   true->File.write!(p," ",[:append])
-  end
- end
- def bounded(rs,s), do: rs != [] and Enum.all?(rs,&(byte_size(&1.body)<=s["budget"]))
- def authority(rs,phase \\ :refine) do
-  stable=fn r ->
-   case Enum.find(r.json["input"],&(&1["role"]=="user")) do
-    %{"content"=>[first|_]} when phase==:review -> first
-    message -> message
-   end
-  end
-  case rs do
-   [r|_]->a=stable.(r); a != nil and Enum.all?(rs,&(stable.(&1)==a))
-   _->false
-  end
- end
- def output_text(rs), do: for(r<-rs,i<-r.json["input"],i["type"]=="function_call_output",is_binary(i["output"]),do: i["output"]) |> Enum.join("\n")
- def count_trace(p) do
-  case File.read(p) do {:ok,b}->length(String.split(b,"\n",trim: true)); _->0 end
- end
- def main do
-  input=JSON.decode!(File.read!(System.fetch_env!("ROOM_INPUT"))); s=input["spec"]; packet=input["packet"]; mode=System.fetch_env!("ROOM_MODE")
-  result=if mode=="measure" do
-   role=%{model: "fixture",effort: "high"}
-   base=Kogen.ChatGPT.request_body(role,"policy",[%{"role"=>"user","content"=>s["literal"]}],[])
-   body=fn n -> empty=Map.put(base,"padding",""); Map.put(empty,"padding",String.duplicate("x",n-byte_size(JSON.encode!(empty)))) end
-   bs=Enum.map([s["budget"]-1,s["budget"],s["budget"]+1],body)
-   ms=Enum.map(bs,&WorkingContext.measure/1)
-   %{bytes: Enum.map(ms,& &1.rendered_bytes),fits: Enum.map(ms,& &1.fits),reserve: Enum.map(ms,& &1.output_reserve_tokens),complete_rendered: Enum.zip(bs,ms)|>Enum.all?(fn {b,m}->byte_size(JSON.encode!(b))==m.rendered_bytes end)}
-  else
-   suite=Helpers.setup_suite!()
-   try do
-    c=Helpers.project!(suite,[],staged_intent: false)
-    try do
-     put(c,"pad.txt",String.duplicate("p",s["read_bytes"]))
-     if String.starts_with?(mode,"review"),do: review(c,s,packet,mode),else: refine(c,s,packet,mode)
-    after Helpers.cleanup_case(c) end
-   after Helpers.cleanup_suite(suite) end
-  end
-  File.write!(System.fetch_env!("ROOM_RECEIPT"),JSON.encode!(result))
- end
- def review(c,s,packet,mode) do
-  put(c,"README.md","# Fixture project\n"<>String.duplicate("r",s["review_readme_bytes"])<>"\n")
-  put(c,"docs/development.md",String.duplicate("d",s["review_docs_bytes"])<>"\n")
-  put(c,"seed-knowledge.txt",String.duplicate("k",s["review_added_bytes"])<>"\n")
-  git(c,["add","README.md","docs/development.md","seed-knowledge.txt","pad.txt"]); git(c,["commit","-qm","Seed maintained documents"])
-  p=Intent.intent_md("fixture"); put(c,p,File.read!(Path.join(c.repo,p))<>"\nReported source packet (diagnostic, no migration scope):\n"<>packet<>"\nExact literal:\n"<>s["literal"])
-  approve(c); before=custody(c)
-  edit="printf '\\nreview-edit\\n' >> README.md; printf '\\nreview-edit\\n' >> docs/development.md; cp seed-knowledge.txt knowledge_live.ex"
-  script(c,[f("shell",%{"command"=>edit}),f("finish",%{"summary"=>"builder-only-sentinel; candidate complete"}),{:http,503,%{"error"=>%{"message"=>"local scripted overload","code"=>"server_error"}}}])
-  {out,k}=Helpers.run_kogen(c,["intent","build","fixture"])
-  [cp]=Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/checkpoint.json")); id=Path.basename(Path.dirname(cp)); old_result=File.read!(Path.join(Path.dirname(cp),"result.json"))
-  first=List.last(FakeProvider.review_requests(c.server))
-  inline=first != nil and byte_size(first.body)<=s["budget"] and String.contains?(FakeProvider.input_text(first),"# Full text of every changed or added file") and not String.contains?(FakeProvider.input_text(first),"# Pinned complete candidate source evidence")
-  groups=growth(c,s,"review",1..8)
-  script(c,Enum.map(groups,&elem(&1,0))++[{:pause,self(),f("read_file",%{"path"=>"pad.txt"})}])
-  n=length(FakeProvider.provider_requests(c.server)); port=Helpers.start_kogen(c,["intent","resume",id])
-  {resume,code,delivered,damage_count}=case wait(port) do
-   {:done,k,o}->{o,k,false,nil}
-   {:paused,pid,o}->
-    rs=refs(c)
-    if mode=="review-damage" do
-     target=Enum.find(rs,&String.contains?(&1["path"],"working-context")) || List.first(rs)
-     if target,do: damage(target["path"],mode,c)
-     count=length(FakeProvider.provider_requests(c.server)); send(pid,:continue); {tail,k}=Helpers.await_exit(port,"",30000); {o<>tail,k,false,count}
-    else
-     parts=Enum.filter(rs,fn r -> case JSON.decode(File.read!(r["path"])) do {:ok,d}->is_map(d["review_source"]); _->false end end)
-     reads=Enum.map(parts,&f("read_file",%{"path"=>&1["path"]}))
-     script(c,reads++[f("write_file",%{"path"=>"app.txt","content"=>"reviewer repaired\n"}),f("submit_review",%{"verdict"=>"approve","findings"=>[]})])
-     send(pid,:continue); {tail,k}=Helpers.await_exit(port,"",40000)
-     rr=FakeProvider.review_requests(c.server)
-     original_source=Enum.find(first.json["input"],&(&1["role"]=="user"))["content"] |> Enum.at(1) |> Map.fetch!("text")
-     recovered=Enum.map_join(parts,fn ref -> JSON.decode!(File.read!(ref["path"]))["review_source"]["text"] end)
-     delivered=parts != [] and recovered==original_source and Enum.all?(parts,fn ref -> expected="1\t"<>String.trim_trailing(File.read!(ref["path"]),"\n"); Enum.any?(rr,fn r -> Enum.any?(r.json["input"],&(&1["type"]=="function_call_output" and &1["output"]==expected)) end) end)
-     {o<>tail,k,delivered,nil}
-    end
-  end
-  rr=FakeProvider.review_requests(c.server); resumed=Enum.drop(FakeProvider.provider_requests(c.server),n); after_state=custody(c)
-  result=%{initial_inline_fit: inline,resumed_saved_review: k != 0 and first != nil and resumed != [] and hd(resumed).json["input"]==first.json["input"],success: code==0,source_relocated: Enum.any?(refs(c),&String.contains?(&1["path"],"review-source")),all_source_delivered: delivered,authority_exact: authority(rr,:review),bounded: bounded(rr,s),independent: rr != [] and Enum.all?(rr,fn r -> not String.contains?(JSON.encode!(r.json["input"]),"builder-only-sentinel") end),old_result_unchanged: File.read!(Path.join(Path.dirname(cp),"result.json"))==old_result,one_commit: git(c,["rev-list","--count",before.head<>"..HEAD"])=="1",final_repair_verified: code==0 and File.read!(Path.join(c.repo,"app.txt"))=="reviewer repaired\n" and Enum.any?(Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/result.json")),fn p -> d=JSON.decode!(File.read!(p)); d["outcome"]=="landed" and d["passes"]>=2 and d["reviews"]==1 end),custody_refused: code != 0 and Regex.match?(~r/custody|resume_refused/,resume),no_inference_after_damage: damage_count != nil and length(FakeProvider.provider_requests(c.server))==damage_count,no_commit: after_state.head==before.head,approval_unchanged: after_state.approval==before.approval,output: out<>resume}
-  if mode=="review-resume",do: Map.put(result,:replay,%{files: files(refs(c)),requests: Enum.map(rr,& &1.json["input"]),expected: Enum.map(groups,&elem(&1,1))}),else: result
- end
- def refine(c,s,packet,mode) do
-  put(c,"README.md","# Fixture project\n"<>String.duplicate("R",s["refine_readme_bytes"])<>"\n"<>s["literal"])
-  trace=Path.join(c.root,"readiness-count")
-  config=Config.load!(c.repo)
-  command="if grep -q 'Scenario:' \"$KOGEN_ACCEPTANCE_FEATURES\"; then printf 'run\\n' >> '#{trace}'; fi; "<>config.acceptance_run
-  put(c,Config.path(),Config.render(%{setup: [],fix: [],checks: [],protect: config.protect,acceptance: %{run: command,steps_dir: config.steps_dir}}))
-  git(c,["add","README.md","pad.txt",Config.path()]); git(c,["commit","-qm","Seed Refine authority and readiness trace"])
-  approve(c); before=custody(c); before_trace=count_trace(trace)
-  md=Intent.intent_md("fixture"); ft=Intent.feature("fixture"); js="features/steps/integration_steps.js"
-  bad=before.package[md]<>"\n## Decisions\n- Keep retained correction.\n"
-  good=String.replace(bad,"- Keep retained correction.","- Keep retained correction. (source: request)")
-  feature=String.replace(before.package[ft],"Feature: Integration fixture","Feature: Retained native correction")
-  step=String.replace(before.package[js],"if (!this.fixtureAvailable)","throw new Error('working-room legitimate product red');\n  if (!this.fixtureAvailable)")
-  submit=fn fs -> f("submit_refinement",%{"files"=>fs}) end
-  proposed=submit.([%{"path"=>md,"content"=>bad},%{"path"=>ft,"content"=>feature},%{"path"=>js,"content"=>step}])
-  correction=packet<>"\nKeep exact correction literal:\n"<>s["literal"]<>if(mode=="refine-irreducible",do: String.duplicate("M",600000),else: "")
-  request=Path.join(c.root,"correction.md"); File.write!(request,correction)
-  groups=growth(c,s,"refine",1..s["turns"]); more=growth(c,s,"refine",(s["turns"]+1)..(s["turns"]+8))
-  finish=submit.([%{"path"=>md,"content"=>good}])
-  actions=cond do
-   mode=="refine-irreducible"->[finish]
-   mode=="refine-invalids"->[f("submit_refinement",%{"files"=>[]}),f("submit_refinement",%{"files"=>[]})]++Enum.map(groups,&elem(&1,0))++[f("submit_refinement",%{"files"=>[]}),finish]
-   String.starts_with?(mode,"refine-damage")->[proposed]++Enum.map(groups,&elem(&1,0))++[{:pause,self(),finish}]
-   true->[proposed]++Enum.map(groups,&elem(&1,0))++[submit.([%{"path"=>md,"content"=>"POISON"},%{"path"=>"app.txt","content"=>"unsafe"}]),finish]++Enum.map(more,&elem(&1,0))++[finish]
-  end
-  script(c,actions); n=length(FakeProvider.provider_requests(c.server))
-  {out,k,damage_count}=if String.starts_with?(mode,"refine-damage") do
-   port=Helpers.start_kogen(c,["intent","refine","fixture",sha(c),request])
-   case wait(port) do
-    {:done,k,o}->{o,k,nil}
-    {:paused,pid,o}->target=List.first(refs(c)); if target,do: damage(target["path"],mode,c); count=length(FakeProvider.provider_requests(c.server)); send(pid,:continue); {tail,k}=Helpers.await_exit(port,"",30000); {o<>tail,k,count}
-   end
-  else
-   {o,k}=Helpers.run_kogen(c,["intent","refine","fixture",sha(c),request]); {o,k,nil}
-  end
-  rs=Enum.drop(FakeProvider.provider_requests(c.server),n); es=events(c); resets=Enum.filter(es,&(&1["event"]=="working_context_reset")); after_state=custody(c); text=output_text(rs)
-  stop=Enum.find(es,&(&1["event"]=="working_context_stop"))
-  unsent=if stop && is_map(stop["archive"]) && File.regular?(stop["archive"]["path"]) do
-   ref=stop["archive"]; b=File.read!(ref["path"]); d=JSON.decode!(b)
-   stop["owner"]=="refine" and stop["input_budget_bytes"]==s["budget"] and stop["output_reserve_tokens"]==s["reserve"] and stop["measured_bytes"]>s["budget"] and WorkingContext.hash(b)==ref["sha256"] and Bitwise.band(File.stat!(ref["path"]).mode,0o777)==0o600 and Bitwise.band(File.stat!(Path.dirname(ref["path"])).mode,0o777)==0o700 and String.contains?(JSON.encode!(d["input"]),String.duplicate("M",600000))
-  else false end
-  valid_events=resets != [] and Enum.with_index(resets,1)|>Enum.all?(fn {e,i}->e["owner"]=="refine" and e["generation"]==i and e["before_bytes"]>s["budget"] and e["after_bytes"]<=s["budget"] and e["after_bytes"]<e["before_bytes"] and e["input_budget_bytes"]==s["budget"] and e["output_reserve_tokens"]==s["reserve"] and Enum.any?(rs,&(byte_size(&1.body)==e["after_bytes"])) end)
-  result=%{success: k==0,reset_happened: resets != [],at_least_three_resets: length(resets)>=3,authority_exact: authority(rs),bounded: bounded(rs,s),complete_package: after_state.package==Map.merge(before.package,%{md=>good,ft=>feature,js=>step}),unsafe_not_retained: File.read!(Path.join(c.repo,"app.txt"))=="baseline\n" and not String.contains?(after_state.package[md],"POISON"),red_observed: String.contains?(text,"Readiness observations") and String.contains?(text,"working-room legitimate product red"),one_candidate_readiness: count_trace(trace)-before_trace==1,approval_revoked: not File.exists?(Intent.approval_path(c.repo,"fixture")) and Enum.any?(Path.wildcard(Path.join(c.repo,".kogen/local/refinements/*/revoked-approval.json")),&(File.read!(&1)==elem(before.approval,1))),head_index_unchanged: after_state.head==before.head and after_state.index==before.index,package_unchanged: after_state.package==before.package,approval_unchanged: after_state.approval==before.approval,invalid_limit_preserved: k != 0 and String.contains?(out,"shape/refinement_invalid") and length(rs)==s["turns"]+3,custody_refused: k != 0 and String.contains?(out,"candidate/context_custody_invalid"),no_inference_after_damage: damage_count != nil and length(FakeProvider.provider_requests(c.server))==damage_count,irreducible_refused: k != 0 and String.contains?(out,"candidate/context_budget_exceeded"),no_inference: rs==[],unsent_retained: unsent,actionable_nonresume: String.contains?(out,"working-context") and not String.contains?(out,"kogen intent resume") and Regex.match?(~r/identical|unchanged/i,out),reset_events_valid: valid_events,output: out}
-  if mode=="refine-growth",do: Map.put(result,:replay,%{files: files(refs(c)),requests: Enum.map(rs,& &1.json["input"]),expected: Enum.map(groups++more,&elem(&1,1))}),else: result
- end
-end
-WorkingRoomExercise.main()
-`;
+  // The run is at the scripted pause, or has ended.
+  function either(k, fake, ms = 25000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('fixture timed out before paused provider')), ms);
+      fake.waitPaused(ms).then(p => { clearTimeout(timer); resolve({ paused: p }); }, () => {});
+      k.awaitExit(ms).then(r => { clearTimeout(timer); resolve({ done: r }); }, () => {});
+    });
+  }
+  function damage(p, mode, c) {
+    if (mode.endsWith('missing')) fs.rmSync(p);
+    else if (mode.endsWith('symlink')) { const b = fs.readFileSync(p); const q = path.join(c.root, 'replacement.json'); fs.writeFileSync(q, b); fs.rmSync(p); fs.symlinkSync(q, p); }
+    else if (mode.endsWith('mode')) fs.chmodSync(p, 0o644);
+    else fs.appendFileSync(p, ' ');
+  }
+  const bounded = (rs, s) => rs.length > 0 && rs.every(r => Buffer.byteLength(r.body) <= s.budget);
+  function authority(rs, phase = 'refine') {
+    const stable = r => {
+      const message = r.json.input.find(i => i.role === 'user');
+      return phase === 'review' && message && Array.isArray(message.content) && message.content.length ? message.content[0] : message;
+    };
+    if (!rs.length) return false;
+    const a = stable(rs[0]);
+    return a != null && rs.every(r => same(stable(r), a));
+  }
+  const outputText = rs => rs.flatMap(r => r.json.input.filter(i => i.type === 'function_call_output' && typeof i.output === 'string').map(i => i.output)).join('\n');
+  const countTrace = p => { const b = readOrNull(p); return b ? b.toString('utf8').split('\n').filter(Boolean).length : 0; };
+
+  async function review(c, s, packet, mode) {
+    const fake = c.server;
+    put(c, 'README.md', '# Fixture project\n' + 'r'.repeat(s.review_readme_bytes) + '\n');
+    put(c, 'docs/development.md', 'd'.repeat(s.review_docs_bytes) + '\n');
+    put(c, 'seed-knowledge.txt', 'k'.repeat(s.review_added_bytes) + '\n');
+    await git(c, ['add', 'README.md', 'docs/development.md', 'seed-knowledge.txt', 'pad.txt']); await git(c, ['commit', '-qm', 'Seed maintained documents']);
+    const p = H.intentMd('fixture'); put(c, p, fs.readFileSync(path.join(c.repo, p), 'utf8') + '\nReported source packet (diagnostic, no migration scope):\n' + packet + '\nExact literal:\n' + s.literal);
+    await H.approve(c); const before = await custody(c);
+    const edit = "printf '\\nreview-edit\\n' >> README.md; printf '\\nreview-edit\\n' >> docs/development.md; cp seed-knowledge.txt knowledge_live.ex";
+    script(c, [f('shell', { command: edit }), f('finish', { summary: 'builder-only-sentinel; candidate complete' }), { http: [503, { error: { message: 'local scripted overload', code: 'server_error' } }] }]);
+    const built = await H.runKogen(c, ['intent', 'build', 'fixture']);
+    const cps = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/checkpoint.json'));
+    assert.equal(cps.length, 1, `expected one checkpoint: ${cps}\n${built.out}`);
+    const cp = cps[0], id = path.basename(path.dirname(cp)), oldResult = fs.readFileSync(path.join(path.dirname(cp), 'result.json'));
+    const first = fake.reviewRequests().at(-1);
+    const inline = first != null && Buffer.byteLength(first.body) <= s.budget && H.FakeProvider.inputText(first).includes('# Full text of every changed or added file') && !H.FakeProvider.inputText(first).includes('# Pinned complete candidate source evidence');
+    const groups = await growth(c, s, 'review', Array.from({ length: 8 }, (_, i) => i + 1));
+    script(c, [...groups.map(g => g.action), { pause: f('read_file', { path: 'pad.txt' }) }]);
+    const n = fake.providerRequests().length;
+    const k = H.startKogen(c, ['intent', 'resume', id]);
+    let resume, code, delivered_ = false, damageCount = null;
+    const waited = await either(k, fake);
+    if (waited.done) { resume = waited.done.out; code = waited.done.code; }
+    else {
+      const rs = refs(c);
+      if (mode === 'review-damage') {
+        const target = rs.find(r => r.path.includes('working-context')) || rs[0];
+        if (target) damage(target.path, mode, c);
+        damageCount = fake.providerRequests().length; waited.paused.continue();
+        const r = await k.awaitExit(30000); resume = r.out; code = r.code;
+      } else {
+        const parts = rs.filter(r => { try { const d = JSON.parse(fs.readFileSync(r.path, 'utf8')); return d && typeof d.review_source === 'object' && d.review_source !== null && !Array.isArray(d.review_source); } catch { return false; } });
+        script(c, [...parts.map(r => f('read_file', { path: r.path })), f('write_file', { path: 'app.txt', content: 'reviewer repaired\n' }), f('submit_review', { verdict: 'approve', findings: [] })]);
+        waited.paused.continue();
+        const r = await k.awaitExit(40000); resume = r.out; code = r.code;
+        const rr = fake.reviewRequests();
+        const originalSource = first.json.input.find(i => i.role === 'user').content[1].text;
+        const recovered = parts.map(ref => JSON.parse(fs.readFileSync(ref.path, 'utf8')).review_source.text).join('');
+        delivered_ = parts.length > 0 && recovered === originalSource && parts.every(ref => {
+          const expected = '1\t' + fs.readFileSync(ref.path, 'utf8').replace(/\n+$/, '');
+          return rr.some(q => q.json.input.some(i => i.type === 'function_call_output' && i.output === expected));
+        });
+      }
+    }
+    const rr = fake.reviewRequests(), resumed = fake.providerRequests().slice(n), afterState = await custody(c);
+    const results = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/result.json'));
+    const result = {
+      initial_inline_fit: inline,
+      resumed_saved_review: built.code !== 0 && first != null && resumed.length > 0 && same(resumed[0].json.input, first.json.input),
+      success: code === 0,
+      source_relocated: refs(c).some(r => r.path.includes('review-source')),
+      all_source_delivered: delivered_,
+      authority_exact: authority(rr, 'review'),
+      bounded: bounded(rr, s),
+      independent: rr.length > 0 && rr.every(r => !JSON.stringify(r.json.input).includes('builder-only-sentinel')),
+      old_result_unchanged: fs.readFileSync(path.join(path.dirname(cp), 'result.json')).equals(oldResult),
+      one_commit: (await git(c, ['rev-list', '--count', before.head + '..HEAD'])) === '1',
+      final_repair_verified: code === 0 && fs.readFileSync(path.join(c.repo, 'app.txt'), 'utf8') === 'reviewer repaired\n' && results.some(p => { const d = JSON.parse(fs.readFileSync(p, 'utf8')); return d.outcome === 'landed' && d.passes >= 2 && d.reviews === 1; }),
+      custody_refused: code !== 0 && /custody|resume_refused/.test(resume),
+      no_inference_after_damage: damageCount !== null && fake.providerRequests().length === damageCount,
+      no_commit: afterState.head === before.head,
+      approval_unchanged: same(afterState.approval, before.approval),
+      output: built.out + resume,
+    };
+    if (mode === 'review-resume') result.replay = { files: files(refs(c)), requests: rr.map(r => r.json.input), expected: groups.map(g => g.expected) };
+    return result;
+  }
+
+  async function refine(c, s, packet, mode) {
+    const fake = c.server;
+    put(c, 'README.md', '# Fixture project\n' + 'R'.repeat(s.refine_readme_bytes) + '\n' + s.literal);
+    const trace = path.join(c.root, 'readiness-count');
+    const yaml = fs.readFileSync(path.join(c.repo, '.kogen/project.yaml'), 'utf8');
+    const stepsDir = /steps_dir: '?([^'\n]+)'?/.exec(yaml)[1];
+    const acceptanceRun = /^    run: '((?:[^']|'')*)'$/m.exec(yaml)[1].replaceAll("''", "'");
+    assert.match(yaml, /^protect: \[\]/m);
+    const command = `if grep -q 'Scenario:' "$KOGEN_ACCEPTANCE_FEATURES"; then printf 'run\\n' >> '${trace}'; fi; ` + acceptanceRun;
+    H.configure(c, { setup: [], fix: [], checks: [], protect: [], acceptance: { run: command, stepsDir } });
+    put(c, 'pad.txt', 'p'.repeat(s.read_bytes));
+    await git(c, ['add', 'README.md', 'pad.txt', '.kogen/project.yaml']); await git(c, ['commit', '-qm', 'Seed Refine authority and readiness trace']);
+    const approved = await H.approve(c); const before = await custody(c); const beforeTrace = countTrace(trace);
+    const md = H.intentMd('fixture'), ft = H.featurePath('fixture'), js = 'features/steps/integration_steps.js';
+    const bad = before.package[md] + '\n## Decisions\n- Keep retained correction.\n';
+    const good = bad.replace('- Keep retained correction.', '- Keep retained correction. (source: request)');
+    const feature = before.package[ft].replace('Feature: Integration fixture', 'Feature: Retained native correction');
+    const step = before.package[js].replace('if (!this.fixtureAvailable)', "throw new Error('working-room legitimate product red');\n  if (!this.fixtureAvailable)");
+    const submit = fs_ => f('submit_refinement', { files: fs_ });
+    const proposed = submit([{ path: md, content: bad }, { path: ft, content: feature }, { path: js, content: step }]);
+    const correction = packet + '\nKeep exact correction literal:\n' + s.literal + (mode === 'refine-irreducible' ? 'M'.repeat(600000) : '');
+    const request = path.join(c.root, 'correction.md'); fs.writeFileSync(request, correction);
+    const groups = await growth(c, s, 'refine', Array.from({ length: s.turns }, (_, i) => i + 1));
+    const more = await growth(c, s, 'refine', Array.from({ length: 8 }, (_, i) => s.turns + i + 1));
+    const finish = submit([{ path: md, content: good }]);
+    const acts = gs => gs.map(g => g.action);
+    let actions;
+    if (mode === 'refine-irreducible') actions = [finish];
+    else if (mode === 'refine-invalids') actions = [submit([]), submit([]), ...acts(groups), submit([]), finish];
+    else if (mode.startsWith('refine-damage')) actions = [proposed, ...acts(groups), { pause: finish }];
+    else actions = [proposed, ...acts(groups), submit([{ path: md, content: 'POISON' }, { path: 'app.txt', content: 'unsafe' }]), finish, ...acts(more), finish];
+    script(c, actions);
+    const n = fake.providerRequests().length;
+    let out, k, damageCount = null;
+    if (mode.startsWith('refine-damage')) {
+      const proc = H.startKogen(c, ['intent', 'refine', 'fixture', approved.hash, request]);
+      const waited = await either(proc, fake);
+      if (waited.done) { out = waited.done.out; k = waited.done.code; }
+      else {
+        const target = refs(c)[0]; if (target) damage(target.path, mode, c);
+        damageCount = fake.providerRequests().length; waited.paused.continue();
+        const r = await proc.awaitExit(30000); out = r.out; k = r.code;
+      }
+    } else { const r = await H.runKogen(c, ['intent', 'refine', 'fixture', approved.hash, request]); out = r.out; k = r.code; }
+    const rs = fake.providerRequests().slice(n), es = events(c), resets = es.filter(e => e.event === 'working_context_reset'), afterState = await custody(c), text = outputText(rs);
+    const stop = es.find(e => e.event === 'working_context_stop');
+    let unsent = false;
+    if (stop && stop.archive && typeof stop.archive === 'object' && fs.existsSync(stop.archive.path) && fs.statSync(stop.archive.path).isFile()) {
+      const ref = stop.archive, b = fs.readFileSync(ref.path), d = JSON.parse(b);
+      unsent = stop.owner === 'refine' && stop.input_budget_bytes === s.budget && stop.output_reserve_tokens === s.reserve && stop.measured_bytes > s.budget && sha(b) === ref.sha256 && (fs.statSync(ref.path).mode & 0o777) === 0o600 && (fs.statSync(path.dirname(ref.path)).mode & 0o777) === 0o700 && JSON.stringify(d.input).includes('M'.repeat(600000));
+    }
+    const validEvents = resets.length > 0 && resets.every((e, i) => e.owner === 'refine' && e.generation === i + 1 && e.before_bytes > s.budget && e.after_bytes <= s.budget && e.after_bytes < e.before_bytes && e.input_budget_bytes === s.budget && e.output_reserve_tokens === s.reserve && rs.some(r => Buffer.byteLength(r.body) === e.after_bytes));
+    const revoked = H.wildcard(path.join(c.repo, '.kogen/local/refinements/*/revoked-approval.json'));
+    const result = {
+      success: k === 0,
+      reset_happened: resets.length > 0,
+      at_least_three_resets: resets.length >= 3,
+      authority_exact: authority(rs),
+      bounded: bounded(rs, s),
+      complete_package: same(afterState.package, { ...before.package, [md]: good, [ft]: feature, [js]: step }),
+      unsafe_not_retained: fs.readFileSync(path.join(c.repo, 'app.txt'), 'utf8') === 'baseline\n' && !afterState.package[md].includes('POISON'),
+      red_observed: text.includes('Readiness observations') && text.includes('working-room legitimate product red'),
+      one_candidate_readiness: countTrace(trace) - beforeTrace === 1,
+      approval_revoked: !fs.existsSync(H.approvalPath(c.repo, 'fixture')) && before.approval !== null && revoked.some(p => fs.readFileSync(p).equals(before.approval)),
+      head_index_unchanged: afterState.head === before.head && afterState.index.equals(before.index),
+      package_unchanged: same(afterState.package, before.package),
+      approval_unchanged: same(afterState.approval, before.approval),
+      invalid_limit_preserved: k !== 0 && out.includes('shape/refinement_invalid') && rs.length === s.turns + 3,
+      custody_refused: k !== 0 && out.includes('candidate/context_custody_invalid'),
+      no_inference_after_damage: damageCount !== null && fake.providerRequests().length === damageCount,
+      irreducible_refused: k !== 0 && out.includes('candidate/context_budget_exceeded'),
+      no_inference: rs.length === 0,
+      unsent_retained: unsent,
+      actionable_nonresume: out.includes('working-context') && !out.includes('kogen intent resume') && /identical|unchanged/i.test(out),
+      reset_events_valid: validEvents,
+      output: out,
+    };
+    if (mode === 'refine-growth') result.replay = { files: files(refs(c)), requests: rs.map(r => r.json.input), expected: [...groups, ...more].map(g => g.expected) };
+    return result;
+  }
+
+  async function measure(s) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'working-room-measure-'));
+    try {
+      const spec = path.join(dir, 'spec.json'); fs.writeFileSync(spec, JSON.stringify(s));
+      const run = await driver(); const r = await run(['measure', spec]);
+      assert.equal(r.code, 0, r.out);
+      return JSON.parse(r.out);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  // ---------------------------------------------------------------- the steps
+
   Given('the working-room source packet:', function (packet) { this.roomPacket = packet; });
   Given('the working-room local fixture parameters:', function (json) { this.roomSpec = JSON.parse(json); });
-  AfterAll(function () { if (work) fs.rmSync(work, { recursive: true, force: true }); });
   When('I exercise native working room {string}', { timeout: 300000 }, async function (mode) {
-    if (!archivePromise) archivePromise = (async () => {
-      work = fs.mkdtempSync(path.join(os.tmpdir(), 'native-working-room-'));
-      const r = await run('/bin/sh', ['packaging/package.sh'], { cwd: ROOT }); assert.equal(r.code, 0, r.out);
-      const archive = r.out.split('\n').find(x => x.startsWith('/') && x.endsWith('.tar.gz')); assert.ok(archive && fs.existsSync(archive), r.out); return archive;
-    })();
-    const archive = await archivePromise, dir = fs.mkdtempSync(path.join(work, 'case-'));
-    try {
-      const file = path.join(dir, 'driver.exs'), input = path.join(dir, 'input.json'), receipt = path.join(dir, 'receipt.json');
-      fs.writeFileSync(file, driver); fs.writeFileSync(input, JSON.stringify({ packet: this.roomPacket, spec: this.roomSpec }));
-      const dirs = [];
-      for (const name of ['mix', 'erl', 'go', 'node', 'npm', 'python3']) { const r = await run('mise', ['which', name], { cwd: ROOT }); assert.equal(r.code, 0, r.out); dirs.push(path.dirname(r.out.trim())); }
-      const r = await run('mix', ['run', file], { cwd: ROOT, env: { ...process.env, PATH: [...dirs, process.env.PATH].join(path.delimiter), KOGEN_ARCHIVE: archive, ROOM_MODE: mode, ROOM_INPUT: input, ROOM_RECEIPT: receipt } });
-      assert.equal(r.code, 0, r.out); assert.ok(fs.existsSync(receipt), r.out);
-      const data = JSON.parse(fs.readFileSync(receipt, 'utf8'));
-      if (data.replay) { data.replay_custody = replayCustody(data.replay); delete data.replay; }
-      this.roomResult = data; await this.attach(JSON.stringify(data), 'application/json');
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    let data;
+    if (mode === 'measure') data = await measure(this.roomSpec);
+    else {
+      const suite = await H.setupSuite();
+      try {
+        const c = await H.project(suite, [], { stagedIntent: false });
+        try {
+          put(c, 'pad.txt', 'p'.repeat(this.roomSpec.read_bytes));
+          data = mode.startsWith('review') ? await review(c, this.roomSpec, this.roomPacket, mode) : await refine(c, this.roomSpec, this.roomPacket, mode);
+        } finally { await H.cleanupCase(c); }
+      } finally { H.cleanupSuite(suite); }
+    }
+    if (data.replay) { data.replay_custody = replayCustody(data.replay); delete data.replay; }
+    this.roomResult = data; await this.attach(JSON.stringify(data), 'application/json');
   });
   Then('the native working-room observations include:', function (json) {
     for (const [name, expected] of Object.entries(JSON.parse(json))) assert.deepEqual(this.roomResult[name], expected, `${name}: ${JSON.stringify(this.roomResult)}`);

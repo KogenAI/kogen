@@ -1,0 +1,26 @@
+version: 1
+commands:
+  setup:
+    - 'true'
+  fix:
+    - 'true'
+  checks:
+    - name: lint
+      run: 'test -f app.txt'
+    - name: unit
+      run: 'grep -q . app.txt'
+  acceptance:
+    run: 'sh accept.sh'
+    steps_dir: 'features/steps'
+protect:
+  - 'accept.sh'
+models:
+  shape:
+    model: gpt-6.1-sol
+    effort: high
+  build:
+    model: gpt-6.1-sol
+    effort: medium
+  review:
+    model: gpt-6.1-sol
+    effort: high

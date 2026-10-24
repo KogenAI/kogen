@@ -25,7 +25,7 @@ func TestDiagnosticBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := readDiagnostic(dir, "診断.txt")
-	if err != nil || got["text"] != text || got["source_path"] != name {
+	if err != nil || got == nil || got.Text != text || got.SourcePath != name {
 		t.Fatalf("%v %v", got, err)
 	}
 	for _, p := range []string{"absent", "."} {

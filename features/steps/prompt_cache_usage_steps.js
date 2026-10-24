@@ -4,12 +4,13 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const H = require('./go_driver_support.js');
 const { Given, When, Then, After } = require('@cucumber/cucumber');
 const ROOT = path.resolve(__dirname, '../..');
 const PRIVATE = ['OPAQUE_CACHE_REASONING', 'PRIVATE_TOOL_BODY', 'fake-access', 'fake-refresh', 'RAW_PROMPT_SECRET'];
 function command(file, args, cwd, env = {}) {
   return new Promise((resolve, reject) => {
-    const p = spawn(file, args, { cwd, detached: true, stdio: ['ignore','pipe','pipe'], env: { ...process.env, ERL_FLAGS: '+S 2:2 +SDcpu 1 +SDio 1', ...env } });
+    const p = spawn(file, args, { cwd, detached: true, stdio: ['ignore','pipe','pipe'], env: { ...process.env, ...env } });
     let out = '';
     p.stdout.on('data', b => { out += b; }); p.stderr.on('data', b => { out += b; });
     const timer = setTimeout(() => { try { process.kill(-p.pid, 'SIGKILL'); } catch {} }, 240000);
@@ -22,82 +23,132 @@ function temp(world) {
   (world.cacheTemps ||= []).push(dir); return dir;
 }
 After(function () { for (const dir of this.cacheTemps || []) fs.rmSync(dir, { recursive: true, force: true }); });
-const nativeDriver = String.raw`
-ExUnit.start(autorun: false)
-Code.require_file("test/support/integration_helpers.ex")
-alias Kogen.Integration.{Helpers, FakeProvider}
-alias Kogen.{ChatGPT, ShapeEvidence, Error}
-[mode, receipt] = System.argv()
-usage = %{"input_tokens"=>100,"input_tokens_details"=>%{"cached_tokens"=>20,"cache_write_tokens"=>30,"cache_write_tokens_details"=>%{"ttl_30m_tokens"=>30,"ttl_12h_tokens"=>0}},"output_tokens"=>10,"output_tokens_details"=>%{"reasoning_tokens"=>4}}
-reasoning = fn label -> %{"type"=>"reasoning","id"=>"reason_"<>label,"summary"=>[],"encrypted_content"=>"OPAQUE_CACHE_REASONING_"<>label} end
-message = fn label -> %{"type"=>"message","id"=>"msg_"<>label,"role"=>"assistant","phase"=>"commentary","content"=>[%{"type"=>"output_text","text"=>"phase "<>label,"annotations"=>[]}]} end
-call = fn name,args,label -> %{"type"=>"function_call","id"=>"fc_"<>label,"call_id"=>"call_"<>label,"name"=>name,"arguments"=>JSON.encode!(args),"status"=>"completed"} end
-response = fn label,items -> {:events,[%{"type"=>"response.completed","response"=>%{"id"=>"resp_"<>label,"status"=>"completed","model"=>"gpt-6.1-sol","service_tier"=>"default","output"=>items,"usage"=>usage,"prompt_cache_diagnostics"=>%{"type"=>"cache_miss","reason"=>"tools_changed","comparison_reusable_tokens"=>80,"cache_missed_tokens"=>80}}}]} end
-question = %{"questions"=>[%{"question"=>"Choose caching fixture?","options"=>[%{"label"=>"Keep complete","recommended"=>true}]}]}
-read = fn label -> [reasoning.(label),message.(label),call.("read_file",%{"path"=>"app.txt"},label)] end
-if mode in ["shape","build-resume"] do
- suite=Helpers.setup_suite!()
- script=if mode == "shape" do
-  [response.("question",[call.("submit",question,"question")]),response.("shape1",read.("shape1")),response.("shape2",[call.("submit",question,"shape2")])]
- else
-  [response.("build1",[reasoning.("build1"),message.("build1"),call.("write_file",%{"path"=>"app.txt","content"=>"candidate-fresh\n"},"build1")]),
-   response.("build2",[call.("finish",%{},"build2")]),
-   response.("review1",read.("review1")),
-   response.("review2",[reasoning.("review2"),message.("review2"),call.("submit_review",%{"verdict"=>"changes","findings"=>[%{"path"=>"app.txt","line"=>1,"severity"=>"blocking","message"=>"unresolved fixture finding"}]},"review2")]),
-   response.("review3",[call.("submit_review",%{"verdict"=>"approve","findings"=>[]},"review3")])]
- end
- c=Helpers.project!(suite,script,staged_intent: false)
- try do
-  start_head=Kogen.Git.head(c.repo)
-  result=if mode == "shape" do
-   request=Path.join(c.root,"original.txt"); File.write!(request,"ORIGINAL_CACHE_AUTHORITY: preserve every byte of this original.\n")
-   {o1,k1}=Helpers.run_kogen(c,["intent","shape","cache-shape",request])
-   answer=Path.join(c.root,"answer.txt"); File.write!(answer,"1: a\n")
-   {o2,k2}=Helpers.run_kogen(c,["intent","shape","cache-shape",answer])
-   %{exit_codes: [k1,k2],output: o1<>o2}
-  else
-   {o1,k1}=Helpers.run_kogen(c,["intent","build","fixture"])
-   [log]=Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/log.jsonl")); id=Path.basename(Path.dirname(log))
-   result_path=Path.join(Path.dirname(log),"result.json"); original=File.read!(result_path)
-   blocked=Kogen.Git.head(c.repo)==start_head and original =~ "review_blocked" and File.regular?(Kogen.Intent.approval_path(c.repo,"fixture"))
-   {o2,k2}=Helpers.run_kogen(c,["intent","resume",id])
-   %{exit_codes: [k1,k2],output: o1<>o2,prior_result_unchanged: original==File.read!(result_path),blocker_preserved_until_resume: blocked,landed_after_review: k2==0 and Kogen.Git.head(c.repo)!=start_head}
-  end
-  reqs=FakeProvider.provider_requests(c.server)|>Enum.drop(1)|>Enum.map(& &1.json)
-  files=Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/log.jsonl")) ++ Path.wildcard(Path.join(c.repo,".kogen/local/shaping/*/events.ndjson"))
-  rows=Enum.flat_map(files,fn f -> File.read!(f)|>String.split("\n",trim: true)|>Enum.map(&JSON.decode!/1) end)
-  analytical=Enum.filter(rows,&(&1["event"] in ["provider_attempt","provider_call","request"]))
-  File.write!(receipt,JSON.encode!(Map.merge(result,%{payloads: reqs,attempts: analytical})))
- after
-  Helpers.cleanup_case(c); Helpers.cleanup_suite(suite)
- end
-else
- home=Kogen.tmp_path("cache-capability")
- File.mkdir_p!(Path.join(home,".kogen/credentials"))
- File.write!(Path.join(home,".kogen/credentials/chatgpt.json"),JSON.encode!(%{client_id: "oaiapp_fixture",access_token: "fake-access",refresh_token: "fake-refresh",expires_at: System.system_time(:second)+3600}))
- refusal=if mode == "unrelated-refusal", do: %{"error"=>%{"code"=>"subscription_sharing_unsupported_capability","param"=>"model","message"=>"model unavailable"}}, else: %{"error"=>%{"code"=>"subscription_sharing_unsupported_capability","param"=>"prompt_cache_options","message"=>"unsupported cache option"}}
- ok=response.("capability",[message.("capability")])
- script=case mode do
-  "unsupported-option" -> [{:http,400,refusal},ok]
-  "unrelated-refusal" -> [{:http,400,refusal}]
-  "legacy-model" -> [ok]
- end
- server=FakeProvider.start(script)
- try do
-  :persistent_term.put(:kogen_caller,%{env: %{"HOME"=>home,"KOGEN_PROVIDER_URL"=>"http://127.0.0.1:#{server.port}"}})
-  ShapeEvidence.start(Path.join(home,"evidence"))
-  model=%{model: if(mode=="legacy-model",do: "gpt-5.4",else: "gpt-6.1-sol"),effort: "medium"}
-  result=try do
-   r=ShapeEvidence.provider("shape",nil,"fixture",[],model,fn -> ChatGPT.respond(model,"RAW_PROMPT_SECRET stable policy",[%{"role"=>"user","content"=>"dynamic suffix"}],[]) end)
-   %{outcome: "completed",response: Map.drop(r,[:items])}
-  rescue e in Error -> %{outcome: e.class<>"/"<>e.reason} end
-  rows=Path.join(home,"evidence/events.ndjson")|>File.read!()|>String.split("\n",trim: true)|>Enum.map(&JSON.decode!/1)
-  File.write!(receipt,JSON.encode!(Map.merge(result,%{payloads: Enum.map(FakeProvider.provider_requests(server),& &1.json),attempts: rows})))
- after
-  FakeProvider.stop(server); File.rm_rf!(home)
- end
-end
+// Capability handling is observed from a tiny Go program calling Kogen's provider and shaping-evidence packages for one
+// logical request; Shape and Build with resume drive the installed `kogen`.
+const capabilitySource = String.raw`package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"kogen/project"
+	"kogen/provider"
+	"kogen/shape"
+	"kogen/sys"
+)
+
+func must(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func main() {
+	home, url, mode := os.Args[1], os.Args[2], os.Args[3]
+	s := sys.NewWith([]string{"HOME=" + home, "KOGEN_PROVIDER_URL=" + url}, home)
+	ev, err := shape.NewEvidence(filepath.Join(home, "evidence"), "fixture")
+	must(err)
+	model := "gpt-6.1-sol"
+	if mode == "legacy-model" {
+		model = "gpt-5.4"
+	}
+	role := provider.Role{Provider: "chatgpt", Model: model, Effort: "medium"}
+	client := provider.NewClient("kogen test (driver)")
+	call := ev.BeginCall("shape", "", "fixture", "", project.Role{Provider: role.Provider, Model: role.Model, Effort: role.Effort})
+	resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: "RAW_PROMPT_SECRET stable policy", Input: []any{map[string]any{"role": "user", "content": "dynamic suffix"}}, Tools: []any{}, Scope: "fixture"}, call)
+	call.End(resp, err)
+	result := map[string]any{}
+	if err == nil {
+		result["outcome"] = "completed"
+		result["response"] = map[string]any{"usage_state": resp.UsageState, "id": resp.ID}
+	} else {
+		var e *sys.Error
+		if !errors.As(err, &e) {
+			must(err)
+		}
+		result["outcome"] = e.Class + "/" + e.Reason
+	}
+	raw, err := os.ReadFile(filepath.Join(home, "evidence", "events.ndjson"))
+	must(err)
+	rows := []any{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row any
+		must(json.Unmarshal([]byte(line), &row))
+		rows = append(rows, row)
+	}
+	result["attempts"] = rows
+	out, err := json.Marshal(result)
+	must(err)
+	fmt.Println(string(out))
+	time.Sleep(50 * time.Millisecond)
+}
 `;
+const USAGE = { input_tokens: 100, input_tokens_details: { cached_tokens: 20, cache_write_tokens: 30, cache_write_tokens_details: { ttl_30m_tokens: 30, ttl_12h_tokens: 0 } }, output_tokens: 10, output_tokens_details: { reasoning_tokens: 4 } };
+const reasoning = label => ({ type: 'reasoning', id: `reason_${label}`, summary: [], encrypted_content: `OPAQUE_CACHE_REASONING_${label}` });
+const message = label => ({ type: 'message', id: `msg_${label}`, role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text: `phase ${label}`, annotations: [] }] });
+const call = (name, args, label) => ({ type: 'function_call', id: `fc_${label}`, call_id: `call_${label}`, name, arguments: JSON.stringify(args), status: 'completed' });
+const response = (label, items) => ({ events: [{ type: 'response.completed', response: { id: `resp_${label}`, status: 'completed', model: 'gpt-6.1-sol', service_tier: 'default', output: items, usage: USAGE, prompt_cache_diagnostics: { type: 'cache_miss', reason: 'tools_changed', comparison_reusable_tokens: 80, cache_missed_tokens: 80 } } }] });
+const question = { questions: [{ question: 'Choose caching fixture?', options: [{ label: 'Keep complete', recommended: true }] }] };
+const readCall = label => [reasoning(label), message(label), call('read_file', { path: 'app.txt' }, label)];
+async function nativeRun(mode, H) {
+  const suite = await H.setupSuite(); let c;
+  try {
+    const script = mode === 'shape'
+      ? [response('question', [call('submit', question, 'question')]), response('shape1', readCall('shape1')), response('shape2', [call('submit', question, 'shape2')])]
+      : [response('build1', [reasoning('build1'), message('build1'), call('write_file', { path: 'app.txt', content: 'candidate-fresh\n' }, 'build1')]),
+        response('build2', [call('finish', {}, 'build2')]),
+        response('review1', readCall('review1')),
+        response('review2', [reasoning('review2'), message('review2'), call('submit_review', { verdict: 'changes', findings: [{ path: 'app.txt', line: 1, severity: 'blocking', message: 'unresolved fixture finding' }] }, 'review2')]),
+        response('review3', [call('submit_review', { verdict: 'approve', findings: [] }, 'review3')])];
+    c = await H.project(suite, script, { stagedIntent: false });
+    const startHead = await H.git(c, ['rev-parse', 'HEAD']);
+    let result;
+    if (mode === 'shape') {
+      const request = path.join(c.root, 'original.txt'); fs.writeFileSync(request, 'ORIGINAL_CACHE_AUTHORITY: preserve every byte of this original.\n');
+      const o1 = await H.runKogen(c, ['intent', 'shape', 'cache-shape', request]);
+      const answer = path.join(c.root, 'answer.txt'); fs.writeFileSync(answer, '1: a\n');
+      const o2 = await H.runKogen(c, ['intent', 'shape', 'cache-shape', answer]);
+      result = { exit_codes: [o1.code, o2.code], output: o1.out + o2.out };
+    } else {
+      const o1 = await H.runKogen(c, ['intent', 'build', 'fixture']);
+      const [log] = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/log.jsonl')); const id = path.basename(path.dirname(log));
+      const resultPath = path.join(path.dirname(log), 'result.json'); const original = fs.readFileSync(resultPath, 'utf8');
+      const blocked = (await H.git(c, ['rev-parse', 'HEAD'])) === startHead && original.includes('review_blocked') && fs.existsSync(H.approvalPath(c.repo, 'fixture'));
+      const o2 = await H.runKogen(c, ['intent', 'resume', id]);
+      result = { exit_codes: [o1.code, o2.code], output: o1.out + o2.out, prior_result_unchanged: original === fs.readFileSync(resultPath, 'utf8'), blocker_preserved_until_resume: blocked, landed_after_review: o2.code === 0 && (await H.git(c, ['rev-parse', 'HEAD'])) !== startHead };
+    }
+    const reqs = c.server.providerRequests().slice(1).map(r => r.json);
+    const files = [...H.wildcard(path.join(c.repo, '.kogen/local/runs/*/log.jsonl')), ...H.wildcard(path.join(c.repo, '.kogen/local/shaping/*/events.ndjson'))];
+    const rows = files.flatMap(f => fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)));
+    const analytical = rows.filter(r => ['provider_attempt', 'provider_call', 'request'].includes(r.event));
+    return { ...result, payloads: reqs, attempts: analytical };
+  } finally { await H.cleanupCase(c); H.cleanupSuite(suite); }
+}
+async function capabilityRun(mode, H) {
+  const ok = response('capability', [message('capability')]);
+  const refusal = mode === 'unrelated-refusal' ? { error: { code: 'subscription_sharing_unsupported_capability', param: 'model', message: 'model unavailable' } } : { error: { code: 'subscription_sharing_unsupported_capability', param: 'prompt_cache_options', message: 'unsupported cache option' } };
+  const script = { 'unsupported-option': [{ http: [400, refusal] }, ok], 'unrelated-refusal': [{ http: [400, refusal] }], 'legacy-model': [ok] }[mode];
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cache-capability-')));
+  const server = await new H.FakeProvider(script).start();
+  try {
+    fs.mkdirSync(path.join(home, '.kogen/credentials'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.kogen/credentials/chatgpt.json'), JSON.stringify({ client_id: 'oaiapp_fixture', access_token: 'fake-access', refresh_token: 'fake-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600 }));
+    const driver = await H.goDriver('cache-usage-capability', capabilitySource);
+    const r = await driver([home, `http://127.0.0.1:${server.port}`, mode]);
+    assert.equal(r.code, 0, r.out);
+    const result = JSON.parse(r.out);
+    return { ...result, payloads: server.providerRequests().map(x => x.json) };
+  } finally { await server.stop(); fs.rmSync(home, { recursive: true, force: true }); }
+}
 function allBlocks(payload) { return (payload?.input || []).flatMap(m => Array.isArray(m.content) ? m.content : []); }
 function markers(payload) { return allBlocks(payload).filter(b => b.prompt_cache_breakpoint); }
 function safePolicy(p) {
@@ -119,11 +170,7 @@ function metadata(rows) {
 }
 When('I exercise prompt reuse through native {string}', { timeout: 250000 }, async function(mode) {
   assert.ok(['shape','build-resume','unsupported-option','legacy-model','unrelated-refusal'].includes(mode));
-  const dir=temp(this), script=path.join(dir,'driver.exs'), receipt=path.join(dir,'receipt.json');
-  fs.writeFileSync(script,nativeDriver);
-  const r=await command('mix',['run','--no-deps-check',script,mode,receipt],ROOT);
-  assert.equal(r.code,0,r.out); assert.ok(fs.existsSync(receipt),r.out);
-  const result=JSON.parse(fs.readFileSync(receipt,'utf8')), ps=result.payloads;
+  const result = ['shape', 'build-resume'].includes(mode) ? await nativeRun(mode, H) : await capabilityRun(mode, H), ps = result.payloads;
   const md=metadata(result.attempts || []);
   const observed={ ...result, requests: ps.length, forbidden_state_fields: forbidden(ps), comparison_ids: ps.map(p => p.prompt_cache_options?.comparison_response_id ?? null), supported_policy: ps.length>0 && ps.every(safePolicy) };
   if (mode==='shape') {

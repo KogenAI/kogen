@@ -1,6 +1,8 @@
 # Testing strategy
 
-`sh test/suite.sh` runs the complete deterministic suite: unit/property and installed-release integration checks, uncached Go race tests, every non-live Gherkin scenario, specification checks and the real-use script’s own failure-propagation check. Real provider journeys remain the separate release checks below.
+`sh test/suite.sh` runs the complete deterministic suite: the Go tests (unit, property and integration, uncached, with the race detector), every non-live Gherkin scenario against the installed program, specification checks and the real-use script’s own failure-propagation check. Real provider journeys remain the separate release checks below.
+
+Kogen is one Go program. Building and testing it needs Go, Node (Quint and Cucumber) and Git; it needs no Erlang or Elixir. Only the Elixir fixture project of the scenarios and the Tiny Tasks example, which are projects Kogen builds, need Elixir.
 
 The normal full deterministic run takes **a couple of minutes**. Keep the suite simple; this is a practical speed goal, not a reason to remove checks or add elaborate timing machinery. Measure end-to-end wall time with locked tools/dependencies installed, including a build from current source; report any separate dependency/fixture preparation. A selected subset, skipped scenario, cached test result or successful retry is not a full passing run. Reuse a fresh release archive within a run and keep test workspaces independent.
 
@@ -17,39 +19,39 @@ A test earns its place when it catches a concrete mistake and can be maintained 
 
 | Layer | What it gives evidence for | Tools |
 | --- | --- | --- |
-| Unit / property | Kogen's own rules where a mistake is easy and costly (list below) | ExUnit, Go `testing`; StreamData only where a concrete property exists |
-| Integration | core behavior against real git in temp repos, real hooks, real OS processes, the fake provider over HTTP | ExUnit `@tag :integration` |
+| Unit / property | Kogen's own rules where a mistake is easy and costly (list below) | Go `testing`; generated cases only where a concrete property exists |
+| Integration | program behavior against real git in temp repos, real hooks, real OS processes, the fake provider over HTTP | Go `testing` with `httptest`, beside the code in each package |
 | Scenarios | the spec's contract through the installed program: every non-`@live` scenario in `spec/features` | Cucumber, `test/acceptance/` |
 | Spec | Gherkin parse, clause coverage, Quint invariants and their refuted false variants | `spec/check.sh` |
 | Real use | the full live journey: install, login, shape, build, review, commit | `test/live/real-use.sh` on the example app; real projects outside the repository as an external check |
 
 **Preserve contract coverage.** Installed scenarios cover interrupts, hooks, environment and packaging. A scenario is removed only when it gives the same evidence as another one. A unit test never repeats a scenario's example; it covers the cases a scenario cannot reach cheaply.
 
-One explicit duration exception keeps the five-minute probe policy test fast. Its test-only driver starts the unmodified installed core, verifies that its real execution request specifies 300,000 ms, then passes that request with a 200 ms deadline to the real Go executor. The executor supplies its genuine timeout result to the core; the test checks process cleanup, shaping continuation and scratch cleanup. This is composed core/executor coverage, not evidence that five actual minutes elapsed through the unmodified installed CLI. The production timeout, clock and executable are unchanged; no slow case is silently excluded.
+One explicit duration exception keeps the five-minute probe policy test fast. Its test-only Go driver shapes through the program's own packages, verifies that the probe request specifies 300,000 ms, then runs that probe with a 200 ms deadline through the real executor. The executor supplies its genuine timeout result; the test checks process cleanup, shaping continuation and scratch cleanup. This is composed policy and executor coverage, not evidence that five actual minutes elapsed through the unmodified installed CLI. The production timeout, clock and executable are unchanged; no slow case is silently excluded.
 
 **Quint** stays a spec check. The key guarantees it states (no commit without an approved green pass of the same contents; an interrupt leaves no new commit; one Build per repository) each have an implementation test, listed by `node spec/tools/check.mjs --trace`. There is no model-to-test framework.
 
 ## Where the unit and integration tests are
 
-1. **Approval hash** (AUT-2, VER-1): any change, addition, removal or rename in the baseline changes the hash, independent of order; `protect` patterns select the right files. This is a StreamData property.
-2. **Scenario-result accounting** (VER-4): from Cucumber reports, a scenario counts as passed only when it finished with every step reported. Cases: missing, duplicate, unexpected, retried, truncated report, garbage line, exit ≠ 0. This is a StreamData property over generated reports.
+1. **Approval hash** (AUT-2, VER-1): any change, addition, removal or rename in the baseline changes the hash, independent of order; `protect` patterns select the right files. This is a property over generated cases.
+2. **Scenario-result accounting** (VER-4): from Cucumber reports, a scenario counts as passed only when it finished with every step reported. Cases: missing, duplicate, unexpected, retried, truncated report, garbage line, exit ≠ 0. This is a property over generated reports.
 3. **Kogen's use of its parsers**: how `.kogen/project.yaml` is interpreted (commands, checks, models, protect), and that invalid input is reported with its file and line. This tests Kogen's interpretation, not the parsing technique.
 4. **Review and repair**: invalid verdicts (one retry, then `review_invalid`); the reviewer repairs supported defects, changed contents receive final verification, and failures stay in the same reviewer conversation. Unresolved `changes` stops with `review_blocked`. Files that change during checks keep the pass from being green; interruption during pending final verification reports the unfinished review and verification.
 5. **Commit and hooks** (GIT-4..8): a hook that rejects leaves the edits; a hook that edits files gets the commit undone; the user's index is restored on every outcome that does not land; signing is a scenario with a test SSH key (`07-committing.feature`).
 6. **Credentials**: a stale lock is removed and a live one waits. Two commands refreshing at once rotate the token once: a scenario (`08-chatgpt.feature`).
-7. **Protocol bytes** (CLI-9): non-ASCII and invalid-UTF-8 command output survives the bridge under both a UTF-8 and an empty locale.
-8. **CLI** (Go, `go test -race`): the command tree, grammar and help pages; the start handshake, a core crash, signal-to-exit-code mapping (130/143/129), an interrupt during a silent core startup; process groups stopped with TERM, then KILL; output capture; the probe timeout.
+7. **Command output bytes** (CLI-9): non-ASCII command output is kept byte for byte and an invalid UTF-8 byte becomes U+FFFD, under both a UTF-8 and an empty locale.
+8. **CLI and process control** (Go, `go test -race`): the command tree, grammar and help pages; signal-to-exit-code mapping (130/143/129); each command in its own process group under the watchdog, which stops the group with TERM, then KILL when `kogen` is killed or ends; a signal sent to a command's group cancelling nothing; output capture; the probe timeout.
 9. **Model-check feedback** (VER-5): a real Quint error keeps the message Quint prints first and the summary it prints last.
 
 ## Test doubles
 
-- **External HTTP services are scripted test fixtures**, covering the model provider and, for the missing-Node installer scenario, a local Node-distribution fixture backed by the actual pinned Node installation. The installer still runs real curl and tar, installs real files and executes the installed Node binary. The catalog includes a newer non-LTS release so choosing the first row instead of the LTS row fails. This checks the installer deterministically; online nodejs.org availability is not a local behavior assertion. The probe-deadline test driver composes real core/executor behavior as explicitly described above; it is not a fake process or timeout result. (The Go tests also use a scripted stand-in core: it is the protocol peer that lets the bridge be tested alone, while the installed-release scenarios give the Go-to-Elixir evidence.) The provider fake is scripted: named scripts that react to the request, as `test/acceptance/support/fake-servers.js` does. No recorded conversations, because recordings break whenever a prompt changes. ExUnit points `KOGEN_PROVIDER_URL`/`KOGEN_AUTH_URL` at a small local fake.
-- **Never faked**: git (temp repos with an isolated `HOME` and `GIT_CONFIG_GLOBAL`, so the host's hooks and signing stay out), files (temp dirs, including the macOS `/var` symlink), processes and signals, Cucumber, Quint, the installed release.
-- **Time** uses real monotonic clocks. Credential expiry is set through stored timestamps. The internal `respond/5` option `response_budget_ms` can only shorten the fixed 1,800,000 ms logical-response budget for deterministic real-HTTP tests; it is not a CLI, YAML or environment setting. These tests measure inside the core, excluding Mix startup, and assert cancellation/connection cleanup. Their watchdog is cleanup, never timeout evidence. The one probe deadline contraction described above occurs explicitly at the test protocol boundary after asserting the production five-minute request; it never fabricates the timeout result.
+- **External HTTP services are scripted test fixtures**, covering the model provider and, for the missing-Node installer scenario, a local Node-distribution fixture backed by the actual pinned Node installation. The installer still runs real curl and tar, installs real files and executes the installed Node binary. The catalog includes a newer non-LTS release so choosing the first row instead of the LTS row fails. This checks the installer deterministically; online nodejs.org availability is not a local behavior assertion. The probe-deadline test driver composes real policy and executor behavior as explicitly described above; it is not a fake process or timeout result. The provider fake is scripted: named scripts that react to the request, as `test/acceptance/support/fake-servers.js` does. No recorded conversations, because recordings break whenever a prompt changes. The Go tests point the provider and authorization addresses at a small `httptest` fake.
+- **Never faked**: git (temp repos with an isolated `HOME` and `GIT_CONFIG_GLOBAL`, so the host's hooks and signing stay out), files (temp dirs, including the macOS `/var` symlink), processes and signals, Cucumber, Quint, the installed program.
+- **Time** uses real monotonic clocks. Credential expiry is set through stored timestamps. The provider request's `Budget` field can only shorten the fixed 1,800,000 ms logical-response budget for deterministic real-HTTP tests; it is not a CLI, YAML or environment setting. These tests measure inside the program and assert cancellation/connection cleanup. Their watchdog is cleanup, never timeout evidence. The one probe deadline contraction described above occurs explicitly in the test driver after asserting the production five-minute request; it never fabricates the timeout result.
 
 ## The example app
 
-There is one example app, `examples/tiny_tasks/` (a task list driven by `mix todo.*` commands): a small, understandable existing implementation in plain Elixir, with no database and no Hex deps. It comes with one meaningful feature request (completing a task, listing open tasks) that leaves one UI/UX choice open (REL-1 step 4).
+There is one example app, `examples/tiny_tasks/` (a task list driven by `mix todo.*` commands): a small, understandable existing implementation in plain Elixir, with no database and no Hex deps (Kogen builds Elixir projects; Kogen itself is Go). It comes with one meaningful feature request (completing a task, listing open tasks) that leaves one UI/UX choice open (REL-1 step 4).
 
 - **Reset each run.** `test/live/projects/example.sh` copies it into the run folder and makes a fixed baseline commit (known identity and date). Nothing carries over between runs.
 - **Deterministic apart from the live journey.** There is no network, service or uncontrolled timing in the app or its checks. Toolchain and Cucumber are pinned; once the npm packages are installed (or cached), the app and its checks run offline. Only the Kogen journey itself talks to ChatGPT.
@@ -70,7 +72,7 @@ Kogen's Build has no limits. If the harness abandons a run (for example, the hos
 ## When to run what
 
 - While editing: the focused tests for the code being changed.
-- **Routine gate, before an ordinary commit:** the unit tests (`mix test test/kogen`), the integration tests and scenarios of the behavior the change touches (the feature files whose clauses it changes, or that run the changed code), `spec/check.sh` when `spec/` changed, and `go test -race ./...` when `cli/` changed. A change to a default value or to documentation needs only what shows that value or text.
+- **Routine gate, before an ordinary commit:** the Go tests of the package being changed (`go test -race ./<package>` in `cli/`), the scenarios of the behavior the change touches (the feature files whose clauses it changes, or that run the changed code), `spec/check.sh` when `spec/` changed, and the whole `go test -race ./...` before the commit when `cli/` changed. A change to a default value or to documentation needs only what shows that value or text.
 - **Release gate:** `sh test/suite.sh` (every layer, every non-`@live` scenario) on macOS and Linux, then the live runs. Also run the full suite on both platforms after changes to packaging, processes, signals, locale or paths. A trial build for someone to try may ship after the routine gate; say what it has not been through.
 
 Direct external-agent repairs are permitted during development. Preserve original evidence, classify interrupted attempts as incomplete and independently verify repaired behavior. Trial builds do not replace the release gate or self-build qualification.
@@ -80,13 +82,13 @@ Direct external-agent repairs are permitted during development. Preserve origina
 
 ## Changes Kogen builds (each Intent)
 
-Every changed behavior gets appropriate evidence. Often updating an existing test or scenario is enough. Wiring may need only a scenario. New rules with costly edge cases get unit or integration tests by the standard above. Obsolete tests go in the same change. There is no coverage % target; `mix test --cover` is information only. The rules for choosing tests, and for specifying a change so it can be tested, are `docs/testing-rules.md`; the shaper, the builder and the reviewer each get its text (SET-6).
+Every changed behavior gets appropriate evidence. Often updating an existing test or scenario is enough. Wiring may need only a scenario. New rules with costly edge cases get unit or integration tests by the standard above. Obsolete tests go in the same change. There is no coverage % target; `go test -cover` is information only. The rules for choosing tests, and for specifying a change so it can be tested, are `docs/testing-rules.md`; the shaper, the builder and the reviewer each get its text (SET-6).
 
-Oversized initial Review source is covered by `test/integration/review_material_test.exs` for exact UTF-8/control-byte reconstruction, existing tool caps, delivery/reset custody and irreducible authority, and chapter06 CLI scenarios for production material/body construction, complete source retrieval before approval and source-drift refusal. These local fake-provider journeys do not establish live provider interpretation or change account capabilities.
+Oversized initial Review source is covered by the review-material tests of the `build` package for exact UTF-8/control-byte reconstruction, existing tool caps, delivery/reset custody and irreducible authority, and chapter06 CLI scenarios for production material/body construction, complete source retrieval before approval and source-drift refusal. These local fake-provider journeys do not establish live provider interpretation or change account capabilities.
 
 ## Native selected-image evidence
 
-`test/kogen/image_test.exs` exercises the shared callable view_image PNG validation,
+The `agent` package's `view_image` tests exercise the shared callable PNG validation,
 typed output/cut behavior, immutable selected bytes, complete request accounting at
 524287/524288/524289 bytes including Unicode and image envelopes, and bounded factual
 delivery events. The native-image-evidence Intent scenarios exercise installed Shape,

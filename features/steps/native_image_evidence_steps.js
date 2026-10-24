@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
-const { spawnSync } = require('node:child_process');
+const H = require('./go_driver_support.js');
 const ROOT = path.resolve(__dirname, '../..');
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const same = (a, b) => { try { assert.deepEqual(a, b); return true; } catch { return false; } };
@@ -130,107 +130,354 @@ function checkpointObserver(records) {
     return true;
   } catch { return false; }
 }
-const checkpointCapture = String.raw`
-defmodule NativeImageCheckpoint do
- def capture(saved, expected_owner, groups) do
-  c = saved.continuation
-  {owner,input} = cond do
-   c.stage in [:review,:review_verify,:review_retry_verify] -> {"review",c.session.input}
-   c.stage in [:builder,:builder_verify] -> {"build",c.input}
-   c.stage == :tool and c[:owner] == :builder -> {"build",c.input}
-   true -> {"UNKNOWN",[]}
-  end
-  archives = for {owner,state} <- saved.working_context, ref <- state.history do
-   %{owner: owner, input: JSON.decode!(File.read!(ref["path"]))["input"]}
-  end
-  %{owner: owner, expected_owner: expected_owner, input: input, groups: groups, archives: archives}
- end
-end
-`;
-const control = checkpointCapture + String.raw`
-b = Base.decode64!(System.fetch_env!("IMAGE_CONTROL_BYTES"))
-p = "synthetic.png"
-call = %{"type" => "function_call", "id" => "control-item", "call_id" => "control-call", "name" => "view_image", "arguments" => JSON.encode!(%{"path" => p})}
-r = %{"type" => "reasoning", "id" => "opaque-item", "encrypted_content" => "opaque+/==\nΔ🙂", "summary" => []}
-m = %{"type" => "message", "id" => "message-item", "role" => "assistant", "phase" => "commentary", "content" => [%{"type" => "output_text", "text" => "UNFINISHED synthetic observation"}]}
-prefix = Enum.map([r,m,call], &Kogen.Shape.replay_item/1)
-meta = %{version: 1, path: p, sha256: Kogen.WorkingContext.hash(b), bytes: byte_size(b), format: "png", width: 1, height: 1, read_candidate: "UNKNOWN", capture_candidate: "UNKNOWN", route: "UNKNOWN", viewport: "UNKNOWN", fixture_state: "UNKNOWN"}
-output = [%{"type" => "input_text", "text" => JSON.encode!(meta)}, %{"type" => "input_image", "image_url" => "data:image/png;base64," <> Base.encode64(b)}]
-authority = %{"role" => "user", "content" => Kogen.PromptCache.contract_blocks("synthetic stable authority", "synthetic current progress")}
-items = [authority] ++ prefix ++ [Kogen.Shape.output(call,output)]
-tools = [%{"type" => "function", "name" => "view_image", "description" => "Synthetic read-only image control", "parameters" => %{"type" => "object", "properties" => %{"path" => %{"type" => "string"}}, "required" => ["path"], "additionalProperties" => false}}, %{"type" => "function", "name" => "cache_data", "description" => "Synthetic opaque-data schema, not cache controls", "parameters" => %{"type" => "object", "properties" => %{"prompt_cache_options" => %{"type" => "string"}, "prompt_cache_breakpoint" => %{"type" => "string"}}, "required" => ["prompt_cache_options", "prompt_cache_breakpoint"], "additionalProperties" => false}}]
-body = Kogen.ChatGPT.request_body(%{model: "gpt-6.1-sol", effort: "high"}, "synthetic policy", items, tools)
-Kogen.PromptCache.unsupported()
-compatible = Kogen.ChatGPT.request_body(%{model: "gpt-6.1-sol", effort: "high"}, "synthetic policy", items, tools)
-# Bounded synthetic controls use the current native JSON encoder/decoder, not a
-# replacement observer. Opaque-only negatives carry no image bytes or credentials.
-s = %{opaque: "synthetic opaque+/==\nΔ🙂", selected: Base.encode64(b)}
-safe_event = Map.merge(meta, %{event: "image_read", owner: "review", call_id: "image-review", status: "read"})
-safe_logs = %{events: [safe_event], diagnostic: "native diagnostic " <> JSON.encode!(safe_event)}
-leaks = [s.opaque, Enum.at(output, 1)["image_url"], s.selected, "fake-integration-access-token", "fake-integration-refresh-token"]
-bad_logs = Enum.flat_map(leaks, fn leak ->
-  [%{safe_logs | events: [Map.put(safe_event, :payload, leak)]},
-   %{safe_logs | diagnostic: "native diagnostic " <> leak},
-   %{safe_logs | diagnostic: "native diagnostic " <> JSON.encode!(%{payload: leak})}]
-end) ++ [%{safe_logs | events: [Map.put(safe_event, :padding, String.duplicate("Δ", 4096))]}]
-review_reason = Kogen.Shape.replay_item(Map.put(r, "encrypted_content", s.opaque <> "-review"))
-build_reason = Kogen.Shape.replay_item(Map.put(r, "encrypted_content", s.opaque <> "-build"))
-review_call = Kogen.Shape.replay_item(Map.put(call, "call_id", "image-review"))
-review_window = [review_reason, review_call, Kogen.Shape.output(review_call, output)]
-roundtrip = fn value -> JSON.decode!(JSON.encode!(value)) end
-safety = roundtrip.(%{inputs: s, good_logs: safe_logs, bad_logs: bad_logs, good_review: [review_window], bad_review: [[[build_reason]], [[Map.put(call, "call_id", "image-build")]], [[%{"role" => "assistant", "content" => JSON.encode!(build_reason)}]]], serialized_event: JSON.encode!(Map.put(safe_event, :payload, s.opaque))})
-# Synthetic v3 custody only: no real Build checkpoint or provider is read.
-root = Path.join(Path.dirname(System.fetch_env!("IMAGE_CONTROL_RECEIPT")), "custody")
-run = Kogen.Run.start(root)
-intent = %Kogen.Intent{root: root, slug: "synthetic", title: "Synthetic", text: "Synthetic", model: "not applicable — fixture"}
-state = %{root: root, slug: intent.slug, start: "head", git_index: "index", start_tree: "tree", approval_bytes: Base.encode64("approval"), run: run, config: %Kogen.Config{}, intent: intent, model: :none, phase: :building, t0: 0, last_pass: nil, last_review: nil, blocker: nil, parent: nil, root_run: nil, baseline_digests: %{Kogen.Config.path() => "digest"}, baseline: [Kogen.Config.path()], excluded: [], round: 1, pass: 1, review: 1, repairs: 0, model_active_ms: 0, unknown_requests: 0, usage: Kogen.Usage.zero(), attempt_usage: Kogen.Usage.zero(), working_context: %{}, source_provenance: nil, continuation: %{stage: :builder, input: []}}
-make_group = fn owner ->
- c = call |> Map.put("call_id", "image-" <> owner) |> Map.put("id", "item-" <> owner)
- prefix = Enum.map([Map.put(r,"encrypted_content",s.opaque <> "-" <> owner),m,c], &Kogen.Shape.replay_item/1)
- {prefix ++ [Kogen.Shape.output(c,output)], %{owner: owner, prefix: prefix, call_id: c["call_id"], path: p, width: 1, height: 1, base64: Base.encode64(b)}}
-end
-{build_input,bg} = make_group.("build")
-{review_input,rg} = make_group.("review")
-pass = %{n: 1, tree: "tree", green: false, clean: true, moved: [], failing: [], acceptance: :not_run, model: :none, checks: []}
-session = %{input: review_input, attempts: [], role: %{model: "fixture", effort: "high"}, tools: [], usage: %{}}
-build = %{state | continuation: %{stage: :builder, input: build_input}}
-review = %{state | continuation: %{stage: :review, pass: pass, session: session}}
-archive = fn owner, input ->
- dir = Path.join([run.dir,"working-context",owner])
- File.mkdir_p!(dir)
- File.chmod!(Path.dirname(dir),0o700)
- File.chmod!(dir,0o700)
- file = Path.join(dir,"1.json")
- bytes = JSON.encode!(%{input: input}) <> "\n"
- File.write!(file,bytes)
- File.chmod!(file,0o600)
- %{mandatory: [], observations: [], history: [%{"path" => file, "sha256" => Kogen.WorkingContext.hash(bytes)}]}
-end
-ba = archive.("build",build_input)
-ra = archive.("review",review_input)
-growing = %{review | continuation: %{review.continuation | session: %{session | input: []}}, working_context: %{"build" => ba,"review" => ra}}
-capture = fn value, owner, groups ->
- Kogen.Run.checkpoint(run,%{"version" => 3,"state" => Base.encode64(:erlang.term_to_binary(value)),"identity" => "synthetic","candidate" => "tree","index" => Base.encode64("index"),"approval" => value.approval_bytes})
- {:ok,_,saved} = Kogen.Run.decode_checkpoint(File.read!(Path.join(run.dir,"checkpoint.json")))
- Kogen.WorkingContext.validate!(saved)
- NativeImageCheckpoint.capture(saved,owner,groups)
-end
-altered = List.update_at(build_input,-1,fn o -> Map.update!(o,"output",fn out -> List.update_at(out,1,&Map.update!(&1,"image_url",fn url -> url <> "changed" end)) end) end)
-wrong_hash = List.update_at(build_input,-1,fn o -> Map.update!(o,"output",fn out -> List.update_at(out,0,fn meta -> Map.update!(meta,"text",fn text -> JSON.decode!(text) |> Map.put("sha256",String.duplicate("0",64)) |> JSON.encode!() end) end) end) end)
-checkpoints = %{good: [[capture.(build,"build",[bg]),capture.(review,"review",[rg])], [capture.(growing,"review",[bg,rg])], [capture.(%{build | continuation: %{stage: :tool, owner: :builder, input: build_input}},"build",[bg])]], bad: [
- [capture.(review,"build",[bg])],
- [capture.(%{build | continuation: %{stage: :builder,input: review_input}},"build",[bg])],
- [capture.(%{build | continuation: %{stage: :builder,input: Enum.drop(build_input,-1)}},"build",[bg])],
- [capture.(%{build | continuation: %{stage: :builder,input: altered}},"build",[bg])],
- [capture.(%{build | continuation: %{stage: :builder,input: wrong_hash}},"build",[bg])],
- [capture.(%{build | continuation: %{stage: :builder,input: []},working_context: %{"review" => ba}},"build",[bg])],
- [capture.(%{growing | working_context: %{"build" => ba}},"review",[bg,rg])],
- [capture.(%{growing | working_context: %{"review" => ra}},"review",[bg,rg])],
- []
-]}
-# Native replay/output/request serialization, then an actual JSON custody round trip.
-file = System.fetch_env!("IMAGE_CONTROL_RECEIPT")
-File.write!(file, JSON.encode!(%{checkpoints: checkpoints, safety: safety, fallback: [body, compatible], windows: [body["input"]], groups: [%{prefix: prefix, call_id: call["call_id"], path: p, width: 1, height: 1, base64: Base.encode64(b)}]}))
+// The Go program that observes what has no user-visible form: the view_image tool, the request body as sent, the request
+// measure, the cache-control fallback on the wire and checkpoints of a synthetic Build (all production code of Kogen's packages).
+const imageDriverSource = String.raw`package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"kogen/agent"
+	"kogen/build"
+	"kogen/project"
+	"kogen/provider"
+	"kogen/sys"
+)
+
+func encode(v any) string {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		panic(err)
+	}
+	return string(bytes.TrimRight(b.Bytes(), "\n"))
+}
+
+func must(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+type m = map[string]any
+
+func hash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
+
+func clone(x m) m {
+	out := m{}
+	for k, v := range x {
+		out[k] = v
+	}
+	return out
+}
+
+func main() {
+	var in struct {
+		Mode   string
+		Bytes  string
+		Images []struct{ Name, Base64 string }
+		Bodies []m
+	}
+	must(json.NewDecoder(os.Stdin).Decode(&in))
+	switch in.Mode {
+	case "validation":
+		validation(in.Images)
+	case "body":
+		client := provider.NewClient("kogen test (driver)")
+		body := client.Body(provider.Request{Role: provider.Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "synthetic Δ\U0001F642 policy", Input: []any{}, Tools: []any{}, Scope: "image-validation"})
+		fmt.Println(encode(body))
+	case "measure":
+		var rows []any
+		for _, body := range in.Bodies {
+			r, err := agent.Measure(body)
+			must(err)
+			rows = append(rows, m{"rendered_bytes": r.RenderedBytes, "fits": r.Fits, "input_budget_bytes": r.InputBudgetBytes, "output_reserve_tokens": r.OutputReserveTokens})
+		}
+		fmt.Println(encode(rows))
+	case "control":
+		b, err := base64.StdEncoding.DecodeString(in.Bytes)
+		must(err)
+		control(b)
+	}
+}
+
+func validation(images []struct{ Name, Base64 string }) {
+	tmp, err := os.MkdirTemp("", "image-validation-")
+	must(err)
+	defer os.RemoveAll(tmp)
+	tools := &agent.Tools{Root: tmp, Enabled: []string{"view_image"}}
+	advertised := false
+	for _, d := range agent.Defs("view_image") {
+		if d["name"] == "view_image" {
+			advertised = true
+		}
+	}
+	var rows []any
+	for _, img := range images {
+		p := filepath.Join(tmp, img.Name)
+		switch img.Name {
+		case "missing":
+		case "folder":
+			must(os.MkdirAll(p, 0o755))
+		default:
+			raw, err := base64.StdEncoding.DecodeString(img.Base64)
+			must(err)
+			must(os.WriteFile(p, raw, 0o644))
+		}
+		var out agent.Output
+		if advertised {
+			out, err = tools.Run("view_image", m{"path": img.Name})
+			must(err)
+		} else {
+			out = agent.Output{Text: "native view_image not implemented"}
+		}
+		cut := out.Cut()
+		uncut := out.Typed() && encode(cut.Value()) == encode(out.Value())
+		rows = append(rows, m{"name": img.Name, "output": out.Value(), "uncut": uncut, "framed": agent.OutputItem(img.Name, out.Value())})
+	}
+	fmt.Println(encode(m{"rows": rows, "advertised": advertised}))
+}
+
+func control(b []byte) {
+	p := "synthetic.png"
+	opaque := "synthetic opaque+/==\nΔ\U0001F642"
+	call := m{"type": "function_call", "id": "control-item", "call_id": "control-call", "name": "view_image", "arguments": encode(m{"path": p})}
+	r := m{"type": "reasoning", "id": "opaque-item", "encrypted_content": "opaque+/==\nΔ\U0001F642", "summary": []any{}}
+	msg := m{"type": "message", "id": "message-item", "role": "assistant", "phase": "commentary", "content": []any{m{"type": "output_text", "text": "UNFINISHED synthetic observation"}}}
+	prefix := []any{agent.ReplayItem(r), agent.ReplayItem(msg), agent.ReplayItem(call)}
+	meta := m{"version": 1, "path": p, "sha256": hash(b), "bytes": len(b), "format": "png", "width": 1, "height": 1, "read_candidate": "UNKNOWN", "capture_candidate": "UNKNOWN", "route": "UNKNOWN", "viewport": "UNKNOWN", "fixture_state": "UNKNOWN"}
+	imageURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(b)
+	output := []any{m{"type": "input_text", "text": encode(meta)}, m{"type": "input_image", "image_url": imageURL}}
+	authority := m{"role": "user", "content": provider.ContractBlocks("synthetic stable authority", "synthetic current progress")}
+	items := append(append([]any{authority}, prefix...), agent.OutputItem("control-call", output))
+	tools := []any{
+		m{"type": "function", "name": "view_image", "description": "Synthetic read-only image control", "parameters": m{"type": "object", "properties": m{"path": m{"type": "string"}}, "required": []any{"path"}, "additionalProperties": false}},
+		m{"type": "function", "name": "cache_data", "description": "Synthetic opaque-data schema, not cache controls", "parameters": m{"type": "object", "properties": m{"prompt_cache_options": m{"type": "string"}, "prompt_cache_breakpoint": m{"type": "string"}}, "required": []any{"prompt_cache_options", "prompt_cache_breakpoint"}, "additionalProperties": false}},
+	}
+	// The request as sent with cache controls, and as sent again after the provider refuses them: both read off the wire
+	// of one logical request answered by a local provider.
+	body, compatible := fallback(items, tools)
+
+	s := m{"opaque": opaque, "selected": base64.StdEncoding.EncodeToString(b)}
+	safeEvent := clone(meta)
+	safeEvent["event"], safeEvent["owner"], safeEvent["call_id"], safeEvent["status"] = "image_read", "review", "image-review", "read"
+	with := func(k string, v any) m { e := clone(safeEvent); e[k] = v; return e }
+	safeLogs := m{"events": []any{safeEvent}, "diagnostic": "native diagnostic " + encode(safeEvent)}
+	logsWith := func(events []any, diagnostic string) m { return m{"events": events, "diagnostic": diagnostic} }
+	leaks := []string{opaque, imageURL, s["selected"].(string), "fake-integration-access-token", "fake-integration-refresh-token"}
+	var bad []any
+	for _, leak := range leaks {
+		bad = append(bad, logsWith([]any{with("payload", leak)}, safeLogs["diagnostic"].(string)),
+			logsWith(safeLogs["events"].([]any), "native diagnostic "+leak),
+			logsWith(safeLogs["events"].([]any), "native diagnostic "+encode(m{"payload": leak})))
+	}
+	pad := ""
+	for i := 0; i < 4096; i++ {
+		pad += "Δ"
+	}
+	bad = append(bad, logsWith([]any{with("padding", pad)}, safeLogs["diagnostic"].(string)))
+	withReasoning := func(suffix string) any { x := clone(r); x["encrypted_content"] = opaque + suffix; return agent.ReplayItem(x) }
+	reviewCall := func(id string) m { x := clone(call); x["call_id"] = id; return agent.ReplayItem(x) }
+	reviewWindow := []any{withReasoning("-review"), reviewCall("image-review"), agent.OutputItem("image-review", output)}
+	buildCallOnly := clone(call)
+	buildCallOnly["call_id"] = "image-build"
+	safety := m{
+		"inputs": s, "good_logs": safeLogs, "bad_logs": bad, "good_review": []any{reviewWindow},
+		"bad_review":       []any{[]any{[]any{withReasoning("-build")}}, []any{[]any{buildCallOnly}}, []any{[]any{m{"role": "assistant", "content": encode(withReasoning("-build"))}}}},
+		"serialized_event": encode(with("payload", opaque)),
+	}
+
+	// Synthetic custody only: no real Build checkpoint or provider is read.
+	root, err := os.MkdirTemp("", "image-custody-")
+	must(err)
+	defer os.RemoveAll(root)
+	run, err := build.StartRun(root)
+	must(err)
+	group := func(owner string) ([]any, m) {
+		c := clone(call)
+		c["call_id"], c["id"] = "image-"+owner, "item-"+owner
+		rr := clone(r)
+		rr["encrypted_content"] = opaque + "-" + owner
+		pre := []any{agent.ReplayItem(rr), agent.ReplayItem(msg), agent.ReplayItem(c)}
+		return append(append([]any{}, pre...), agent.OutputItem(c["call_id"], output)), m{"owner": owner, "prefix": pre, "call_id": c["call_id"], "path": p, "width": 1, "height": 1, "base64": base64.StdEncoding.EncodeToString(b)}
+	}
+	buildInput, bg := group("build")
+	reviewInput, rg := group("review")
+	reviewSession := func(input []any) json.RawMessage {
+		return json.RawMessage(encode(m{"role": m{"Provider": "chatgpt", "Model": "fixture", "Effort": "high"}, "input": input, "usage": m{}, "attempts": []any{}}))
+	}
+	base := build.State{Root: root, Slug: "synthetic", Config: &project.Config{}, IntentText: "Synthetic", Start: "head", Baseline: []string{".kogen/project.yaml"}, BaselineDigests: map[string]string{".kogen/project.yaml": "digest"},
+		Excluded: []string{}, Run: run, GitIndex: "index", StartTree: "tree", Phase: "building", Round: 1, Pass: 1, Review: 1, ApprovalBytes: base64.StdEncoding.EncodeToString([]byte("approval"))}
+	withContinuation := func(c build.Continuation, wc map[string]*build.OwnerContext) build.State {
+		s := base
+		s.Continuation, s.WorkingContext = c, wc
+		return s
+	}
+	archive := func(owner string, input []any) *build.OwnerContext {
+		dir := filepath.Join(run.Dir, "working-context", owner)
+		must(os.MkdirAll(dir, 0o700))
+		must(os.Chmod(filepath.Dir(dir), 0o700))
+		must(os.Chmod(dir, 0o700))
+		file := filepath.Join(dir, "1.json")
+		raw := []byte(encode(m{"input": input}) + "\n")
+		must(os.WriteFile(file, raw, 0o600))
+		must(os.Chmod(file, 0o600))
+		return &build.OwnerContext{Mandatory: []any{}, Observations: []any{}, History: []build.HistoryRef{{Path: file, SHA256: hash(raw)}}}
+	}
+	ba, ra := archive("build", buildInput), archive("review", reviewInput)
+	capture := func(state build.State, owner string, groups ...m) m {
+		raw, err := json.Marshal(state)
+		must(err)
+		must(run.PublishCheckpoint(build.Checkpoint{Version: 4, Identity: "synthetic", Candidate: "tree", Index: base64.StdEncoding.EncodeToString([]byte("index")), Approval: state.ApprovalBytes, State: raw}))
+		saved, err := os.ReadFile(filepath.Join(run.Dir, "checkpoint.json"))
+		must(err)
+		var doc struct{ State map[string]any }
+		must(json.Unmarshal(saved, &doc))
+		c, _ := doc.State["continuation"].(map[string]any)
+		stage, _ := c["stage"].(string)
+		var captureOwner string
+		var input any = []any{}
+		switch {
+		case stage == "review" || stage == "review_verify" || stage == "review_retry_verify":
+			captureOwner = "review"
+			if rv, ok := c["review"].(map[string]any); ok {
+				input = rv["input"]
+			}
+		case stage == "builder" || stage == "builder_verify":
+			captureOwner, input = "build", c["input"]
+		case stage == "tool" && c["owner"] == "build":
+			captureOwner, input = "build", c["input"]
+		default:
+			captureOwner = "UNKNOWN"
+		}
+		if input == nil {
+			input = []any{}
+		}
+		archives := []any{}
+		wc, _ := doc.State["working_context"].(map[string]any)
+		for _, ownerName := range []string{"build", "review"} {
+			st, _ := wc[ownerName].(map[string]any)
+			hist, _ := st["history"].([]any)
+			for _, h := range hist {
+				ref := h.(map[string]any)
+				raw, err := os.ReadFile(ref["path"].(string))
+				must(err)
+				var a map[string]any
+				must(json.Unmarshal(raw, &a))
+				archives = append(archives, m{"owner": ownerName, "input": a["input"]})
+			}
+		}
+		gs := []any{}
+		for _, g := range groups {
+			gs = append(gs, g)
+		}
+		return m{"owner": captureOwner, "expected_owner": owner, "input": input, "groups": gs, "archives": archives}
+	}
+	builderState := withContinuation(build.Continuation{Stage: build.StageBuilder, Input: buildInput}, nil)
+	reviewState := withContinuation(build.Continuation{Stage: build.StageReview, Review: reviewSession(reviewInput)}, nil)
+	growing := withContinuation(build.Continuation{Stage: build.StageReview, Review: reviewSession([]any{})}, map[string]*build.OwnerContext{"build": ba, "review": ra})
+	toolState := withContinuation(build.Continuation{Stage: build.StageTool, Owner: "build", Input: buildInput}, nil)
+	alteredBuild := func(mutate func(m)) []any {
+		last := clone(buildInput[len(buildInput)-1].(m))
+		out := append([]any{}, last["output"].([]any)...)
+		mutate(m{"out": out})
+		last["output"] = out
+		return append(append([]any{}, buildInput[:len(buildInput)-1]...), last)
+	}
+	altered := alteredBuild(func(x m) {
+		out := x["out"].([]any)
+		img := clone(out[1].(m))
+		img["image_url"] = img["image_url"].(string) + "changed"
+		out[1] = img
+	})
+	wrongHash := alteredBuild(func(x m) {
+		out := x["out"].([]any)
+		first := clone(out[0].(m))
+		var md map[string]any
+		must(json.Unmarshal([]byte(first["text"].(string)), &md))
+		md["sha256"] = "0000000000000000000000000000000000000000000000000000000000000000"
+		first["text"] = encode(md)
+		out[0] = first
+	})
+	_ = wrongHash
+	asBuild := func(input []any) build.State { return withContinuation(build.Continuation{Stage: build.StageBuilder, Input: input}, nil) }
+	checkpoints := m{
+		"good": []any{
+			[]any{capture(builderState, "build", bg), capture(reviewState, "review", rg)},
+			[]any{capture(growing, "review", bg, rg)},
+			[]any{capture(toolState, "build", bg)},
+		},
+		"bad": []any{
+			[]any{capture(reviewState, "build", bg)},
+			[]any{capture(asBuild(reviewInput), "build", bg)},
+			[]any{capture(asBuild(buildInput[:len(buildInput)-1]), "build", bg)},
+			[]any{capture(asBuild(altered), "build", bg)},
+			[]any{capture(asBuild(wrongHash), "build", bg)},
+			[]any{capture(withContinuation(build.Continuation{Stage: build.StageBuilder, Input: []any{}}, map[string]*build.OwnerContext{"review": ba}), "build", bg)},
+			[]any{capture(withContinuation(growing.Continuation, map[string]*build.OwnerContext{"build": ba}), "review", bg, rg)},
+			[]any{capture(withContinuation(growing.Continuation, map[string]*build.OwnerContext{"review": ra}), "review", bg, rg)},
+			[]any{},
+		},
+	}
+	groupsOut := []any{m{"prefix": prefix, "call_id": call["call_id"], "path": p, "width": 1, "height": 1, "base64": base64.StdEncoding.EncodeToString(b)}}
+	fmt.Println(encode(m{"checkpoints": checkpoints, "safety": safety, "fallback": []any{body, compatible}, "windows": []any{body["input"]}, "groups": groupsOut}))
+}
+
+// fallback sends the conversation to a local provider that refuses the cache controls once and then answers: the first
+// and the second request body as received.
+func fallback(items, tools []any) (m, m) {
+	var mu sync.Mutex
+	var bodies []m
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body m
+		must(json.Unmarshal(raw, &body))
+		mu.Lock()
+		bodies = append(bodies, body)
+		n := len(bodies)
+		mu.Unlock()
+		if n == 1 {
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(400)
+			fmt.Fprint(w, encode(m{"error": m{"type": "invalid_request_error", "code": "invalid_parameter", "message": "prompt_cache_options is not supported on this model", "param": "prompt_cache_options"}}))
+			return
+		}
+		w.Header().Set("content-type", "text/event-stream")
+		item := m{"type": "message", "id": "m_done", "role": "assistant", "content": []any{m{"type": "output_text", "text": "done", "annotations": []any{}}}}
+		fmt.Fprintf(w, "data: %s\n\n", encode(m{"type": "response.output_item.done", "output_index": 0, "item": item}))
+		fmt.Fprintf(w, "data: %s\n\n", encode(m{"type": "response.completed", "response": m{"usage": m{"input_tokens": 1, "input_tokens_details": m{"cached_tokens": 0}, "output_tokens": 1, "output_tokens_details": m{"reasoning_tokens": 0}}}}))
+	}))
+	defer srv.Close()
+	home, err := os.MkdirTemp("", "image-control-home-")
+	must(err)
+	defer os.RemoveAll(home)
+	cred := filepath.Join(home, ".kogen/credentials")
+	must(os.MkdirAll(cred, 0o700))
+	must(os.WriteFile(filepath.Join(cred, "chatgpt.json"), []byte("{\"client_id\":\"oaiapp_local_fixture\",\"access_token\":\"fake-access\",\"refresh_token\":\"fake-refresh\",\"expires_at\":4102444800}"), 0o600))
+	s := sys.NewWith([]string{"HOME=" + home, "KOGEN_PROVIDER_URL=" + srv.URL}, home)
+	client := provider.NewClient("kogen test (driver)")
+	_, err = client.Respond(s.Context(), s, provider.Request{Role: provider.Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "synthetic policy", Input: items, Tools: tools, Single: true, Scope: "image-control"}, nil)
+	must(err)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) < 2 {
+		must(fmt.Errorf("expected the refused and the compatible request, got %d", len(bodies)))
+	}
+	return bodies[0], bodies[1]
+}
 `;
 function retainedEvidence() {
   const dir = '/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/native-image-evidence-20261021';
@@ -253,14 +500,15 @@ function retainedEvidence() {
   process.stdout.write('verified retained two-request PNG capability; no inference\n');
 }
 if (require.main === module) {
+  (async () => {
   try {
     if (process.argv[2] === '--retained-evidence') retainedEvidence();
     else if (process.argv[2] === '--control') {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-image-control-'));
       try {
-        const script = path.join(dir, 'control.exs'), receipt = path.join(dir, 'receipt.json'); fs.writeFileSync(script, control);
-        const r = spawnSync('mix', ['run', script], { cwd: ROOT, env: { ...process.env, IMAGE_CONTROL_BYTES: png(1, 1).toString('base64'), IMAGE_CONTROL_RECEIPT: receipt }, encoding: 'utf8', timeout: 60000 });
-        assert.equal(r.status, 0, r.stdout + r.stderr); const good = JSON.parse(fs.readFileSync(receipt));
+        const driver = await H.goDriver('image', imageDriverSource);
+        const r = await driver([], { input: JSON.stringify({ Mode: 'control', Bytes: png(1, 1).toString('base64') }) });
+        assert.equal(r.code, 0, r.out); const good = JSON.parse(r.out);
         assert.equal(replayObserver(good), true, 'native serialized control must be accepted');
         const [enabled, compatible] = good.fallback;
         assert.deepEqual(enabled.prompt_cache_options, { mode: 'implicit', ttl: '30m' });
@@ -333,218 +581,163 @@ if (require.main === module) {
       } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     } else throw new Error('unknown control mode');
   } catch (e) { process.stderr.write(String(e) + '\n'); process.exitCode = 2; }
+  })();
+
 } else {
-  const { Given, When, Then, AfterAll } = require('@cucumber/cucumber');
-  let work, archive;
-  const driver = String.raw`
-Code.require_file(Path.expand("test/support/integration_helpers.ex", File.cwd!()))
-${checkpointCapture}
-defmodule NativeImageExercise do
- use ExUnit.Case
- alias Kogen.{Intent, Shape, Tools, WorkingContext}
- alias Kogen.Integration.{Helpers, FakeProvider}
- @tag timeout: 220_000
- test "capture native image evidence" do
-  s = JSON.decode!(File.read!(System.fetch_env!("IMAGE_INPUT")))
-  mode = System.fetch_env!("IMAGE_MODE")
-  result = if mode == "validation", do: validation(s), else: installed(s,mode)
-  File.write!(System.fetch_env!("IMAGE_RECEIPT"), JSON.encode!(result))
- end
- defp f(n,a), do: {:function,n,a}
- defp script(c,actions), do: Agent.update(c.server.state, fn s -> %{s | script: Enum.take(s.script,s.next) ++ List.duplicate(nil,max(s.next-length(s.script),0)) ++ actions} end)
- defp requests(c), do: FakeProvider.provider_requests(c.server)
- defp git(c,args) do
-  {out,0} = Helpers.git!(c,args)
-  String.trim(out)
- end
- defp approve(c) do
-  {out,5} = Helpers.run_kogen(c,["intent","approve","fixture"])
-  [_,hash] = Regex.run(~r/SHA-256: ([a-f0-9]{64})/,out)
-  {out,0} = Helpers.run_kogen(c,["intent","approve","fixture",hash])
-  out
- end
- defp files(p) do
-  if File.dir?(p), do: Enum.flat_map(File.ls!(p), &files(Path.join(p,&1))), else: if(File.regular?(p), do: [p], else: [])
- end
- defp custody(c), do: %{head: git(c,["rev-parse","HEAD"]), index: File.read!(Path.join(c.repo,".git/index")), approval: File.read!(Intent.approval_path(c.repo,"fixture")), app: File.read!(Path.join(c.repo,"app.txt"))}
- defp protected(c), do: Map.new([".kogen/project.yaml",Intent.intent_md("fixture"),Intent.feature("fixture"),"features/steps/integration_steps.js"], fn p -> {p,File.read!(Path.join(c.repo,p))} end)
- defp validation(s) do
-  tmp = Kogen.tmp_path("image-validation")
-  File.mkdir_p!(tmp)
-  try do
-   ctx = %{root: tmp, protected: [], tools: ["view_image"]}
-   advertised = try do Enum.any?(Tools.defs(["view_image"]), &(&1["name"] == "view_image")) rescue FunctionClauseError -> false end
-   rows = Enum.map(s["images"], fn image ->
-    p = Path.join(tmp,image["name"])
-    cond do
-     image["name"] == "missing" -> :ok
-     image["name"] == "folder" -> File.mkdir_p!(p)
-     true -> File.write!(p,Base.decode64!(image["base64"]))
-    end
-    output = if advertised, do: Tools.run("view_image",%{"path" => image["name"]},ctx), else: "native view_image not implemented"
-    %{name: image["name"], output: output, uncut: (if is_list(output), do: apply(Tools,:cut,[output]) == output, else: false), framed: Shape.output(%{"call_id" => image["name"]},output)}
-   end)
-   body = Kogen.ChatGPT.request_body(%{model: "gpt-6.1-sol", effort: "high"},"synthetic Δ🙂 policy",[],[])
-   measured = Enum.map([s["budget"]-1,s["budget"],s["budget"]+1], fn n ->
-    base = Map.put(body,"padding","")
-    WorkingContext.measure(Map.put(base,"padding",String.duplicate("x",n-byte_size(JSON.encode!(base)))))
-   end)
-   %{rows: rows, advertised: advertised, measured: measured}
-  after
-   File.rm_rf!(tmp)
-  end
- end
- defp group(owner,p,s,serial \\ "") do
-  id = owner <> serial
-  call = %{"type" => "function_call", "id" => "item-"<>id, "call_id" => "image-"<>id, "name" => "view_image", "arguments" => JSON.encode!(%{"path" => p})}
-  r = %{"type" => "reasoning", "id" => "reasoning-"<>id, "encrypted_content" => s["opaque"]<>"-"<>id, "summary" => []}
-  m = %{"type" => "message", "id" => "message-"<>id, "role" => "assistant", "phase" => "commentary", "content" => [%{"type" => "output_text", "text" => s["unfinished"]<>" "<>id}]}
-  prefix = Enum.map([r,m,call],&Shape.replay_item/1)
-  {prefix,%{owner: owner, prefix: prefix, call_id: call["call_id"], path: p, base64: s["selected"], width: 1, height: 1}}
- end
- defp observation(owner,s,tool,args) do
-  {:items,[%{"type" => "message", "id" => "observed-"<>owner, "role" => "assistant", "phase" => "commentary", "content" => [%{"type" => "output_text", "text" => s["observation"]}]},%{"type" => "function_call", "id" => "after-"<>owner, "call_id" => "after-"<>owner, "name" => tool, "arguments" => JSON.encode!(args)}]}
- end
- defp installed(s,mode) do
-  suite = Helpers.setup_suite!()
-  try do
-   c = Helpers.project!(suite,[],staged_intent: false)
-   try do
-    # Cheap clean unrelated baseline BEFORE targeted second-slug Shape or renewed approval.
-    git(c,["add",".kogen/intents/fixture","features/steps/integration_steps.js"])
-    git(c,["commit","-qm","Commit unrelated native fixture baseline"])
-    assert git(c,["status","--porcelain"]) == ""
-    approve(c)
-    before = custody(c)
-    protection = protected(c)
-    p = Path.join(c.root,"selected.png")
-    File.write!(p,Base.decode64!(s["selected"]))
-    q = Path.join(c.root,"review.png")
-    File.write!(q,Base.decode64!(s["selected"]))
-    n = length(requests(c))
-    {items,g} = group(if(mode in ["shape","budget-shape"], do: "shape", else: "build"),p,s)
-    {review_items,rg} = group("review",q,s)
-    if mode in ["shape","budget-shape","budget-build"] do
-     input = Path.join(c.root,"request.txt")
-     File.write!(input,"Synthetic selected PNG evidence only: "<>p)
-     actions = if mode == "shape" do
-      [{:items,items},{:pause,self(),observation("shape",s,"read_file",%{"path" => "app.txt"})},f("submit",%{"questions" => [%{"question" => "Synthetic fixture stop", "options" => [%{"label" => "Keep", "recommended" => true},%{"label" => "Stop"}]}]})]
-     else
-      calls = for i <- 1..3 do
-       {prefix,_} = group("budget",p,s,Integer.to_string(i))
-       List.last(prefix)
-      end
-      [{:items,calls}]
-     end
-     script(c,actions)
-     args = if mode == "budget-build", do: ["intent","build","fixture"], else: ["intent","shape","image-shape",input]
-     {out,code} = if mode == "shape" do
-      port = Helpers.start_kogen(c,args)
-      receive do
-       {:provider_paused,pid} -> File.rm!(p); send(pid,:continue)
-      after
-       15_000 -> flunk("native Shape never reached image-bearing response boundary")
-      end
-      Helpers.await_exit(port,"",30_000)
-     else
-      Helpers.run_kogen(c,args)
-     end
-     reqs = Enum.drop(requests(c),n)
-     common(c,s,reqs,[g],protection) |> Map.merge(%{shape_completed: code == 5, path_deleted: not File.exists?(p), budget_refusal: code != 0 and out =~ "candidate/context_budget_exceeded", requests_after_init: length(reqs), no_oversized_request: Enum.all?(reqs, &(byte_size(&1.body) <= s["budget"])), custody_unchanged: custody(c) == before, actionable: out =~ "524288" and out =~ "131072" and Regex.match?(~r/prepar|Refine|approval/i,out), diagnostic: out})
-    else
-     grows = mode in ["windows","archive-drift"]
-     growth = fn owner -> for i <- 1..s["turns"], do: f("write_file",%{"path" => "app.txt", "content" => owner<>Integer.to_string(i)<>String.duplicate("x",s["payload_bytes"])}) end
-     finish = f("finish",%{"summary" => "Synthetic implementation finished, visual observations are not check approval"})
-     cache_error = {:http,400,%{"error" => %{"type" => "invalid_request_error", "code" => "invalid_parameter", "message" => "prompt_cache_options is not supported on this model"}}}
-     obs = observation("build",s,"write_file",%{"path" => "app.txt", "content" => "image journey\n"})
-     actions = cond do
-      grows -> [{:items,items},obs] ++ growth.("build") ++ [finish,{:items,review_items},observation("review",s,"read_file",%{"path" => "app.txt"})] ++ growth.("review")
-      mode == "uncertain" -> [{:items,items},f("shell",%{"command" => "printf 'once\\n' >> .kogen/local/image-effects; touch .kogen/local/image-entered; sleep 60"})]
-      mode == "delivery-failure" -> [{:items,items}]
-      mode == "fallback" -> [{:items,items},cache_error,obs]
-      true -> [{:items,items},obs]
-     end
-     script(c,actions)
-     {out,code} = if mode == "uncertain" do
-      port = Helpers.start_kogen(c,["intent","build","fixture"])
-      Helpers.wait_for_file!(Path.join(c.repo,".kogen/local/image-entered"),20_000)
-      Helpers.signal!(c,port,"TERM")
-      Helpers.await_exit(port,"",20_000)
-     else
-      Helpers.run_kogen(c,["intent","build","fixture"])
-     end
-     first = Enum.drop(requests(c),n)
-     [cp] = Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/checkpoint.json"))
-     {:ok,_,saved} = Kogen.Run.decode_checkpoint(File.read!(cp))
-     id = Path.basename(Path.dirname(cp))
-     old_result = File.read!(Path.join(Path.dirname(cp),"result.json"))
-     old = custody(c)
-     File.write!(p,"changed or expired original artifact")
-     if mode == "resume-delete", do: File.rm!(p)
-     ap = Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/working-context/*/*.json"))
-     archive_windows = Enum.map(ap, fn a -> JSON.decode!(File.read!(a))["input"] end)
-     groups = if grows, do: [g,rg], else: [g]
-     base = common(c,s,first,groups,protection)
-     base = Map.merge(base,%{no_commit_on_failure: code != 0 and old.head == before.head, checkpoints: [NativeImageCheckpoint.capture(saved,if(grows, do: "review", else: "build"),groups)], archive_windows: archive_windows, build_archive: Enum.any?(ap,&String.contains?(&1,"/build/")), review_archive: Enum.any?(ap,&String.contains?(&1,"/review/")), archive_files: Enum.map(ap,&file_fact/1), private: private?([cp] ++ ap), diagnostic: out, fallback_requests: Enum.map(first,& &1.json)})
-     cond do
-      mode == "delivery-failure" -> base
-      mode in ["archive-drift","uncertain"] ->
-       if mode == "archive-drift" do
-        assert ap != [], "fixture did not reach a working-window reset"
-        File.write!(hd(ap),"{\"input\":[]}\n")
-       end
-       n2 = length(requests(c))
-       {refusal,rk} = Helpers.run_kogen(c,["intent","resume",id])
-       Map.merge(base,%{refused: rk != 0, no_inference_on_refusal: length(requests(c)) == n2, custody_unchanged: custody(c) == old, actionable: Regex.match?(~r/history|archive|uncertain|custody/i,refusal), effect_once: File.read(Path.join(c.repo,".kogen/local/image-effects")) == {:ok,"once\n"}, diagnostic: out<>refusal})
-      true ->
-       # First continuation is the exact saved owner. Ordinary modes then stop the fresh reviewer too.
-       script(c,if(grows, do: [f("submit_review",%{"verdict" => "approve", "findings" => []})], else: [finish,{:items,review_items},observation("review",s,"read_file",%{"path" => "app.txt"})]))
-       n2 = length(requests(c))
-       {resume,rk} = Helpers.run_kogen(c,["intent","resume",id])
-       second = Enum.drop(requests(c),n2)
-       same_input = second != [] and hd(second).json["input"] == List.last(first).json["input"]
-       {final_code,review_same,final_output,checkpoints} = if grows do
-        {rk,true,resume,base.checkpoints}
-       else
-        assert rk != 0, resume
-        newer = Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/checkpoint.json")) -- [cp]
-        [review_cp] = newer
-        {:ok,_,review_saved} = Kogen.Run.decode_checkpoint(File.read!(review_cp))
-        checkpoints = base.checkpoints ++ [NativeImageCheckpoint.capture(review_saved,"review",[rg])]
-        File.rm!(q)
-        script(c,[f("submit_review",%{"verdict" => "approve", "findings" => []})])
-        nn = length(requests(c))
-        {o,k} = Helpers.run_kogen(c,["intent","resume",Path.basename(Path.dirname(review_cp))])
-        last = Enum.drop(requests(c),nn)
-        {k,last != [] and hd(last).json["input"] == List.last(second).json["input"],resume<>o,checkpoints}
-       end
-       all = Enum.drop(requests(c),n)
-       final = common(c,s,all,[g,rg],protection)
-       Map.merge(base,final) |> Map.merge(%{checkpoints: checkpoints, resume_same_input: same_input and review_same, one_commit: final_code == 0 and git(c,["rev-list","--count",before.head<>"..HEAD"]) == "1", old_result_unchanged: File.read!(Path.join(Path.dirname(cp),"result.json")) == old_result, diagnostic: out<>final_output})
-     end
-    end
-   after
-    Helpers.cleanup_case(c)
-   end
-  after
-   Helpers.cleanup_suite(suite)
-  end
- end
- defp file_fact(p), do: %{file_mode: Bitwise.band(File.stat!(p).mode,0o777), dir_mode: Bitwise.band(File.stat!(Path.dirname(p)).mode,0o777)}
- defp private?(paths), do: paths != [] and Enum.all?(paths,fn p -> file_fact(p) == %{file_mode: 0o600, dir_mode: 0o700} end)
- defp common(c,s,reqs,groups,protection) do
-  ap = Path.wildcard(Path.join(c.repo,".kogen/local/runs/*/working-context/*/*.json"))
-  aw = Enum.map(ap,fn p -> JSON.decode!(File.read!(p))["input"] end)
-  logs = files(Path.join(c.repo,".kogen/local")) |> Enum.filter(fn p -> Path.basename(p) in ["log.jsonl","events.ndjson"] end) |> Enum.flat_map(fn p -> File.read!(p) |> String.split("\n",trim: true) |> Enum.map(&JSON.decode!/1) end)
-  reviews = Enum.filter(reqs,fn r -> r in FakeProvider.review_requests(c.server) end)
-  advertised = reqs != [] and Enum.all?(reqs,fn r -> Enum.any?(r.json["tools"] || [],&(&1["name"] == "view_image")) end)
-  %{advertised: advertised, windows: Enum.map(reqs,& &1.json["input"]) ++ aw, groups: groups, bounded: reqs != [] and Enum.all?(reqs,&(byte_size(&1.body) <= s["budget"])), events: logs, review_windows: Enum.map(reviews,& &1.json["input"]), protection_same: protected(c) == protection}
- end
-end
-`;
-  function execute(file, args, options = {}) {
-    const r = spawnSync(file, args, { cwd: ROOT, env: process.env, encoding: 'utf8', timeout: 240000, maxBuffer: 16 * 1024 * 1024, ...options });
-    assert.equal(r.status, 0, (r.stdout || '') + (r.stderr || '') + (r.error || '')); return r.stdout;
+  const { Given, When, Then } = require('@cucumber/cucumber');
+  const f = H.fn;
+  const sortKeys = x => Array.isArray(x) ? x.map(sortKeys) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map(k => [k, sortKeys(x[k])])) : x;
+  const read = p => fs.readFileSync(p, 'utf8');
+  const modeFacts = p => ({ file_mode: fs.statSync(p).mode & 0o777, dir_mode: fs.statSync(path.dirname(p)).mode & 0o777 });
+  const isPrivate = paths => paths.length > 0 && paths.every(p => { const x = modeFacts(p); return x.file_mode === 0o600 && x.dir_mode === 0o700; });
+  const count = c => c.server.providerRequests().length;
+  // What the checkpoint says about who owned the conversation and which windows are archived (the saved state of a checkpoint).
+  function captureSaved(saved, expectedOwner, groups) {
+    const c = saved.continuation;
+    let owner = 'UNKNOWN', input = [];
+    if (['review', 'review_verify', 'review_retry_verify'].includes(c.stage)) { owner = 'review'; input = (c.review || {}).input || []; }
+    else if (['builder', 'builder_verify'].includes(c.stage)) { owner = 'build'; input = c.input || []; }
+    else if (c.stage === 'tool' && c.owner === 'build') { owner = 'build'; input = c.input || []; }
+    const archives = [];
+    for (const [name, state] of Object.entries(saved.working_context || {})) for (const ref of state.history || []) archives.push({ owner: name, input: JSON.parse(read(ref.path)).input });
+    return { owner, expected_owner: expectedOwner, input, groups, archives };
+  }
+  const savedState = file => JSON.parse(read(file)).state;
+
+  async function validation(s) {
+    const driver = await H.goDriver('image', imageDriverSource);
+    const call = async input => { const r = await driver([], { input: JSON.stringify(input) }); assert.equal(r.code, 0, r.out); return JSON.parse(r.out); };
+    const { rows, advertised } = await call({ Mode: 'validation', Images: s.images.map(i => ({ Name: i.name, Base64: i.base64 })) });
+    const body = await call({ Mode: 'body' });
+    const base = { ...body, padding: '' };
+    const sized = [s.budget - 1, s.budget, s.budget + 1].map(n => ({ ...base, padding: 'x'.repeat(n - Buffer.byteLength(JSON.stringify(base))) }));
+    const measured = await call({ Mode: 'measure', Bodies: sized });
+    return { rows, advertised, measured };
+  }
+  function group(owner, p, s, serial = '') {
+    const id = owner + serial;
+    const call = { type: 'function_call', id: `item-${id}`, call_id: `image-${id}`, name: 'view_image', arguments: JSON.stringify({ path: p }) };
+    const r = { type: 'reasoning', id: `reasoning-${id}`, encrypted_content: `${s.opaque}-${id}`, summary: [] };
+    const m = { type: 'message', id: `message-${id}`, role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text: `${s.unfinished} ${id}` }] };
+    const prefix = [r, m, call].map(H.replayItem);
+    return [prefix, { owner, prefix, call_id: call.call_id, path: p, base64: s.selected, width: 1, height: 1 }];
+  }
+  const observation = (owner, s, tool, args) => ({ items: [{ type: 'message', id: `observed-${owner}`, role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text: s.observation }] }, { type: 'function_call', id: `after-${owner}`, call_id: `after-${owner}`, name: tool, arguments: JSON.stringify(args) }] });
+  const custody = async c => ({ head: await H.git(c, ['rev-parse', 'HEAD']), index: read0(path.join(c.repo, '.git/index')), approval: read0(H.approvalPath(c.repo, 'fixture')), app: read0(path.join(c.repo, 'app.txt')) });
+  const read0 = p => fs.readFileSync(p).toString('latin1');
+  const protectedFiles = c => Object.fromEntries(['.kogen/project.yaml', H.intentMd('fixture'), H.featurePath('fixture'), 'features/steps/integration_steps.js'].map(p => [p, read0(path.join(c.repo, p))]));
+  function common(c, s, reqs, groups, protection) {
+    const ap = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/working-context/*/*.json'));
+    const aw = ap.map(p => JSON.parse(read(p)).input);
+    const logs = H.listFiles(path.join(c.repo, '.kogen/local')).filter(p => ['log.jsonl', 'events.ndjson'].includes(path.basename(p))).flatMap(p => read(p).split('\n').filter(Boolean).map(l => JSON.parse(l)));
+    const reviewRequests = c.server.reviewRequests();
+    const reviews = reqs.filter(r => reviewRequests.includes(r));
+    const advertised = reqs.length > 0 && reqs.every(r => (r.json.tools || []).some(t => t.name === 'view_image'));
+    return { advertised, windows: [...reqs.map(r => r.json.input), ...aw], groups, bounded: reqs.length > 0 && reqs.every(r => Buffer.byteLength(r.body) <= s.budget), events: logs, review_windows: reviews.map(r => r.json.input), protection_same: same(protectedFiles(c), protection) };
+  }
+  async function installed(s, mode) {
+    const suite = await H.setupSuite(); let c;
+    try {
+      c = await H.project(suite, [], { stagedIntent: false });
+      // Cheap clean unrelated baseline BEFORE targeted second-slug Shape or renewed approval.
+      await H.gitBang(c, ['add', '.kogen/intents/fixture', 'features/steps/integration_steps.js']);
+      await H.gitBang(c, ['commit', '-qm', 'Commit unrelated native fixture baseline']);
+      assert.equal(await H.git(c, ['status', '--porcelain']), '');
+      await H.approve(c, 'fixture');
+      const before = await custody(c);
+      const protection = protectedFiles(c);
+      const p = path.join(c.root, 'selected.png'); fs.writeFileSync(p, Buffer.from(s.selected, 'base64'));
+      const q = path.join(c.root, 'review.png'); fs.writeFileSync(q, Buffer.from(s.selected, 'base64'));
+      const n = count(c);
+      const [items, g] = group(['shape', 'budget-shape'].includes(mode) ? 'shape' : 'build', p, s);
+      const [reviewItems, rg] = group('review', q, s);
+      const requestsFrom = k => c.server.providerRequests().slice(k);
+      if (['shape', 'budget-shape', 'budget-build'].includes(mode)) {
+        const input = path.join(c.root, 'request.txt'); fs.writeFileSync(input, `Synthetic selected PNG evidence only: ${p}`);
+        let actions;
+        if (mode === 'shape') actions = [{ items }, { pause: observation('shape', s, 'read_file', { path: 'app.txt' }) }, f('submit', { questions: [{ question: 'Synthetic fixture stop', options: [{ label: 'Keep', recommended: true }, { label: 'Stop' }] }] })];
+        else {
+          const calls = [1, 2, 3].map(i => group('budget', p, s, String(i))[0].at(-1));
+          actions = [{ items: calls }];
+        }
+        c.server.setScript(actions);
+        const args = mode === 'budget-build' ? ['intent', 'build', 'fixture'] : ['intent', 'shape', 'image-shape', input];
+        let out, code;
+        if (mode === 'shape') {
+          const proc = H.startKogen(c, args);
+          const peer = await c.server.waitPaused(15000);
+          fs.rmSync(p); peer.continue();
+          ({ out, code } = await proc.awaitExit(30000));
+        } else ({ out, code } = await H.runKogen(c, args));
+        const reqs = requestsFrom(n);
+        return { ...common(c, s, reqs, [g], protection), shape_completed: code === 5, path_deleted: !fs.existsSync(p), budget_refusal: code !== 0 && out.includes('candidate/context_budget_exceeded'), requests_after_init: reqs.length, no_oversized_request: reqs.every(r => Buffer.byteLength(r.body) <= s.budget), custody_unchanged: same(await custody(c), before), actionable: out.includes('524288') && out.includes('131072') && /prepar|Refine|approval/i.test(out), diagnostic: out };
+      }
+      const grows = ['windows', 'archive-drift'].includes(mode);
+      const growth = owner => Array.from({ length: s.turns }, (_, i) => f('write_file', { path: 'app.txt', content: owner + (i + 1) + 'x'.repeat(s.payload_bytes) }));
+      const finish = f('finish', { summary: 'Synthetic implementation finished, visual observations are not check approval' });
+      const cacheError = { http: [400, { error: { type: 'invalid_request_error', code: 'invalid_parameter', message: 'prompt_cache_options is not supported on this model' } }] };
+      const obs = observation('build', s, 'write_file', { path: 'app.txt', content: 'image journey\n' });
+      let actions;
+      if (grows) actions = [{ items }, obs, ...growth('build'), finish, { items: reviewItems }, observation('review', s, 'read_file', { path: 'app.txt' }), ...growth('review')];
+      else if (mode === 'uncertain') actions = [{ items }, f('shell', { command: "printf 'once\\n' >> .kogen/local/image-effects; touch .kogen/local/image-entered; sleep 60" })];
+      else if (mode === 'delivery-failure') actions = [{ items }];
+      else if (mode === 'fallback') actions = [{ items }, cacheError, obs];
+      else actions = [{ items }, obs];
+      c.server.setScript(actions);
+      let out, code;
+      if (mode === 'uncertain') {
+        const proc = H.startKogen(c, ['intent', 'build', 'fixture']);
+        await H.waitForFile(path.join(c.repo, '.kogen/local/image-entered'), 20000);
+        proc.signal('SIGTERM');
+        ({ out, code } = await proc.awaitExit(20000));
+      } else ({ out, code } = await H.runKogen(c, ['intent', 'build', 'fixture']));
+      const first = requestsFrom(n);
+      const [cp] = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/checkpoint.json'));
+      const saved = savedState(cp);
+      const id = path.basename(path.dirname(cp));
+      const oldResult = read0(path.join(path.dirname(cp), 'result.json'));
+      const old = await custody(c);
+      fs.writeFileSync(p, 'changed or expired original artifact');
+      if (mode === 'resume-delete') fs.rmSync(p);
+      const ap = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/working-context/*/*.json'));
+      const archiveWindows = ap.map(a => JSON.parse(read(a)).input);
+      const groups = grows ? [g, rg] : [g];
+      let base = common(c, s, first, groups, protection);
+      base = { ...base, no_commit_on_failure: code !== 0 && old.head === before.head, checkpoints: [captureSaved(saved, grows ? 'review' : 'build', groups)], archive_windows: archiveWindows, build_archive: ap.some(a => a.includes('/build/')), review_archive: ap.some(a => a.includes('/review/')), archive_files: ap.map(modeFacts), private: isPrivate([cp, ...ap]), diagnostic: out, fallback_requests: first.map(r => r.json) };
+      if (mode === 'delivery-failure') return base;
+      if (['archive-drift', 'uncertain'].includes(mode)) {
+        if (mode === 'archive-drift') { assert.ok(ap.length > 0, 'fixture did not reach a working-window reset'); fs.writeFileSync(ap[0], '{"input":[]}\n'); }
+        const n2 = count(c);
+        const refusal = await H.runKogen(c, ['intent', 'resume', id]);
+        const effects = path.join(c.repo, '.kogen/local/image-effects');
+        return { ...base, refused: refusal.code !== 0, no_inference_on_refusal: count(c) === n2, custody_unchanged: same(await custody(c), old), actionable: /history|archive|uncertain|custody/i.test(refusal.out), effect_once: fs.existsSync(effects) && fs.readFileSync(effects, 'utf8') === 'once\n', diagnostic: out + refusal.out };
+      }
+      // First continuation is the exact saved owner. Ordinary modes then stop the fresh reviewer too.
+      // Since 7e15bf2 an approval needs every pinned review-source part read first (as main's own release requires).
+      c.server.setScript(grows ? [...H.wildcard(path.join(c.repo, '.kogen/local/runs/*/review-source/*/*.json')).map(p => f('read_file', { path: p })), f('submit_review', { verdict: 'approve', findings: [] })] : [finish, { items: reviewItems }, observation('review', s, 'read_file', { path: 'app.txt' })]);
+      const n2 = count(c);
+      const resume = await H.runKogen(c, ['intent', 'resume', id]);
+      const second = requestsFrom(n2);
+      const sameInput = second.length > 0 && same(second[0].json.input, first.at(-1).json.input);
+      let finalCode, reviewSame, finalOutput, checkpoints;
+      if (grows) { finalCode = resume.code; reviewSame = true; finalOutput = resume.out; checkpoints = base.checkpoints; }
+      else {
+        assert.notEqual(resume.code, 0, resume.out);
+        const newer = H.wildcard(path.join(c.repo, '.kogen/local/runs/*/checkpoint.json')).filter(x => x !== cp);
+        assert.equal(newer.length, 1, `${newer}`);
+        const [reviewCp] = newer;
+        checkpoints = [...base.checkpoints, captureSaved(savedState(reviewCp), 'review', [rg])];
+        fs.rmSync(q);
+        c.server.setScript([f('submit_review', { verdict: 'approve', findings: [] })]);
+        const nn = count(c);
+        const o = await H.runKogen(c, ['intent', 'resume', path.basename(path.dirname(reviewCp))]);
+        const last = requestsFrom(nn);
+        finalCode = o.code; reviewSame = last.length > 0 && same(last[0].json.input, second.at(-1).json.input); finalOutput = resume.out + o.out;
+      }
+      const all = requestsFrom(n);
+      const final = common(c, s, all, [g, rg], protection);
+      return { ...base, ...final, checkpoints, resume_same_input: sameInput && reviewSame, one_commit: finalCode === 0 && (await H.git(c, ['rev-list', '--count', `${before.head}..HEAD`])) === '1', old_result_unchanged: read0(path.join(path.dirname(cp), 'result.json')) === oldResult, diagnostic: out + finalOutput };
+    } finally { await H.cleanupCase(c); H.cleanupSuite(suite); }
   }
   function qualify(d, s) {
     if (d.rows) {
@@ -588,23 +781,12 @@ end
     s.images = fixtures.map(([name, b, width, height]) => ({ name, base64: b.toString('base64'), width, height }));
     s.selected = png(1, 1, s.max_bytes).toString('base64'); this.imageInputs = s;
   });
-  When('I exercise native image evidence {string}', { timeout: 300000 }, function (mode) {
-    if (!work) work = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-native-images-'));
-    if (!archive && mode !== 'validation') {
-      const out = execute('/bin/sh', ['packaging/package.sh']); archive = out.split('\n').find(x => x.startsWith('/') && x.endsWith('.tar.gz')); assert.ok(archive && fs.existsSync(archive), out);
-    }
-    const dir = fs.mkdtempSync(path.join(work, 'case-'));
-    try {
-      const script = path.join(dir, 'native_image_test.exs'), input = path.join(dir, 'input.json'), receipt = path.join(dir, 'receipt.json');
-      fs.writeFileSync(script, driver); fs.writeFileSync(input, JSON.stringify(this.imageInputs));
-      const dirs = ['mix','erl','go','node','npm','python3'].map(n => path.dirname(execute('mise', ['which', n]).trim()));
-      execute('mix', ['test', script], { env: { ...process.env, PATH: [...dirs, process.env.PATH].join(path.delimiter), ...(archive ? { KOGEN_ARCHIVE: archive } : {}), IMAGE_INPUT: input, IMAGE_MODE: mode, IMAGE_RECEIPT: receipt } });
-      assert.ok(fs.existsSync(receipt)); this.imageObservations = qualify(JSON.parse(fs.readFileSync(receipt)), this.imageInputs);
-      this.attach(JSON.stringify(this.imageObservations), 'application/json');
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  When('I exercise native image evidence {string}', { timeout: 300000 }, async function (mode) {
+    const result = mode === 'validation' ? await validation(this.imageInputs) : await installed(this.imageInputs, mode);
+    this.imageObservations = qualify(result, this.imageInputs);
+    await this.attach(JSON.stringify(this.imageObservations), 'application/json');
   });
   Then('the native image observations include:', function (json) {
     for (const [key, expected] of Object.entries(JSON.parse(json))) assert.deepEqual(this.imageObservations[key], expected, key + ': ' + JSON.stringify(this.imageObservations));
   });
-  AfterAll(function () { if (work) fs.rmSync(work, { recursive: true, force: true }); });
 }

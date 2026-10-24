@@ -1,0 +1,32 @@
+{
+  "id": "resume-commits-again",
+  "case": "commit-recovery",
+  "description": "A resume treats the boundary where the commit was being made as not yet committed and commits the reviewed tree again (as an empty commit on top of the first).",
+  "edits": [
+    {
+      "file": "build/resume.go",
+      "old": "if head != b.Start {",
+      "new": "if head != b.Start && b.Continuation.Stage != StageCommit {"
+    },
+    {
+      "file": "build/resume.go",
+      "old": "slices.Contains([]string{StageTool, StageCommit, StageStartup}, b.Continuation.Stage)",
+      "new": "slices.Contains([]string{StageTool, StageStartup}, b.Continuation.Stage)"
+    },
+    {
+      "file": "build/resume.go",
+      "old": "if current, err := os.ReadFile(b.GitIndex); err != nil || !bytes.Equal(current, savedIndex) {",
+      "new": "if current, err := os.ReadFile(b.GitIndex); b.Continuation.Stage != StageCommit && (err != nil || !bytes.Equal(current, savedIndex)) {"
+    },
+    {
+      "file": "build/builder.go",
+      "old": "\tdefault: // the review stages\n",
+      "new": "\tcase StageCommit:\n\t\tb.Start = b.repo.Head()\n\t\t_, _, err := b.commit(ctx, Approved{Pass: *b.LastPass, Review: *b.LastReview})\n\t\treturn err\n\tdefault: // the review stages\n"
+    },
+    {
+      "file": "git/commit.go",
+      "old": "UnsetPrefix()+\"git commit -q -F \"+shellQuote(spec.MessageFile)",
+      "new": "UnsetPrefix()+\"git commit -q --allow-empty -F \"+shellQuote(spec.MessageFile)"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"kogen/git"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,17 +93,19 @@ func TestOwnerRequiresMatchingLockAndBirth(t *testing.T) {
 		t.Fatal(e)
 	}
 	path := filepath.Join(root, ".kogen/local/build.lock")
-	os.Mkdir(path, 0700)
-	owner := object{"pid": strconv.Itoa(pid), "birth": strings.TrimSpace(string(birth)), "token": "original"}
-	os.WriteFile(filepath.Join(path, "original"), []byte(strconv.Itoa(pid)), 0600)
+	lock := git.NewLock(path)
+	if _, e := lock.Acquire(); e != nil {
+		t.Fatal(e)
+	}
+	defer lock.Release()
+	owner := object{"pid": strconv.Itoa(pid), "birth": strings.TrimSpace(string(birth)), "token": lock.Token()}
 	if !alive(root, owner) {
 		t.Fatal("matching owner was not live")
 	}
-	os.WriteFile(filepath.Join(path, "another-owner"), []byte(strconv.Itoa(pid)), 0600)
-	if alive(root, owner) {
-		t.Fatal("ambiguous lock owners advertised")
+	other := object{"pid": strconv.Itoa(pid), "birth": owner["birth"], "token": "another-owner"}
+	if alive(root, other) {
+		t.Fatal("a token that is not the lock's advertised")
 	}
-	os.Remove(filepath.Join(path, "another-owner"))
 	owner["birth"] = "previous process"
 	if alive(root, owner) {
 		t.Fatal("PID reuse advertised")

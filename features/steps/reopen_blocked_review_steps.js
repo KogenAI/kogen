@@ -4,7 +4,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { Given, When, Then, Before, After, AfterAll } = require('@cucumber/cucumber');
+const H = require('./go_driver_support.js');
+const { localProducer, removeProducer } = require('./reopen_blocked_review_producer.js');
 const REPO = path.resolve(__dirname, '../..');
+// The parent acceptance environment names the Node and Cucumber of the running suite; outside a Kogen acceptance run they are this process and the repository's own.
+// The retained executable's version line: the recorded c3ee2a8e release, or what KOGEN_REOPEN_OLD_VERSION says when another retained release stands in for it.
+const OLD_VERSION = new RegExp(process.env.KOGEN_REOPEN_OLD_VERSION || 'kogen c3ee2a8e ');
+const PARENT_NODE = process.env.KOGEN_NODE || process.execPath, PARENT_CUCUMBER = process.env.KOGEN_CUCUMBER || path.join(REPO, 'test/acceptance/node_modules');
 function run(file, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(file, args, { ...opts, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -68,7 +74,7 @@ models:
     const newBin = path.join(this.prefix, 'bin/kogen');
     this.commandOverride = cross ? process.env.KOGEN_REOPEN_OLD_BIN : newBin;
     const oldVersion = await this.invoke('kogen version');
-    if (cross) assert.match(oldVersion.stdout, /kogen c3ee2a8e /);
+    if (cross) assert.match(oldVersion.stdout, OLD_VERSION);
     const card = await this.invoke(`kogen intent approve ${slug}`); assert.equal(card.code, 5, card.stdout + card.stderr);
     assert.match(card.stdout, /Candidate implementation \(fails now\)/);
     const hash = card.stdout.match(/^SHA-256: ([a-f0-9]{64})$/m)?.[1]; assert.ok(hash, card.stdout);
@@ -179,7 +185,7 @@ models:
       history: preserved(initialHistory) && preserved(interruptedHistory) && preserved(repeatedHistory), lineage,
       usage: !!last && last.usage.output === this.server.responses.length * 20 && (mode !== 'interrupt-review' || last.unknown_requests >= 1),
       noBuilderRestart: !this.server.requests.slice(modelAt).some(r => r.kind === 'build'),
-      crossVersion: cross && /kogen c3ee2a8e /.test(oldVersion.stdout) && oldVersion.code === 0 && newVersion.code === 0,
+      crossVersion: cross && OLD_VERSION.test(oldVersion.stdout) && oldVersion.code === 0 && newVersion.code === 0,
       diagnostic: { result: result.stdout + result.stderr, oldVersion: oldVersion.stdout, newVersion: newVersion.stdout, rows, passes: pass, requests: resumedReviews.length }
     };
   });
@@ -190,27 +196,26 @@ models:
     if (!installation) installation = (async () => {
       work = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-reopen-install-'));
       if (process.env.KOGEN_REOPEN_NEW_BIN) return path.dirname(path.dirname(path.resolve(process.env.KOGEN_REOPEN_NEW_BIN)));
-      const packed = await run('/bin/sh', ['packaging/package.sh'], { cwd: REPO, env: { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' } });
-      assert.equal(packed.code, 0, packed.output);
-      const archive = packed.output.split('\n').find(s => s.startsWith('/') && s.endsWith('.tar.gz')); assert.ok(archive && fs.existsSync(archive), packed.output);
-      const extract = path.join(work, 'extract'); fs.mkdirSync(extract);
-      const unpack = await run('tar', ['-xzf', archive, '-C', extract]); assert.equal(unpack.code, 0, unpack.output);
-      const entries = fs.readdirSync(extract); assert.equal(entries.length, 1);
-      const prefix = path.join(work, 'prefix');
-      const install = await run('/bin/sh', [path.join(extract, entries[0], 'install.sh'), '--prefix', prefix], { env: { ...process.env, HOME: work } }); assert.equal(install.code, 0, install.output);
+      // The installed candidate: the one Go program, packaged from the changed worktree (KOGEN_ARCHIVE may name a package).
+      const suite = await H.setupSuite(); work = suite.root; const prefix = suite.prefix;
       if (process.platform === 'darwin') {
-        const sign = await run('codesign', ['--force', '--sign', '-', path.join(prefix, 'bin/kogen')]); assert.equal(sign.code, 0, sign.output);
-        const verify = await run('codesign', ['--verify', path.join(prefix, 'bin/kogen')]); assert.equal(verify.code, 0, verify.output);
+        const sign = await run('codesign', ['--force', '--sign', '-', path.join(prefix, 'lib/kogen/bin/kogen')]); assert.equal(sign.code, 0, sign.output);
+        const verify = await run('codesign', ['--verify', path.join(prefix, 'lib/kogen/bin/kogen')]); assert.equal(verify.code, 0, verify.output);
       }
       return prefix;
     })(); return installation;
   }
-  AfterAll(() => { if (work) fs.rmSync(work, { recursive: true, force: true }); });
-  Given('the blocked review qualification uses retained executable {string}', function (old) { this.reopenOld = process.env.KOGEN_REOPEN_OLD_BIN || old; });
-  When('I qualify blocked review retry {string} using {string}', { timeout: 300000 }, async function (mode, source) {
+  // The retained C3 producer: the named executable (or KOGEN_REOPEN_OLD_BIN) when it exists; when the named path is absent, the
+  // c3ee2a8e producer built once per run from the provenance-bound fixture (test/migration/fixtures/c3-producer) into disposable storage.
+  let built;
+  const retainedBin = () => (built ||= localProducer(os.tmpdir()));
+  AfterAll(async () => { if (work) fs.rmSync(work, { recursive: true, force: true }); if (built) removeProducer(await built.catch(() => undefined)); });
+  Given('the blocked review qualification uses retained executable {string}', function (old) { this.reopenOld = process.env.KOGEN_REOPEN_OLD_BIN || old; this.reopenNamed = old; });
+  When('I qualify blocked review retry {string} using {string}', { timeout: 1500000 }, async function (mode, source) {
+    // Resolved where the retained executable is first needed, so cases that never use it do not build it.
+    if (source === 'retained' && !process.env.KOGEN_REOPEN_OLD_BIN && !fs.existsSync(this.reopenOld)) { const p = await retainedBin(); this.reopenOld = p.bin; }
     const prefix = await candidate(), temp = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-reopen-harness-'));
     try {
-      assert.ok(process.env.KOGEN_NODE && process.env.KOGEN_CUCUMBER, 'use the installed parent Cucumber');
       if (source === 'retained') {
         assert.ok(fs.existsSync(this.reopenOld), 'retained C3 qualification input missing');
         if (process.platform === 'darwin') { const v = await run('codesign', ['--verify', this.reopenOld]); assert.equal(v.code, 0, v.output); }
@@ -218,10 +223,10 @@ models:
       const support = path.join(temp, 'test/acceptance/support'); fs.mkdirSync(support, { recursive: true });
       for (const name of ['world.js', 'fake-servers.js', 'handlers.js']) fs.copyFileSync(path.join(REPO, 'test/acceptance/support', name), path.join(support, name));
       fs.symlinkSync(path.join(REPO, 'test/acceptance/fixtures'), path.join(temp, 'test/acceptance/fixtures'), 'dir');
-      fs.symlinkSync(process.env.KOGEN_CUCUMBER, path.join(temp, 'test/acceptance/node_modules'), 'dir');
+      fs.symlinkSync(PARENT_CUCUMBER, path.join(temp, 'test/acceptance/node_modules'), 'dir');
       const feature = path.join(temp, 'exercise.feature'), receipt = path.join(temp, 'receipt.json');
       fs.writeFileSync(feature, 'Feature: Synthetic blocked reviewer\n  Scenario: Exercise\n    Given the synthetic blocked reviewer exercise runs\n    Then the synthetic blocked reviewer observations are saved\n');
-      const child = await run(process.env.KOGEN_NODE, [path.join(process.env.KOGEN_CUCUMBER, '@cucumber/cucumber/bin/cucumber.js'), '--strict', '--require', __filename, '--format', 'progress', feature], { cwd: REPO, env: { ...process.env, NODE_PATH: process.env.KOGEN_CUCUMBER, KOGEN_REOPEN_CHILD: '1', KOGEN_REOPEN_SUPPORT: support, KOGEN_REOPEN_PREFIX: prefix, KOGEN_REOPEN_MODE: mode, KOGEN_REOPEN_SOURCE: source, KOGEN_REOPEN_OLD_BIN: this.reopenOld, KOGEN_REOPEN_RECEIPT: receipt } });
+      const child = await run(PARENT_NODE, [path.join(PARENT_CUCUMBER, '@cucumber/cucumber/bin/cucumber.js'), '--strict', '--require', __filename, '--format', 'progress', feature], { cwd: REPO, env: { ...process.env, NODE_PATH: PARENT_CUCUMBER, KOGEN_REOPEN_CHILD: '1', KOGEN_REOPEN_SUPPORT: support, KOGEN_REOPEN_PREFIX: prefix, KOGEN_REOPEN_MODE: mode, KOGEN_REOPEN_SOURCE: source, KOGEN_REOPEN_OLD_BIN: this.reopenOld, KOGEN_REOPEN_RECEIPT: receipt } });
       assert.equal(child.code, 0, child.output); this.reopenReceipt = JSON.parse(fs.readFileSync(receipt, 'utf8'));
       await this.attach(JSON.stringify(this.reopenReceipt), 'application/json');
     } finally { fs.rmSync(temp, { recursive: true, force: true }); }

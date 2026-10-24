@@ -1,0 +1,837 @@
+{
+ "source": "ExUnit tests (test and property macros) under test/ on main bdfd607, the commit the migration started from",
+ "tests": [
+  {
+   "file": "test/acceptance/fixtures/projects/ex-app/test/ex_app_test.exs",
+   "name": "double"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "REV-5 reviewer repairs are verified and committed without returning to the builder"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "REV-5 final verification failures return to the same reviewer context"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "preflight missing packages and malformed approval remain structured read observations"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "resuming pending reviewer verification keeps repairs with the reviewer"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "blocked #{retry_outcome} retry provider failure retains fresh evidence and the saved reviewer"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "pre-clean checkpoints cannot authorize resume"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "clean #{stage} input mutations cannot certify the workspace"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "clean setup failure returns command output without a partial green pass"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "workspace drift during clean checks cannot certify a pass"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "resume refuses damaged index custody, configuration and required saved state before effects"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "a core death during resumed commit reports the created commit and cannot commit again"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "REV-6 reviewer shell edits cannot change the approved baseline"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "REV-5 interrupted targeted repair reports pending review and changed verification"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "REV-5 unresolved substantive findings stop rather than start another builder round"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "reopened reviewer resets preserve the unresolved blocker and cannot authorize commit"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "REV-2 review retains full source without replaying new files twice"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "GIT-8 restores the saved index when startup #{stage} fails"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "GIT-8/CLI-7 restores the saved index and reports an interrupted startup"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "CLI-7 undoes a commit interrupted during postcommit validation"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "VER-10/GIT-4 excludes new siblings in another uncommitted Intent folder"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "AUT-2 stops a preflight hook that changes the approved baseline"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "GIT-8 restores the original index when a staging preflight hook rejects"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "GIT-1 rejects a staged rename from outside the allowed Intent paths"
+  },
+  {
+   "file": "test/integration/build_boundaries_test.exs",
+   "name": "CLI-9 records a successful large Unicode startup check and continues"
+  },
+  {
+   "file": "test/integration/build_context_files_test.exs",
+   "name": "nonregular FIFO and unreadable file fail before provider or custody effects"
+  },
+  {
+   "file": "test/integration/build_context_files_test.exs",
+   "name": "cancelled initial request freezes conversation across source replacement and deletion (context=#{diagnostic?})"
+  },
+  {
+   "file": "test/integration/build_context_files_test.exs",
+   "name": "fresh independent review and its resets retain only frozen caller diagnostics, not builder reasoning"
+  },
+  {
+   "file": "test/integration/builder_blocker_test.exs",
+   "name": "LOOP-7 a builder-reported protected contradiction stops before later calls or gates"
+  },
+  {
+   "file": "test/integration/builder_blocker_test.exs",
+   "name": "LOOP-7 malformed, empty and unprotected blocker reports return feedback and grant no writes"
+  },
+  {
+   "file": "test/integration/builder_blocker_test.exs",
+   "name": "LOOP-7 accepting a blocker still requires the original HEAD and protected bytes"
+  },
+  {
+   "file": "test/integration/clean_snapshot_test.exs",
+   "name": "declared Git commands see the exact clean inputs without workspace artifacts"
+  },
+  {
+   "file": "test/integration/clean_snapshot_test.exs",
+   "name": "gitlink inputs retain their exact commit and clean tracked contents"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "SHP-10 probe progress reports status without echoing tool output"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "SHP-2 quoted executable paths and assignment values pass tool lookup without execution"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "SET-4 init rejects ignored legacy configuration before login or writes"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "SHP-4 invalid question options receive correction feedback and are never persisted"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "SHP-4 blocked submissions require an actual protected path and a reason"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "SHP-4 blocked reports recognize protected paths matched by a glob"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "REL-3 self-build gate runs the maintained suite and propagates its failure"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "REL-3 observation rejects an installed release whose core is unavailable"
+  },
+  {
+   "file": "test/integration/contract_regressions_test.exs",
+   "name": "REL-3 disposable self repositories leave source HEAD, index and edits untouched"
+  },
+  {
+   "file": "test/integration/fail_fast_verification_test.exs",
+   "name": "failed setup retains evidence and names later setup and gates without an absent model"
+  },
+  {
+   "file": "test/integration/fail_fast_verification_test.exs",
+   "name": "real declared Cucumber fail-fast keeps failed and skipped cases red, while complete exit-zero is green"
+  },
+  {
+   "file": "test/integration/git_test.exs",
+   "name": "a staged rename reports both changed paths, including spaces"
+  },
+  {
+   "file": "test/integration/git_test.exs",
+   "name": "a detected copy does not also report its source as a rename deletion"
+  },
+  {
+   "file": "test/integration/local_facts_test.exs",
+   "name": "start publishes coherent custody and repeated replacements never tear"
+  },
+  {
+   "file": "test/integration/local_facts_test.exs",
+   "name": "damaged catalog cannot abort custody publication; inherited evidence keeps original locations"
+  },
+  {
+   "file": "test/integration/lock_test.exs",
+   "name": "AUT-4/GPT-6 concurrent stale recovery preserves the live owner (#{format})"
+  },
+  {
+   "file": "test/integration/lock_test.exs",
+   "name": "release cannot remove a later acquisition, including a repeated release"
+  },
+  {
+   "file": "test/integration/provider_diagnostics_test.exs",
+   "name": "GPT-8 unknown structured stream failure retains safe fields in refinement evidence"
+  },
+  {
+   "file": "test/integration/provider_diagnostics_test.exs",
+   "name": "GPT-8 HTTP failure metadata reaches Build result and log without request payload"
+  },
+  {
+   "file": "test/integration/provider_diagnostics_test.exs",
+   "name": "GPT-8 known structured transients keep three attempts and final diagnostics"
+  },
+  {
+   "file": "test/integration/provider_diagnostics_test.exs",
+   "name": "GPT-8 no-code and malformed stream error fields remain safe diagnostic fallbacks"
+  },
+  {
+   "file": "test/integration/provider_diagnostics_test.exs",
+   "name": "GPT-8 context and login wrappers preserve known response metadata without changing exits"
+  },
+  {
+   "file": "test/integration/provider_diagnostics_test.exs",
+   "name": "GPT-8 a flat error event retains code and event kind without inventing an error subtype"
+  },
+  {
+   "file": "test/integration/provider_diagnostics_test.exs",
+   "name": "GPT-8 incomplete stream diagnostics do not present an internal marker as provider code"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "observed cache refusal preserves requests and evidence (single=#{single}, param=#{inspect(param)})"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "cache refusal retries once, persists unsupported, and retains real request identifiers"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "unrelated refusal never strips cache fields or reexecutes"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "a cache field alone does not authorize compatibility replay"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "inconsistent completed usage is retained but not added to compatible totals"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "malformed optional write counts never leak into analytical usage"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "terminal evidence retains sticky guards but describes only effective replacement items"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "terminal evidence distinguishes effective pending and gap predicates"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "empty terminal metadata retains ordered multiitem output and usage on an open socket"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "empty final output retains refusal predicates and effective diagnostic facts"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "failure events win over retained done items and empty completion"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "an expired invocation does not consume the next invocation's budget"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "the second backoff also spends the original budget"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "single attempt does not retry unreadable output or transient failures"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "completed output is validated, ordered and failures win"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "a validated open stream is cancelled before the caller exits"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "expiry is checked with a continuously nonempty mailbox and closes the request"
+  },
+  {
+   "file": "test/integration/provider_wait_test.exs",
+   "name": "unreadable output retries once within the same invocation"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-4 narrow shaping corrections retain the model and step files already submitted"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-4 lint corrections keep earlier artifacts and malformed mixed payloads contribute nothing"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-4 an earlier step cannot be silently abandoned outside the approval baseline"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-4 formatting cannot abandon a retained executable step outside the baseline"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-8 declared checks cannot qualify replacement bytes inside their disposable probe"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-8 feasibility feedback is bounded across obligations while full failures remain inspectable"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-8 the final shaper sees a fixture failure and repairs it before ready"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-8 legitimate red is acknowledged unchanged without another check and cards retain observations"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-8 hook locations and explicit UTF-8 truncation reach the same conversation and card"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-8 changed HEAD cannot acknowledge observations from an earlier check"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-11 cumulative red proposals stay unpublished until their exact observations are acknowledged"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "SHP-11 unchanged red from initial context acknowledges its existing check"
+  },
+  {
+   "file": "test/integration/readiness_observations_test.exs",
+   "name": "native Shape returns missing and oversized source comparisons for correction before readiness"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 a narrow retry preserves all earlier well-formed proposals until merged readiness"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 a mixed unsafe payload contributes no proposals to a later narrow retry"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 later proposals replace a path and explicit original bytes revert it"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 a delta changes one draft file, preserves other bytes and still needs approval"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 invalid, unsupported, provider and not-ready results preserve the ready draft"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 rejects protected and shared step edits without changing the original package"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 an approved correction archives the exact approval and requires a fresh approval"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 stale hashes, approval mismatches and dirty implementation refuse before model requests"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 failed and cancelled approved corrections preserve package, raw approval and index"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 failed approval revocation restores a read-only artifact and retains approval"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 changes to HEAD, raw approval or index prevent approved publication"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 an external edit while refining is preserved and prevents publication"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 interruption during a probe preserves the ready package and retained evidence"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "a runner failure after passing scenarios never supplies reusable readiness"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "readiness mutations cannot certify the changed baseline, even on repeated cards"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "approval publication drift restores exact prior approval without certifying changed inputs"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "SHP-11 local ignored warmth stays available to probes but out of final proof"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "Refine refuses changed or deleted bound source during inference without publishing or revoking approval"
+  },
+  {
+   "file": "test/integration/refinement_test.exs",
+   "name": "exact approval refuses source drift during readiness instead of silently rebinding it"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "SET-10/VER-3 both generated runners preserve feature and report paths with spaces"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "REV-4/REV-5 retries one invalid review verdict and lands after approval"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "GIT-5/GIT-8 a rejecting commit hook leaves edits and restores the staged Intent index"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "GIT-6/GIT-8 an editing hook is undone and the original staged Intent index is restored"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "GIT-8 a provider failure leaves edits and restores the staged Intent index"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "GIT-8/CLI-7 an interrupt leaves edits and restores the staged Intent index"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "GPT-3/GPT-6 a stale credentials lock is removed before refresh"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "GPT-3/GPT-6 a live credentials lock makes refresh wait until it is released"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "CLI-9 UTF-8 output survives the bridge and an invalid byte becomes U+FFFD, UTF-8 locale"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "CLI-9 UTF-8 output survives the bridge and an invalid byte becomes U+FFFD, no LANG"
+  },
+  {
+   "file": "test/integration/release_behavior_test.exs",
+   "name": "CLI-4 the core starts from a folder holding one-letter file names"
+  },
+  {
+   "file": "test/integration/review_material_test.exs",
+   "name": "small source remains inline without new custody"
+  },
+  {
+   "file": "test/integration/review_material_test.exs",
+   "name": "exact UTF8 source delivery survives reset and damaged custody refuses"
+  },
+  {
+   "file": "test/integration/review_material_test.exs",
+   "name": "irreducible authority refuses without files or index changes"
+  },
+  {
+   "file": "test/integration/shape_dispatch_test.exs",
+   "name": "ownership and boundary refusal precedes calls and never alters raw index"
+  },
+  {
+   "file": "test/integration/shape_dispatch_test.exs",
+   "name": "draft boundaries reject unsupported artifacts, even with an expectation"
+  },
+  {
+   "file": "test/integration/shape_dispatch_test.exs",
+   "name": "an existing editable step is a valid draft target, with current boundaries"
+  },
+  {
+   "file": "test/integration/shape_dispatch_test.exs",
+   "name": "context is index-first and explicit excerpts retain exact frozen provenance"
+  },
+  {
+   "file": "test/integration/shape_dispatch_test.exs",
+   "name": "revision notices nonignored untracked drift without real-index writes"
+  },
+  {
+   "file": "test/integration/shape_worker_bounds_test.exs",
+   "name": "twelve ordinary tools plus two probes are valid; either adjacent excess fails without replay"
+  },
+  {
+   "file": "test/integration/source_provenance_files_test.exs",
+   "name": "successful source publication is private, hash bound and preserves immutable predecessors"
+  },
+  {
+   "file": "test/integration/source_provenance_files_test.exs",
+   "name": "source comparison is copied completely at its UTF-8 byte boundary, never silently clipped"
+  },
+  {
+   "file": "test/integration/supergrok_test.exs",
+   "name": "selected roles check only their own providers; saved borrowed login is refused offline"
+  },
+  {
+   "file": "test/integration/supergrok_test.exs",
+   "name": "refresh rotates privately, re-reads newer credentials under the lock and defaults expiry"
+  },
+  {
+   "file": "test/integration/supergrok_test.exs",
+   "name": "refresh failure #{@reason}/#{@code} retains earlier bytes"
+  },
+  {
+   "file": "test/integration/supergrok_test.exs",
+   "name": "SuperGrok workers refresh once after 401 and preserve routed attempt identity"
+  },
+  {
+   "file": "test/integration/supergrok_test.exs",
+   "name": "device lifetime expires while a token poll is still in flight"
+  },
+  {
+   "file": "test/integration/supergrok_test.exs",
+   "name": "absent scope and interval use RFC defaults; id token never persists"
+  },
+  {
+   "file": "test/integration/working_context_test.exs",
+   "name": "resets retain observations, complete latest exchange and private exact history, not stale green"
+  },
+  {
+   "file": "test/integration/working_context_test.exs",
+   "name": "irreducible authority refuses without archive or checkout changes"
+  },
+  {
+   "file": "test/kogen/build_context_test.exs",
+   "name": "bounded original UTF-8 bytes and exact text"
+  },
+  {
+   "file": "test/kogen/build_context_test.exs",
+   "name": "exact shape and digest independently of the source filesystem"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: only generated reports with a finished complete scenario and no extras pass"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "SHP-8: binding problems survive failed assertions, unlike ordinary skipped steps"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: an expected scenario absent from the report is missing"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: the same scenario key reported twice is duplicate"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: a result for an unexpected feature remains a problem"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: willBeRetried excludes the failed attempt when the retry passes"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: truncated reports without a finished case or a result for every step are invalid"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: a garbage line makes the report invalid"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: a missing report is reported once with the command's exit status and output"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-4: a nonzero exit with every scenario passed is still a problem"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-3 / VER-4: Scenario Outline results use each Examples row line as the key"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-5 model feedback keeps the error Quint prints first and the summary it prints last"
+  },
+  {
+   "file": "test/kogen/checks_test.exs",
+   "name": "VER-5 short model feedback is kept whole"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-8: generated settings use block collections and preserve long command values"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-8: empty generated settings retain the template's nulls and empty lists"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-8: commands, checks, acceptance, protect, and model defaults are interpreted"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-8: obsolete planner settings do not add a planner role"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-8: a plain command scalar keeps its comma and shell arguments"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-8: acceptance run and steps_dir may remain null until configured"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-4 / SET-8: invalid configuration errors name the file and each source line"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "SET-4: loading an invalid project file reports its actual path and source line"
+  },
+  {
+   "file": "test/kogen/config_test.exs",
+   "name": "provider selections preserve omission and validate every role and effort"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-10: root and cli Go modules get real Go checks without protecting manifests"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: one-time machine bootstrap is not recurring project setup"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: deduplicate exact commands without assuming test paths are covered"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-10: a Mix project with a formatter and credo gets setup, fixer, checks and protect"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-10: a Mix project without .formatter.exs or credo gets compile and test only"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-10: npm scripts become checks, npm's placeholder test does not, a taken name is prefixed"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-10: an existing Cucumber runner and its steps folder are found"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: a proposed check replaces the detected one of the same name, others are added after"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: dependency-only manifests and lockfiles cannot be protected, but check definitions and settings can"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: protection validation includes detected checks when the proposal adds none"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: Mix test discovery and coverage settings are verification configuration"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: the committed Mix test-selection settings are protected verification configuration"
+  },
+  {
+   "file": "test/kogen/detect_test.exs",
+   "name": "SET-11: invalid names, duplicates, reserved names and untracked protect paths are problems"
+  },
+  {
+   "file": "test/kogen/feasibility_test.exs",
+   "name": "ordinary version-3 records need no feasibility proof"
+  },
+  {
+   "file": "test/kogen/feasibility_test.exs",
+   "name": "declarations require unique ids and ordered actual observer controls"
+  },
+  {
+   "file": "test/kogen/feasibility_test.exs",
+   "name": "rejection evidence binds command, bytes and complete actual outcome"
+  },
+  {
+   "file": "test/kogen/gherkin_test.exs",
+   "name": "VER-3 / VER-4 / SHP-5: scenarios expose their report lines, inherited steps, tags, and Then steps"
+  },
+  {
+   "file": "test/kogen/gherkin_test.exs",
+   "name": "SHP-5: malformed outline structure returns a source-line problem"
+  },
+  {
+   "file": "test/kogen/image_test.exs",
+   "name": "original bytes stay typed through output, cut, deletion and complete JSON accounting"
+  },
+  {
+   "file": "test/kogen/image_test.exs",
+   "name": "bounded decoder rejects malformed framing, CRC, unsupported encodings, filters and bombs"
+  },
+  {
+   "file": "test/kogen/image_test.exs",
+   "name": "dimension, byte and filter inclusive bounds"
+  },
+  {
+   "file": "test/kogen/image_test.exs",
+   "name": "compact events distinguish read, rejection, uncertain transport and completed delivery"
+  },
+  {
+   "file": "test/kogen/intent_test.exs",
+   "name": "SHP-5: formatted Acceptance lists read and lint with leading blank lines"
+  },
+  {
+   "file": "test/kogen/intent_test.exs",
+   "name": "SHP-5: Acceptance only skips blanks before the first bullet"
+  },
+  {
+   "file": "test/kogen/intent_test.exs",
+   "name": "AUT-2 / VER-1: changing, adding, removing, or renaming any baseline file changes its hash"
+  },
+  {
+   "file": "test/kogen/intent_test.exs",
+   "name": "AUT-2: the approval hash does not depend on baseline listing order"
+  },
+  {
+   "file": "test/kogen/intent_test.exs",
+   "name": "VER-1: protect paths, folders, and globs select the matching Git files and no neighbors"
+  },
+  {
+   "file": "test/kogen/prompt_cache_test.exs",
+   "name": "stable boundaries retain authority and isolate dynamic bytes"
+  },
+  {
+   "file": "test/kogen/prompt_cache_test.exs",
+   "name": "comparison and unsupported state stay in the independent conversation"
+  },
+  {
+   "file": "test/kogen/prompt_cache_test.exs",
+   "name": "replay preserves valid supported fields without manufacturing absent legacy values"
+  },
+  {
+   "file": "test/kogen/prompt_cache_test.exs",
+   "name": "optional diagnostics are bounded classified evidence, not text"
+  },
+  {
+   "file": "test/kogen/prompt_cache_test.exs",
+   "name": "usage validates disjoint writes and subset reasoning without clamping"
+  },
+  {
+   "file": "test/kogen/provider_test.exs",
+   "name": "Shape includes enabled workers but Refine can select only the Shape role"
+  },
+  {
+   "file": "test/kogen/provider_test.exs",
+   "name": "SuperGrok plain policy and cache uncertainty are explicitly provider scoped"
+  },
+  {
+   "file": "test/kogen/run_test.exs",
+   "name": "checkpoint decoder refuses damaged, incomplete and incompatible state"
+  },
+  {
+   "file": "test/kogen/run_test.exs",
+   "name": "green reuse requires complete required clean evidence, not a stored Boolean"
+  },
+  {
+   "file": "test/kogen/run_test.exs",
+   "name": "atomic checkpoint publication leaves prior valid document through interrupted publication"
+  },
+  {
+   "file": "test/kogen/run_test.exs",
+   "name": "the run log cap preserves UTF-8 and fits in 1 MiB including its marker"
+  },
+  {
+   "file": "test/kogen/shape_context_test.exs",
+   "name": "explicit windows preserve adjacent line and UTF-8 byte bounds"
+  },
+  {
+   "file": "test/kogen/shape_context_test.exs",
+   "name": "explicit windows do not invent a line after the source final newline"
+  },
+  {
+   "file": "test/kogen/shape_speed_test.exs",
+   "name": "worker configuration is opt-in, complete, exact and line-numbered"
+  },
+  {
+   "file": "test/kogen/shape_speed_test.exs",
+   "name": "cancellation and overlapping completed calls remain in final timing and usage"
+  },
+  {
+   "file": "test/kogen/shape_speed_test.exs",
+   "name": "main recovery records each completed transport without claiming retry delay as model time"
+  },
+  {
+   "file": "test/kogen/shape_speed_test.exs",
+   "name": "interval unions do not double count overlaps and handle adjacent boundaries"
+  },
+  {
+   "file": "test/kogen/working_context_test.exs",
+   "name": "complete rendered request has exact UTF-8 size and adjacent inclusive boundaries"
+  },
+  {
+   "file": "test/kogen/yaml_test.exs",
+   "name": "SET-4 / SET-8: block command scalars preserve commas and YAML source lines"
+  },
+  {
+   "file": "test/kogen/yaml_test.exs",
+   "name": "SET-4: a duplicate YAML key reports the line where it is repeated"
+  }
+ ]
+}

@@ -8,7 +8,7 @@ Feature: Install and uninstall
 
   @INS-2 @INS-3 @INS-4
   Scenario: Install into the default prefix and run from anywhere without Erlang, Elixir or Go
-    Given no erl, elixir or go program is on PATH
+    Given no erl, elixir, mix or go program is on PATH
     When the caller runs "sh install.sh"
     Then the exit code is 0
     And the last line of stdout matches "^Installed kogen (dev[+])?[0-9a-f]{8} in .+/[.]local$"
@@ -17,6 +17,9 @@ Feature: Install and uninstall
     And the file "{home}/.local/lib/kogen/docs/configuration.md" exists
     And the file "{home}/.local/lib/kogen/LICENSE" exists
     And the file "{home}/.local/lib/kogen/NOTICE" exists
+    And the file "{home}/.local/lib/kogen/lib/VERSION" exists
+    And the file "{home}/.local/lib/kogen/lib/VERSION.json" exists
+    And the folder "{home}/.local/lib/kogen/lib/release" does not exist
     And the file "{home}/.local/lib/kogen/licenses/npm-packages.md" contains "@cucumber/cucumber"
     And the file "{home}/.local/lib/kogen/lib/cucumber/node_modules/@cucumber/cucumber/bin/cucumber.js" exists
     When the caller runs "{home}/.local/bin/kogen version" in the folder "/"
@@ -50,10 +53,11 @@ Feature: Install and uninstall
 
   @INS-4
   Scenario: A failing self-check fails the install with its output
-    Given the extracted archive has a broken core release
+    Given the extracted archive has no lib/VERSION
     When the caller runs "sh install.sh"
     Then the exit code is 1
-    And stdout contains "environment/core_unavailable: "
+    And stdout matches "^environment/[a-z_]+: "
+    And stdout contains "reinstall Kogen"
 
   @INS-1
   Scenario: An unsupported platform is refused
@@ -81,7 +85,7 @@ Feature: Install and uninstall
     And stdout is:
       """
       Uninstalled kogen from {home}/.local
-      Kept your ChatGPT, SuperGrok, OpenCode Go and Anthropic logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock
+      Kept your ChatGPT, SuperGrok, OpenCode Go, Anthropic and OpenAI-compatible logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock ~/.kogen/credentials/openai-compatible.json ~/.kogen/credentials/openai-compatible.lock
       """
     And the file "{home}/.local/bin/kogen" does not exist
     And the folder "{home}/.local/lib/kogen" does not exist

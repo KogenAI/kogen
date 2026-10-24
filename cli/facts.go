@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"kogen/git"
+	"kogen/shape"
+	"kogen/sys"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,24 +86,11 @@ func alive(root string, owner object) bool {
 		return false
 	}
 	token, ok := owner["token"].(string)
-	if !ok || token == "" || strings.ContainsAny(token, "/\\") {
+	if !ok || token == "" {
 		return false
 	}
-	entries, e := os.ReadDir(filepath.Join(root, ".kogen/local/build.lock"))
-	if e != nil || len(entries) != 1 || entries[0].Name() != token {
-		return false
-	}
-	f, e := os.OpenFile(filepath.Join(root, ".kogen/local/build.lock", token), os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if e != nil {
-		return false
-	}
-	defer f.Close()
-	st, e := f.Stat()
-	if e != nil || !st.Mode().IsRegular() {
-		return false
-	}
-	b, e := io.ReadAll(io.LimitReader(f, 64))
-	if e != nil || strings.TrimSpace(string(b)) != pid {
+	lockPID, lockToken, held := git.LockOwner(filepath.Join(root, ".kogen/local/build.lock"))
+	if !held || lockPID != pid || lockToken != token {
 		return false
 	}
 	birth, ok := owner["birth"].(string)
@@ -366,12 +356,15 @@ func localRead(args []string) (bool, int) {
 		if !slugRe.MatchString(pos[0]) || len(pos[0]) < 3 || len(pos[0]) > 48 {
 			return true, response(kind, c, nil, "invalid_argument", 2)
 		}
-		root := installRoot()
-		if st, e := os.Stat(filepath.Join(root, "lib/release/bin/kogen")); e != nil || !st.Mode().IsRegular() {
-			return true, response(kind, c, nil, "core_unavailable", 3)
+		s := sys.New()
+		stop := s.WatchSignals()
+		defer stop()
+		root, _ := c["root"].(string)
+		code, err := shape.Preflight(s.Context(), s, shape.PreflightInput{Project: root, Slug: pos[0], JSON: jsonMode, Checkout: c})
+		if err != nil {
+			return true, exitFor(err)
 		}
-		cwd, _ := os.Getwd()
-		return true, newSession(root).run(object{"type": "run", "command": "preflight", "project": c["root"], "slug": pos[0], "json": jsonMode, "cwd": cwd, "install_root": root, "env": environ(), "checkout": c})
+		return true, code
 	}
 	if kind == "run" {
 		if !runID.MatchString(pos[0]) {
@@ -632,7 +625,7 @@ _kogen() {
     completion) compadd zsh; return ;;
     provider)
       if (( CURRENT == 3 )); then compadd login list
-      elif [[ $words[3] == login ]]; then compadd chatgpt supergrok opencode-go anthropic; fi
+      elif [[ $words[3] == login ]]; then compadd chatgpt supergrok opencode-go anthropic openai-compatible; fi
       return ;;
     intent)
       op=$words[3]

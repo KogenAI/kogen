@@ -73,6 +73,9 @@ Add the existing local dependencies to mix.exs and cli/go.mod without changing c
 ## Decisions
 - Use the existing local dependency projects. (source: request)
 
+## Source comparison
+- addressed: both manifests declare the local dependencies; source request; contract Tests and acceptance.feature.
+
 ## Tests
 - Both manifests declare the local dependencies: the dependency acceptance scenario (integration)
 
@@ -134,6 +137,10 @@ end
         if (mode === 'manual-mix' || npm) {
           return { items: [call('submit', { blocked: { paths: [npm ? 'package.json' : 'mix.exs'], reason: 'The requested dependency edit requires changing this whole-file protected manifest.' } }, `blocked_${ordinal}`)] };
         }
+        // Since 2ca0e06 (required shaping technical discovery) a files submission must follow an inspection of
+        // the repository in the same conversation: read the two manifests the request names, then submit.
+        const inspected = (record.body.input || []).some(i => i.type === 'function_call_output');
+        if (!inspected) return { items: [call('read_file', { path: 'mix.exs' }, `inspect_mix_${ordinal}`), call('read_file', { path: 'cli/go.mod' }, `inspect_go_${ordinal}`)] };
         return { items: [call('submit', { files: intentFiles() }, `shape_${ordinal}`)] };
       }
       if (record.kind === 'plan') return { items: [text('Add the existing local dependencies and preserve every check and protected file.')] };
@@ -174,7 +181,8 @@ end
     const requests = this.server.requests.filter(r => r.kind === 'shape');
     const first = requests[0];
     // Context is a public external-provider input, not a private helper assertion.
-    const userContext = (first?.body.input || []).filter(i => i.role === 'user').map(i => i.content).join('\n');
+    // (The provider carries message content as typed text blocks as well as plain strings.)
+    const userContext = (first?.body.input || []).filter(i => i.role === 'user').map(i => Array.isArray(i.content) ? i.content.map(b => b.text || '').join('') : i.content).join('\n');
     const protectLines = userContext.split('\n').filter(line => /protect|protected/i.test(line)).join('\n');
     receipt.contextHasProtect = receipt.protect.every(p => protectLines.includes(p));
     receipt.blockedTool = Boolean(first?.body.tools?.find(t => t.name === 'submit')?.parameters?.properties?.blocked);

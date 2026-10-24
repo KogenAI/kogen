@@ -26,8 +26,8 @@ const {
 } = require('./fake-servers');
 
 const topHelp = `Commands:\n  context    Read checkout-local facts (JSON)\n  completion zsh  Print standalone Zsh completion\n  init       Prepare this Git repository for Kogen\n  intent     Shape, approve and build an Intent\n  provider   Sign in to a provider and show logins\n  uninstall  Remove the installed kogen\n  version    Show the Kogen version\n  help       List commands\n\nRun kogen <command> to see its subcommands and options.\n`;
-const intentHelp = `Usage: kogen intent <command> <slug> [arguments] [options]\n\nCommands:\n  shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)\n  refine <slug> <sha256> <file|->  Correct existing files; require fresh approval\n  approve <slug> [<hash>]   Show the review card, or approve the Intent\n  build <slug>              Build, verify, review and commit the approved Intent\n  resume <build-id>         Continue a stopped Build in this checkout\n  list                     List packages and Build attempts\n  usage [run-id]          Explain local retained provider usage\n  inspect <run-id>         Inspect recorded Build evidence\n  preflight <slug>         Observe read-only prerequisites\n\nOptions:\n  --project <checkout>  Project checkout (default: current directory)\n  --by <name>           Approver (default: your Git identity)\n  --context <file>      Fresh Build diagnostic data only (not resume)\n`;
-const providerHelp = `Usage: kogen provider <command>\n\nCommands:\n  login chatgpt      Sign in with a ChatGPT account\n  login supergrok    Sign in with a SuperGrok subscription\n  list               Show which providers Kogen is signed in to\n\nLogins belong to this machine, never to a repo.\n`;
+const intentHelp = `Usage: kogen intent <command> <slug> [arguments] [options]\n\nCommands:\n  shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)\n  refine <slug> <sha256> <file|->  Correct existing files; require fresh approval\n  approve <slug> [<hash>]   Show the review card, or approve the Intent\n  build <slug>              Build, verify, review and commit the approved Intent\n  recover <build-id> --output <directory>  Preserve a protected blocker and clear implementation only\n  resume <build-id>         Continue a stopped Build in this checkout\n  list                     List packages and Build attempts\n  usage [run-id]          Explain local retained provider usage\n  inspect <run-id>         Inspect recorded Build evidence\n  preflight <slug>         Observe read-only prerequisites\n\nOptions:\n  --project <checkout>  Project checkout (default: current directory)\n  --by <name>           Approver (default: your Git identity)\n  --context <file>      Fresh Build diagnostic data only (not resume)\n  --output <directory>  Recover only: NEW directory outside the checkout (required)\n`;
+const providerHelp = `Usage: kogen provider <command>\n\nCommands:\n  login chatgpt            Sign in with a ChatGPT account\n  login supergrok          Sign in with a SuperGrok subscription\n  login opencode-go        Save your OpenCode Go workspace key from stdin\n  login anthropic          Save your Anthropic API key privately from stdin\n  login openai-compatible  Save an optional key for an OpenAI-compatible host from stdin\n  list                     Show which providers Kogen is signed in to\n\nLogins belong to this machine, never to a repo.\n`;
 
 function plainPattern(source) {
   return source.slice(1, -1).replace(/\\([^A-Za-z0-9])/g, '$1');
@@ -266,7 +266,7 @@ async function waitForServerRequest(world, predicate, timeoutMs = 30000) {
 }
 
 async function reachPause(world, point) {
-  world.trackCoreGroups();
+  world.trackKogenGroups();
   if (point === 'git commit running') {
     assert.ok(world.preCommitMarker, 'the sleeping pre-commit hook is not configured');
     const start = Date.now();
@@ -290,22 +290,12 @@ async function reachPause(world, point) {
   return reached;
 }
 
-async function findCorePid(world) {
-  const record = world.currentProcess;
-  assert.ok(record?.child?.pid, 'no Kogen command is running');
-  const start = Date.now();
-  while (Date.now() - start < 10000) {
-    world.trackCoreGroups();
-    if (fs.existsSync(world.corePidFile)) {
-      const pid = Number(fs.readFileSync(world.corePidFile, 'utf8').trim().split(/\s+/).at(-1));
-      if (Number.isInteger(pid) && pid > 1) {
-        try { process.kill(pid, 0); return pid; }
-        catch (error) { if (error.code === 'EPERM') return pid; }
-      }
-    }
-    await new Promise(resolve => setTimeout(resolve, 25));
-  }
-  assert.fail('Kogen core process was not found');
+// The process group of the Build's running project command, as recorded when the command started.
+function runningCommandGroup(world) {
+  const group = world.activeCommandGroup;
+  assert.ok(Number.isInteger(group) && group > 1, 'no Build command process group was recorded');
+  assert.ok(world.processGroupAlive(group), 'the Build command process group is not running');
+  return group;
 }
 
 function fileAssertions(world, label, args, attachment, actual) {
@@ -1182,7 +1172,7 @@ async function dispatch(world, pattern, values, attachment) {
     while (!fs.existsSync(world.runningPidFile) && Date.now() - start < 30000) await new Promise(resolve => setTimeout(resolve, 20));
     assert.ok(fs.existsSync(world.runningPidFile), 'readiness command did not reach its running marker');
     const [pid, ppid, pgid] = fs.readFileSync(world.runningPidFile, 'utf8').trim().split(/\s+/).map(Number);
-    world.trackCoreGroups();
+    world.trackKogenGroups();
     const group = world.trackProcessGroup(pid, ppid, pgid);
     assert.ok(group, `readiness command process group was not recorded (pid=${pid}, ppid=${ppid}, pgid=${pgid})`);
     assert.ok(world.processGroupAlive(group), `readiness command process group was not alive when captured (pgid=${pgid})`);
@@ -1235,7 +1225,7 @@ async function dispatch(world, pattern, values, attachment) {
     world.seenStates.add(request.state);
     return;
   }
-  if (label.startsWith('the installed core shapes "')) {
+  if (label.startsWith('the installed kogen shapes "')) {
     const go = findProgram('go');
     assert.ok(go, 'Go is required to build the test-only deadline driver');
     const driver = path.join(world.workspace, 'probe-deadline-test');
@@ -1245,22 +1235,14 @@ async function dispatch(world, pattern, values, attachment) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const installRoot = path.join(world.prefix, 'lib/kogen');
-    const requestFile = path.join(world.workspace, 'probe-deadline-request.json');
+    const requestFile = path.join(world.workspace, 'probe-deadline-request.txt');
     world.probeDeadlineReceipt = path.join(world.workspace, 'probe-deadline-receipt.json');
     world.requestText = String(attachment ?? '');
-    const env = {
-      ...world.env(),
-      KOGEN_NODE: fs.readFileSync(path.join(installRoot, 'node-path'), 'utf8').trim(),
-      KOGEN_CUCUMBER: path.join(installRoot, 'lib/cucumber/node_modules'),
-    };
-    fs.writeFileSync(requestFile, JSON.stringify({
-      type: 'run', command: 'shape', project: world.project, slug: args[0],
-      input: world.requestText, cwd: world.project, install_root: installRoot, env,
-    }));
+    fs.writeFileSync(requestFile, world.requestText);
     await world.invoke('-test.run=^TestInstalledProbeDeadline$ -test.timeout=60s', {
       executableOverride: driver,
       env: {
-        KOGEN_TEST_PROBE_DEADLINE: '1', KOGEN_TEST_ROOT: installRoot,
+        KOGEN_TEST_PROBE_DEADLINE: '1', KOGEN_TEST_ROOT: installRoot, KOGEN_TEST_PROBE_SLUG: args[0],
         KOGEN_TEST_PROBE_REQUEST: requestFile, KOGEN_TEST_PROBE_RECEIPT: world.probeDeadlineReceipt,
       },
     });
@@ -1433,20 +1415,22 @@ async function dispatchAssertions(world, label, args, attachment) {
     extractArchive(world);
     return;
   }
-  if (label.startsWith('the extracted archive has a broken core release')) {
+  if (label === 'the extracted archive has no lib/VERSION') {
     assert.ok(world.archiveDir, 'extract the release archive first');
-    fs.rmSync(path.join(world.archiveDir, 'lib/release/bin/kogen'), { force: true });
+    fs.rmSync(path.join(world.archiveDir, 'lib/VERSION'), { force: true });
+    fs.rmSync(path.join(world.archiveDir, 'lib/VERSION.json'), { force: true });
     return;
   }
-  if (label === 'the installed core release is missing') {
+  if (label === 'the installed kogen has no lib/VERSION') {
     const source = extractArchive(world);
-    const prefix = path.join(world.workspace, 'missing-core-prefix');
+    const prefix = path.join(world.workspace, 'damaged-prefix');
     execFileSync('/bin/sh', [path.join(source, 'install.sh'), '--prefix', prefix], {
       cwd: source,
       env: world.env(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    fs.rmSync(path.join(prefix, 'lib/kogen/lib/release/bin/kogen'), { force: true });
+    fs.rmSync(path.join(prefix, 'lib/kogen/lib/VERSION'), { force: true });
+    fs.rmSync(path.join(prefix, 'lib/kogen/lib/VERSION.json'), { force: true });
     world.prefix = prefix;
     return;
   }
@@ -1471,9 +1455,10 @@ async function dispatchAssertions(world, label, args, attachment) {
     assert.equal(execFileSync(node, ['--version'], { encoding: 'utf8' }).trim(), world.nodeDistribution.version);
     return;
   }
-  if (label === 'no erl, elixir or go program is on PATH') {
+  if (label === 'no erl, elixir, mix or go program is on PATH') {
     world.hiddenPrograms.add('erl');
     world.hiddenPrograms.add('elixir');
+    world.hiddenPrograms.add('mix');
     world.hiddenPrograms.add('go');
     return;
   }
@@ -1550,10 +1535,10 @@ async function dispatchAssertions(world, label, args, attachment) {
     installHook(world, 'pre-commit', `#!/bin/sh\nprintf '%s\\n' 'changed by pre-commit hook' >> ${shellQuote(rel)}\ngit add -- ${shellQuote(rel)}\n`);
     return;
   }
-  if (label === 'the test build of the core pauses right after creating the commit') {
+  if (label.startsWith('a post-commit hook that sleeps for ')) {
     const marker = path.join(world.workspace, 'post-commit-paused.marker');
     world.postCommitMarker = marker;
-    installHook(world, 'post-commit', `#!/bin/sh\nprintf '%s %s %s\\n' "$$" "$PPID" "$(kogen-pgid)" > ${shellQuote(marker)}\nsleep 600\n`);
+    installHook(world, 'post-commit', `#!/bin/sh\nprintf '%s %s %s\\n' "$$" "$PPID" "$(kogen-pgid)" > ${shellQuote(marker)}\nsleep ${args[0]}\n`);
     return;
   }
   if (label.startsWith('commit signing is configured with a test SSH key')) {
@@ -1564,8 +1549,7 @@ async function dispatchAssertions(world, label, args, attachment) {
     configureSigning(world, true);
     return;
   }
-  if (label === 'the Kogen core logs at debug level') {
-    world.extraEnv.ERL_AFLAGS = '-kernel logger_level debug';
+  if (label === 'kogen logs at debug level') {
     world.extraEnv.KOGEN_LOG_LEVEL = 'debug';
     return;
   }
@@ -1592,9 +1576,8 @@ async function dispatchAssertions(world, label, args, attachment) {
     const signal = args.at(-1);
     const record = world.currentProcess;
     world.lastResult = record;
-    if (label.includes('to the Kogen core')) {
-      const pid = await findCorePid(world);
-      process.kill(pid, signal);
+    if (label.includes('to the process group of the Build\'s running command')) {
+      process.kill(-runningCommandGroup(world), signal);
     } else {
       world.sendSignal(record, signal);
       await world.waitFor(record, 15000);
@@ -1631,7 +1614,7 @@ async function dispatchAssertions(world, label, args, attachment) {
       assert.fail('a process in the Build command process group is still running');
     }
   }
-  if (label.startsWith('the core reaches the pause after the commit')) {
+  if (label === 'the post-commit hook is running') {
     const start = Date.now();
     while (!fs.existsSync(world.postCommitMarker) && Date.now() - start < 30000) await new Promise(resolve => setTimeout(resolve, 20));
     assert.ok(fs.existsSync(world.postCommitMarker), 'post-commit hook did not reach its pause');
@@ -1660,6 +1643,10 @@ async function dispatchAssertions(world, label, args, attachment) {
   }
   if (label.startsWith('stdout does not contain ')) {
     assert.ok(!actual().stdout.includes(args[0]), `stdout unexpectedly contained ${args[0]}`);
+    return;
+  }
+  if (label.startsWith('stderr does not contain ')) {
+    assert.ok(!actual().stderr.includes(args[0]), `stderr unexpectedly contained ${args[0]}`);
     return;
   }
   if (label === 'stdout is:') {
@@ -1691,7 +1678,7 @@ async function dispatchAssertions(world, label, args, attachment) {
     return;
   }
   if (label.startsWith('stderr contains ')) {
-    if (label === 'stderr contains core log lines') assert.match(actual().stderr, /\[debug\]/i);
+    if (label === 'stderr contains debug log lines') assert.match(actual().stderr, /^\[debug\] /m);
     else assertContainsTemplate(world, actual().stderr, args[0], 'stderr');
     return;
   }
@@ -1754,7 +1741,6 @@ async function dispatchAssertions(world, label, args, attachment) {
   if (label.startsWith('no Kogen process had the fake access token')) {
     const records = [...world.processes].filter(proc => proc.isKogen);
     assert.ok(records.length, 'no Kogen command process was recorded');
-    assert.ok(records.some(proc => proc.corePidsObserved.size > 0), 'no Kogen core process was observed');
     const raw = records.flatMap(proc => [...proc.processTexts.values()].flatMap(values => [...values]));
     assert.ok(raw.length, 'no raw process listing was recorded for Kogen descendants');
     assert.ok(raw.every(text => !text.includes(FAKE_ACCESS_TOKEN)), 'fake token appeared in a Kogen process argument or environment');
@@ -1764,10 +1750,21 @@ async function dispatchAssertions(world, label, args, attachment) {
     const requestText = world.requestText || 'Add calc.is_even(n).';
     const records = [...world.processes].filter(proc => proc.isKogen);
     assert.ok(records.length, 'no Kogen command process was recorded');
-    assert.ok(records.some(proc => proc.corePidsObserved.size > 0), 'no Kogen core process was observed');
     const argumentsSeen = records.flatMap(proc => [...proc.processArguments.values()].flatMap(values => [...values]));
     assert.ok(argumentsSeen.length, 'no raw process arguments were recorded for Kogen descendants');
     assert.ok(argumentsSeen.every(text => !text.includes(requestText)), 'request text appeared in Kogen process arguments');
+    return;
+  }
+  if (label === 'the output names the commit on HEAD') {
+    const result = actual();
+    const head = world.head(world.project);
+    assert.ok(head, 'the project has no HEAD');
+    const output = `${result.stdout}\n${result.stderr}`;
+    assert.ok(output.includes(head) || output.includes(head.slice(0, 8)), `the output does not name commit ${head}\n${output}`);
+    return;
+  }
+  if (label === 'the Build\'s command is still running') {
+    assert.ok(runningCommandGroup(world), 'the Build command is not running');
     return;
   }
   if (label === 'no process of the Build command\'s process group is running') {
@@ -1869,14 +1866,14 @@ async function dispatchAssertions(world, label, args, attachment) {
     assert.equal(receipt.timed_out, true);
     assert.equal(receipt.process_group_stopped, true);
     assert.equal(receipt.scratch_removed, true);
-    assert.equal(receipt.core_exit, 0);
+    assert.equal(receipt.shape_exit, 0);
     assert.ok(Number.isInteger(receipt.pgid) && receipt.pgid > 1);
     assert.equal(world.processGroupAlive(receipt.pgid), false);
     assert.equal(fs.existsSync(receipt.scratch), false);
     await world.attach(JSON.stringify(receipt), 'application/json');
     return;
   }
-  if (label === 'every stdout line so far is protocol output of kogen') {
+  if (label === 'every stdout line so far is a result line of kogen') {
     const lines = actual().stdout.split(/\r?\n/).filter(Boolean);
     assert.ok(lines.length, 'Kogen had not written a protocol line to stdout');
     assert.ok(lines.every(line => /^building [a-z0-9][a-z0-9-]*$/.test(line)), `stdout contained a line outside the Kogen result grammar: ${lines.join('\\n')}`);

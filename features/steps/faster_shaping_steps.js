@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { spawn, spawnSync } = require('node:child_process');
+const H = require('./go_driver_support.js');
 const REPO = path.resolve(__dirname, '../..');
 let candidatePromise, candidateRoot;
 function run(program, args, options = {}) {
@@ -19,30 +20,17 @@ function run(program, args, options = {}) {
 }
 async function candidate() {
   if (!candidatePromise) candidatePromise = (async () => {
-    candidateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-faster-native-'));
-    // Fresh native CLI/core, never a stale archive or the driving engine.
-    // Adapter only locates compiled source; Main and bridge/executor remain real.
-    const env = { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' };
-    const compiled = await run('mix', ['compile', '--warnings-as-errors'], { cwd: REPO, env });
-    assert.equal(compiled.code, 0, compiled.stdout + compiled.stderr);
-    for (const dir of ['bin', 'lib/release/bin', 'lib/cucumber', 'lib/quint']) fs.mkdirSync(path.join(candidateRoot, dir), { recursive: true });
-    const built = await run('go', ['build', '-o', path.join(candidateRoot, 'bin/kogen'), '.'], { cwd: path.join(REPO, 'cli'), env });
-    assert.equal(built.code, 0, built.stdout + built.stderr);
-    const mix = spawnSync('/bin/sh', ['-c', 'command -v mix'], { encoding: 'utf8' }).stdout.trim();
-    assert.ok(path.isAbsolute(mix));
-    const quote = s => "'" + s.replaceAll("'", "'\\''") + "'";
-    fs.writeFileSync(path.join(candidateRoot, 'lib/release/bin/kogen'), '#!/bin/sh\ncd ' + quote(REPO) + '\nexec ' + quote(mix) + " run --no-compile -e 'Kogen.Main.main()'\n", { mode: 0o755 });
-    fs.writeFileSync(path.join(candidateRoot, 'node-path'), process.execPath + '\n');
-    fs.symlinkSync(path.join(REPO, 'test/acceptance/node_modules'), path.join(candidateRoot, 'lib/cucumber/node_modules'));
+    // A fresh installed Kogen (the one Go program, packaged from the changed worktree), never a stale archive or the driving engine.
+    const suite = await H.setupSuite(); candidateRoot = suite.root;
+    const root = suite.install;
     const localQuint = path.join(REPO, 'spec/node_modules/@informalsystems/quint/dist/src/cli.js');
     const quintCli = fs.existsSync(localQuint) ? localQuint : process.env.KOGEN_QUINT;
     assert.ok(quintCli && fs.existsSync(quintCli), 'pinned Quint unavailable');
-    const dest = path.join(candidateRoot, 'lib/quint/node_modules/@informalsystems/quint/dist/src');
+    const dest = path.join(root, 'lib/quint/node_modules/@informalsystems/quint/dist/src');
     fs.mkdirSync(dest, { recursive: true });
     // Transparent execution counter, not a model stub: forward every command to pinned Quint.
     fs.writeFileSync(path.join(dest, 'cli.js'), `const fs=require('node:fs'),{spawnSync}=require('node:child_process');\nif(process.env.FASTER_MODEL_TRACE){const p='.kogen/intents/batch-fixture/intent.md'; const kind=fs.existsSync(p)&&fs.readFileSync(p,'utf8').includes('SPEED_CORRECTION')?'candidate':'original';fs.appendFileSync(process.env.FASTER_MODEL_TRACE,JSON.stringify({kind,args:process.argv.slice(2)})+'\\n');}\nconst r=spawnSync(process.execPath,[${JSON.stringify(quintCli)},...process.argv.slice(2)],{stdio:'inherit'});process.exit(r.status===null?99:r.status);\n`);
-    fs.symlinkSync(path.join(REPO, 'docs'), path.join(candidateRoot, 'docs'));
-    return candidateRoot;
+    return root;
   })();
   return candidatePromise;
 }
@@ -52,10 +40,11 @@ function git(w, args) {
   assert.equal(r.status, 0, r.stdout + r.stderr); return r.stdout.trim();
 }
 async function fixture(root) {
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-faster-case-'));
+  // Real path: the program sees /private/var/... where os.tmpdir() says /var/... (macOS symlink).
+  const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-faster-case-')));
   const w = { workspace, project: path.join(workspace, 'project'), home: path.join(workspace, 'home'), processes: [] };
   for (const dir of [w.project, w.home, path.join(workspace, 'tmp')]) fs.mkdirSync(dir);
-  w.env = { ...process.env, HOME: w.home, TMPDIR: path.join(workspace, 'tmp'), GIT_CONFIG_GLOBAL: path.join(w.home, '.gitconfig'), GIT_CONFIG_NOSYSTEM: '1', ERL_FLAGS: process.env.ERL_FLAGS || '+S 2:2 +SDcpu 1 +SDio 1' };
+  w.env = { ...process.env, HOME: w.home, TMPDIR: path.join(workspace, 'tmp'), GIT_CONFIG_GLOBAL: path.join(w.home, '.gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
   fs.writeFileSync(w.env.GIT_CONFIG_GLOBAL, '[user]\n name = Faster Fixture\n email = faster@example.invalid\n');
   fs.cpSync(path.join(REPO, 'test/acceptance/fixtures/projects/notes'), w.project, { recursive: true });
   git(w, ['init', '-q', '--initial-branch', 'main']);
@@ -77,17 +66,22 @@ const slug = 'batch-fixture', dir = '.kogen/intents/' + slug, stepPath = 'featur
 const draft = { path: stepPath, content: "const { Then } = require('@cucumber/cucumber');\nconst assert = require('node:assert/strict');\nconst fs = require('node:fs');\n// INTEGRATED_DRAFT\nThen('the delegated note is {string}', function (expected) { assert.equal(fs.readFileSync('notes.txt', 'utf8').trim(), expected); });\n" };
 function packageFiles(step) {
   return [
-    { path: dir + '/intent.md', content: '# Change the delegated note\n\nSlug: ' + slug + '\nModel: not applicable — a stateless note fixture\nAcceptance:\n- ' + dir + '/acceptance.feature\n- ' + stepPath + '\n\nChange notes.txt to second note. This fixture intentionally has missing-feature red.\n\n## Decisions\n- Use the requested note text. (source: request)\n\n## Tests\n- The note has the requested value: delegated note scenario (scenario)\n\n## Feasibility\n- none\n' },
+    { path: dir + '/intent.md', content: '# Change the delegated note\n\nSlug: ' + slug + '\nModel: not applicable — a stateless note fixture\nAcceptance:\n- ' + dir + '/acceptance.feature\n- ' + stepPath + '\n\nChange notes.txt to second note. This fixture intentionally has missing-feature red.\n\n## Decisions\n- Use the requested note text. (source: request)\n\n## Source comparison\n- addressed: the requested note text; source request; contract Tests and acceptance.feature.\n\n## Tests\n- The note has the requested value: delegated note scenario (scenario)\n\n## Feasibility\n- none\n' },
     { path: dir + '/acceptance.feature', content: 'Feature: Delegated note\n  Scenario: Requested note\n    Then the delegated note is "second note"\n' }, step,
   ];
 }
 const usage = { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } };
-function reply(res, items, tokens = usage) {
+// The answer names the model and reasoning effort that served it when it is given the request body (a provider reports them).
+function reply(res, items, tokens = usage, body = null) {
   res.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' });
   for (let i = 0; i < items.length; i++) res.write('data: ' + JSON.stringify({ type: 'response.output_item.done', output_index: i, item: items[i] }) + '\n\n');
-  res.end('data: ' + JSON.stringify({ type: 'response.completed', response: tokens === null ? {} : { usage: tokens } }) + '\n\n');
+  const b = body || res.__body;
+  const served = b ? { model: b.model, reasoning: { effort: b.reasoning?.effort } } : {};
+  res.end('data: ' + JSON.stringify({ type: 'response.completed', response: tokens === null ? served : { ...served, usage: tokens } }) + '\n\n');
 }
 function outputs(body) { return (body.input || []).filter(x => x.type === 'function_call_output'); }
+// The provider carries message content as typed text blocks as well as plain strings: the text of an item either way.
+const contentText = x => typeof x.content === 'string' ? x.content : Array.isArray(x.content) ? x.content.map(b => b.text || '').join('') : x.content;
 function parseJSON(text) { try { return JSON.parse(text); } catch { return null; } }
 function events(w) {
   const file = path.join(w.project, '.kogen/local/shaping/' + slug + '/events.ndjson');
@@ -150,7 +144,7 @@ async function exercise(mode, trial) {
     const finishWorker = (res, job, id) => {
       let files = job.role === 'draft' ? [job.id === 'draft-feature' ? packageFiles(draft)[1] : draft] : [];
       if (mode === 'unowned') files = [{ path: 'guard.txt', content: 'poison' }];
-      reply(res, [call('worker_result', { evidence: 'evidence:' + job.id, files }, id)], mode === 'unknown-usage' ? null : usage);
+      reply(res, [call('worker_result', { evidence: 'evidence:' + job.id, files }, id)], mode === 'unknown-usage' ? null : usage, res.__body);
     };
     const processRequest = (body, res) => {
       const tools = (body.tools || []).map(t => t.name), main = tools.includes('submit');
@@ -166,11 +160,12 @@ async function exercise(mode, trial) {
         if (!resultStep) return reply(res, question('missing_draft'));
         mainSubmitted = true;
         const merged = packageFiles(resultStep).map(f => returned.find(r => r.path === f.path) || f);
-        return reply(res, [call('submit', { files: merged }, 'merged_' + records.length)]);
+        // A real shaper inspects the repository before it declares readiness (shape/uninspected otherwise).
+        return reply(res, [call('read_file', { path: 'notes.txt' }, 'inspect_' + records.length), call('submit', { files: merged }, 'merged_' + records.length)]);
       }
-      liveWorkerResponses.add(res); res.on('close', () => liveWorkerResponses.delete(res));
+      res.__body = body; liveWorkerResponses.add(res); res.on('close', () => liveWorkerResponses.delete(res));
       // External provider-input contract, not an internal helper assertion.
-      const payload = (body.input || []).filter(x => x.role === 'user').map(x => parseJSON(x.content)).find(x => x?.job);
+      const payload = (body.input || []).filter(x => x.role === 'user').map(x => parseJSON(contentText(x))).find(x => x?.job);
       assert.ok(payload, 'worker lacks JSON shared brief/job input'); assert.deepEqual(payload.brief, brief);
       const job = payload.job; assert.ok(jobs.some(j => j.id === job.id)); workerCapabilities[job.role] = tools.sort();
       const n = jobCounts[job.id] = (jobCounts[job.id] || 0) + 1;
@@ -233,7 +228,8 @@ async function exercise(mode, trial) {
       refused: batchResult?.status === 'refused', refusalHasReason: typeof batchResult?.reason === 'string' && batchResult.reason.trim().length > 0,
       batchStatus: batchResult?.status || null, workerCapabilities,
       configuredModels: [...new Set(workers.map(x => x.body.model + '/' + x.body.reasoning.effort))].sort(),
-      roleProvenance: workers.length > 0 && workers.every(x => { const p = (x.body.input || []).map(i => parseJSON(i.content)).find(v => v?.job); return p && ev.some(e => e.event === 'provider_call' && e.job === p.job.id && e.role === p.job.role && e.revision?.head === head && e.revision?.tree === index && e.scope === p.job.scope && e.configured_model === x.body.model && e.effective_model === x.body.model && e.configured_effort === x.body.reasoning.effort && e.effective_effort === x.body.reasoning.effort && Number.isInteger(e.wall_ms) && e.wall_ms >= 0); }),
+      // The served model and effort are the provider attempt's own record (the call's top-level fields stay the configured ones).
+      roleProvenance: workers.length > 0 && workers.every(x => { const p = (x.body.input || []).map(i => parseJSON(contentText(i))).find(v => v?.job); return p && ev.some(e => e.event === 'provider_call' && e.job === p.job.id && e.role === p.job.role && e.revision?.head === head && e.revision?.tree === index && e.scope === p.job.scope && e.configured_model === x.body.model && (e.provider || {}).effective_model === x.body.model && e.configured_effort === x.body.reasoning.effort && (e.provider || {}).effective_effort === x.body.reasoning.effort && Number.isInteger(e.wall_ms) && e.wall_ms >= 0); }),
       knownUsageRetained: ev.some(e => e.event === 'provider_call' && e.job === 'probe-node' && e.status === 'completed' && e.usage?.input === 100 && e.usage?.cached === 5 && e.usage?.output === 20 && e.usage?.reasoning === 10),
       unknownUsage: ev.some(e => e.event === 'provider_call' && e.role !== 'shape' && e.status === 'completed' && e.usage && ['input', 'cached', 'output', 'reasoning'].every(k => e.usage[k] === null)),
       failureTruthful: batchResult?.jobs?.some(j => j.id === 'probe-node' && j.status === 'failed' && /503|server_error|controlled worker failure/.test(JSON.stringify(j.error))) || false,
@@ -366,14 +362,15 @@ async function speedBoundary(mode) {
     const result = await w.invoke(shape ? ['intent', 'shape', slug, '-'] : ['intent', 'refine', slug, hash, '-'], request);
     const ar = lines(acceptanceTrace).slice(ac), mr = lines(modelTrace).slice(mc).map(parseJSON), sr = lines(setupTrace).slice(sc);
     const after = rootManifest(w), initial = suppliedText(records[0]), later = suppliedText(records.at(-1)), allOutputs = records.flatMap(outputs);
-    const ixText = initial.match(shape ? /^Context navigation: (.+)$/m : /^Context index: (.+)$/m)?.[1];
-    const ix = parseJSON(ixText), entries = ix?.entries || [];
-    const indexedRetrievable = shape ? ix?.root === w.project && ix?.revision?.head === head && JSON.stringify(Object.keys(ix).sort()) === JSON.stringify(['retrieval', 'revision', 'root']) && ix.retrieval === 'read_file exact bytes and line ranges; list_files directories; search_text exact signatures' : ['src/unrelated.txt', 'features/steps/unrelated.js', ...(shape ? [] : [stepPath])].every(p => entries.some(e => e.path === p && e.sha256 === sha(fs.readFileSync(path.join(w.project, p))) && e.bytes === fs.statSync(path.join(w.project, p)).size && sha(fs.readFileSync(e.source || path.join(ix.root, e.path))) === e.sha256 && e.ownership)) && !!ix?.retrieval && ix?.revision?.head === head && entries.map(e => e.path).join('\n') === entries.map(e => e.path).sort().join('\n');
+    const ixText = initial.match(/^Context navigation: (.+)$/m)?.[1];
+    const ix = parseJSON(ixText);
+    const indexedRetrievable = ix?.root === w.project && ix?.revision?.head === head && JSON.stringify(Object.keys(ix).sort()) === JSON.stringify(['retrieval', 'revision', 'root']) && ix.retrieval === 'read_file exact bytes and line ranges; list_files directories; search_text exact signatures';
     const objects = [...events(w), ...evidenceObjects(path.join(w.project, '.kogen/local/refinements'))];
     const original = objects.find(o => o.event === 'original_readiness');
     const originalRuns = ar.filter(k => k === 'original').length, originalModelRuns = mr.filter(k => k?.kind === 'original').length;
     const candidateRuns = ar.filter(k => k === 'candidate').length, candidateModelRuns = mr.filter(k => k?.kind === 'candidate').length;
-    const guidance = records[0]?.instructions || '';
+    // The policy is the request's instructions or, for a model with prompt caching, its developer message.
+    const guidance = records[0]?.instructions || (records[0]?.input || []).filter(i => i.role === 'developer').map(contentText).join('\n');
     const expectedAfter = before.map(([p, h]) => [p, p === proposed.path ? sha(proposed.content) : h]);
     return {
       code: result.code, originalRuns, originalModelRuns, candidateRuns, candidateModelRuns, originalSetupRuns: sr.filter(k => k === 'original').length, candidateSetupRuns: sr.filter(k => k === 'candidate').length, providerCalls: records.length, serverErrors,
@@ -384,7 +381,8 @@ async function speedBoundary(mode) {
       unapproved: !fs.existsSync(approvalPath),
       realObservations: initial.includes('Readiness observations') && initial.includes('Requested note') && initial.includes('second note') && initial.includes('first note'),
       observationsReturned: allOutputs.some(o => o.output.includes('Readiness observations') && o.output.includes('Requested note')),
-      indexedRetrievable, bulkOmitted: !initial.includes(bulk),
+      indexedRetrievable, // (The owned step file carries the same filler, so the unrelated source is recognised by its own first line.)
+      bulkOmitted: !initial.includes('unrelated source\n' + bulk),
       exactReadReturned: allOutputs.some(o => o.call_id === 'c_source' && o.output.includes('EXACT_SOURCE_BYTES_731')) && (shape || allOutputs.some(o => o.call_id === 'c_owned' && o.output.includes('EXACT_OWNED_BYTES_947'))),
       focusedProbeRan: allOutputs.some(o => o.call_id === 'c_version' && /exit status: 0/.test(o.output) && /v\d+\./.test(o.output)),
       focusedGuidance: /focused|concrete uncertainty|hypothesis/i.test(guidance) && /readiness/i.test(guidance) && /entire|full|whole/i.test(guidance) && /acceptance/i.test(guidance),

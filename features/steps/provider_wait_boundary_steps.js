@@ -3,36 +3,104 @@ const { isDeepStrictEqual } = require('node:util');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 const { When, Then } = require('@cucumber/cucumber');
 const { FakeServers, message, functionCall, FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN } = require('../../test/acceptance/support/fake-servers');
-const ROOT = path.resolve(__dirname, '../..');
-const driver = String.raw`
-[home, url, mode, budget] = System.argv()
-:persistent_term.put(:kogen_caller, %{env: %{"HOME" => home, "KOGEN_PROVIDER_URL" => url, "KOGEN_AUTH_URL" => url}})
-Kogen.ShapeEvidence.start(Path.join(home, "evidence"))
-parent = self()
-watchdog = spawn(fn -> Process.sleep(3500); send(parent, :boundary_watchdog); send(parent, {:proto, %{"type" => "cancel", "signal" => "WATCHDOG"}}) end)
-if mode == "cancel", do: spawn(fn -> Process.sleep(200); send(parent, {:proto, %{"type" => "cancel", "signal" => "SIGINT"}}) end)
-lock = Path.join(home, ".kogen/credentials/chatgpt.lock")
-if mode == "credential-lock", do: :ok = Kogen.Lock.acquire(lock)
-started = System.monotonic_time(:millisecond)
-result = try do
-  response = Kogen.ShapeEvidence.provider("shape", nil, "fixture", [], %{model: "fixture-model", effort: "medium"}, fn ->
-    Kogen.ChatGPT.respond(%{model: "fixture-model", effort: "medium"}, "boundary fixture", [], [], response_budget_ms: String.to_integer(budget), single_attempt: mode in ["malformed-terminal", "malformed-tool", "unfinished-tool", "incomplete-tool"])
-  end)
-  %{outcome: "ok", response: response}
-rescue
-  e in Kogen.Error -> %{outcome: e.class <> "/" <> e.reason, detail: e.detail, exit: e.exit, diagnostics: e.provider_failure}
-catch
-  {:cancel, signal} -> %{outcome: "cancel/" <> signal}
-end
-elapsed = System.monotonic_time(:millisecond) - started
-Process.exit(watchdog, :kill)
-if mode == "credential-lock", do: Kogen.Lock.release(lock)
-events = File.read!(Path.join(home, "evidence/events.ndjson")) |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
-IO.puts("BOUNDARY_RESULT=" <> JSON.encode!(Map.merge(result, %{elapsed: elapsed, events: events})))
-Process.sleep(200)
+const H = require('./go_driver_support.js');
+// The driver is a tiny Go program calling Kogen's provider and shaping-evidence packages for one logical response wait.
+const driver = String.raw`package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"kogen/project"
+	"kogen/provider"
+	"kogen/shape"
+	"kogen/sys"
+)
+
+func must(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func main() {
+	home, url, mode, budgetArg := os.Args[1], os.Args[2], os.Args[3], os.Args[4]
+	budget, err := strconv.Atoi(budgetArg)
+	must(err)
+	s := sys.NewWith([]string{"HOME=" + home, "KOGEN_PROVIDER_URL=" + url, "KOGEN_AUTH_URL=" + url}, home)
+	ev, err := shape.NewEvidence(filepath.Join(home, "evidence"), "fixture")
+	must(err)
+	time.AfterFunc(3500*time.Millisecond, func() { s.Interrupt("WATCHDOG") })
+	if mode == "cancel" {
+		time.AfterFunc(200*time.Millisecond, func() { s.Interrupt("SIGINT") })
+	}
+	lockPath := filepath.Join(home, ".kogen/credentials/chatgpt.lock")
+	var lock *provider.Lock
+	if mode == "credential-lock" {
+		lock, err = provider.Locker{}.Acquire(lockPath)
+		must(err)
+	}
+	role := provider.Role{Provider: "chatgpt", Model: "fixture-model", Effort: "medium"}
+	single := false
+	for _, m := range []string{"malformed-terminal", "malformed-tool", "unfinished-tool", "incomplete-tool"} {
+		single = single || mode == m
+	}
+	started := time.Now()
+	client := provider.NewClient("kogen test (driver)")
+	call := ev.BeginCall("shape", "", "fixture", "", project.Role{Provider: role.Provider, Model: role.Model, Effort: role.Effort})
+	resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: "boundary fixture", Input: []any{}, Tools: []any{}, Budget: time.Duration(budget) * time.Millisecond, Single: single, Scope: "boundary"}, call)
+	call.End(resp, err)
+	result := map[string]any{}
+	if err == nil {
+		result["outcome"] = "ok"
+		result["response"] = map[string]any{
+			"items":       resp.Items,
+			"usage":       map[string]any{"input": resp.Usage.Input, "cached": resp.Usage.Cached, "output": resp.Usage.Output, "reasoning": resp.Usage.Reasoning},
+			"known_usage": resp.Known.Map(),
+		}
+	} else {
+		var i *sys.Interrupted
+		var e *sys.Error
+		switch {
+		case errors.As(err, &i):
+			result["outcome"] = "cancel/" + i.Signal
+		case errors.As(err, &e):
+			result["outcome"], result["detail"], result["exit"], result["diagnostics"] = e.Class+"/"+e.Reason, e.Detail, e.Exit, e.ProviderFailure
+		default:
+			must(err)
+		}
+	}
+	result["elapsed"] = time.Since(started).Milliseconds()
+	if lock != nil {
+		lock.Release()
+	}
+	raw, err := os.ReadFile(filepath.Join(home, "evidence", "events.ndjson"))
+	must(err)
+	events := []any{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row any
+		must(json.Unmarshal([]byte(line), &row))
+		events = append(events, row)
+	}
+	result["events"] = events
+	out, err := json.Marshal(result)
+	must(err)
+	fmt.Println("BOUNDARY_RESULT=" + string(out))
+	// Leave the connections to the fake a moment to be seen closing, as the old driver did.
+	time.Sleep(200 * time.Millisecond)
+}
 `;
 function frame(type, payload = {}) { return `event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`; }
 const usage = { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } };
@@ -88,7 +156,6 @@ When('I exercise the real provider wait in mode {string} with budget {int}', { t
     }
     hold(res);
   };
-  let child;
   try {
     await fake.start();
     // The auth endpoint shares the provider listener in this isolated driver.
@@ -96,15 +163,9 @@ When('I exercise the real provider wait in mode {string} with budget {int}', { t
     fake.handleProvider = (req, res) => req.url === '/api/accounts/oauth/token' ? fake.handleAuth(req, res) : providerHandler(req, res);
     fs.mkdirSync(path.join(dir, '.kogen/credentials'), { recursive: true });
     fs.writeFileSync(path.join(dir, '.kogen/credentials/chatgpt.json'), JSON.stringify({ client_id: 'oaiapp_boundary_fixture', access_token: FAKE_ACCESS_TOKEN, refresh_token: FAKE_REFRESH_TOKEN, expires_at: Math.floor(Date.now() / 1000) + (['proactive-refresh', 'blocked-refresh', 'credential-lock'].includes(mode) ? -10 : 3600) }));
-    const file = path.join(dir, 'driver.exs'); fs.writeFileSync(file, driver);
-    let output = '';
-    const execution = new Promise((resolve, reject) => {
-      child = spawn('mix', ['run', '--no-deps-check', file, dir, fake.providerUrl, mode, String(budget)], { cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      child.stdout.on('data', b => { output += b; }); child.stderr.on('data', b => { output += b; });
-      child.once('error', reject); child.once('close', code => resolve(code));
-    });
-    const kill = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }, 20000);
-    let code; try { code = await execution; } finally { clearTimeout(kill); }
+    const run = await H.goDriver('provider-wait', driver);
+    const done = await run([dir, fake.providerUrl, mode, String(budget)]);
+    const code = done.code, output = done.out;
     assert.equal(code, 0, output);
     assert.deepEqual(fake.serverErrors, [], fake.serverErrors.map(String).join('\n'));
     const line = output.split('\n').find(l => l.startsWith('BOUNDARY_RESULT='));
@@ -115,7 +176,7 @@ When('I exercise the real provider wait in mode {string} with budget {int}', { t
     this.providerWait = { r, observations: {
       requests: String(requests), refreshes: String(refreshes), detail: r.detail || '',
       text: r.response?.items?.[0]?.content?.[0]?.text || '',
-      usage: r.response?.usage, known_usage: r.response?.known_usage,
+      usage: r.response?.usage, known_usage: r.response?.known_usage && Object.fromEntries(Object.entries(r.response.known_usage).filter(([, v]) => v !== null)),
       exact_items: String(isDeepStrictEqual(r.response?.items, expectedItems)),
       returned_items: String(Boolean(r.response?.items)),
       leaked: String(output.includes(FAKE_ACCESS_TOKEN) || output.includes(FAKE_REFRESH_TOKEN) || JSON.stringify(r.events).includes('partial authority')),
@@ -124,7 +185,6 @@ When('I exercise the real provider wait in mode {string} with budget {int}', { t
     } };
   } finally {
     for (const t of timers) { clearTimeout(t); clearInterval(t); }
-    if (child && child.exitCode === null) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }
     await fake.close(); fs.rmSync(dir, { recursive: true, force: true });
   }
 });
