@@ -13,6 +13,8 @@ Feature: ChatGPT connection
       """
       chatgpt: not signed in
       supergrok: not signed in
+      opencode-go: not signed in
+      anthropic: not signed in
       """
     When the caller runs "kogen provider login chatgpt" in the background
     And the browser completes sign-in for "user@example.com"
@@ -31,6 +33,8 @@ Feature: ChatGPT connection
       """
       chatgpt: signed in (user@example.com)
       supergrok: not signed in
+      opencode-go: not signed in
+      anthropic: not signed in
       """
 
   @GPT-4
@@ -45,6 +49,8 @@ Feature: ChatGPT connection
       """
       chatgpt: saved login cannot be used; run kogen provider login chatgpt
       supergrok: not signed in
+      opencode-go: not signed in
+      anthropic: not signed in
       """
 
   @GPT-2
@@ -298,6 +304,8 @@ Feature: ChatGPT connection
       """
       chatgpt: not signed in
       supergrok: signed in (grok@example.com)
+      opencode-go: not signed in
+      anthropic: not signed in
       """
     Given the file "{home}/.kogen/credentials/supergrok.json" contains:
       """
@@ -309,4 +317,22 @@ Feature: ChatGPT connection
       """
       chatgpt: not signed in
       supergrok: saved login cannot be used; run kogen provider login supergrok
+      opencode-go: not signed in
+      anthropic: not signed in
+      """
+
+  @GPT-4
+  Scenario: Saved native Claude keys are local status rather than verified API access
+    Given the file "{home}/.kogen/credentials/anthropic.json" contains:
+      """
+      {"provider":"anthropic","api_key":"SYNTHETIC_SPEC_KEY"}
+      """
+    When the caller runs "kogen provider list"
+    Then the exit code is 0
+    And stdout is:
+      """
+      chatgpt: not signed in
+      supergrok: not signed in
+      opencode-go: not signed in
+      anthropic: key saved (not verified)
       """

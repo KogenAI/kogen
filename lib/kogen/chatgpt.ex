@@ -303,6 +303,10 @@ defmodule Kogen.ChatGPT do
   end
 
   defp access_token(deadline) do
+    if anthropic?(), do: Kogen.Anthropic.require_login!(), else: existing_access_token(deadline)
+  end
+
+  defp existing_access_token(deadline) do
     if go?(),
       do: Kogen.OpenCodeGo.require_login!(),
       else:
@@ -434,6 +438,9 @@ defmodule Kogen.ChatGPT do
   effort. Returns `%{items: [...], usage: %{...}}`; raises `Kogen.Error` (class `provider`) on a
   provider failure, with reason `context_too_long` when the conversation no longer fits.
   """
+  def request_body(%{provider: "anthropic"} = role, instructions, input, tools),
+    do: Kogen.Anthropic.request_body(role, instructions, input, tools)
+
   def request_body(%{provider: "opencode-go"} = role, instructions, input, tools),
     do: Kogen.OpenCodeGo.request_body(role, instructions, input, tools)
 
@@ -482,7 +489,8 @@ defmodule Kogen.ChatGPT do
       effort: effort
     })
 
-    if Keyword.get(opts, :single_attempt, false) and not supergrok?() and not go?() do
+    if Keyword.get(opts, :single_attempt, false) and not supergrok?() and not go?() and
+         not anthropic?() do
       case stream(body, access_token(deadline), deadline) do
         {:ok, result} ->
           result
@@ -546,7 +554,7 @@ defmodule Kogen.ChatGPT do
         result
 
       {:unauthorized, error} when not refreshed ->
-        if go?(), do: login_rejected!(diagnostics(error))
+        if go?() or anthropic?(), do: login_rejected!(diagnostics(error))
 
         refreshed_token =
           try do
@@ -596,15 +604,21 @@ defmodule Kogen.ChatGPT do
                   class: "provider",
                   reason: reason,
                   detail:
-                    "OpenCode Go refused HTTP #{diagnostic.status}; no route or model fallback",
+                    "#{provider_label()} refused HTTP #{diagnostic.status}; no route or model fallback",
                   exit: 4
                 },
                 diagnostics(diagnostic)
               )
 
       {:invalid, _detail} when not retried_invalid ->
-        if go?(),
-          do: Error.raise!("provider", "invalid_response", "malformed OpenCode Go completion", 4)
+        if go?() or anthropic?(),
+          do:
+            Error.raise!(
+              "provider",
+              "invalid_response",
+              "malformed #{provider_label()} completion",
+              4
+            )
 
         attempt(body, model, n, refreshed, true, deadline)
 
@@ -630,6 +644,8 @@ defmodule Kogen.ChatGPT do
     end
   end
 
+  defp anthropic?, do: Process.get(:routed_provider) == "anthropic"
+
   defp go?, do: Process.get(:routed_provider) == "opencode-go"
 
   defp has_cache?(body),
@@ -642,7 +658,12 @@ defmodule Kogen.ChatGPT do
   defp supergrok?, do: Process.get(:routed_provider, "chatgpt") == "supergrok"
 
   defp provider_label,
-    do: if(go?(), do: "OpenCode Go", else: if(supergrok?(), do: "SuperGrok", else: "ChatGPT"))
+    do:
+      if(anthropic?(),
+        do: "Anthropic",
+        else:
+          if(go?(), do: "OpenCode Go", else: if(supergrok?(), do: "SuperGrok", else: "ChatGPT"))
+      )
 
   defp detail_suffix(""), do: ""
   defp detail_suffix(message), do: " " <> message
@@ -829,9 +850,11 @@ defmodule Kogen.ChatGPT do
 
       try do
         result =
-          if go?(),
-            do: Kogen.OpenCodeGo.transport(body, token, deadline),
-            else: stream_request(body, token, deadline)
+          cond do
+            anthropic?() -> Kogen.Anthropic.transport(body, token, deadline)
+            go?() -> Kogen.OpenCodeGo.transport(body, token, deadline)
+            true -> stream_request(body, token, deadline)
+          end
 
         case result do
           {:error, %{status: 400} = error} ->
@@ -949,7 +972,9 @@ defmodule Kogen.ChatGPT do
           Map.put(provider, :provider_failure, d)
 
         {:unauthorized, d} ->
-          if go?(), do: Map.put(provider, :provider_failure, diagnostics(d)), else: provider
+          if go?() or anthropic?(),
+            do: Map.put(provider, :provider_failure, diagnostics(d)),
+            else: provider
 
         _ ->
           provider

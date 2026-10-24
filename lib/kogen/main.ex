@@ -83,7 +83,10 @@ defmodule Kogen.Main do
     Kogen.ChatGPT.status()
     Kogen.SuperGrok.status()
     Kogen.OpenCodeGo.status()
+    Kogen.Anthropic.status()
   end
+
+  defp dispatch(%{"command" => "login", "provider" => "anthropic"}), do: Kogen.Anthropic.login()
 
   defp dispatch(%{"command" => "login", "provider" => "opencode-go"}),
     do: Kogen.OpenCodeGo.login()

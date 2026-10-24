@@ -59,6 +59,7 @@ Commands:
   login chatgpt      Sign in with a ChatGPT account
   login supergrok    Sign in with a SuperGrok subscription
   login opencode-go  Save your OpenCode Go workspace key from stdin
+  login anthropic    Save your Anthropic API key privately from stdin
   list               Show which providers Kogen is signed in to
 
 Logins belong to this machine, never to a repo.
@@ -202,8 +203,8 @@ func parse(args []string) (*invocation, string, *usageError) {
 	switch leaf.command {
 	case "login":
 		inv.provider = pos[0]
-		if pos[0] != "chatgpt" && pos[0] != "supergrok" && pos[0] != "opencode-go" {
-			return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go)", pos[0])
+		if pos[0] != "chatgpt" && pos[0] != "supergrok" && pos[0] != "opencode-go" && pos[0] != "anthropic" {
+			return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic)", pos[0])
 		}
 	case "shape":
 		inv.slug, inv.file = pos[0], pos[1]
@@ -411,7 +412,7 @@ func uninstall(root string) {
 		fail(3, "environment/uninstall_failed: "+err.Error())
 	}
 	fmt.Print("Uninstalled kogen from " + prefix + "\n")
-	fmt.Print("Kept your ChatGPT, SuperGrok and OpenCode Go logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock\n")
+	fmt.Print("Kept your ChatGPT, SuperGrok, OpenCode Go and Anthropic logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock\n")
 }
 
 // coreCommand starts the Elixir release in its own process group, so terminal signals reach

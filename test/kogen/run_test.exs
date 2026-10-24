@@ -132,6 +132,27 @@ defmodule Kogen.RunTest do
       })
     end
 
+    nullable = %{
+      b
+      | usage: %{input: nil, output: 1, cached: nil, reasoning: nil},
+        attempt_usage: %{input: nil, output: nil, cached: nil, reasoning: nil}
+    }
+
+    assert {:ok, _, saved} = Run.decode_checkpoint(encode.(nullable))
+    assert saved.usage == nullable.usage
+
+    for invalid <- [-1, "1", 1.5] do
+      assert {:error, _} =
+               Run.decode_checkpoint(
+                 encode.(%{nullable | usage: Map.put(nullable.usage, :input, invalid)})
+               )
+    end
+
+    assert {:error, _} =
+             Run.decode_checkpoint(
+               encode.(%{nullable | usage: Map.delete(nullable.usage, :input)})
+             )
+
     legacy = JSON.decode!(encode.(b)) |> Map.put("version", 2) |> JSON.encode!()
     assert {:error, "incompatible checkpoint version 2"} = Run.decode_checkpoint(legacy)
     assert {:error, _} = Run.decode_checkpoint(encode.(Map.drop(b, [:working_context])))

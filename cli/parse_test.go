@@ -58,6 +58,7 @@ Commands:
   login chatgpt      Sign in with a ChatGPT account
   login supergrok    Sign in with a SuperGrok subscription
   login opencode-go  Save your OpenCode Go workspace key from stdin
+  login anthropic    Save your Anthropic API key privately from stdin
   list               Show which providers Kogen is signed in to
 
 Logins belong to this machine, never to a repo.
@@ -96,6 +97,7 @@ func TestParseCommandTreeCLI1(t *testing.T) {
 		{name: "approve without optional hash", args: []string{"intent", "approve", "feature"}, want: invocation{command: "approve", slug: "feature"}},
 		{name: "approve with optional hash", args: []string{"intent", "approve", "feature", "abcdef"}, want: invocation{command: "approve", slug: "feature", hash: "abcdef"}},
 		{name: "build", args: []string{"intent", "build", "feature"}, want: invocation{command: "build", slug: "feature"}},
+		{name: "anthropic private login", args: []string{"provider", "login", "anthropic"}, want: invocation{command: "login", provider: "anthropic"}},
 		{name: "provider login", args: []string{"provider", "login", "chatgpt"}, want: invocation{command: "login", provider: "chatgpt"}},
 		{name: "supergrok login", args: []string{"provider", "login", "supergrok"}, want: invocation{command: "login", provider: "supergrok"}},
 		{name: "provider list", args: []string{"provider", "list"}, want: invocation{command: "list"}},
@@ -171,7 +173,7 @@ func TestParseGrammarCLI2(t *testing.T) {
 		{name: "version extra positional", args: []string{"version", "extra"}, msg: "kogen version: unexpected argument 'extra'", page: "top"},
 		{name: "list extra positional", args: []string{"provider", "list", "extra"}, msg: "kogen provider list: unexpected argument 'extra'", page: "provider"},
 		{name: "double dash makes option-looking token positional", args: []string{"intent", "build", "feature", "--", "--project"}, msg: "kogen intent build: unexpected argument '--project'", page: "intent"},
-		{name: "unknown provider", args: []string{"provider", "login", "grok"}, msg: "kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go)", page: "provider"},
+		{name: "unknown provider", args: []string{"provider", "login", "grok"}, msg: "kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic)", page: "provider"},
 		{name: "refine needs full hash", args: []string{"intent", "refine", "feature", "abcdef", "-"}, msg: "kogen intent refine: <sha256> must be 64 lowercase hex characters", page: "intent"},
 		{name: "hash too short", args: []string{"intent", "approve", "feature", "abcde"}, msg: "kogen intent approve: <hash> must be 6 to 64 lowercase hex characters", page: "intent"},
 		{name: "hash too long", args: []string{"intent", "approve", "feature", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"}, msg: "kogen intent approve: <hash> must be 6 to 64 lowercase hex characters", page: "intent"},

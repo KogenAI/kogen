@@ -42,7 +42,27 @@ Resume is not automatic recovery or reapproval of a protected-contract blocker.
 
 A builder that observes a contradiction in protected fixtures can report it and stop with `candidate/build_blocked`. The report is labelled builder-reported, with evidence retained alongside the candidate, original index and approval; it does not authorize edits or skip successful checks. Ordinary implementation failures continue through repair.
 
-Kogen supports ChatGPT ("Sign in with ChatGPT", using your plan), SuperGrok subscription sign-in, and explicitly selected OpenCode Go (`kimi-k3`, requested `high` or `default`). Save your own Go workspace key through stdin with `kogen provider login opencode-go`; local status is `key saved (not verified)`, not subscription eligibility. Omitted per-role `provider` keeps ChatGPT; `provider: supergrok` selects `grok-4.7` with `low`, `medium`, `high` or `xhigh` effort. Sign in with `kogen provider login supergrok`: follow the printed HTTPS address and code; Kogen does not open a browser for this device flow. `kogen provider list` shows all three local logins without network access. No API-key or paid-route fallback is used. See [provider configuration and qualification](docs/configuration.md#providers). Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
+Kogen supports ChatGPT ("Sign in with ChatGPT", using your plan), SuperGrok subscription sign-in, explicitly selected OpenCode Go (`kimi-k3`, requested `high` or `default`), and Anthropic Claude via API key (`claude-opus-5-5` or `claude-sonnet-5-5`, `low`/`medium`/`high`/`max`). Save your own Go workspace key through stdin with `kogen provider login opencode-go`; local status is `key saved (not verified)`, not subscription eligibility. Omitted per-role `provider` keeps ChatGPT; `provider: supergrok` selects `grok-4.7` with `low`, `medium`, `high` or `xhigh` effort. Sign in with `kogen provider login supergrok`: follow the printed HTTPS address and code; Kogen does not open a browser for this device flow. `kogen provider list` shows all four local logins without network access. No API-key or paid-route fallback is used. See [provider configuration and qualification](docs/configuration.md#providers). Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
+
+Claude uses separate API billing, not a consumer Claude/Max subscription. Save a key
+privately with `kogen provider login anthropic` (stdin or echo-suppressed terminal).
+`~/.kogen/credentials/anthropic.json` is private; offline status is
+`anthropic: key saved (not verified)`, not a claim of access. Claude can independently
+occupy Shape (including Refine and enabled workers), Build or independent Review.
+For example:
+
+```yaml
+models:
+  shape: {provider: anthropic, model: claude-opus-5-5, effort: high}
+  build: {provider: opencode-go, model: kimi-k3, effort: high}
+  review: {provider: supergrok, model: grok-4.7, effort: high}
+```
+
+Claude typed image input is unsupported: use external image preparation and a
+pixel-review handoff; paths/text are not native pixels. Deterministic synthetic
+local tests establish plumbing only. Live installed qualification needs separate
+human consent/private login and exact model/effort/tool/replay/Review evidence;
+no paid sweeps or fallback. Linux and release real-use gates remain separate.
 
 ## Status
 

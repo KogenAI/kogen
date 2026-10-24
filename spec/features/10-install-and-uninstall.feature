@@ -68,14 +68,24 @@ Feature: Install and uninstall
     And the caller is signed in to ChatGPT
     And a Git project from fixture "py-calc"
     And the project is initialized
+    And the file "{home}/.kogen/credentials/anthropic.json" contains:
+      """
+      {"provider":"anthropic","api_key":"SYNTHETIC_UNINSTALL_KEY"}
+      """
+    And the file "{home}/.kogen/credentials/anthropic.lock" contains:
+      """
+      SYNTHETIC_PRESERVED_LOCK
+      """
     When the caller runs "{home}/.local/bin/kogen uninstall"
     Then the exit code is 0
     And stdout is:
       """
       Uninstalled kogen from {home}/.local
-      Kept your ChatGPT and SuperGrok logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock
+      Kept your ChatGPT, SuperGrok, OpenCode Go and Anthropic logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock
       """
     And the file "{home}/.local/bin/kogen" does not exist
     And the folder "{home}/.local/lib/kogen" does not exist
     And the file "{home}/.kogen/credentials/chatgpt.json" exists
+    And the file "{home}/.kogen/credentials/anthropic.json" exists
+    And the file "{home}/.kogen/credentials/anthropic.lock" exists
     And the file ".kogen/project.yaml" exists

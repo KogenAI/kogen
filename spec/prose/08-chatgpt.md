@@ -1,6 +1,6 @@
 # 08 Subscription provider connections
 
-ChatGPT, SuperGrok and explicitly selected OpenCode Go are supported providers. ChatGPT remains the default when a role omits `provider`. Kogen signs in with its own login flow, stores and refreshes its own credentials, streams responses with tool calls and usage, and reports provider problems precisely. It never borrows another tool's credentials, never falls back to a paid API key and never switches accounts. The route is OpenAI's official "Sign in with ChatGPT" plan usage for open-source apps, with dynamic client registration (developers.openai.com/siwc): authorization at `https://auth.openai.com/api/accounts/authorize`, tokens at `https://auth.openai.com/api/accounts/oauth/token`, inference at `https://api.openai.com/v1/responses`.
+ChatGPT, SuperGrok, explicitly selected OpenCode Go and Anthropic API-key Claude are supported providers. ChatGPT remains the default when a role omits `provider`. Kogen signs in with its own login flow, stores and refreshes its own credentials, streams responses with tool calls and usage, and reports provider problems precisely. It never borrows another tool's credentials, never automatically falls back to a paid API key and never switches accounts. The route is OpenAI's official "Sign in with ChatGPT" plan usage for open-source apps, with dynamic client registration (developers.openai.com/siwc): authorization at `https://auth.openai.com/api/accounts/authorize`, tokens at `https://auth.openai.com/api/accounts/oauth/token`, inference at `https://api.openai.com/v1/responses`.
 
 **GPT-1 — Own login only.** Kogen uses only credentials from its own `kogen provider login chatgpt`. It never reads Codex, ChatGPT desktop, browser or Claude credential stores, and accepts no token from the environment or arguments.
 
@@ -8,7 +8,7 @@ ChatGPT, SuperGrok and explicitly selected OpenCode Go are supported providers. 
 
 **GPT-3 — Storage.** Credentials (issued client ID, tokens, granted scope) live in `~/.kogen/credentials/chatgpt.json` (mode 0600, directory 0700), written atomically; the `ext_agent_host_id` lives in `~/.kogen/host-id`. The user signs in once per machine: every later command reuses these credentials, refreshes them (GPT-6) and saves each rotated refresh token, and a new login is needed only when a refresh fails for good. Kogen holds an exclusive lock on the credentials while it reads, refreshes and saves them: the lock file `~/.kogen/credentials/chatgpt.lock` is created exclusively (`O_EXCL`) and holds the pid; a process that finds it held waits, and a lock whose process is gone is removed. Under the lock Kogen re-reads `chatgpt.json` and uses a newer token if another process already refreshed.
 
-**GPT-4 — Status.** The offline list prints the unchanged ChatGPT line followed by the SuperGrok line described below. `kogen provider list` prints `chatgpt: signed in[ (<email>)]` only when `~/.kogen/credentials/chatgpt.json` contains the issued `client_id`, `refresh_token`, `access_token` and `expires_at`. A missing credentials file prints `chatgpt: not signed in`; a saved file missing any required value prints `chatgpt: saved login cannot be used; run kogen provider login chatgpt` (exit 0). It makes no request.
+**GPT-4 — Status.** The offline list prints ChatGPT, SuperGrok, OpenCode Go and Anthropic in that order, using the provider-specific statuses described here. `kogen provider list` prints `chatgpt: signed in[ (<email>)]` only when `~/.kogen/credentials/chatgpt.json` contains the issued `client_id`, `refresh_token`, `access_token` and `expires_at`. A missing credentials file prints `chatgpt: not signed in`; a saved file missing any required value prints `chatgpt: saved login cannot be used; run kogen provider login chatgpt` (exit 0). It makes no request.
 
 **GPT-5 — Login required.** For provider-aware roles, check only the providers used: Shape plus enabled workers, Refine Shape, Build/resume Build and Review. Init remains ChatGPT. `init` (on a repository with commits), shaping and Builds refuse before any request when no credentials file exists: `provider/login: not signed in; run kogen provider login chatgpt`. A saved credentials file missing any required value in GPT-4 is refused as `provider/login: saved login cannot be used; run kogen provider login chatgpt`. Both exit 4.
 
@@ -59,11 +59,11 @@ exercise login/refusals, Shape/Refine/Build/fresh Review, limits and legacy resu
 
 ### Selection and identity
 
-Every model role and Shape worker accepts optional `provider: chatgpt|supergrok|opencode-go`.
+Every model role and Shape worker accepts optional `provider: chatgpt|supergrok|opencode-go|anthropic`.
 Omission preserves exact legacy maps, request bytes, cache behavior and version-3
 checkpoint comparisons; explicit ChatGPT adds only the selected provider key.
 SuperGrok accepts exactly `grok-4.7`, effort `low|medium|high|xhigh`. Invalid provider
-values report `models.<role>.provider must be chatgpt, supergrok or opencode-go`; unsupported
+values report `models.<role>.provider must be chatgpt, supergrok, opencode-go or anthropic`; unsupported
 selections report `models.<role>: supergrok supports model grok-4.7 with effort low,
 medium, high or xhigh` (workers use `shape_workers.<role>`). Both use existing
 line-numbered `environment/project_config_invalid`, exit 3. A provider edit changes
@@ -198,3 +198,63 @@ bare discovery still needs ChatGPT. Installed qualification requires explicit hu
 key handoff, single-member workspace, Extra usage and auto-recharge OFF and consent;
 no package test accesses live accounts. External observations do not qualify Kogen,
 images, effort strength, savings, unlimited promotions or cache miss causes.
+
+
+### Native Anthropic Messages adapter
+
+Anthropic is an explicit, independently mixable selection in Shape/Refine, enabled
+workers, Build and independent Review. It accepts exactly `claude-opus-5-5` and
+`claude-sonnet-5-5` with low/medium/high/max. Upstream xhigh is deliberately outside
+this initial subset. Omitted provider maps/defaults and other provider routes stay
+unchanged; invalid selections fail before inference with line-numbered errors.
+Role edits remain approval/checkpoint drift, not old Resume authority.
+
+Only `kogen provider login anthropic` private secret input supplies the API key.
+Whitespace/one terminal newline trim; blank, invalid UTF-8, internal controls and
+multiline input refuse without replacing old bytes. Cancellation/error preserves
+custody. Atomic 0600 `~/.kogen/credentials/anthropic.json` stores provider/api_key,
+under 0700 directories and `anthropic.lock`. Offline status is `anthropic: key saved
+(not verified)` or `anthropic: not signed in`; provider list includes four entries.
+No borrowed environment, CLI/browser/external-agent or subscription credentials,
+key argument, account switch or automatic fallback exists. Missing/unusable keys
+stop as provider/login (exit 4) naming the login command before inference. API
+billing is separate from consumer Claude/Max subscription access.
+
+Native POST `/v1/messages` at api.anthropic.com uses x-api-key and version
+2026-10-21, JSON, stream true, max_tokens 131072, adaptive thinking, configured
+output_config effort, top-level system/messages and translated name/description/
+input_schema client tools with tool_choice type auto. No sampling, cache controls,
+beta headers, server tools or OpenAI envelopes. Complete actual rendered JSON
+retains the 524288-byte inclusive ceiling and 131072-token reserve. Typed images
+refuse before inference with external preparation/pixel-review guidance, never
+text substitution. Other providers keep their image behavior.
+
+Indexed contiguous streaming blocks, terminal status and every tool input validate
+before exposing any call. Ordered text/thinking/signature/redacted thinking and
+exact tool inputs replay once; parallel tool_results gather in the immediately
+following user message with exact tool_use_id. Raw blocks survive private replay,
+working windows and v3 checkpoints. Only useful end_turn text or tool_use with a
+valid batch succeeds. Empty/malformed/unknown actionable blocks, refusal,
+max_tokens, stop_sequence and pause_turn fail honestly; model_context_window_exceeded
+is context_too_long. Pings/informational events do not establish completion.
+
+Network/cut/429/5xx including 529 use unchanged three attempts (2s/8s), under one
+30-minute deadline; cancellation/deadline closes the socket. No key refresh.
+401 is login, 404 model_unavailable, 413 context_too_long, definite 400/402/403
+refused, transient exhaustion unavailable, malformed completion invalid_response,
+all exit 4. Only safe bounded structural diagnostics are retained, never arbitrary
+upstream messages/bodies or keys outside the required transport header.
+
+Usage reports selected provider/model/effort, nullable effective metadata and IDs.
+Input sums input_tokens, cache_read_input_tokens and cache_creation_input_tokens
+only when all are reported nonnegative integers. Cache-read/write/output retain
+reported counts; missing stays null. Reasoning and 30m/12h write counts stay null;
+no cache-hit/TTL/quota/billing inference. Cumulative usage snapshots replace/merge
+fields, never sum. Valid nullable aggregate counters survive v3 checkpoints;
+malformed/negative counters and all staged/custody/drift failures still refuse.
+
+The native Claude Intent's installed scenarios exercise mixed roles, questions,
+approval, blocked independent Review and fresh explicit Resume. Focused tests cover
+private entry, parsing, arithmetic and transport cancellation. These synthetic local
+fixtures prove plumbing, not live access or pixel interpretation. Human-key installed
+qualification, Linux and release real-use gates remain separate later obligations.

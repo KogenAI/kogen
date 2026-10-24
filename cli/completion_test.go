@@ -29,6 +29,7 @@ func TestZshDynamicWiring(t *testing.T) {
  words=(kogen); CURRENT=2; PREFIX=''; _kogen
  words=(kogen intent build --project '/selected checkout' fi); CURRENT=6; PREFIX=fi; _kogen
  words=(kogen intent build --project='/selected checkout' fi); CURRENT=5; PREFIX=fi; _kogen
+ words=(kogen provider login ''); CURRENT=4; PREFIX=''; _kogen
  words=(kogen context --j); CURRENT=3; PREFIX=--j; _kogen
  words=(kogen context --project ''); CURRENT=4; PREFIX=''; _kogen
  `
@@ -37,7 +38,7 @@ func TestZshDynamicWiring(t *testing.T) {
 	if e != nil {
 		t.Fatalf("%s: %v", out, e)
 	}
-	for _, want := range []string{"context", "fixture", "--json", "directory", "__complete build --project /selected checkout"} {
+	for _, want := range []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "context", "fixture", "--json", "directory", "__complete build --project /selected checkout"} {
 		if !strings.Contains(string(out), want) {
 			t.Fatalf("missing %q in %s", want, out)
 		}

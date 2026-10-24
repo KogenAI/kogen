@@ -156,7 +156,7 @@ Native shell/read_file tools remain text-only; explicit view_image alone deliver
 ## Providers
 
 `models.shape`, `models.build`, `models.review` and each `shape_workers.read`,
-`probe`, `draft` selection accept optional `provider: chatgpt`, `provider: supergrok` or `provider: opencode-go`.
+`probe`, `draft` selection accept optional `provider: chatgpt`, `provider: supergrok`, `provider: opencode-go` or `provider: anthropic`.
 Omission preserves the exact legacy `{model, effort}` map, defaults and ChatGPT
 validation; explicit `chatgpt` routes identically. No template migration is required.
 SuperGrok supports exactly `model: grok-4.7` and `effort: low`, `medium`, `high` or
@@ -190,7 +190,7 @@ Credentials live only in `~/.kogen/credentials/supergrok.json` (0600), within 07
 credentials and Kogen directories, atomically replaced under `supergrok.lock`.
 Refresh occurs 60 seconds before expiry and once after a 401, under the lock with
 re-read; omitted rotation keeps the refresh token. Status checks are offline.
-Uninstall preserves and names all three providers' credential and lock files.
+Uninstall preserves and names all four providers' credential and lock files.
 
 SuperGrok uses streamed `https://api.x.ai/v1/responses` with full stateless encrypted
 replay, typed image outputs, reasoning effort, tools, `stream:true`, `store:false`
@@ -226,7 +226,7 @@ Select `provider: opencode-go`, `model: kimi-k3`, `effort: high` or `default` ex
 `default` omits `reasoning_effort`; high sends the requested string `high`. Effective
 effort remains null unless actually reported: accepted high is not evidence of
 stronger reasoning. Other Go models and efforts fail configuration before inference.
-GPT stays on ChatGPT, Grok on SuperGrok, Claude awaits a separate connection.
+GPT stays on ChatGPT, Grok on SuperGrok, Claude uses the independently selected Anthropic API-key connection below.
 The initial Kimi-only allowlist reflects documented model and retained tools/reasoning
 evidence, not a qualified general OpenAI-compatible catalogue. The
 [upstream catalogue](https://opencode.ai/docs/go/) is discovery only. Free promotions
@@ -259,7 +259,7 @@ leave the prior credential unchanged. Login performs no network calls; `opencode
 key saved (not verified)` is local presence only. Offline provider list shows absent,
 locally usable or saved-login-unusable guidance. Selected roles alone require their
 logins; missing Go credentials exit 4 and name the login command. Uninstall keeps and
-names all three providers' credential/lock paths.
+names all four providers' credential/lock paths.
 
 Go sends Kogen Bearer auth only to
 `https://opencode.ai/inference/go/openai/v1/chat/completions`, never pay-as-you-go
@@ -323,3 +323,75 @@ KOGEN-042 param remains UNKNOWN; synthetic absence is not historical evidence.
 API acceptance, cache hits, account savings and visual interpretation are separate
 facts. No universal cache guarantee, paid benchmark, endpoint/settings sweep,
 savings claim, release/global installation or billing change follows.
+
+
+### Anthropic Claude API-key roles
+
+Select `provider: anthropic` explicitly in any role or enabled Shape worker.
+Only `claude-opus-5-5` and `claude-sonnet-5-5`, with `low`, `medium`, `high` or
+`max`, are in Kogen's initial subset. Upstream also documents `xhigh`; it is
+not in this initial subset. These documentation-backed choices do not establish
+live account/model access. Unknown combinations fail with line-numbered config
+errors before inference; no model, effort, provider or account is silently changed.
+Omission keeps legacy ChatGPT defaults/maps. A role edit changes approval/checkpoint
+identity and cannot authorize old Resume. Refine uses Shape; workers follow their
+own explicit selections. Credentials are required only for invoked roles.
+
+```yaml
+models:
+  shape: {provider: anthropic, model: claude-opus-5-5, effort: high}
+  build: {provider: opencode-go, model: kimi-k3, effort: high}
+  review: {provider: supergrok, model: grok-4.7, effort: high}
+```
+
+Claude may independently occupy Build or Review too. Review always starts its own
+conversation with approved authority, actual candidate/source and checks, not builder
+reasoning. A blocked Review needs explicit same-checkout Resume and fresh verification.
+
+Run `kogen provider login anthropic` with private stdin or the echo-suppressed
+terminal secret flow. There is no key argument or environment-variable authentication;
+Kogen does not borrow Claude CLI, browser, subscription or external-agent stores.
+This is API billing, not Claude Max or any consumer subscription. Credentials are
+atomically saved at `~/.kogen/credentials/anthropic.json` (0600), under 0700 Kogen
+and credentials directories with `anthropic.lock`. Invalid/interrupted input keeps
+the old bytes. Offline `provider list` shows four providers without inference;
+`anthropic: key saved (not verified)` distinguishes saving from verified access.
+Missing or unusable credentials name the login command and stop with exit 4.
+Uninstall preserves both the credential and lock paths.
+
+The native route POSTs Messages to `https://api.anthropic.com/v1/messages`, with
+`anthropic-version: 2026-10-21`, adaptive thinking, configured output effort,
+streaming and 131072 max tokens. Client tool schemas and ordered raw assistant
+blocks (including opaque thinking/signatures and redacted thinking) survive replay,
+working windows and v3 checkpoints. Parallel tool results share the immediately
+following user message. No proxy, Claude subprocess, sampling/cache controls,
+beta headers or server tools are used. Complete validation precedes any tool effect.
+Only useful complete end-turn text or a valid tool-use batch succeeds; truncation,
+refusal and other non-success stops never expose partial tools or alter requests.
+
+Network failures, cut streams, 429 and 5xx (including 529) retain the three-attempt
+2s/8s transient policy within one 30-minute logical deadline. Cancellation closes
+the socket. Keys do not refresh. 401 is login, 404 model_unavailable, 413
+context_too_long, definite 400/402/403 refused; malformed complete output is
+invalid_response. Diagnostics retain bounded structural status/type/request IDs,
+not arbitrary upstream bodies/messages. All provider failures exit 4.
+
+Total input is input + cache-read + cache-creation only when all three reported
+counts are nonnegative integers; otherwise it stays unknown. Cache read and write
+remain separately reported, output is reported output, reasoning and 30m/12h write
+lifetimes stay null. Cumulative stream snapshots merge/replace, never sum. No hit,
+TTL, quota, savings or billing inference follows. Nullable aggregates survive safe
+v3 Resume without weakening staged or source/custody checks.
+
+The complete rendered Messages JSON, including system/tools/replay/envelopes, keeps
+the inclusive 524288-byte ceiling and 131072-token reserve. Claude typed images
+refuse before inference with an external preparation/pixel-review handoff; no
+pixels are dropped or replaced with paths/text and no interpretation is claimed.
+Other providers' image routes are unchanged.
+
+Deterministic qualification uses synthetic keys and local fake servers only.
+Human-supplied-key installed qualification is separate later work: explicit consent,
+private login, and exact selected model/effort/tool/replay/Review outcomes must be
+recorded. Failure stops honestly, not by fallback. No real key or paid sweep is
+part of this feature; Linux deterministic and release real-use qualification remain
+separate, unclaimed obligations.

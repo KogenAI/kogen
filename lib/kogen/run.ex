@@ -115,7 +115,8 @@ defmodule Kogen.Run do
         is_map(usage) and
           Enum.all?(
             [:input, :output, :cached, :reasoning],
-            &(is_integer(usage[&1]) and usage[&1] >= 0)
+            &(Map.has_key?(usage, &1) and
+                (is_nil(usage[&1]) or (is_integer(usage[&1]) and usage[&1] >= 0)))
           )
       end) and valid_continuation?(b[:continuation]) and
       (not Map.has_key?(b.continuation, :pass) or not b.continuation.pass.green or
