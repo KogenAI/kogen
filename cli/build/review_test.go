@@ -259,6 +259,7 @@ func TestFinalVerificationFailuresReturnToTheSameReviewerContext(t *testing.T) {
 }
 
 func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/release_behavior_test.exs: REV-4/REV-5 retries one invalid review verdict and lands after approval
 	bad := finding("blocking", "An approve verdict cannot contain a blocking finding.")
 	t.Run("retried once", func(t *testing.T) {
@@ -877,6 +878,7 @@ func readParts(f *fakeProvider, n int) handler {
 func bigFile() string { return strings.Repeat("0123456789abcdef-line\n", 14_000) }
 
 func TestLargeSourceIsDeliveredAsPinnedPartsAndMustBeReadBeforeApproval(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: exact UTF8 source delivery survives reset and damaged custody refuses
 	e := newEnv(t)
 	f := e.prov
@@ -1196,6 +1198,7 @@ func TestAResumedFittedReviewPinsItsSourceWhenTheConversationOutgrowsTheWindow(t
 }
 
 func TestAResumedFittedReviewOfALargerSourcePinsItAndDeliversIt(t *testing.T) {
+	t.Parallel()
 	// Intent review-refine-working-room: resume a fitted inline Review with room for investigation and final repair (suite parameters)
 	e := newEnv(t)
 	e.write("README.md", "# Fixture project\n"+strings.Repeat("r", 61000)+"\n")

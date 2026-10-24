@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "baselineRevision": "687f140700426b3b4ad3e3eae7f1d854762dad31",
+  "preparation": "Tools were already installed. An initial baseline exited zero but was invalid because eight tests skipped: the disposable copy lacked repository-local Node dependencies; that raw observation and its source metadata are retained in the parent private custody directory (baseline.stdout, baseline.stderr, baseline-observation.json). After investigating the explicit skip diagnostics, npm ci installed the pinned spec and test/acceptance dependencies in both new independent copies before either timed run. No automatic retry-to-green protocol was used. A focused uncached race-checked six-test run passed before measurement, warming shared standard-library/compiler caches. Prepared two independent local clones of revision 687f140700426b3b4ad3e3eae7f1d854762dad31, overlaying only the four final test files in the final copy; clone and dependency preparation took 2.194 seconds. No dependency installation, cache clearing, parallelism overrides or environment tuning between observations. Each whole process ran sequentially in its own CLI directory with default Go scheduling and shared existing Go compilation cache, count=1 disabling test-result caching. Unrelated host work was not stopped or controlled; load and private process-name snapshots were retained. This is one host observation, not a statistical speedup, flake-rate estimate, Linux qualification or release qualification. External scheduling investigation is credited to Claude Opus; its draft/worktree was not imported or changed. Private observer, source diffs, identities, observation records and per-package elapsed results are alongside the raw streams. Whole-wall observation: 349.480 s baseline versus 348.752 s final, 0.728 s (0.208%) smaller. Package elapsed: build 346.311 -> 280.586 s; unchanged serial shape 328.577 -> 345.784 s, git 30.135 -> 32.482 s, verify 33.950 -> 36.513 s. Shape became the final bottleneck: even eliminating all other package work cannot reduce that run below its observed 345.784 s. Thus the whole-check saving is marginal and load-sensitive, not proof of a generally useful speedup; the 65.725 s build-package reduction mostly overlapped serial shape. Final load was higher, not artificially quieted. No minimum percentage or causal/statistical performance guarantee is claimed.",
+  "baseline": {
+    "cliSha256": "b1ab0f3faccc277419dda2ec444a4398178c4dbf7a39e84508694edaad4793b8",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "-json",
+      "./..."
+    ],
+    "cwd": "cli",
+    "host": {
+      "id": "native-check-time-mac-arm64",
+      "os": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+      "arch": "arm64",
+      "cpus": 12
+    },
+    "tools": {
+      "go": "go version go1.27.2 darwin/arm64",
+      "git": "git version 2.54.0 (Apple Git-157)",
+      "node": "v24.21.0",
+      "python": "Python 3.13.16"
+    },
+    "environment": {
+      "CGO_ENABLED": null,
+      "GOARCH": null,
+      "GOFLAGS": null,
+      "GOGC": null,
+      "GOMEMLIMIT": null,
+      "GOMAXPROCS": null,
+      "GOOS": null,
+      "GORACE": null,
+      "GOROOT": "/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2",
+      "GOTOOLCHAIN": null,
+      "GOWORK": null,
+      "KOGEN_CUCUMBER": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/cucumber/node_modules",
+      "KOGEN_NODE": "/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin/node",
+      "KOGEN_QUINT": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/quint/node_modules/@informalsystems/quint/dist/src/cli.js",
+      "KOGEN_TEST_PYTHON_BIN": null,
+      "PATH": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/bin:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/.mix/escripts:/Users/almirsarajcic/.local/share/mise/installs/erlang/29.1.1/bin:/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2/bin:/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin:/Users/almirsarajcic/.local/share/mise/installs/python/3.13.16/bin:/Users/almirsarajcic/.local/share/mise/shims:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/homebrew/bin:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/sbin:/Users/almirsarajcic/.codex/tmp/arg0-macos/codex-arg0Pp7UuP:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+      "TMPDIR": "/var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/"
+    },
+    "startedAt": "2026-10-24T17:12:40.476020Z",
+    "loadBefore": [
+      4.67578125,
+      4.22412109375,
+      3.595703125
+    ],
+    "elapsedSeconds": 349.48019675002433,
+    "status": 0,
+    "loadAfter": [
+      3.5966796875,
+      4.173828125,
+      3.8173828125
+    ],
+    "raw": {
+      "stdout": {
+        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/baseline.stdout",
+        "sha256": "222984ac10a5d163646f9c9c6c3511cc0358ea08530d8c22190c79d2f1056f58"
+      },
+      "stderr": {
+        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/baseline.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "packages": [
+      "kogen",
+      "kogen/agent",
+      "kogen/build",
+      "kogen/git",
+      "kogen/project",
+      "kogen/provider",
+      "kogen/shape",
+      "kogen/sys",
+      "kogen/verify"
+    ],
+    "tests": {
+      "passed": 2348,
+      "failed": 0,
+      "skipped": 0,
+      "inventorySha256": "1be93e3b4c4f43524fa1290084783a500e176ce37b400b75806face33fbc8902"
+    }
+  },
+  "final": {
+    "cliSha256": "70e187e2d193da7b32455853448cec7f6aa8a069e1eb7337068b23af8d5646a0",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "-json",
+      "./..."
+    ],
+    "cwd": "cli",
+    "host": {
+      "id": "native-check-time-mac-arm64",
+      "os": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+      "arch": "arm64",
+      "cpus": 12
+    },
+    "tools": {
+      "go": "go version go1.27.2 darwin/arm64",
+      "git": "git version 2.54.0 (Apple Git-157)",
+      "node": "v24.21.0",
+      "python": "Python 3.13.16"
+    },
+    "environment": {
+      "CGO_ENABLED": null,
+      "GOARCH": null,
+      "GOFLAGS": null,
+      "GOGC": null,
+      "GOMEMLIMIT": null,
+      "GOMAXPROCS": null,
+      "GOOS": null,
+      "GORACE": null,
+      "GOROOT": "/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2",
+      "GOTOOLCHAIN": null,
+      "GOWORK": null,
+      "KOGEN_CUCUMBER": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/cucumber/node_modules",
+      "KOGEN_NODE": "/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin/node",
+      "KOGEN_QUINT": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/quint/node_modules/@informalsystems/quint/dist/src/cli.js",
+      "KOGEN_TEST_PYTHON_BIN": null,
+      "PATH": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/bin:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/.mix/escripts:/Users/almirsarajcic/.local/share/mise/installs/erlang/29.1.1/bin:/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2/bin:/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin:/Users/almirsarajcic/.local/share/mise/installs/python/3.13.16/bin:/Users/almirsarajcic/.local/share/mise/shims:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/homebrew/bin:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/sbin:/Users/almirsarajcic/.codex/tmp/arg0-macos/codex-arg0Pp7UuP:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+      "TMPDIR": "/var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/"
+    },
+    "startedAt": "2026-10-24T17:18:30.093767Z",
+    "loadBefore": [
+      3.5966796875,
+      4.173828125,
+      3.8173828125
+    ],
+    "elapsedSeconds": 348.75213845900726,
+    "status": 0,
+    "loadAfter": [
+      5.3388671875,
+      5.400390625,
+      4.6005859375
+    ],
+    "raw": {
+      "stdout": {
+        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/final.stdout",
+        "sha256": "1d7fdf7ba23b46598e1f1ca39ec0cf525b67dba5363de2c2f2bf6c14e89b8d59"
+      },
+      "stderr": {
+        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/final.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "packages": [
+      "kogen",
+      "kogen/agent",
+      "kogen/build",
+      "kogen/git",
+      "kogen/project",
+      "kogen/provider",
+      "kogen/shape",
+      "kogen/sys",
+      "kogen/verify"
+    ],
+    "tests": {
+      "passed": 2348,
+      "failed": 0,
+      "skipped": 0,
+      "inventorySha256": "1be93e3b4c4f43524fa1290084783a500e176ce37b400b75806face33fbc8902"
+    }
+  }
+}

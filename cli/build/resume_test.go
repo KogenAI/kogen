@@ -135,6 +135,7 @@ func (e *env) runFiles(id string) map[string]string {
 }
 
 func TestResumeRefusals(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: resume refuses damaged index custody, configuration and required saved state before effects; pre-clean checkpoints cannot authorize resume
 	type mutation func(e *env, id string)
 	setDoc := func(f func(doc, state map[string]any)) mutation {

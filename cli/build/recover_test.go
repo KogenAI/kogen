@@ -205,6 +205,7 @@ func TestRecoveryPublicationPrecedesACleanupWriteFailureAndTheReceiptStaysPreser
 }
 
 func TestRecoveryRefusals(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/recover.ex (every named custody fact is checked before anything is written, and again before cleanup)
 	type refusal struct {
 		name   string

@@ -14,6 +14,7 @@ import (
 )
 
 func TestAConversationOverTheBudgetIsResetToALocalWorkingWindow(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/working_context.ex prepare/6 (the 524288-byte request ceiling and the history archive)
 	e := newEnv(t)
 	f := e.prov
