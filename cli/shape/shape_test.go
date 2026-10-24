@@ -623,6 +623,9 @@ func TestShapeRedReadinessReturnsObservationsAndAcknowledgmentReusesThem(t *test
 	feedback := shpOutputs(reqs[1])["c1"]
 	shpContains(t, "feedback", feedback, "Inspect whether fixtures, inputs and commands reached the intended behavior")
 	shpContains(t, "feedback", feedback, "Acceptance exit: 1\n")
+	shpContains(t, "skipped feedback", feedback, "Unexercised acceptance steps: 2")
+	shpContains(t, "skipped feedback", feedback, "acceptance.feature line 4: Then it is even")
+	shpContains(t, "skipped feedback", feedback, "Skipped steps are unexercised; readiness does not prove their behavior or fixture validity.")
 	obsPath := filepath.Join(f.Root, ".kogen/local/shaping/is-even/observations-1.txt")
 	shpContains(t, "feedback", feedback, "Evidence: "+obsPath)
 	b, err := os.ReadFile(obsPath)

@@ -119,12 +119,13 @@ func TestAccountWillBeRetriedExcludesTheFailedAttemptWhenRetryPasses(t *testing.
 	ids := makeASTIDs(s, 1, "case")
 	events := []obj{documentMessage(testFeature, []project.Scenario{s}, []astIDs{ids})}
 	events = append(events, caseMessages(s, testFeature, []string{ids.scenario}, "attempt-one",
-		reportOpts{results: statuses("FAILED", "FAILED"), retried: true, astSteps: ids.steps})...)
+		reportOpts{results: statuses("FAILED", "SKIPPED"), retried: true, astSteps: ids.steps})...)
 	events = append(events, caseMessages(s, testFeature, []string{ids.scenario}, "attempt-two", reportOpts{astSteps: ids.steps})...)
 	got := account(dir, expected, writeReport(t, dir, "retry.ndjson", events), 0, "")
 	eq(t, "status", got.Scenarios[0].Status, "passed")
 	eqSlice(t, "problems", got.Problems, nil)
 	eq(t, "passed", got.Passed, 1)
+	eq(t, "retried skips excluded", encode(got.Scenarios[0].UnexercisedSteps), "[]")
 }
 
 func TestAccountTruncatedReportsAreInvalid(t *testing.T) {
@@ -244,7 +245,38 @@ func TestAccountEqualsTheElixirAccountingOnEveryReference(t *testing.T) {
 				os.Remove(report)
 			}
 			got := Account(root, testFeature, expected, report, c.Status, c.Output)
-			sameJSON(t, "account", got, c.Result)
+			// Historical parity covers unchanged accounting; new observations have
+			// dedicated execution-projection regressions below.
+			legacy := generic(got).(map[string]any)
+			for _, scenario := range legacy["scenarios"].([]any) {
+				delete(scenario.(map[string]any), "unexercised_steps")
+			}
+			sameJSON(t, "account", legacy, c.Result)
 		})
+	}
+}
+
+func TestAccountRetainsOnlyActuallySkippedSteps(t *testing.T) {
+	dir := t.TempDir()
+	_, expected := featureWithSteps(t, "observed", 4)
+	for _, statusesList := range [][]string{{"FAILED", "SKIPPED", "PASSED", "SKIPPED"}, {"PASSED", "PASSED", "PASSED", "PASSED"}} {
+		events := simpleMessages(testFeature, expected, reportOpts{results: statuses(statusesList...)})
+		got := account(dir, expected, writeReport(t, dir, "skipped.ndjson", events), 1, "")
+		want := []StepRecord{}
+		for i, status := range statusesList {
+			if status == "SKIPPED" {
+				st := expected[0].Steps[i]
+				want = append(want, StepRecord{Keyword: st.Keyword, Text: st.Text, Line: st.Line})
+			}
+		}
+		if encode(got.Scenarios[0].UnexercisedSteps) != encode(want) {
+			t.Fatalf("got %s want %s", encode(got.Scenarios[0].UnexercisedSteps), encode(want))
+		}
+	}
+	for _, opts := range []reportOpts{{unfinished: true}, {repeat: 2}, {notStarted: true}} {
+		got := account(dir, expected, writeReport(t, dir, "unknown.ndjson", simpleMessages(testFeature, expected, opts)), 1, "")
+		if got.Scenarios[0].UnexercisedSteps != nil {
+			t.Fatal("incomplete/nonunique execution must remain unknown")
+		}
 	}
 }

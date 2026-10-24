@@ -1,0 +1,26 @@
+[
+  {
+    "expectation": 0,
+    "section": "first",
+    "record": {"scenarios":[{"name":"Masked history","line":2,"status":"failed","unexercised_steps":[{"keyword":"Then ","text":"the historical baseline is readable","line":4},{"keyword":"And ","text":"the final assertion runs","line":5}]}]},
+    "out": "Readiness observations\nUnexercised acceptance steps: 2\nSkipped steps are unexercised; readiness does not prove their behavior or fixture validity.\nScenario: Masked history (acceptance.feature line 2)\nacceptance.feature line 4: Then the historical baseline is readable\nacceptance.feature line 5: And the final assertion runs\n"
+  },
+  {
+    "expectation": 0,
+    "section": "corrected",
+    "record": {"scenarios":[{"name":"Masked history","line":2,"status":"passed","unexercised_steps":[]}]},
+    "out": "Intent: fixture\nAcceptance\n  - Masked history (passes now)\n"
+  },
+  {
+    "expectation": 1,
+    "section": "first",
+    "record": {"scenarios":[{"name":"Failed before hook","line":4,"status":"failed","unexercised_steps":[{"keyword":"Given ","text":"background is available","line":3},{"keyword":"Then ","text":"the final assertion runs","line":5}]}]},
+    "out": "Unexercised acceptance steps: 2\nSkipped steps are unexercised; readiness does not prove their behavior or fixture validity.\nScenario: Failed before hook (acceptance.feature line 4)\nacceptance.feature line 3: Given background is available\nacceptance.feature line 5: Then the final assertion runs\n"
+  },
+  {
+    "expectation": 2,
+    "section": "first",
+    "record": {"scenarios":[{"name":"Case first","line":10,"status":"failed","unexercised_steps":[{"keyword":"Then ","text":"result first is checked","line":6},{"keyword":"And ","text":"final first is checked","line":7}]},{"name":"Case second","line":11,"status":"passed","unexercised_steps":[]}]},
+    "out": "Unexercised acceptance steps: 2\nSkipped steps are unexercised; readiness does not prove their behavior or fixture validity.\nScenario: Case first (acceptance.feature line 10)\nacceptance.feature line 6: Then result first is checked\nacceptance.feature line 7: And final first is checked\n"
+  }
+]

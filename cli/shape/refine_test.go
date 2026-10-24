@@ -539,6 +539,8 @@ func TestRefineRedOriginalGivesTheModelItsObservationsAndAcknowledgmentReusesThe
 	body := shpBody(reqs[0])
 	shpContains(t, "original observations", body, "Readiness observations\nChecked baseline: "+f.hash0)
 	shpContains(t, "original observations", body, "Scenario: Even numbers (acceptance.feature line 2)")
+	shpContains(t, "original skipped", body, "Unexercised acceptance steps: 2")
+	shpContains(t, "original skipped", body, "acceptance.feature line 4: Then it is even")
 	rel := strings.TrimPrefix(f.evidence(), f.Root+"/")
 	obs := f.read(rel + "/original-observations.txt")
 	shpEq(t, "observations file", strings.HasPrefix(obs, "Readiness observations\nChecked baseline: "+f.hash0), true)
@@ -569,6 +571,9 @@ func TestRefineRedCandidateReturnsObservationsAndAChangedOneIsCheckedAgain(t *te
 	feedback := shpOutputs(reqs[1])["c1"]
 	shpContains(t, "feedback", feedback, "Inspect whether fixtures, inputs and commands reached the intended behavior")
 	shpContains(t, "feedback", feedback, "Acceptance exit: 1\n")
+	shpContains(t, "skipped feedback", feedback, "Unexercised acceptance steps: 2")
+	shpContains(t, "skipped feedback", feedback, "acceptance.feature line 4: Then it is even")
+	shpContains(t, "skipped feedback", feedback, "Skipped steps are unexercised; readiness does not prove their behavior or fixture validity.")
 	rel := strings.TrimPrefix(f.evidence(), f.Root+"/")
 	shpContains(t, "feedback", feedback, "Evidence: "+filepath.Join(f.Root, rel, "observations-1.txt"))
 	shpEq(t, "acknowledged", shpOutputs(reqs[1])["c1"] != "", true)

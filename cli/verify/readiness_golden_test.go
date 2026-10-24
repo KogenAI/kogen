@@ -98,7 +98,9 @@ func TestReadinessRecordEqualsTheElixirRecordAndReadsBack(t *testing.T) {
 			expected, _ := project.ParseGherkin(string(must(os.ReadFile(filepath.Join(root, project.FeaturePath(fixtureSlug))))))
 			var scenarios []ScenarioResult
 			for i, e := range expected {
-				scenarios = append(scenarios, withResult(e, g.Scenarios[i].Status, g.Scenarios[i].Detail))
+				result := withResult(e, g.Scenarios[i].Status, g.Scenarios[i].Detail)
+				result.UnexercisedSteps = []StepRecord{}
+				scenarios = append(scenarios, result)
 			}
 			ready := &Ready{Intent: intent, Model: intent.Model, Scenarios: scenarios, AcceptanceExit: 1,
 				Baseline: in.baseline, SHA256: in.sha, Head: in.head, CandidateTree: in.tree}
@@ -124,7 +126,12 @@ func TestReadinessRecordEqualsTheElixirRecordAndReadsBack(t *testing.T) {
 			path := readinessPath(root, fixtureSlug)
 			got := string(must(os.ReadFile(path)))
 			// Equal by value: Elixir orders the keys of small nested maps its own way.
-			sameJSON(t, "record", json.RawMessage(got), g.Record)
+			var expectedRecord map[string]any
+			json.Unmarshal(g.Record, &expectedRecord)
+			for _, scenario := range expectedRecord["scenarios"].([]any) {
+				scenario.(map[string]any)["unexercised_steps"] = []any{}
+			}
+			sameJSON(t, "record", json.RawMessage(got), json.RawMessage(encode(expectedRecord)))
 			if !strings.HasSuffix(got, "}\n") {
 				t.Fatalf("a record is one JSON line: %q", got)
 			}
@@ -135,11 +142,15 @@ func TestReadinessRecordEqualsTheElixirRecordAndReadsBack(t *testing.T) {
 				t.Fatalf("package facts = %s", facts)
 			}
 
-			// The Elixir record is complete evidence for Go too, until HEAD moves.
+			// Historical records lack execution observations and are normal misses.
 			os.WriteFile(path, []byte(g.RecordText), 0o644)
+			if r.Cached(s, fixtureSlug) != nil {
+				t.Fatal("historical metadata must miss")
+			}
+			os.WriteFile(path, []byte(got), 0o644)
 			cached := r.Cached(s, fixtureSlug)
 			if cached == nil {
-				t.Fatal("the Elixir record is not reusable")
+				t.Fatal("the complete record is not reusable")
 			}
 			eq(t, "cached exit", cached.AcceptanceExit, 1)
 			eq(t, "cached failures", cached.Failures(), true)

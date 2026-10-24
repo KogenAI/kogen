@@ -161,17 +161,25 @@ func (r *Readiness) Cached(s *sys.Session, slug string) *Ready {
 			}
 			detailPtr = &ds
 		}
+		unexercised, valid := cachedUnexercised(sm["unexercised_steps"], e)
+		if !valid {
+			return nil
+		}
 		rest := shallowCopy(sm)
 		delete(rest, "status")
 		delete(rest, "detail")
+		delete(rest, "unexercised_steps")
 		want := generic(ScenarioRecord(e)).(map[string]any)
 		delete(want, "status")
 		delete(want, "detail")
+		delete(want, "unexercised_steps")
 		if !jsonEqual(rest, want) {
 			return nil
 		}
 		anyFailed = anyFailed || status == "failed"
-		scenarios = append(scenarios, withResult(e, status, detailPtr))
+		result := withResult(e, status, detailPtr)
+		result.UnexercisedSteps = unexercised
+		scenarios = append(scenarios, result)
 	}
 	if !anyFailed && exit != 0 {
 		return nil
@@ -565,6 +573,13 @@ func Observations(slug string, ready *Ready, reference string) string {
 		reference = ".kogen/local/readiness/" + slug + ".json"
 	}
 	var details []string
+	count := 0
+	for _, s := range ready.Scenarios {
+		count += len(s.UnexercisedSteps)
+	}
+	if count > 0 {
+		details = append(details, fmt.Sprintf("Unexercised acceptance steps: %d\nSkipped steps are unexercised; readiness does not prove their behavior or fixture validity.", count))
+	}
 	for _, s := range ready.Scenarios {
 		if s.Status == "failed" {
 			detail := "The runner supplied no failure detail."
@@ -574,6 +589,18 @@ func Observations(slug string, ready *Ready, reference string) string {
 			details = append(details, fmt.Sprintf("Scenario: %s (acceptance.feature line %d)\n%s", s.Name, s.Line, detail))
 		}
 	}
+	// Keep executed failure locations ahead of potentially long skipped-step lists.
+	for _, s := range ready.Scenarios {
+		if len(s.UnexercisedSteps) == 0 {
+			continue
+		}
+		lines := []string{fmt.Sprintf("Scenario: %s (acceptance.feature line %d)", s.Name, s.Line)}
+		for _, st := range s.UnexercisedSteps {
+			lines = append(lines, fmt.Sprintf("acceptance.feature line %d: %s %s", st.Line, strings.TrimSpace(st.Keyword), st.Text))
+		}
+		details = append(details, strings.Join(lines, "\n"))
+	}
+
 	return Cut("Readiness observations\n" +
 		"Checked baseline: " + ready.SHA256 + "\nHEAD: " + ready.Head + "\n" +
 		"Acceptance exit: " + itoa(ready.AcceptanceExit) + "\nEvidence: " + reference + "\n" +
@@ -589,4 +616,41 @@ func Acknowledgment(slug string, ready *Ready, reference string) string {
 	return Cut("Inspect whether fixtures, inputs and commands reached the intended behavior, using the existing read/probe tools when needed. Repair demonstrated contract defects. " +
 		AcknowledgmentGuidance + " A failure can mask later cases; this is not proof that every fixture is correct.\n\n" +
 		Observations(slug, ready, reference))
+}
+
+// cachedUnexercised requires complete metadata and an ordered, unique subset of
+// the scenario's expanded source steps. Absence is unknown, not zero.
+func cachedUnexercised(value any, scenario project.Scenario) ([]StepRecord, bool) {
+	records, ok := value.([]any)
+	if !ok {
+		return nil, false
+	}
+	out := []StepRecord{}
+	next := 0
+	for _, value := range records {
+		m, ok := value.(map[string]any)
+		if !ok || len(m) != 3 {
+			return nil, false
+		}
+		keyword, k := m["keyword"].(string)
+		text, t := m["text"].(string)
+		line, l := intValue(m["line"])
+		if !k || !t || !l {
+			return nil, false
+		}
+		matched := false
+		for next < len(scenario.Steps) {
+			step := scenario.Steps[next]
+			next++
+			if step.Keyword == keyword && step.Text == text && step.Line == line {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return nil, false
+		}
+		out = append(out, StepRecord{Keyword: keyword, Text: text, Line: line})
+	}
+	return out, true
 }

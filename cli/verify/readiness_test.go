@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"kogen/project"
 	"kogen/sys"
@@ -234,6 +235,12 @@ func TestReadinessCachedMissesAreNormal(t *testing.T) {
 		os.WriteFile(path, b, 0o644)
 	}
 	for name, f := range map[string]func(rec map[string]any){
+		"no skipped metadata":       func(rec map[string]any) { delete(rec["scenarios"].([]any)[0].(map[string]any), "unexercised_steps") },
+		"null skipped metadata":     func(rec map[string]any) { rec["scenarios"].([]any)[0].(map[string]any)["unexercised_steps"] = nil },
+		"nonarray skipped metadata": func(rec map[string]any) { rec["scenarios"].([]any)[0].(map[string]any)["unexercised_steps"] = "[]" },
+		"bad skipped object": func(rec map[string]any) {
+			rec["scenarios"].([]any)[0].(map[string]any)["unexercised_steps"] = []any{map[string]any{"keyword": "Then ", "text": "not a step", "line": json.Number("3")}}
+		},
 		"wrong version":               func(rec map[string]any) { rec["version"] = 2 },
 		"not ready":                   func(rec map[string]any) { rec["outcome"] = "failed" },
 		"exit not integer":            func(rec map[string]any) { rec["acceptance_exit"] = "0" },
@@ -464,5 +471,56 @@ func TestReadinessBeforeRecordRunsAfterTheChecksAndCanStopTheRecord(t *testing.T
 	}
 	if r.Cached(s, fixtureSlug) != nil {
 		t.Fatal("a stopped check left reusable evidence")
+	}
+}
+
+func TestCachedUnexercisedRequiresExactOrderedSourceSubset(t *testing.T) {
+	_, scenarios := featureWithSteps(t, "cache", 3)
+	steps := ScenarioRecord(scenarios[0]).Steps
+	for name, records := range map[string]any{
+		"empty": []StepRecord{}, "subset": []StepRecord{steps[0], steps[2]},
+		"duplicate": []StepRecord{steps[0], steps[0]}, "reversed": []StepRecord{steps[2], steps[0]},
+		"wrong keyword":   []StepRecord{{Keyword: "Then ", Text: steps[0].Text, Line: steps[0].Line}},
+		"wrong text":      []StepRecord{{Keyword: steps[0].Keyword, Text: "other", Line: steps[0].Line}},
+		"wrong line":      []StepRecord{{Keyword: steps[0].Keyword, Text: steps[0].Text, Line: 99}},
+		"bad types":       []any{map[string]any{"keyword": 1, "text": "step 1", "line": 3}},
+		"fractional line": []any{map[string]any{"keyword": "Given ", "text": "step 1", "line": 3.5}},
+		"extra field":     []any{map[string]any{"keyword": "Given ", "text": "step 1", "line": 3, "extra": true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, ok := cachedUnexercised(generic(records), scenarios[0])
+			want := name == "empty" || name == "subset"
+			if ok != want {
+				t.Fatalf("valid = %v want %v", ok, want)
+			}
+			if want && encode(got) != encode(records) {
+				t.Fatalf("round trip: %s", encode(got))
+			}
+		})
+	}
+}
+
+func TestObservationsKeepFirstFailureBeforeLongSkippedListings(t *testing.T) {
+	where := "a hook at features/steps/fixture_steps.js line 8"
+	detail := Cut(where + "\nhook-red: " + strings.Repeat("é", 11000))
+	skipped := []StepRecord{}
+	for line := 3; line < 103; line++ {
+		skipped = append(skipped, StepRecord{Keyword: "Then ", Text: strings.Repeat("é", 100), Line: line})
+	}
+	ready := &Ready{AcceptanceExit: 1, Scenarios: []ScenarioResult{{
+		Name: "Long skipped tail", Line: 2, Status: "failed", Detail: &detail, UnexercisedSteps: skipped,
+	}}}
+	for name, text := range map[string]string{
+		"observations":   Observations(fixtureSlug, ready, ""),
+		"acknowledgment": Acknowledgment(fixtureSlug, ready, ""),
+	} {
+		if len(text) > 16384 || !utf8.ValidString(text) {
+			t.Fatalf("%s: %d bytes, valid UTF-8 %v", name, len(text), utf8.ValidString(text))
+		}
+		contains(t, name, text, "Unexercised acceptance steps: 100")
+		contains(t, name, text, "Skipped steps are unexercised; readiness does not prove their behavior or fixture validity.")
+		contains(t, name, text, "Scenario: Long skipped tail (acceptance.feature line 2)")
+		contains(t, name, text, where+"\nhook-red:")
+		contains(t, name, text, "bytes omitted")
 	}
 }

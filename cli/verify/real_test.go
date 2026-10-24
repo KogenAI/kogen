@@ -233,6 +233,8 @@ func TestRealHookLocationsAndExplicitUTF8TruncationReachTheObservations(t *testi
 	}
 	contains(t, "observations", obs, "a hook at features/steps/fixture_steps.js line ")
 	contains(t, "observations", obs, "bytes omitted")
+	contains(t, "summary survives long details", obs, "Unexercised acceptance steps: 2")
+	contains(t, "notice survives long details", obs, "Skipped steps are unexercised; readiness does not prove their behavior or fixture validity.")
 	ack := Acknowledgment(fixtureSlug, ready, "")
 	if !utf8.ValidString(ack) || len(ack) > 16384 {
 		t.Fatalf("acknowledgment: %d bytes", len(ack))
@@ -266,5 +268,48 @@ func TestRealBothGeneratedRunnersPreserveFeatureAndReportPathsWithSpaces(t *test
 			t.Fatal(err)
 		}
 		contains(t, name+" report", string(b), "testCaseFinished")
+	}
+}
+
+func TestRealSkippedBackgroundAndExpandedOutlineObservations(t *testing.T) {
+	isolateTmp(t)
+	p, tools := realProject(t, "")
+	p.write(project.FeaturePath(fixtureSlug), "Feature: Execution\n  Background:\n    Given background runs\n  Scenario Outline: Case <value>\n    When attempt <value>\n    Then check <value>\n    And final <value>\n    Examples:\n      | value |\n      | first |\n      | second |\n")
+	p.write("features/steps/fixture_steps.js", `const {Given, When, Then} = require('@cucumber/cucumber');
+Given('background runs', function () {});
+When('attempt {word}', function (value) { if(value === 'first') throw new Error('red'); });
+Then('check {word}', function (value) {});
+Then('final {word}', function (value) {});
+`)
+	p.commit("outline")
+	r := p.readiness()
+	r.Tools = tools
+	s, _ := p.session()
+	s.Env = p.Env
+	ready, err := r.Check(context.Background(), s, fixtureSlug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []StepRecord{{Keyword: "Then ", Text: "check first", Line: 6}, {Keyword: "And ", Text: "final first", Line: 7}}
+	eq(t, "expanded skipped", encode(ready.Scenarios[0].UnexercisedSteps), encode(want))
+	eq(t, "passed row", encode(ready.Scenarios[1].UnexercisedSteps), "[]")
+	if strings.Contains(Observations(fixtureSlug, &Ready{Scenarios: []ScenarioResult{{Status: "failed", UnexercisedSteps: []StepRecord{}}}}, ""), "Unexercised acceptance steps:") {
+		t.Fatal("empty arrays emit no notice")
+	}
+	obs := Observations(fixtureSlug, ready, "")
+	contains(t, "row location", obs, "Scenario: Case first (acceptance.feature line 10)")
+	contains(t, "count", obs, "Unexercised acceptance steps: 2")
+	eq(t, "exact retained", Observations(fixtureSlug, r.Cached(s, fixtureSlug), ""), obs)
+	// A Before failure skips even the Background, but never records the hook itself.
+	p.write("features/steps/fixture_steps.js", string(must(os.ReadFile(filepath.Join(p.Root, "features/steps/fixture_steps.js"))))+"\nrequire('@cucumber/cucumber').Before(function () { throw new Error('hook-red'); });\n")
+	ready, err = r.Check(context.Background(), s, fixtureSlug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contains(t, "count every Examples instance", Observations(fixtureSlug, ready, ""), "Unexercised acceptance steps: 8")
+	for _, sc := range ready.Scenarios {
+		eq(t, "background and all scenario steps", len(sc.UnexercisedSteps), 4)
+		eq(t, "background source", encode(sc.UnexercisedSteps[0]), encode(StepRecord{Keyword: "Given ", Text: "background runs", Line: 3}))
+		contains(t, "hook failure", *sc.Detail, "hook-red")
 	}
 }

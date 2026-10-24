@@ -24,15 +24,16 @@ type StepRecord struct {
 // status and failure detail the report gave it. Status is passed, failed, undefined,
 // pending, skipped, ambiguous, unknown, missing, duplicate, report_missing or report_invalid.
 type ScenarioResult struct {
-	Name            string       `json:"name"`
-	Line            int          `json:"line"`
-	Tags            []string     `json:"tags"`
-	Steps           []StepRecord `json:"steps"`
-	OutlineName     *string      `json:"outline_name,omitempty"`
-	OutlineLine     *int         `json:"outline_line,omitempty"`
-	OutlineExamples *int         `json:"outline_examples,omitempty"`
-	Status          string       `json:"status"`
-	Detail          *string      `json:"detail"`
+	Name             string       `json:"name"`
+	Line             int          `json:"line"`
+	Tags             []string     `json:"tags"`
+	Steps            []StepRecord `json:"steps"`
+	UnexercisedSteps []StepRecord `json:"unexercised_steps"`
+	OutlineName      *string      `json:"outline_name,omitempty"`
+	OutlineLine      *int         `json:"outline_line,omitempty"`
+	OutlineExamples  *int         `json:"outline_examples,omitempty"`
+	Status           string       `json:"status"`
+	Detail           *string      `json:"detail"`
 }
 
 // ScenarioRecord is the scenario as the readiness record holds it, without a result: the
@@ -105,6 +106,7 @@ func Account(root, feature string, expected []project.Scenario, report string, s
 			r = withResult(e, "missing", nil)
 		case 1:
 			r = withResult(e, hits[0].status, hits[0].detail)
+			r.UnexercisedSteps = hits[0].unexercised
 		default:
 			r = withResult(e, "duplicate", nil)
 		}
@@ -155,13 +157,14 @@ func detailSuffix(d *string) string {
 // reportCase is one test case of the report: its feature path, scenario line (the Examples
 // row for outlines), name and final status.
 type reportCase struct {
-	uri     string
-	line    int
-	hasLine bool
-	name    string
-	status  string
-	detail  *string
-	binding []string
+	uri         string
+	line        int
+	hasLine     bool
+	name        string
+	status      string
+	detail      *string
+	binding     []string
+	unexercised []StepRecord
 }
 
 type jmap = map[string]any
@@ -354,6 +357,9 @@ func accountCases(root string, msgs []jmap) []reportCase {
 		if n, ok := lines[str(nodeIDs[len(nodeIDs)-1])]; ok {
 			c.line, c.hasLine = n.line, true
 		}
+		if complete {
+			c.unexercised = skippedSteps(tc, pickle, mine, lines)
+		}
 		c.binding = bindingProblems(tc, pickle, mine, lines)
 		out = append(out, c)
 	}
@@ -511,6 +517,52 @@ func bindingProblems(tc, pickle jmap, results []stepResult, lines map[string]ast
 		where = whereRe.ReplaceAllString(where, "${1}: "+strings.ToLower(st)+" step: ")
 		if !slices.Contains(out, where) {
 			out = append(out, where)
+		}
+	}
+	return out
+}
+
+// skippedSteps projects actual final results in test-case order, never a static tail.
+func skippedSteps(tc, pickle jmap, results []stepResult, lines map[string]astNode) []StepRecord {
+	out := []StepRecord{}
+	testSteps := list(get(tc, "testSteps"))
+	if len(results) != len(testSteps) {
+		return nil
+	}
+	for _, ts := range testSteps {
+		var matches []stepResult
+		for _, r := range results {
+			if r.step == get(ts, "id") {
+				matches = append(matches, r)
+			}
+		}
+		if len(matches) != 1 {
+			return nil
+		}
+		if get(ts, "pickleStepId") == nil {
+			continue
+		}
+		if str(get(matches[0].result, "status")) != "SKIPPED" {
+			continue
+		}
+		var found bool
+		for _, ps := range list(get(pickle, "steps")) {
+			if get(ps, "id") != get(ts, "pickleStepId") {
+				continue
+			}
+			ids := list(get(ps, "astNodeIds"))
+			if len(ids) == 0 {
+				return nil
+			}
+			node, ok := lines[str(ids[0])]
+			if !ok || !node.step {
+				return nil
+			}
+			out = append(out, StepRecord{Keyword: node.keyword, Text: str(get(ps, "text")), Line: node.line})
+			found = true
+		}
+		if !found {
+			return nil
 		}
 	}
 	return out

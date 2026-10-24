@@ -345,6 +345,9 @@ func shpMessages(t *testing.T, scenarios []project.Scenario, status string) stri
 			pickleSteps = append(pickleSteps, msg{"id": pid, "astNodeIds": []any{fmt.Sprintf("ast-step-%d-%d", n, j+1)}, "text": st.Text})
 			testSteps = append(testSteps, msg{"id": tid, "pickleStepId": pid})
 			result := msg{"status": status}
+			if status == "FAILED" && j > 0 {
+				result["status"] = "SKIPPED"
+			}
 			if status == "FAILED" {
 				result["message"] = "assertion failed in scenario " + sc.Name
 			}
