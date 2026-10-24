@@ -40,7 +40,7 @@ Feature: Approval and starting a Build
         - .kogen/project.yaml
         - .style.cfg
       Approve with:
-        kogen intent approve is-even {sha8}
+        kogen intent approve is-even {sha256}
       """
 
   @AUT-1

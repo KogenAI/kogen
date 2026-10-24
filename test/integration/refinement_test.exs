@@ -413,19 +413,12 @@ defmodule Kogen.Integration.RefinementTest do
     assert Intent.approval(context.repo, "fixture")["sha256"] == hash(context)
   end
 
-  test "SHP-11 stale hashes, approval mismatches and dirty implementation refuse before model requests",
+  test "SHP-11 stale hashes and approved-current dirty implementation refuse before model requests",
        %{
          suite: suite
        } do
-    for kind <- [:hash, :approval, :dirty] do
+    for kind <- [:hash, :dirty] do
       context = approved_fixture!(suite)
-
-      if kind == :approval,
-        do:
-          File.write!(
-            Path.join(context.repo, Intent.intent_md("fixture")),
-            package(context)[Intent.intent_md("fixture")] <> "\nChanged after approval.\n"
-          )
 
       if kind == :dirty,
         do: File.write!(Path.join(context.repo, "app.txt"), "unfinished candidate\n")
@@ -450,10 +443,53 @@ defmodule Kogen.Integration.RefinementTest do
     end
   end
 
+  test "SHP-11 unrelated stale legacy approval does not impose Build-clean restrictions", %{
+    suite: suite
+  } do
+    context = approved_fixture!(suite)
+    path = Intent.intent_md("fixture")
+    File.write!(Path.join(context.repo, path), package(context)[path] <> "\nCurrent draft.\n")
+    File.write!(Path.join(context.repo, "app.txt"), "unrelated unfinished implementation\n")
+    before = package(context)
+    marker = File.read!(Intent.approval_path(context.repo, "fixture"))
+    original_index = index(context)
+    head = Kogen.Git.head(context.repo)
+    updated = before[path] <> "\nClarified only.\n"
+    script!(context, [submission([%{"path" => path, "content" => updated}])])
+    {output, status} = refine(context)
+    assert status == 0, output
+    assert package(context) == Map.put(before, path, updated)
+
+    assert File.read!(Path.join(context.repo, "app.txt")) ==
+             "unrelated unfinished implementation\n"
+
+    refute File.exists?(Intent.approval_path(context.repo, "fixture"))
+
+    [archive] =
+      Path.wildcard(Path.join(context.repo, ".kogen/local/refinements/*/revoked-approval.json"))
+
+    assert File.read!(archive) == marker
+    assert index(context) == original_index
+    assert Kogen.Git.head(context.repo) == head
+  end
+
   test "SHP-11 failed and cancelled approved corrections preserve package, raw approval and index",
        %{suite: suite} do
     for kind <- [:provider, :invalid, :not_ready, :cancel] do
       context = approved_fixture!(suite)
+      source_path = Kogen.SourceProvenance.path(context.repo, "fixture")
+
+      Kogen.SourceProvenance.publish(context.repo, "fixture", %{
+        "version" => 1,
+        "contract_sha256" => hash(context),
+        "comparison" => "addressed: original",
+        "request" => Kogen.SourceProvenance.request("exact original request\r\n", "-"),
+        "rounds" => [],
+        "corrections" => []
+      })
+
+      {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)])
+      source = File.read!(source_path)
       before = package(context)
       approval = File.read!(Intent.approval_path(context.repo, "fixture"))
       index = index(context)
@@ -513,6 +549,7 @@ defmodule Kogen.Integration.RefinementTest do
 
       assert package(context) == before
       assert File.read!(Intent.approval_path(context.repo, "fixture")) == approval
+      assert File.read!(source_path) == source
       assert index(context) == index
     end
   end
@@ -748,6 +785,21 @@ defmodule Kogen.Integration.RefinementTest do
          suite: suite
        } do
     context = approved_fixture!(suite)
+    source_path = Kogen.SourceProvenance.path(context.repo, "fixture")
+
+    Kogen.SourceProvenance.publish(context.repo, "fixture", %{
+      "version" => 1,
+      "contract_sha256" => hash(context),
+      "comparison" => "addressed: original",
+      "request" => Kogen.SourceProvenance.request("original request", "-"),
+      "rounds" => [],
+      "corrections" => []
+    })
+
+    {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)])
+    original_source = File.read!(source_path)
+    path = Intent.intent_md("fixture")
+    File.write!(Path.join(context.repo, path), package(context)[path] <> "\nCurrent contract.\n")
     approval_path = Intent.approval_path(context.repo, "fixture")
     previous = File.read!(approval_path) |> JSON.decode!() |> Map.put("custody", "original")
     raw = JSON.encode!(previous) <> "\n"
@@ -779,7 +831,71 @@ defmodule Kogen.Integration.RefinementTest do
     refute output =~ "approved fixture"
     assert File.read!(approval_path) == raw
     assert File.read!(Path.join(context.repo, "app.txt")) == "external publication drift\n"
+    assert File.read!(source_path) == original_source
+
+    receipt_archive =
+      Path.join(Path.dirname(source_path), Kogen.WorkingContext.hash(original_source) <> ".json")
+
+    assert File.read!(receipt_archive) == original_source
     assert index(context) == original_index
+  end
+
+  test "approval rollback preserves external receipt and marker edits during publication", %{
+    suite: suite
+  } do
+    for changed <- [:receipt, :marker] do
+      context = approved_fixture!(suite)
+      source = Kogen.SourceProvenance.path(context.repo, "fixture")
+
+      Kogen.SourceProvenance.publish(context.repo, "fixture", %{
+        "version" => 1,
+        "contract_sha256" => hash(context),
+        "comparison" => "addressed: request",
+        "request" => Kogen.SourceProvenance.request("original", "-"),
+        "rounds" => [],
+        "corrections" => []
+      })
+
+      {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)])
+      original_source = File.read!(source)
+      marker = Intent.approval_path(context.repo, "fixture")
+      approval = JSON.decode!(File.read!(marker)) |> Map.put("custody", "prior marker")
+      original_marker = JSON.encode!(approval) <> "\n"
+      File.write!(marker, original_marker)
+      path = Intent.intent_md("fixture")
+      File.write!(Path.join(context.repo, path), package(context)[path] <> "\nCurrent draft.\n")
+      before = package(context)
+      original_index = index(context)
+      head = Kogen.Git.head(context.repo)
+      destination = if changed == :receipt, do: source, else: marker
+      tools = Path.join(context.root, "tools")
+      File.mkdir_p!(tools)
+      git = System.find_executable("git")
+
+      File.write!(Path.join(tools, "git"), """
+      #!/bin/sh
+      if [ -f app.txt ] && [ -f '#{marker}' ] && ! grep -q custody '#{marker}' && [ ! -f '#{tools}/triggered' ]; then
+        touch '#{tools}/triggered'
+        printf 'external edit\n' > '#{destination}'
+      fi
+      exec '#{git}' "$@"
+      """)
+
+      File.chmod!(Path.join(tools, "git"), 0o755)
+
+      {output, status} =
+        Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)],
+          env: [{"PATH", tools <> ":" <> context.env["PATH"]}]
+        )
+
+      assert status == 1, output
+      assert File.read!(destination) == "external edit\n"
+      if changed == :receipt, do: assert(File.read!(marker) == original_marker)
+      if changed == :marker, do: assert(File.read!(source) == original_source)
+      assert package(context) == before
+      assert index(context) == original_index
+      assert Kogen.Git.head(context.repo) == head
+    end
   end
 
   test "SHP-11 local ignored warmth stays available to probes but out of final proof", %{

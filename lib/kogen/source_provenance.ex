@@ -109,17 +109,25 @@ defmodule Kogen.SourceProvenance do
     end
   end
 
-  def binding(root, slug, sha) do
+  def binding(root, slug) do
     p = path(root, slug)
 
     case File.read(p) do
       {:error, :enoent} ->
-        nil
+        case File.lstat(Path.dirname(p)) do
+          {:error, :enoent} -> nil
+          _ -> refuse!(p)
+        end
 
       {:ok, bytes} ->
         case JSON.decode(bytes) do
-          {:ok, %{"version" => 1, "contract_sha256" => ^sha}} ->
-            ref = %{"path" => p, "sha256" => WorkingContext.hash(bytes), "contract_sha256" => sha}
+          {:ok, %{"version" => 1, "contract_sha256" => contract}} when is_binary(contract) ->
+            ref = %{
+              "path" => p,
+              "sha256" => WorkingContext.hash(bytes),
+              "contract_sha256" => contract
+            }
+
             validate_bound!(ref)
             ref
 
@@ -132,6 +140,82 @@ defmodule Kogen.SourceProvenance do
     end
   end
 
+  # A stale marker's displaced pointer is resolved only by its pinned digest in
+  # native history. Matching authority must still have its exact current receipt.
+  def resolve_approval!(root, slug, approval) do
+    case approval && approval["source_provenance"] do
+      nil ->
+        nil
+
+      ref ->
+        current = path(root, slug)
+
+        unless ref["path"] == current and is_binary(ref["sha256"]) and
+                 Regex.match?(~r/\A[0-9a-f]{64}\z/, ref["sha256"]),
+               do: refuse!(current)
+
+        sha = Intent.hash(root, Intent.baseline(root, slug, Config.load!(root)))
+        if approval["sha256"] == sha, do: validate_bound!(ref)
+
+        resolved =
+          case File.read(current) do
+            {:ok, bytes} ->
+              if WorkingContext.hash(bytes) == ref["sha256"],
+                do: ref,
+                else:
+                  Map.put(ref, "path", Path.join(Path.dirname(current), ref["sha256"] <> ".json"))
+
+            _ ->
+              Map.put(ref, "path", Path.join(Path.dirname(current), ref["sha256"] <> ".json"))
+          end
+
+        validate_bound!(resolved)
+        if binding(root, slug) == nil, do: refuse!(current)
+        resolved
+    end
+  end
+
+  def refresh(root, slug, sha, source) do
+    validate_bound!(source)
+    unless binding(root, slug) == source, do: refuse!(path(root, slug))
+
+    if source && source["contract_sha256"] != sha do
+      doc = JSON.decode!(File.read!(source["path"]))
+      publish(root, slug, transition(doc, source, sha))
+    end
+
+    binding(root, slug)
+  end
+
+  defp transition(doc, source, sha) do
+    doc
+    |> Map.put(
+      "previous_receipt",
+      Map.put(
+        source,
+        "path",
+        Path.join(Path.dirname(source["path"]), source["sha256"] <> ".json")
+      )
+    )
+    |> Map.put("prior_contract_sha256", source["contract_sha256"])
+    |> Map.put("contract_sha256", sha)
+  end
+
+  # Roll back only bytes published by this operation, never concurrent edits.
+  def restore(nil, _previous), do: :ok
+
+  def restore(published, previous) do
+    intact =
+      try do
+        validate_bound!(published)
+        true
+      rescue
+        Kogen.Error -> false
+      end
+
+    if intact, do: File.write!(published["path"], previous)
+  end
+
   def validate_bound!(nil), do: :ok
 
   def validate_bound!(ref) do
@@ -141,12 +225,12 @@ defmodule Kogen.SourceProvenance do
     unless Enum.all?([parent | ancestors], fn dir ->
              match?({:ok, %{type: :directory}}, File.lstat(dir))
            end),
-           do: refuse!(ref["path"])
+           do: refuse!("#{ref["path"]} (expected SHA-256 #{ref["sha256"]})")
 
     for dir <- [parent, Path.dirname(parent)] do
       case File.lstat(dir) do
         {:ok, %{type: :directory, mode: mode}} when Bitwise.band(mode, 0o777) == 0o700 -> :ok
-        _ -> refuse!(ref["path"])
+        _ -> refuse!("#{ref["path"]} (expected SHA-256 #{ref["sha256"]})")
       end
     end
 
@@ -154,14 +238,15 @@ defmodule Kogen.SourceProvenance do
       {:ok, %{type: :regular, mode: mode}} when Bitwise.band(mode, 0o777) == 0o600 ->
         case File.read(ref["path"]) do
           {:ok, bytes} ->
-            unless WorkingContext.hash(bytes) == ref["sha256"], do: refuse!(ref["path"])
+            unless WorkingContext.hash(bytes) == ref["sha256"],
+              do: refuse!("#{ref["path"]} (expected SHA-256 #{ref["sha256"]})")
 
           _ ->
-            refuse!(ref["path"])
+            refuse!("#{ref["path"]} (expected SHA-256 #{ref["sha256"]})")
         end
 
       _ ->
-        refuse!(ref["path"])
+        refuse!("#{ref["path"]} (expected SHA-256 #{ref["sha256"]})")
     end
 
     :ok
@@ -172,7 +257,7 @@ defmodule Kogen.SourceProvenance do
       Error.raise!(
         "candidate",
         "source_provenance_changed",
-        "source provenance custody missing, changed or unsafe: #{p}; inspect receipt and obtain fresh exact approval",
+        "source provenance custody missing, changed or unsafe: #{p}; restore the named exact custody from preserved native receipt history, then run the card; if unavailable, stop",
         1
       )
 
@@ -206,9 +291,12 @@ defmodule Kogen.SourceProvenance do
           doc["corrections"] ++ [Map.put(correction, "prior_contract_sha256", prior)]
         )
         |> Map.put("comparison", comparison(root, slug))
-        |> Map.put("contract_sha256", Intent.hash(root, Intent.baseline(root, slug, config)))
+        |> transition(source, Intent.hash(root, Intent.baseline(root, slug, config)))
 
+      validate_bound!(source)
+      unless binding(root, slug) == source, do: refuse!(p)
       publish(root, slug, doc)
+      binding(root, slug)
     end
   end
 end

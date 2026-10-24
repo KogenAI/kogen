@@ -22,7 +22,7 @@ defmodule Kogen.Integration.SourceProvenanceFilesTest do
     assert JSON.decode!(original)["request"]["text"] == text
     assert Bitwise.band(File.stat!(path).mode, 0o777) == 0o600
     assert Bitwise.band(File.stat!(Path.dirname(path)).mode, 0o777) == 0o700
-    ref = SourceProvenance.binding(root, "example", "contract")
+    ref = SourceProvenance.binding(root, "example")
     assert ref["sha256"] == WorkingContext.hash(original)
     assert SourceProvenance.validate_bound!(ref) == :ok
     assert SourceProvenance.card(ref) =~ doc["comparison"]
@@ -48,7 +48,7 @@ defmodule Kogen.Integration.SourceProvenanceFilesTest do
     assert File.read!(path) == current_bytes
     assert File.read!(archive) == "damaged predecessor"
 
-    current = SourceProvenance.binding(root, "example", "contract")
+    current = SourceProvenance.binding(root, "example")
     local = Path.join(root, ".kogen/local")
     File.rename!(local, local <> "-moved")
     File.ln_s!(local <> "-moved", local)
@@ -65,8 +65,46 @@ defmodule Kogen.Integration.SourceProvenanceFilesTest do
     File.chmod!(Path.dirname(path), 0o700)
     File.rm!(path)
     assert_raise Kogen.Error, ~r/missing/, fn -> SourceProvenance.validate_bound!(current) end
-    assert SourceProvenance.binding(root, "legacy", "contract") == nil
+    assert SourceProvenance.binding(root, "legacy") == nil
     assert SourceProvenance.message(nil) == "Source provenance: unavailable (legacy)"
+  end
+
+  test "historical contract refresh retains exact originals and predecessor custody" do
+    root = Kogen.tmp_path("historical-source")
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    doc = %{
+      "version" => 1,
+      "contract_sha256" => "prior",
+      "comparison" => "addressed: request",
+      "request" => SourceProvenance.request("exact request\r\n", "-"),
+      "rounds" => [%{"answer" => "yes"}],
+      "corrections" => [],
+      "origin" => %{"head" => "original"}
+    }
+
+    SourceProvenance.publish(root, "example", doc)
+    path = SourceProvenance.path(root, "example")
+    original = File.read!(path)
+    historical = SourceProvenance.binding(root, "example")
+    assert historical["contract_sha256"] == "prior"
+    refreshed = SourceProvenance.refresh(root, "example", "current", historical)
+    current = JSON.decode!(File.read!(path))
+    assert refreshed["contract_sha256"] == "current"
+    assert current["prior_contract_sha256"] == "prior"
+    assert current["previous_receipt"]["sha256"] == WorkingContext.hash(original)
+    assert File.read!(current["previous_receipt"]["path"]) == original
+
+    assert Map.take(current, ["request", "rounds", "corrections", "origin"]) ==
+             Map.take(doc, ["request", "rounds", "corrections", "origin"])
+
+    assert SourceProvenance.refresh(root, "example", "current", refreshed) == refreshed
+    SourceProvenance.restore(refreshed, original)
+    assert File.read!(path) == original
+    refreshed = SourceProvenance.refresh(root, "example", "current", historical)
+    File.write!(path, "external edit")
+    SourceProvenance.restore(refreshed, original)
+    assert File.read!(path) == "external edit"
   end
 
   test "source comparison is copied completely at its UTF-8 byte boundary, never silently clipped" do

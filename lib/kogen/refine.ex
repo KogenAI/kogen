@@ -65,13 +65,23 @@ defmodule Kogen.Refine do
           )
 
       baseline = Intent.baseline(root, slug, config)
-      if Intent.hash(root, baseline) != expected, do: stale!()
+      current_hash = Intent.hash(root, baseline)
 
-      source = Kogen.SourceProvenance.binding(root, slug, expected)
+      if current_hash != expected,
+        do:
+          Error.raise!(
+            "intent",
+            "refinement_stale",
+            "#{slug} is now #{current_hash}, not #{expected}; run kogen intent approve #{slug} to review the full current hash, then retry Refine; nothing was replaced",
+            1
+          )
 
-      if approval != nil do
-        Kogen.SourceProvenance.validate_bound!(JSON.decode!(approval)["source_provenance"])
-        unless match?({:ok, %{"sha256" => ^expected}}, JSON.decode(approval)), do: stale!()
+      source = Kogen.SourceProvenance.binding(root, slug)
+
+      pinned =
+        Kogen.SourceProvenance.resolve_approval!(root, slug, approval && JSON.decode!(approval))
+
+      if approval != nil and JSON.decode!(approval)["sha256"] == expected do
         Build.clean_paths!(root, slug)
       end
 
@@ -117,6 +127,7 @@ defmodule Kogen.Refine do
         expected: expected,
         correction: Kogen.SourceProvenance.request(request, source_path),
         source_provenance: source,
+        pinned_source: pinned,
         head: head,
         tree: tree,
         approval: approval,
@@ -333,7 +344,61 @@ defmodule Kogen.Refine do
       end
 
       Readiness.record_pass!(s.root, s.slug, s.config, ready)
-      Kogen.SourceProvenance.refine(s.root, s.slug, s.correction, s.expected, s.source_provenance)
+      Kogen.SourceProvenance.validate_bound!(s.pinned_source)
+      Kogen.SourceProvenance.validate_bound!(s.source_provenance)
+      previous_source = if s.source_provenance, do: File.read!(s.source_provenance["path"])
+
+      published =
+        Kogen.SourceProvenance.refine(
+          s.root,
+          s.slug,
+          s.correction,
+          s.expected,
+          s.source_provenance
+        )
+
+      try do
+        unless Readiness.current?(s.root, s.slug, s.config, ready),
+          do:
+            Error.raise!(
+              "intent",
+              "not_ready",
+              "readiness inputs changed during refinement publication",
+              1
+            )
+
+        if approval_bytes(s.root, s.slug) != nil or index_digest(s.index_path) != s.index or
+             Git.head(s.root) != s.head,
+           do: stale!()
+
+        Kogen.SourceProvenance.validate_bound!(published)
+
+        pinned =
+          if s.pinned_source != nil and s.pinned_source == s.source_provenance and
+               published != s.source_provenance,
+             do:
+               Map.put(
+                 s.pinned_source,
+                 "path",
+                 Path.join(
+                   Path.dirname(s.pinned_source["path"]),
+                   s.pinned_source["sha256"] <> ".json"
+                 )
+               ),
+             else: s.pinned_source
+
+        Kogen.SourceProvenance.validate_bound!(pinned)
+        unless Kogen.SourceProvenance.binding(s.root, s.slug) == published, do: stale!()
+        Bridge.check_cancel()
+      rescue
+        error ->
+          Kogen.SourceProvenance.restore(published, previous_source)
+          reraise error, __STACKTRACE__
+      catch
+        {:cancel, signal} ->
+          Kogen.SourceProvenance.restore(published, previous_source)
+          throw({:cancel, signal})
+      end
     rescue
       error ->
         restore_published!(s, changes)
@@ -369,6 +434,8 @@ defmodule Kogen.Refine do
       do: Kogen.RefineWorkingContext.validate!(s.working_context, s.root)
 
     Kogen.SourceProvenance.validate_bound!(s.source_provenance)
+    Kogen.SourceProvenance.validate_bound!(s.pinned_source)
+    unless Kogen.SourceProvenance.binding(s.root, s.slug) == s.source_provenance, do: stale!()
 
     if approval_bytes(s.root, s.slug) != s.approval or index_digest(s.index_path) != s.index or
          Git.head(s.root) != s.head or

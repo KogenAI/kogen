@@ -28,7 +28,7 @@ Files
   - .kogen/project.yaml
   - .style.cfg
 Approve with:
-  kogen intent approve is-even {sha8}
+  kogen intent approve is-even {sha256}
 ```
 
 Each Scenario Outline appears once as `<outline name> (<n> examples) (<status>)`, where `<n>` is the number of its Examples rows and the status is `fails now` if any row fails or `passes now` if every row passes. Each ordinary Scenario appears once with its existing status.
@@ -37,7 +37,7 @@ Each Scenario Outline appears once as `<outline name> (<n> examples) (<status>)`
 
 The card exposes the same checked readiness observations as the shaping/refinement conversation: actual failed scenario/step or hook/location, bounded error, acceptance exit, full baseline/hash/HEAD and evidence reference. Cached unchanged cards reuse those observations without execution; explicit truncation markers disclose omitted lines/bytes. Missing observation metadata in a legacy record is a normal cache miss. These observations do not classify every fixture as sound or require baseline green.
 
-**AUT-2 — Hash and approval.** The hash is the SHA-256 over the acceptance baseline (VER-1): for each file, sorted by path, `<path>\0<sha256 of its bytes>\n`. `kogen intent approve <slug> <hash>` takes 6–64 lowercase hex characters (else a usage error). A prefix that does not match prints `intent/hash_mismatch: <slug> is now <sha8>, not <prefix>; review it again with kogen intent approve <slug>` (exit 1). Successful stable shaping, published refinement or a fresh review card records complete readiness evidence under `.kogen/local/readiness/`, keyed by the full baseline hash, declarations, `HEAD` and Snapshot candidate tree. A matching hash approval skips readiness only when that complete successful record matches the current baseline hash, declarations, `HEAD` and Snapshot candidate tree; when any differs, approval runs readiness again. A prefix that no longer matches the baseline is refused before readiness. A match writes `.kogen/local/approvals/<slug>.json` (`slug`, `sha256`, `approver`, `approved_at`) and prints `approved <slug> <sha8>` and `Next: kogen intent build <slug>` (exit 0). Approval shares the project lock with refinement and Build. Refinement of a matching approved package archives and revokes the old approval only on success (SHP-11); every refined package requires this fresh explicit approval. Approval never starts a Build; the shaping model can never create one. Evidence: the AUT-2 scenarios and the SHP-7 scenario.
+**AUT-2 — Hash and approval.** The hash is the SHA-256 over the acceptance baseline (VER-1): for each file, sorted by path, `<path>\0<sha256 of its bytes>\n`. `kogen intent approve <slug> <hash>` takes 6–64 lowercase hex characters (else a usage error). A prefix that does not match prints `intent/hash_mismatch: <slug> is now <sha256>, not <prefix>; review it again with kogen intent approve <slug>` (exit 1). Successful stable shaping, published refinement or a fresh review card records complete readiness evidence under `.kogen/local/readiness/`, keyed by the full baseline hash, declarations, `HEAD` and Snapshot candidate tree. A matching hash approval skips readiness only when that complete successful record matches the current baseline hash, declarations, `HEAD` and Snapshot candidate tree; when any differs, approval runs readiness again. A prefix that no longer matches the baseline is refused before readiness. A match writes `.kogen/local/approvals/<slug>.json` (`slug`, `sha256`, `approver`, `approved_at`) and prints `approved <slug> <sha8>` and `Next: kogen intent build <slug>` (exit 0). Approval shares the project lock with refinement and Build. Refinement of a matching approved package archives and revokes the old approval only on success (SHP-11); every refined package requires this fresh explicit approval. Approval never starts a Build; the shaping model can never create one. Evidence: the AUT-2 scenarios and the SHP-7 scenario.
 
 **AUT-3 — Building one Intent.** `kogen intent build <slug>` builds that Intent if its approval is current. Unknown slug: `intent/not_found` (exit 2). Not approved: `intent/not_approved: <slug> is not approved; review it with kogen intent approve <slug>` (exit 5). Changed after approval: `intent/changed_since_approval: <slug> changed after approval and is now <sha8>; review it again with kogen intent approve <slug>` (exit 1). A landed Intent is not approved any more (AUT-6). Model: `shaping.qnt` `BuildOnlyOnCurrentApproval`, `LandedHasNoApproval`.
 
@@ -54,3 +54,34 @@ Scenarios: `features/03-approval-and-build-start.feature`. Models: `quint/shapin
 Final readiness uses a fresh disposable directory materialized from `Snapshot.tree`, with exact tracked (including ignored tracked) bytes, executable modes, additions/deletions and synthetic local Git. It runs verbatim declared setup before model/acceptance; ignored untracked dependency/build outputs are neither copied nor linked. Caller environment, installed tools and declared services remain available: this is not hermeticity. Raw scratch mutations, including staged additions, reject proof. Source identity is rechecked around execution and publication, including approval. Disposable directories are removed on success, failure and interruption. Exploratory probes remain warm.
 
 Readiness record version 3 adds `candidate_tree` to the complete baseline/hash, HEAD, declarations and actual model/scenario/exit evidence. Only exact unchanged clean evidence is reusable; version 2 and older are normal misses, never migrated. Ignored untracked warmth does not affect identity; nonignored changes, deletions, executable modes, tracked ignored changes, HEAD, protected baseline and declarations do. Retaining original-precondition evidence skips only original setup/model/acceptance, not fresh changed-candidate proof, and is not current-environment proof. Refine tests and publishes its complete accumulated formatted proposals; Shape tests its final formatted files. Accounted red remains inspectable and exact unchanged acknowledgment reuses the same clean observation. Build verification, review and explicit caller approval remain separate.
+
+## Stale authority and historical source (AUT-1, AUT-2)
+
+The card and printed approval command use the full 64 lowercase hexadecimal hash.
+A nonmatching marker is visibly labelled `Stale approval` with its full old hash and
+an explanation that it does not authorize current content. The card retains actual
+readiness observations, protected files, source comparison/path/hash/binding and all
+ordered staged titles, goals and checks. It changes neither marker nor successful
+source receipt/history. Intrinsic parse/lint errors remain their actual diagnostics,
+including `intent/lint` for an invalid Model after shared-helper drift.
+
+An intact historical receipt can describe an older contract without being corrupt.
+Show its full prior contract hash alongside the full current hash and say `Shape has
+not run again`. After ordinary readiness, explicit current-hash approval may refresh
+that binding, retaining exact request/Q&A/origin/corrections, the previous receipt
+path/hash and prior/current identities. Preserve the old bytes in native hash-named
+history before changing current.json. Before superseding a nonmatching marker,
+privately archive its exact original bytes and print the inspectable archive path.
+
+Fresh same-slug Shape can displace a stale marker's current.json reference: resolve it
+only by the exact pinned digest in safe native receipt history, without rewriting the
+old marker. Matching approval still needs exact pinned current custody, regardless of
+archives. Missing, altered or unsafe custody refuses with the named path/hash and
+restoration of exact preserved custody before the card, not circular fresh-approval
+advice. If exact restoration is unavailable, stop. Genuine receipt-less legacy
+packages remain supported. Freeze readiness/package identity, current/resolved pinned
+custody and marker bytes around execution/publication. Refusal, failure or cancellation
+preserves package, approval, successful source, HEAD and index; rollback must not
+clobber concurrent external edits. No stale marker authorizes Build or imports old
+green/review/checkpoint evidence. Fresh approval, full fresh verification and independent
+final-tree review remain mandatory, and successful landing consumes new approval.

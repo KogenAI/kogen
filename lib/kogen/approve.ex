@@ -21,10 +21,15 @@ defmodule Kogen.Approve do
     questions_pending!(root, slug)
     Intent.exists!(root, slug)
 
-    with {:ok, bytes} <- File.read(Intent.approval_path(root, slug)),
-         {:ok, approval} <- JSON.decode(bytes) do
-      Kogen.SourceProvenance.validate_bound!(approval["source_provenance"])
-    end
+    previous = File.read(Intent.approval_path(root, slug))
+
+    approval =
+      case previous do
+        {:ok, bytes} -> JSON.decode!(bytes)
+        {:error, :enoent} -> nil
+      end
+
+    pinned = Kogen.SourceProvenance.resolve_approval!(root, slug, approval)
 
     approver =
       by || Git.identity(root) ||
@@ -38,7 +43,7 @@ defmodule Kogen.Approve do
     baseline = Intent.baseline(root, slug, config)
     before = Intent.hash(root, baseline)
     if hash && not String.starts_with?(before, hash), do: mismatch!(slug, before, hash)
-    source = Kogen.SourceProvenance.binding(root, slug, before)
+    source = Kogen.SourceProvenance.binding(root, slug)
     ready = Readiness.cached(root, slug, config) || Readiness.check!(root, slug, config)
     baseline = Intent.baseline(root, slug, config)
     sha = Intent.hash(root, baseline)
@@ -49,17 +54,40 @@ defmodule Kogen.Approve do
 
     Kogen.SourceProvenance.validate_bound!(source)
 
-    unless Kogen.SourceProvenance.binding(root, slug, sha) == source do
+    unless Kogen.SourceProvenance.binding(root, slug) == source do
       Error.raise!(
         "candidate",
         "source_provenance_changed",
-        "source provenance changed during readiness; inspect the receipt and review again before exact approval",
+        "source provenance changed during readiness: #{Kogen.SourceProvenance.path(root, slug)}; restore exact custody from preserved native receipt history, then run the card",
         1
       )
     end
 
+    Kogen.SourceProvenance.validate_bound!(pinned)
+
+    unless File.read(Intent.approval_path(root, slug)) == previous,
+      do:
+        Error.raise!(
+          "intent",
+          "not_ready",
+          "approval changed during readiness; run the card again",
+          1
+        )
+
     cond do
       hash == nil ->
+        if approval && approval["sha256"] != sha,
+          do:
+            Bridge.puts(
+              "Stale approval: #{approval["sha256"]}; it does not authorize the current package #{sha}."
+            )
+
+        if source && source["contract_sha256"] != sha,
+          do:
+            Bridge.puts(
+              "Historical source receipt contract: #{source["contract_sha256"]}; current contract: #{sha}. Shape has not run again."
+            )
+
         Bridge.puts(Kogen.SourceProvenance.card(source))
         card(slug, sha, approver, ready, baseline)
 
@@ -68,19 +96,38 @@ defmodule Kogen.Approve do
         File.mkdir_p!(Path.dirname(path))
         approved_at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
-        previous = File.read(path)
+        if approval && approval["sha256"] != sha,
+          do: archive_approval!(root, slug, elem(previous, 1))
+
+        previous_source = if source, do: File.read!(source["path"])
+        published_source = Kogen.SourceProvenance.refresh(root, slug, sha, source)
+
+        bytes =
+          JSON.encode!(%{
+            "slug" => slug,
+            "sha256" => sha,
+            "approver" => approver,
+            "approved_at" => approved_at,
+            "source_provenance" => published_source
+          }) <> "\n"
 
         try do
-          File.write!(
-            path,
-            JSON.encode!(%{
-              "slug" => slug,
-              "sha256" => sha,
-              "approver" => approver,
-              "approved_at" => approved_at,
-              "source_provenance" => source
-            }) <> "\n"
+          Kogen.SourceProvenance.validate_bound!(
+            pinned_before_refresh(pinned, source, published_source)
           )
+
+          unless File.read(path) == previous,
+            do:
+              Error.raise!(
+                "intent",
+                "not_ready",
+                "approval changed during publication; run the card again",
+                1
+              )
+
+          File.write!(path, bytes)
+          Bridge.check_cancel()
+          Kogen.SourceProvenance.validate_bound!(published_source)
 
           unless Readiness.current?(root, slug, config, ready),
             do:
@@ -90,21 +137,31 @@ defmodule Kogen.Approve do
                 "readiness inputs changed during approval publication",
                 1
               )
+
+          Kogen.SourceProvenance.validate_bound!(published_source)
+
+          Kogen.SourceProvenance.validate_bound!(
+            pinned_before_refresh(pinned, source, published_source)
+          )
+
+          unless Kogen.SourceProvenance.binding(root, slug) == published_source and
+                   File.read(path) == {:ok, bytes},
+                 do:
+                   Error.raise!(
+                     "intent",
+                     "not_ready",
+                     "source or approval changed during publication; inspect the changed custody before running the card",
+                     1
+                   )
+
+          Bridge.check_cancel()
         rescue
           error ->
-            case previous do
-              {:ok, bytes} -> File.write!(path, bytes)
-              {:error, :enoent} -> File.rm(path)
-            end
-
+            rollback(path, bytes, previous, published_source, previous_source)
             reraise error, __STACKTRACE__
         catch
           {:cancel, signal} ->
-            case previous do
-              {:ok, bytes} -> File.write!(path, bytes)
-              {:error, :enoent} -> File.rm(path)
-            end
-
+            rollback(path, bytes, previous, published_source, previous_source)
             throw({:cancel, signal})
         end
 
@@ -115,11 +172,97 @@ defmodule Kogen.Approve do
     end
   end
 
+  # Refresh intentionally moves current custody; validate that pinned predecessor
+  # via its immutable hash-named history after that publication.
+  defp pinned_before_refresh(pinned, source, published) do
+    if pinned != nil and pinned == source and source != published,
+      do:
+        Map.put(
+          pinned,
+          "path",
+          Path.join(Path.dirname(pinned["path"]), pinned["sha256"] <> ".json")
+        ),
+      else: pinned
+  end
+
+  defp rollback(path, bytes, previous, published, original) do
+    Kogen.SourceProvenance.restore(published, original)
+
+    if File.read(path) == {:ok, bytes} do
+      case previous do
+        {:ok, old} -> File.write!(path, old)
+        {:error, :enoent} -> File.rm(path)
+      end
+    end
+  end
+
+  defp archive_approval!(root, slug, bytes) do
+    for relative <- [
+          ".kogen",
+          ".kogen/local",
+          ".kogen/local/approvals",
+          ".kogen/local/approvals/history",
+          ".kogen/local/approvals/history/#{slug}"
+        ] do
+      dir = Path.join(root, relative)
+
+      case File.lstat(dir) do
+        {:error, :enoent} ->
+          File.mkdir!(dir)
+
+        {:ok, %{type: :directory}} ->
+          :ok
+
+        _ ->
+          Error.raise!(
+            "candidate",
+            "source_provenance_changed",
+            "unsafe approval history: #{dir}; restore exact private history, then run the card",
+            1
+          )
+      end
+
+      if String.contains?(relative, "/history"), do: File.chmod!(dir, 0o700)
+    end
+
+    archive =
+      Path.join(
+        root,
+        ".kogen/local/approvals/history/#{slug}/#{Kogen.WorkingContext.hash(bytes)}.json"
+      )
+
+    case File.lstat(archive) do
+      {:error, :enoent} ->
+        File.write!(archive, bytes, [:exclusive])
+
+      {:ok, %{type: :regular}} ->
+        unless File.read!(archive) == bytes,
+          do:
+            Error.raise!(
+              "candidate",
+              "source_provenance_changed",
+              "restore exact approval history: #{archive}",
+              1
+            )
+
+      _ ->
+        Error.raise!(
+          "candidate",
+          "source_provenance_changed",
+          "unsafe approval history: #{archive}; restore exact history, then run the card",
+          1
+        )
+    end
+
+    File.chmod!(archive, 0o600)
+    Bridge.puts("Retained stale approval: #{archive}")
+  end
+
   defp mismatch!(slug, sha, prefix) do
     Error.raise!(
       "intent",
       "hash_mismatch",
-      "#{slug} is now #{String.slice(sha, 0, 8)}, not #{prefix}; review it again with kogen intent approve #{slug}",
+      "#{slug} is now #{sha}, not #{prefix}; review it again with kogen intent approve #{slug}",
       1
     )
   end
@@ -181,7 +324,7 @@ defmodule Kogen.Approve do
     Bridge.puts("Files")
     for p <- baseline, do: Bridge.puts("  - #{p}")
     Bridge.puts("Approve with:")
-    Bridge.puts("  kogen intent approve #{slug} #{String.slice(sha, 0, 8)}")
+    Bridge.puts("  kogen intent approve #{slug} #{sha}")
     5
   end
 end
