@@ -12,6 +12,48 @@ defmodule Kogen.Integration.RefinementTest do
     {:ok, suite: suite}
   end
 
+  test "large repository navigation does not become mandatory Refine authority", %{suite: suite} do
+    context = approved_fixture!(suite)
+
+    for n <- 1..1600 do
+      file = Path.join(context.repo, "bulk/source_#{n}.ex")
+      File.mkdir_p!(Path.dirname(file))
+      File.write!(file, "def declaration_#{n}, do: :ok\n")
+    end
+
+    Helpers.git!(context, ["add", "bulk"])
+    Helpers.git!(context, ["commit", "-qm", "Add navigation fixture"])
+    {_, 0} = Helpers.run_kogen(context, ["intent", "approve", "fixture", hash(context)])
+    before = package(context)
+    feature = Intent.feature("fixture")
+
+    corrected =
+      String.replace(
+        before[feature],
+        "Feature: Integration fixture",
+        "Feature: Clarified fixture"
+      )
+
+    script!(context, [submission([%{"path" => feature, "content" => corrected}])])
+
+    {output, 0} = refine(context)
+    assert output =~ "refined fixture"
+    request = List.last(FakeProvider.provider_requests(context.server))
+    input = FakeProvider.input_text(request)
+    assert input =~ "Context navigation: "
+    refute input =~ "Context index: "
+    assert byte_size(JSON.encode!(request.json)) < 100_000
+
+    for {path, content} <- before,
+        path != ".kogen/project.yaml",
+        do: assert(input =~ content)
+
+    assert package(context) == Map.put(before, feature, corrected)
+
+    assert File.read!(Path.join(context.repo, "bulk/source_1600.ex")) ==
+             "def declaration_1600, do: :ok\n"
+  end
+
   test "SHP-11 a narrow retry preserves all earlier well-formed proposals until merged readiness",
        %{suite: suite} do
     context = approved_fixture!(suite)

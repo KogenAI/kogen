@@ -196,9 +196,10 @@ Preflight is not authorization: Build still performs its normal safety checks.
 local retained transport evidence without credentials or inference. It reports
 weighted cache ratios, nullable writes/lifetimes, unknown/inconsistent counts,
 failures and provenance; totals cover selected evidence, not just displayed rows.
-This is not account or weekly usage. Go uses a generated `x-opencode-session`; SuperGrok requests `prompt_cache_key` with a bounded named-parameter refusal fallback. Neither establishes a cache benefit. Supported ChatGPT Responses routes request
-best-effort implicit 30m reuse while keeping full stateless encrypted replay,
-independent reviewers and fresh safety/verification gates. Cache acceptance is
+This is not account or weekly usage. Go uses a generated `x-opencode-session`; SuperGrok requests `prompt_cache_key` with a bounded named-parameter refusal fallback. Neither establishes a cache benefit. ChatGPT Responses sends a stable public conversation `prompt_cache_key` from the
+first request, never explicit options/breakpoints, while keeping full stateless encrypted replay,
+independent reviewers and fresh safety/verification gates. Anthropic requests ephemeral caching on the unchanged system policy and growing
+conversation with the default five-minute lifetime. Cache acceptance is
 not proof of a hit, effective TTL or live account qualification. See
 [usage scope, filters and uncertainty](docs/usage.md).
 

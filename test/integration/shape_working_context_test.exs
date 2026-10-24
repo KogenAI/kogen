@@ -119,7 +119,7 @@ defmodule Kogen.Integration.ShapeWorkingContextTest do
       Kogen.PromptCache.unsupported()
       {sh, reduced} = ShapeWorkingContext.prepare(sh, input, 0, %{}, "policy")
       actual = Kogen.ChatGPT.request_body(sh.role, "policy", reduced, [])
-      assert Map.has_key?(actual, "prompt_cache_options")
+      assert Map.has_key?(actual, "prompt_cache_key")
 
       event =
         File.read!(Path.join(sh.root, "events.ndjson"))

@@ -31,61 +31,43 @@ defmodule Kogen.PromptCache do
         response: nil
       })
 
-    supported =
-      provider == "chatgpt" and
-        Regex.match?(
-          ~r/^gpt-(?:5\.(?:[6-9]|[1-9][0-9]+)(?:$|-)|(?:[6-9]|[1-9][0-9]+)(?:$|\.|-))/,
-          model
-        )
+    # Older checkpoints suppressed retired prompt_cache_options. That refusal
+    # says nothing about the routing key introduced by this implementation.
+    state =
+      if provider == "chatgpt" and state[:control] != "prompt_cache_key",
+        do: Map.merge(state, %{control: "prompt_cache_key", unsupported: false}),
+        else: state
 
-    enabled = supported and not state.unsupported
-    {input, contract} = blocks(input, enabled)
-    developer = %{"role" => "developer", "content" => [block(policy, enabled)]}
-    options = %{"mode" => "implicit", "ttl" => "30m"}
-
-    options =
-      if state.response,
-        do: Map.put(options, "comparison_response_id", state.response),
-        else: options
+    {input, contract} = blocks(input)
 
     body =
-      if supported,
-        do: %{"input" => [developer | input]},
-        else: %{"instructions" => policy, "input" => input}
-
-    body = if enabled, do: Map.put(body, "prompt_cache_options", options), else: body
+      if provider == "chatgpt" and
+           Regex.match?(
+             ~r/^gpt-(?:5\.(?:[6-9]|[1-9][0-9]+)(?:$|-)|(?:[6-9]|[1-9][0-9]+)(?:$|\.|-))/,
+             model
+           ),
+         do: %{"input" => [%{"role" => "developer", "content" => [block(policy)]} | input]},
+         else: %{"instructions" => policy, "input" => input}
 
     body =
-      if provider == "supergrok" and not state.unsupported,
+      if provider in ["chatgpt", "supergrok"] and not state.unsupported,
         do: Map.put(body, "prompt_cache_key", state.id),
         else: body
 
     meta = %{
       conversation_id: state.id,
       cache: %{
-        configured_mode: if(enabled, do: "implicit"),
-        configured_ttl: if(enabled, do: "30m"),
+        configured_mode: if(provider == "anthropic", do: "ephemeral"),
+        configured_ttl: nil,
         applied_mode: nil,
         applied_ttl: nil,
         status:
-          if(enabled,
-            do: "requested",
-            else:
-              if(provider == "chatgpt" and (supported or String.starts_with?(model, "gpt-5.")),
-                do: "unsupported",
-                else: "unknown"
-              )
+          if(state.unsupported,
+            do: "unsupported",
+            else: if(provider == "anthropic", do: "requested", else: "unknown")
           ),
-        boundaries:
-          if(enabled,
-            do:
-              if(contract,
-                do: ["input[0].content[0]", "input[1].content[0]"],
-                else: ["input[0].content[0]"]
-              ),
-            else: []
-          ),
-        comparison_response_id: if(enabled, do: state.response),
+        boundaries: if(provider == "anthropic", do: ["system[0]", "conversation"], else: []),
+        comparison_response_id: nil,
         diagnostics: nil
       },
       fingerprints: %{
@@ -110,27 +92,24 @@ defmodule Kogen.PromptCache do
 
   defp contract_identity(input), do: List.first(input)
 
-  def contract_blocks(stable, dynamic), do: [block(stable, false), block(dynamic, false)]
+  def contract_blocks(stable, dynamic), do: [block(stable), block(dynamic)]
 
-  defp blocks([%{"content" => content} = first | rest], enabled) when is_list(content) do
+  defp blocks([%{"content" => content} = first | rest]) when is_list(content) do
     case content do
       [%{"type" => "input_text", "text" => stable} | suffix] ->
-        {[Map.put(first, "content", [block(stable, enabled) | suffix]) | rest], stable}
+        {[Map.put(first, "content", [block(stable) | suffix]) | rest], stable}
 
       _ ->
         {[first | rest], nil}
     end
   end
 
-  defp blocks([%{"content" => text} = first | rest], enabled) when is_binary(text),
-    do: {[Map.put(first, "content", [block(text, enabled)]) | rest], text}
+  defp blocks([%{"content" => text} = first | rest]) when is_binary(text),
+    do: {[Map.put(first, "content", [block(text)]) | rest], text}
 
-  defp blocks(input, _), do: {input, nil}
+  defp blocks(input), do: {input, nil}
 
-  defp block(text, enabled) do
-    b = %{"type" => "input_text", "text" => text}
-    if enabled, do: Map.put(b, "prompt_cache_breakpoint", %{"mode" => "explicit"}), else: b
-  end
+  defp block(text), do: %{"type" => "input_text", "text" => text}
 
   def unsupported do
     {key, state, meta} = Process.get(:prompt_cache_current)

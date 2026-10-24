@@ -69,7 +69,12 @@ defmodule Kogen.AnthropicTest do
     }
 
     body = ChatGPT.request_body(@role, "policy", input, [tool])
-    assert body["system"] == "policy"
+
+    assert body["system"] == [
+             %{"type" => "text", "text" => "policy", "cache_control" => %{"type" => "ephemeral"}}
+           ]
+
+    assert body["cache_control"] == %{"type" => "ephemeral"}
     assert body["tool_choice"] == %{"type" => "auto"}
     assert hd(body["tools"])["input_schema"] == tool["parameters"]
 
@@ -88,7 +93,7 @@ defmodule Kogen.AnthropicTest do
            ]
 
     refute Map.has_key?(body, "input")
-    assert body["max_tokens"] == 131_072
+    assert body["max_tokens"] == 128_000
     assert body["thinking"] == %{"type" => "adaptive"}
     assert body["output_config"] == %{"effort" => "high"}
   end

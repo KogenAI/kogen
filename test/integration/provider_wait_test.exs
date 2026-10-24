@@ -44,7 +44,7 @@ defmodule Kogen.Integration.ProviderWaitTest do
     server
   end
 
-  for single <- [false, true], param <- [:absent, nil, "prompt_cache_options"] do
+  for single <- [false, true], param <- ["prompt_cache_key"] do
     @single single
     @param param
     test "observed cache refusal preserves requests and evidence (single=#{single}, param=#{inspect(param)})",
@@ -55,7 +55,7 @@ defmodule Kogen.Integration.ProviderWaitTest do
            "error" => %{
              "type" => "invalid_request_error",
              "code" => "invalid_parameter",
-             "message" => "prompt_cache_options is not supported on this model"
+             "message" => "prompt_cache_key is not supported on this model"
            }
          }}
 
@@ -96,30 +96,16 @@ defmodule Kogen.Integration.ProviderWaitTest do
       assert call.().items == [tool()]
       assert call.().items == [tool()]
       [first, retry, next] = FakeProvider.provider_requests(server)
-      assert first.json["prompt_cache_options"]
+      assert first.json["prompt_cache_key"]
       assert first.json["include"] == ["reasoning.encrypted_content"]
       assert first.json["model"] == "gpt-6.1-sol"
       assert first.json["reasoning"] == %{"effort" => "high"}
 
-      stripped =
-        first.json
-        |> Map.delete("prompt_cache_options")
-        |> Map.update!("input", fn items ->
-          Enum.map(items, fn item ->
-            if is_list(item["content"]),
-              do:
-                Map.update!(
-                  item,
-                  "content",
-                  &Enum.map(&1, fn block -> Map.delete(block, "prompt_cache_breakpoint") end)
-                ),
-              else: item
-          end)
-        end)
+      stripped = Map.delete(first.json, "prompt_cache_key")
 
       assert retry.json == stripped
-      refute retry.json["prompt_cache_options"]
-      refute next.json["prompt_cache_options"]
+      refute retry.json["prompt_cache_key"]
+      refute next.json["prompt_cache_key"]
       assert retry.json["input"] == next.json["input"]
 
       rows =
@@ -145,7 +131,7 @@ defmodule Kogen.Integration.ProviderWaitTest do
       assert refused["cache"]["applied_ttl"] == nil
       assert refused["cache"]["applied_mode"] == nil
       assert hd(rows)["provider"]["cache"]["status"] == "unsupported"
-      assert hd(rows)["provider"]["cache"]["boundaries"] != []
+      assert hd(rows)["provider"]["cache"]["boundaries"] == []
       assert Enum.at(rows, 1)["provider"]["cache"]["boundaries"] == []
       assert List.last(rows)["provider"]["provider_response_id"] == "resp_cache"
       assert List.last(rows)["provider"]["provider_request_id"] == "req-fixture"
@@ -159,7 +145,7 @@ defmodule Kogen.Integration.ProviderWaitTest do
        %{
          "error" => %{
            "code" => "unknown_parameter",
-           "param" => "input[0].content[0].prompt_cache_breakpoint",
+           "param" => "prompt_cache_key",
            "message" => "unsupported"
          }
        }}
@@ -192,11 +178,11 @@ defmodule Kogen.Integration.ProviderWaitTest do
     assert call.().items == [tool()]
     assert call.().items == [tool()]
     [first, retry, next] = FakeProvider.provider_requests(server)
-    assert first.json["prompt_cache_options"]
+    assert first.json["prompt_cache_key"]
     assert first.json["include"] == ["reasoning.encrypted_content"]
     assert retry.json["include"] == first.json["include"]
-    refute retry.json["prompt_cache_options"]
-    refute next.json["prompt_cache_options"]
+    refute retry.json["prompt_cache_key"]
+    refute next.json["prompt_cache_key"]
     assert retry.json["input"] == next.json["input"]
 
     rows =
@@ -208,7 +194,7 @@ defmodule Kogen.Integration.ProviderWaitTest do
     assert Enum.at(rows, 0)["provider"]["timestamp"] != Enum.at(rows, 1)["provider"]["timestamp"]
     assert hd(rows)["provider"]["usage"]["input"] == nil
     assert hd(rows)["provider"]["cache"]["status"] == "unsupported"
-    assert hd(rows)["provider"]["cache"]["boundaries"] != []
+    assert hd(rows)["provider"]["cache"]["boundaries"] == []
     assert Enum.at(rows, 1)["provider"]["cache"]["boundaries"] == []
     assert List.last(rows)["provider"]["provider_response_id"] == "resp_cache"
     assert List.last(rows)["provider"]["provider_request_id"] == "req-fixture"
@@ -244,7 +230,7 @@ defmodule Kogen.Integration.ProviderWaitTest do
            %{
              "error" => %{
                "code" => code,
-               "param" => "prompt_cache_options",
+               "param" => "prompt_cache_key",
                "message" => "refused"
              }
            }}

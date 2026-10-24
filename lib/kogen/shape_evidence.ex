@@ -163,6 +163,7 @@ defmodule Kogen.ShapeEvidence do
         {status, usage, error} =
           case result do
             {:ok, r} -> {"completed", r.known_usage, nil}
+            {:go_error, reason, _diagnostics} -> {"failed", unknown(), %{reason: reason}}
             {kind, detail} -> {"failed", unknown(), %{reason: kind, detail: detail}}
           end
 

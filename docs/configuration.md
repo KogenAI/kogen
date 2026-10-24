@@ -130,14 +130,48 @@ Deterministic prompt and guard tests do not establish live model obedience or pe
 
 ### Responses reuse diagnostics
 
-There is no new cache TTL setting. Documented GPT-5.6+ models request implicit
-30m caching with stable policy/contract boundaries; older/unknown routes omit
-new controls. One definite nonexecuting cache-parameter refusal may retry without
-controls within the same response deadline. Full replay, fixed role effort,
-review independence and all safety checks remain mandatory. Retained write-12h
-counts are reportable, but enabling 12h later needs stable cross-gap measurements
-and exact account qualification (2.5x writes rather than 30m's 1.25x). No prewarm
-or paid baseline/benchmark calls are introduced. See [retained usage](usage.md).
+ChatGPT uses automatic provider caching with a stable public `prompt_cache_key`
+equal to its generated conversation ID, from the first request in every process.
+Policy remains the first developer input_text block and the complete ordered
+contract/replay is unchanged. No options, breakpoints, comparison IDs, retention,
+server conversation loading or session headers are sent. The key partitions by
+owner/provider/model/policy/tools/contract/window; checkpoints retain it. It is a
+best-effort routing hint, not sticky routing or a hit guarantee; official GPT-5.6+
+guidance says it is unnecessary for optimization. Its effect on this sign-in
+route is unproven until observed. Public Responses stays stream:true/store:false
+with complete encrypted stateless replay and independent roles.
+
+Only synchronous HTTP 400 with param exactly `prompt_cache_key` permits one
+compatibility retry for unknown_parameter/unsupported_parameter, or
+invalid_parameter with message exactly `prompt_cache_key is not supported on this model`.
+Only the key is removed, under the original deadline, including single_attempt.
+Removal stays in that conversation/checkpoint. Null/absent/wrong params, other
+messages, 401/403, network failures and partial/failed streams never permit it.
+No persistent registry is needed for explicit options that are never sent.
+
+Anthropic sends the complete unchanged policy as one system text block with
+cache_control:{type:"ephemeral"}, and the same control at the top level for the
+growing conversation (default five-minute lifetime). No one-hour TTL or beta
+diagnostics. Signed/redacted/tool assistant blocks replay exactly once, unchanged,
+with all paired ordered results. A generic 400 never disables caching or changes
+route. Historical req_011CgLShD4UpAk64MM4867GE is an unknown-cause 400.
+
+SuperGrok retains its stable body prompt_cache_key and exact-param
+unknown_parameter/unsupported_parameter fallback only (not invalid_parameter),
+without x-grok-conv-id. OpenCode Go retains stable x-opencode-session, complete raw
+reasoning/tool replay, stream:false/store:false and high/default effort omission.
+Endpoints, models, authentication and configured effort remain unchanged on all
+four routes. No controls from another route are added.
+
+Requested control, accepted request, observed hit and measured benefit are distinct.
+Applied mode/lifetime stay null unless explicitly reported; key-only success proves
+neither. Reads/writes/unknowns stay separate; absent or failed usage is unknown,
+not zero. Fingerprints and token equality do not identify a provider miss cause.
+Deterministic fixtures establish plumbing, not live support or savings. One
+explicitly authorized installed journey is a separate delivery gate, never a paid
+readiness test or a savings promise.
+
+Use `kogen intent usage [RUN-ID] [--lineage] [--project DIR] [--json]` for retained local evidence; see [coverage and uncertainty](usage.md).
 
 ## Declared shaping evidence
 
@@ -293,7 +327,7 @@ Only synchronous HTTP 400 with code unknown_parameter or unsupported_parameter a
 param exactly prompt_cache_key permits one retry removing just that field. The
 refusal survives the owner's checkpoint; later turns do not retry it. Other 400s,
 402/403s and failed streams never permit stripping. Rejected attempts retain unknown
-usage. ChatGPT retains its narrowly recognized prompt_cache_options fallback,
+usage. ChatGPT uses the exact named-key fallback described above, preserving
 policy/tools/effort and full stateless replay; no Go/xAI controls are copied into it.
 There is no cross-conversation persistent refusal registry or component diagnostics.
 
@@ -361,10 +395,10 @@ Uninstall preserves both the credential and lock paths.
 
 The native route POSTs Messages to `https://api.anthropic.com/v1/messages`, with
 `anthropic-version: 2026-10-21`, adaptive thinking, configured output effort,
-streaming and 131072 max tokens. Client tool schemas and ordered raw assistant
+streaming and 128000 max tokens. Client tool schemas and ordered raw assistant
 blocks (including opaque thinking/signatures and redacted thinking) survive replay,
 working windows and v3 checkpoints. Parallel tool results share the immediately
-following user message. No proxy, Claude subprocess, sampling/cache controls,
+following user message. Ephemeral cache_control on the full system block and growing conversation requests default five-minute caching. No proxy, Claude subprocess, sampling controls,
 beta headers or server tools are used. Complete validation precedes any tool effect.
 Only useful complete end-turn text or a valid tool-use batch succeeds; truncation,
 refusal and other non-success stops never expose partial tools or alter requests.

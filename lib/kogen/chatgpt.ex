@@ -652,7 +652,7 @@ defmodule Kogen.ChatGPT do
     do:
       Map.has_key?(
         JSON.decode!(body),
-        if(supergrok?(), do: "prompt_cache_key", else: "prompt_cache_options")
+        "prompt_cache_key"
       )
 
   defp supergrok?, do: Process.get(:routed_provider, "chatgpt") == "supergrok"
@@ -673,42 +673,19 @@ defmodule Kogen.ChatGPT do
       do:
         error[:code] in ~w(unknown_parameter unsupported_parameter) and
           error[:param] == "prompt_cache_key",
-      else: not go?() and chatgpt_cache_refusal?(error)
+      else: not go?() and not anthropic?() and chatgpt_cache_refusal?(error)
   end
 
-  defp chatgpt_cache_refusal?(%{code: "invalid_parameter", message: message, param: param}),
+  defp chatgpt_cache_refusal?(%{param: "prompt_cache_key"} = error),
     do:
-      message == "prompt_cache_options is not supported on this model" and
-        param in [nil, "prompt_cache_options"]
-
-  defp chatgpt_cache_refusal?(%{code: code, param: param}) when is_binary(param),
-    do:
-      code in ~w(unknown_parameter unsupported_parameter subscription_sharing_unsupported_capability) and
-        Regex.match?(~r/(?:^|[.\[])prompt_cache_(?:options|breakpoint)(?:$|[.\[])/, param)
+      error[:code] in ~w(unknown_parameter unsupported_parameter) or
+        (error[:code] == "invalid_parameter" and
+           error[:message] == "prompt_cache_key is not supported on this model")
 
   defp chatgpt_cache_refusal?(_), do: false
 
-  defp strip_cache(body) do
-    if supergrok?(),
-      do: JSON.encode!(Map.delete(JSON.decode!(body), "prompt_cache_key")),
-      else: strip_chatgpt_cache(body)
-  end
-
-  defp strip_chatgpt_cache(body) do
-    b = JSON.decode!(body) |> Map.delete("prompt_cache_options")
-
-    input =
-      Enum.map(b["input"], fn item ->
-        if is_list(item["content"]),
-          do:
-            Map.update!(item, "content", fn blocks ->
-              Enum.map(blocks, &Map.delete(&1, "prompt_cache_breakpoint"))
-            end),
-          else: item
-      end)
-
-    b |> Map.put("input", input) |> JSON.encode!()
-  end
+  defp strip_cache(body),
+    do: JSON.encode!(Map.delete(JSON.decode!(body), "prompt_cache_key"))
 
   defp pause(ms, deadline) do
     receive do
@@ -905,18 +882,10 @@ defmodule Kogen.ChatGPT do
         _ -> "failed"
       end
 
-    cache =
-      if completed and meta.cache.status == "requested",
-        do: %{
-          meta.cache
-          | status: "applied",
-            applied_mode: "implicit",
-            diagnostics: Kogen.PromptCache.diagnostics(response["prompt_cache_diagnostics"])
-        },
-        else: meta.cache
+    cache = meta.cache
 
     cache =
-      if has_cache?(body),
+      if has_cache?(body) or (anthropic?() and JSON.decode!(body)["cache_control"] != nil),
         do: cache,
         else: %{cache | boundaries: [], comparison_response_id: nil}
 

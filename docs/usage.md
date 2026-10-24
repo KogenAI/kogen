@@ -58,43 +58,47 @@ classifications, not explanations inferred from local fingerprints.
 
 ## Best-effort reuse, correctness independent
 
-Supported documented ChatGPT GPT-5.6+ routes request implicit 30m caching. Unchanged
-policy is an initial developer input_text block; the complete stable contract
-is a separate block in its original role, before changing evidence. These two
-explicit breakpoints plus the implicit slot use three of four writes. No filler,
-prewarm, cache key, model/effort switch or extra inference is used. Public
-Responses stays `store:false,stream:true`, with full manual replay, including
-valid encrypted reasoning and assistant phase; no server conversation loading.
-Responses requests include `reasoning.encrypted_content` so stateless continuation
-can retain the returned opaque item rather than relying on stored server state.
+ChatGPT uses automatic provider caching with a stable public `prompt_cache_key`
+equal to its generated conversation ID, from the first request in every process.
+Policy remains the first developer input_text block and the complete ordered
+contract/replay is unchanged. No options, breakpoints, comparison IDs, retention,
+server conversation loading or session headers are sent. The key partitions by
+owner/provider/model/policy/tools/contract/window; checkpoints retain it. It is a
+best-effort routing hint, not sticky routing or a hit guarantee; official GPT-5.6+
+guidance says it is unnecessary for optimization. Its effect on this sign-in
+route is unproven until observed. Public Responses stays stream:true/store:false
+with complete encrypted stateless replay and independent roles.
 
-Comparison uses the latest validated completed response ID only within that
-independent conversation. New reviewers do not inherit builder state. Saved
-continuation retains capability and comparison through safe resume. Old v2
-checkpoints default optional cache metadata to unknown; all existing exact
-approval/tree/index/tool uncertainty checks remain mandatory.
+Only synchronous HTTP 400 with param exactly `prompt_cache_key` permits one
+compatibility retry for unknown_parameter/unsupported_parameter, or
+invalid_parameter with message exactly `prompt_cache_key is not supported on this model`.
+Only the key is removed, under the original deadline, including single_attempt.
+Removal stays in that conversation/checkpoint. Null/absent/wrong params, other
+messages, 401/403, network failures and partial/failed streams never permit it.
+No persistent registry is needed for explicit options that are never sent.
 
-Earlier/unrecognized models omit controls and markers. A definite nonexecuting
-400 naming cache controls allows one compatibility retry with identical content,
-authority, model and effort, sharing the absolute deadline. Unsupported state is
-retained. Unrelated refusals and uncertain stream execution never cause a
-cache-stripping replay. Missing or malformed optional diagnostics need no retry.
+Anthropic sends the complete unchanged policy as one system text block with
+cache_control:{type:"ephemeral"}, and the same control at the top level for the
+growing conversation (default five-minute lifetime). No one-hour TTL or beta
+diagnostics. Signed/redacted/tool assistant blocks replay exactly once, unchanged,
+with all paired ordered results. A generic 400 never disables caching or changes
+route. Historical req_011CgLShD4UpAk64MM4867GE is an unknown-cause 400.
 
-`applied` records accepted controls, not a physical write, hit, or proven TTL.
-Effective configuration and applied TTL are null absent response evidence.
-Policy/tools/schema/contract/prefix fingerprints are **local UTF-8 byte** hashes,
-not provider tokens, rendered prompts or cache facts. IDs are analytical
-identifiers, not bearer authorization. Analytical evidence excludes prompts,
-tool bodies, credentials and encrypted continuation (which remains solely in
-existing conversation/checkpoint custody).
+SuperGrok retains its stable body prompt_cache_key and exact-param
+unknown_parameter/unsupported_parameter fallback only (not invalid_parameter),
+without x-grok-conv-id. OpenCode Go retains stable x-opencode-session, complete raw
+reasoning/tool replay, stream:false/store:false and high/default effort omission.
+Endpoints, models, authentication and configured effort remain unchanged on all
+four routes. No controls from another route are added.
 
-12h provider write counts are retained. Enabling 12h later requires measured
-stable cross-gap reuse and exact account acceptance; its write rate is 2.5x,
-not 30m's 1.25x. TTL is not a deletion deadline. Synthetic loopback fixtures do
-not prove live account support. This report is not an account ledger or weekly
-quota conversion, and promises no percentage, speed or dollar savings. Cache
-reuse never substitutes for inference, tools, verification, independent review
-or authorization. Combining exported reports is not automatic account accounting.
+Requested control, accepted request, observed hit and measured benefit are distinct.
+Applied mode/lifetime stay null unless explicitly reported; key-only success proves
+neither. Reads/writes/unknowns stay separate; absent or failed usage is unknown,
+not zero. Fingerprints and token equality do not identify a provider miss cause.
+Deterministic fixtures establish plumbing, not live support or savings. One
+explicitly authorized installed journey is a separate delivery gate, never a paid
+readiness test or a savings promise.
+
 
 ## Retained observations and summary coverage
 
@@ -205,7 +209,7 @@ New transport attempts and JSON `data.requests` rows carry `provider: "chatgpt"`
 or `"supergrok"` from the routed role. Older records without that field remain
 null; model names and endpoints never fill in missing provenance. SuperGrok
 requests omit cache options/breakpoints and developer policy messages, retaining
-cache status `unknown` with no boundaries. Missing token categories remain null,
+nullable applied cache mode/lifetime with no explicit boundaries. Missing token categories remain null,
 not zero. There is no cost, quota, dollar, charge-meter or savings field.
 
 These local rows cannot prove which subscription pool was charged. Account usage

@@ -135,7 +135,14 @@ Irreducible input stops honestly before inference as `candidate/context_budget_e
 
 ## Refine working windows (SHP-11)
 
-`kogen intent refine <slug> <full-sha256> <correction-file>` retains the frozen-original context index and explicit full originals. It preflights every complete rendered next request, including policy, schemas, envelopes, current manifests, replay and cache controls, against the inclusive 524288-byte ceiling with 131072 output/reasoning tokens reserved. At completed response/tool-batch boundaries only, an oversized input is archived exactly and one deterministic smaller window is attempted; no unexecuted tool call may be dropped.
+Refine includes every owned original and authoritative contract in full. Repository
+navigation uses the compact, revision-bound navigation reference and on-demand
+retrieval; it never duplicates a repository-wide symbol/path index into the
+immutable initial request. Large repositories must not consume mandatory working
+room merely because unrelated tracked files exist. Protection, original readiness
+evidence, exact source provenance and the unchanged request ceiling still apply.
+
+`kogen intent refine <slug> <full-sha256> <correction-file>` retains frozen-original authority, revision-bound repository navigation and explicit full originals. It preflights every complete rendered next request, including policy, schemas, envelopes, current manifests, replay and cache controls, against the inclusive 524288-byte ceiling with 131072 output/reasoning tokens reserved. At completed response/tool-batch boundaries only, an oversized input is archived exactly and one deterministic smaller window is attempted; no unexecuted tool call may be dropped.
 
 Exact initial authority includes the correction, original owned artifacts, README, testing rules, commands/protection and original contract/source-provenance binding. The reduced window retains that authority, the newest complete exchange, current complete cumulative formatted-candidate/original retrieval manifest, ownership, exact observed readiness identity/observations, invalid count, hash-bound documentation/discovery retrieval reference and assistant observations. Native proposals and readiness remain authoritative in-process; a handoff is diagnostic, not approval or a model summary substitute. Old manifests can move to exact history. Latest well-formed proposals win, omitted paths persist, unsafe mixed submissions contribute nothing and only explicit originals revert proposals. Reset cannot clear invalid counts, fabricate documentation, acknowledge unseen red or waive ownership/Acceptance/model-presence restrictions.
 

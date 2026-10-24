@@ -121,10 +121,13 @@ defmodule Kogen.Anthropic do
     body = %{
       "model" => role.model,
       "stream" => true,
-      "max_tokens" => 131_072,
+      "max_tokens" => 128_000,
       "thinking" => %{"type" => "adaptive"},
       "output_config" => %{"effort" => role.effort},
-      "system" => policy,
+      "system" => [
+        %{"type" => "text", "text" => policy, "cache_control" => %{"type" => "ephemeral"}}
+      ],
+      "cache_control" => %{"type" => "ephemeral"},
       "messages" => render(input)
     }
 

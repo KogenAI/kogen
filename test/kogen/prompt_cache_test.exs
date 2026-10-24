@@ -18,7 +18,8 @@ defmodule Kogen.PromptCacheTest do
     second = PromptCache.prepare("gpt-6.1-sol", "policy", input.("b"), tools)
     {_, _, b} = Process.get(:prompt_cache_current)
     assert a.fingerprints == b.fingerprints
-    assert first["prompt_cache_options"] == %{"mode" => "implicit", "ttl" => "30m"}
+    assert first["prompt_cache_key"] == a.conversation_id
+    refute first["prompt_cache_options"]
     assert hd(first["input"])["role"] == "developer"
     assert Enum.at(first["input"], 1)["role"] == "user"
     assert hd(Enum.at(first["input"], 1)["content"])["text"] == "complete Δ contract\n"
@@ -34,26 +35,38 @@ defmodule Kogen.PromptCacheTest do
     refute d.fingerprints.schema == b.fingerprints.schema
   end
 
-  test "comparison and unsupported state stay in the independent conversation" do
+  test "public key suppression stays in the independent conversation" do
     input = [%{"role" => "user", "content" => "contract"}]
-    PromptCache.prepare("gpt-6.1-sol", "policy", input, [])
+    first = PromptCache.prepare("gpt-6.1-sol", "policy", input, [])
     PromptCache.complete(%{"id" => "resp_1"})
-    next = PromptCache.prepare("gpt-6.1-sol", "policy", input, [])
-    assert next["prompt_cache_options"]["comparison_response_id"] == "resp_1"
-    PromptCache.complete(%{"id" => ""})
-
-    assert PromptCache.prepare("gpt-6.1-sol", "policy", input, [])["prompt_cache_options"][
-             "comparison_response_id"
-           ] == "resp_1"
-
+    assert PromptCache.prepare("gpt-6.1-sol", "policy", input, []) == first
     PromptCache.unsupported()
-    refute PromptCache.prepare("gpt-6.1-sol", "policy", input, [])["prompt_cache_options"]
-    refute PromptCache.prepare("gpt-5.4", "policy", input, [])["prompt_cache_options"]
-    refute PromptCache.prepare("unknown", "policy", input, [])["prompt_cache_options"]
+    refute PromptCache.prepare("gpt-6.1-sol", "policy", input, [])["prompt_cache_key"]
 
-    assert PromptCache.prepare("gpt-6.1-sol", "independent review", input, [])[
-             "prompt_cache_options"
-           ]["comparison_response_id"] == nil
+    assert PromptCache.prepare("gpt-6.1-sol", "independent review", input, [])["prompt_cache_key"] !=
+             first["prompt_cache_key"]
+
+    for model <- ["gpt-5.4", "unknown"] do
+      body = PromptCache.prepare(model, "policy", input, [])
+      assert body["prompt_cache_key"]
+      refute body["prompt_cache_options"]
+      assert body["instructions"] == "policy"
+      assert hd(body["input"])["role"] == "user"
+    end
+  end
+
+  test "legacy options refusal does not suppress a new key but a key refusal survives restore" do
+    input = [%{"role" => "user", "content" => "contract"}]
+    first = PromptCache.prepare("gpt-6.1-sol", "policy", input, [])
+    {key, state, _} = Process.get(:prompt_cache_current)
+    legacy = state |> Map.delete(:control) |> Map.put(:unsupported, true)
+    Process.put(:prompt_cache_states, %{key => legacy})
+    assert PromptCache.prepare("gpt-6.1-sol", "policy", input, []) == first
+    PromptCache.unsupported()
+    restored = Process.get(:prompt_cache_states)
+    Process.delete(:prompt_cache_states)
+    Process.put(:prompt_cache_states, restored)
+    refute PromptCache.prepare("gpt-6.1-sol", "policy", input, [])["prompt_cache_key"]
   end
 
   test "replay preserves valid supported fields without manufacturing absent legacy values" do

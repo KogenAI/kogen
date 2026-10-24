@@ -804,18 +804,10 @@ defmodule Kogen.Refine do
       )
 
   defp context(s, request) do
-    {selected, _} =
-      Kogen.ShapeContext.index(s.root, s.slug, s.config, request, s.originals,
-        owned: s.allowed,
-        original_dir: Path.join(s.evidence, "original"),
-        full_paths: [
-          "README.md"
-          | Enum.filter(
-              Map.keys(s.originals),
-              &String.ends_with?(&1, ["intent.md", "acceptance.feature", "model.qnt"])
-            )
-        ]
-      )
+    # All owned originals are already included exactly below. A repository-wide
+    # index is generated navigation, not authority: repeating it in the immutable
+    # initial message made even small corrections exhaust every working window.
+    {selected, _} = Kogen.ShapeContext.navigation(s.root)
 
     """
     Full contract inclusions: original Intent prose, Gherkin and declared model preserve exact authority, irrespective of excerpt budget.
