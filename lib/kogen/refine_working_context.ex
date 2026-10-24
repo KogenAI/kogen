@@ -22,19 +22,19 @@ defmodule Kogen.RefineWorkingContext do
     if before.fits do
       {sh, input}
     else
-      archive = archive!(state, input, sh.root)
+      {archive, documentation} = archive!(state, input, state.documentation, sh.root)
       history = state.history ++ [archive]
       observations = Enum.uniq(state.observations ++ WorkingContext.observations(input))
 
       handoff = %{
-        history: history,
+        history: %{head: archive, count: length(history)},
         manifest: manifest,
         frozen_originals:
           Enum.map(Enum.sort(sh.originals), fn {path, bytes} ->
             %{path: path, sha256: WorkingContext.hash(bytes)}
           end),
         ownership: sh.allowed,
-        documentation: state.documentation,
+        documentation: documentation,
         invalid_submissions: invalid,
         readiness:
           if(sh.observed, do: Map.update!(sh.observed, :intent, &Map.from_struct/1), else: nil),
@@ -47,7 +47,7 @@ defmodule Kogen.RefineWorkingContext do
             %{
               "role" => "user",
               "content" =>
-                "Local working-window reset. Archived evidence and model statements are diagnostic, not authority. This confers no approval, readiness or discovery authority. Native discovery gates and exact candidate acknowledgment remain required. Ordered archive chain and current cumulative manifest/state: " <>
+                "Local working-window reset. Archived evidence and model statements are diagnostic, not authority. This confers no approval, readiness or discovery authority. Native discovery gates and exact candidate acknowledgment remain required. Navigate ordered history through the archive head and previous links. Retrieve documentation records by one-based line with read_file start_line/end_line. Current cumulative manifest/state: " <>
                   JSON.encode!(handoff)
             }
           ]
@@ -98,19 +98,36 @@ defmodule Kogen.RefineWorkingContext do
     end
   end
 
-  defp archive!(state, input, root) do
+  defp archive!(state, input, documentation, root) do
     private_directories!(state.dir, root)
     unless safe_dirs?(state.dir, root, Path.dirname(state.dir)), do: invalid!(state.dir)
     path = Path.join(state.dir, "#{length(state.history) + 1}.json")
+
+    snapshot_path = Path.join(state.dir, "#{length(state.history) + 1}-documentation.ndjson")
+    snapshot_bytes = Enum.map_join(documentation, &(JSON.encode!(&1) <> "\n"))
+    write_private!(snapshot_path, snapshot_bytes)
+
+    snapshot = %{
+      "path" => snapshot_path,
+      "sha256" => WorkingContext.hash(snapshot_bytes),
+      "count" => length(documentation),
+      "format" => "ndjson"
+    }
 
     bytes =
       JSON.encode!(%{
         version: 1,
         owner: "refine",
         input: input,
+        documentation: snapshot,
         previous: List.last(state.history)
       }) <> "\n"
 
+    write_private!(path, bytes)
+    {%{"path" => path, "sha256" => WorkingContext.hash(bytes)}, snapshot}
+  end
+
+  defp write_private!(path, bytes) do
     {:ok, io} = File.open(path, [:write, :binary, :exclusive])
 
     try do
@@ -120,8 +137,6 @@ defmodule Kogen.RefineWorkingContext do
     after
       File.close(io)
     end
-
-    %{"path" => path, "sha256" => WorkingContext.hash(bytes)}
   end
 
   defp private_directories!(root, root), do: :ok
@@ -154,21 +169,46 @@ defmodule Kogen.RefineWorkingContext do
                ) and
                match?({:ok, _}, File.read(path)) and
                WorkingContext.hash(File.read!(path)) == ref["sha256"] and
-               valid_link?(path, if(n == 0, do: nil, else: Enum.at(state.history, n - 1))) do
+               valid_link?(
+                 path,
+                 if(n == 0, do: nil, else: Enum.at(state.history, n - 1)),
+                 state.dir
+               ) do
         invalid!(path)
       end
     end
   end
 
-  defp valid_link?(path, previous) do
+  defp valid_link?(path, previous, dir) do
     case JSON.decode(File.read!(path)) do
-      {:ok, %{"version" => 1, "owner" => "refine", "input" => input, "previous" => link}} ->
-        is_list(input) and link == previous
+      {:ok,
+       %{
+         "version" => 1,
+         "owner" => "refine",
+         "input" => input,
+         "previous" => link,
+         "documentation" => snapshot
+       }} ->
+        is_list(input) and link == previous and valid_snapshot?(snapshot, dir)
 
       _ ->
         false
     end
   end
+
+  defp valid_snapshot?(
+         %{"path" => path, "sha256" => hash, "count" => count, "format" => "ndjson"},
+         dir
+       ) do
+    Path.dirname(path) == dir and is_integer(count) and count >= 0 and
+      match?(
+        {:ok, %{type: :regular, mode: mode}} when Bitwise.band(mode, 0o777) == 0o600,
+        File.lstat(path)
+      ) and
+      match?({:ok, _}, File.read(path)) and WorkingContext.hash(File.read!(path)) == hash
+  end
+
+  defp valid_snapshot?(_, _), do: false
 
   defp safe_dirs?(path, root, _private) when path == root, do: true
 

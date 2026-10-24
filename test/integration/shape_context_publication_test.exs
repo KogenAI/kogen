@@ -12,6 +12,60 @@ defmodule Kogen.Integration.ShapeContextPublicationTest do
     %{suite: suite}
   end
 
+  test "snapshot damaged by a completed tool refuses the next tool in the same batch", %{
+    suite: suite
+  } do
+    c = Helpers.project!(suite, [], staged_intent: false)
+    on_exit(fn -> Helpers.cleanup_case(c) end)
+    slug = "custody-tools"
+    custody = Path.join(c.repo, ".kogen/local/shaping/#{slug}/working-context")
+    marker = Path.join(c.root, "unsafe-tool-ran")
+
+    File.write!(Path.join(c.repo, "padding.txt"), String.duplicate("discovery line\n", 2000))
+    Helpers.git!(c, ["add", "padding.txt"])
+    Helpers.git!(c, ["commit", "-qm", "Seed tool custody regression"])
+    approval = File.read!(Intent.approval_path(c.repo, "fixture"))
+    head = Kogen.Git.head(c.repo)
+    index = File.read!(Path.join(c.repo, ".git/index"))
+
+    damage =
+      "for snapshot in '#{custody}/'*/*-documentation.ndjson; do " <>
+        "printf damage >> \"$snapshot\"; done"
+
+    calls =
+      for {command, n} <- Enum.with_index([damage, "touch '#{marker}'"], 1) do
+        %{
+          "type" => "function_call",
+          "id" => "custody-tool-#{n}",
+          "call_id" => "custody-tool-#{n}",
+          "name" => "probe",
+          "arguments" => JSON.encode!(%{command: command})
+        }
+      end
+
+    actions =
+      List.duplicate({:function, "read_file", %{path: "padding.txt"}}, 40) ++
+        [{:items, calls}]
+
+    previous_requests = length(FakeProvider.provider_requests(c.server))
+    FakeProvider.append(c.server, actions)
+    request = Path.join(c.root, "request.txt")
+    File.write!(request, "Preserve diagnostic custody before each tool effect.")
+    {output, status} = Helpers.run_kogen(c, ["intent", "shape", slug, request])
+    snapshots = Path.wildcard(custody <> "/*/*-documentation.ndjson")
+    assert snapshots != []
+    assert Enum.all?(snapshots, &(File.read!(&1) |> String.ends_with?("damage")))
+    assert status != 0, output
+    assert output =~ "candidate/context_custody_invalid"
+    refute File.exists?(marker), "a tool ran after bound snapshot custody was damaged"
+    assert length(FakeProvider.provider_requests(c.server)) == previous_requests + length(actions)
+    refute File.exists?(Path.join(c.repo, ".kogen/local/provenance/#{slug}/current.json"))
+    refute File.exists?(Path.join(c.repo, ".kogen/local/readiness/#{slug}.json"))
+    assert File.read!(Intent.approval_path(c.repo, "fixture")) == approval
+    assert Kogen.Git.head(c.repo) == head
+    assert File.read!(Path.join(c.repo, ".git/index")) == index
+  end
+
   test "custody damaged during final readiness cannot publish successful evidence", %{
     suite: suite
   } do

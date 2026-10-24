@@ -242,8 +242,8 @@ and the previous path/hash (null first); new custody directories are 0700, files
 0600, and hashes cover complete bytes. Every window keeps exact initial correction,
 owned originals, README, testing rules, commands/protection and source-provenance
 binding, plus the newest complete exchange, current complete proposal manifest,
-ownership, readiness observations/identity, invalid count, documentation records
-and assistant observations. Cumulative native proposals remain authoritative;
+ownership, readiness observations/identity, invalid count and assistant observations.
+Documentation remains complete in native state and private snapshots, not inline bodies. Cumulative native proposals remain authoritative;
 handoffs are diagnostic, not model-authored substitutes or approval. Old manifests
 remain in exact history. Linked custody is validated before subsequent inference,
 tool effects and publication; missing, altered, symlinked or unsafe custody stops as
@@ -270,6 +270,18 @@ unsafe linked custody refuses further inference/publication. Irreducible input i
 exactly unsent with `candidate/context_budget_exceeded`: a fresh identical retry is not
 recovery; correct the request/scope or prepare images externally. There is no summarizer,
 automatic splitting or persistent Shape resume, and not every large request fits.
+
+Shape and Refine reset handoffs carry only `history: {head: {path, sha256}, count}`
+and `documentation: {path, sha256, count, format: "ndjson"}` evidence references.
+Each numbered version-1 archive binds its immutable sibling `<n>-documentation.ndjson`
+before hashing. Snapshots preserve every native record in order, including duplicate
+and failed lookups, one JSON object and final newline per record (empty state is
+empty bytes). Follow archive `previous` links for complete ordered replay; retrieve
+one-based documentation lines with `read_file` `start_line`/`end_line`. Both owners
+validate every bound snapshot alongside linked archives even for fitting continuations,
+before inference, tool effects or publication. New custody uses 0700 directories and
+exclusive regular non-symlink 0600 files. These references are diagnostic, never new
+authority; native history and documentation lists remain complete and unchanged.
 
 Successful Shape keeps exact request/Q&A and source identity privately at
 `.kogen/local/provenance/<slug>/current.json` (0600 files, 0700 custody directories).

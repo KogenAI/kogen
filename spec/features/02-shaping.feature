@@ -1,6 +1,13 @@
 # SHP-8/SHP-11: stable successful shaping and published refinement evidence is reusable
 # for the version 3 Snapshot candidate tree, full protected baseline hash, declarations and HEAD; failed readiness is never reused.
 Feature: Shaping
+  Shape and SHP-11 Refine working windows retain complete native evidence privately.
+  Diagnostic reset JSON names the archive head/count and a hash-bound NDJSON
+  documentation snapshot, not inline documentation bodies or an enumerated chain.
+  Previous links recover ordered replay; read_file one-based line ranges retrieve
+  documentation occurrences, including duplicate and unsuccessful lookups.
+  Missing, changed or unsafe snapshot custody refuses even fitting continuations.
+
   A request becomes a ready Intent (prose, Gherkin with step files, Quint
   when needed), or numbered questions about open UI/UX choices.
 

@@ -439,6 +439,8 @@ defmodule Kogen.Shape do
 
     {outputs, result, sh} =
       Enum.reduce(calls, {[], nil, sh}, fn call, {outs, result, sh} ->
+        Kogen.ShapeWorkingContext.validate!(sh.working_context, sh.root)
+
         cond do
           result != nil ->
             {outs ++ [output(call, "ignored: only one submit counts per response")], result, sh}
@@ -452,7 +454,6 @@ defmodule Kogen.Shape do
             {outs ++ [output(call, JSON.encode!(result))], nil, Map.put(sh, :batch_used, true)}
 
           call["name"] == "submit" ->
-            Kogen.ShapeWorkingContext.validate!(sh.working_context, sh.root)
             {text, result, sh} = submit(decode(call), sh)
             {outs ++ [output(call, text)], result, sh}
 

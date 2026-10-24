@@ -64,12 +64,25 @@ defmodule Kogen.Integration.ShapeWorkingContextTest do
     assert WorkingContext.measure(Kogen.ChatGPT.request_body(sh.role, "policy", reduced, [])).fits
     [ref] = sh.working_context.history
     archive = JSON.decode!(File.read!(ref["path"]))
-    assert archive == %{"version" => 1, "owner" => "shape", "input" => input, "previous" => nil}
+
+    assert Map.delete(archive, "documentation") == %{
+             "version" => 1,
+             "owner" => "shape",
+             "input" => input,
+             "previous" => nil
+           }
+
+    snapshot = archive["documentation"]
+    assert File.read!(snapshot["path"]) == JSON.encode!(hd(sh.docs)) <> "\n"
+    assert snapshot["sha256"] == WorkingContext.hash(File.read!(snapshot["path"]))
     assert WorkingContext.hash(File.read!(ref["path"])) == ref["sha256"]
     handoff = Enum.at(reduced, 1)["content"]
     assert handoff =~ "Local working-window reset"
     assert handoff =~ "observation 1"
-    assert handoff =~ "unsupported"
+    assert not (handoff =~ "unsupported")
+    state = handoff |> String.split("manifest/state: ") |> List.last() |> JSON.decode!()
+    assert state["history"] == %{"head" => ref, "count" => 1}
+    assert state["documentation"] == snapshot
     assert handoff =~ "invalid_submissions\":2"
 
     sh = %{
