@@ -443,6 +443,18 @@ most 300 bytes, a saved key redacted), because a local server's message, such as
 Ollama's "try pulling it first", is often the fix. ChatGPT and SuperGrok already put
 their message in the first line; OpenCode Go and Anthropic bodies are never shown.
 
+The remaining official-family-settings outcome of KOGEN-057 is documented in
+[qualified model-family profiles](model-family-qualification.md). Official scope is
+Sol Shape/high, Build/medium, Review/high and Sonnet Review/medium, exact normal
+routes and text/tool input only. `kogen provider list` appends these scopes after
+the unchanged offline login lines; `--json` publishes schema version 1 with exact
+limits/settings and separate row-level evidence citations. Neither form checks an
+account or refreshes credentials. All other strings remain experimental, may fail
+and are not blocked. Newly recorded attempts include selection `compatibility`;
+old records without it stay unknown. Contextual refusal diagnostics additionally
+name the actual role/provider/model/effort, supported/experimental status and editable
+`models.<role>.model` / `models.<role>.effort` selectors in `.kogen/project.yaml`.
+
 Recommended model per role and provider (a starting point, not a requirement):
 
 | Provider | Shape | Build | Review |
@@ -454,7 +466,7 @@ Recommended model per role and provider (a starting point, not a requirement):
 | OpenAI-compatible | the model your host serves | the same | the same |
 
 Efforts the provider's own documentation lists: SuperGrok `low`, `medium`, `high`,
-`xhigh`; Anthropic `low`, `medium`, `high`, `max`; OpenCode Go `high` or `default`.
+`xhigh`; Sonnet 5.5 `low`, `medium`, `high`, `xhigh`, `max`; OpenCode Go `high` or `default`.
 Shape workers (below) use `gpt-6-luna` as an experimental setting. A model or effort
 outside these still reaches the provider unchanged.
 

@@ -622,7 +622,7 @@ func (s *usageScan) readRows(path string, base object, rows *[]object) {
 	}
 }
 
-var providerSafe = strings.Fields("provider operation_id attempt_id conversation_id timestamp phase role run_id slug lineage pass repair provider_response_id provider_request_id configured_model effective_model configured_effort effective_effort requested_service_tier effective_service_tier requested_reasoning_context effective_reasoning_context cache fingerprints usage usage_state wall_ms ttft_ms outcome error")
+var providerSafe = strings.Fields("compatibility provider operation_id attempt_id conversation_id timestamp phase role run_id slug lineage pass repair provider_response_id provider_request_id configured_model effective_model configured_effort effective_effort requested_service_tier effective_service_tier requested_reasoning_context effective_reasoning_context cache fingerprints usage usage_state wall_ms ttft_ms outcome error")
 
 func normalizeUsage(ev, base object) object {
 	r := object{}
@@ -665,9 +665,24 @@ func normalizeUsage(ev, base object) object {
 			r[k] = v
 		}
 	}
+	// Retain only the selection fields actually recorded. Missing historical evidence
+	// stays null, never reclassified using today's catalog.
+	if c, ok := r["compatibility"].(map[string]any); ok {
+		clean := object{}
+		for _, k := range []string{"status", "profile", "role", "provider", "model", "effort"} {
+			if v, ok := c[k].(string); ok && len(v) <= 256 {
+				clean[k] = v
+			} else {
+				clean[k] = nil
+			}
+		}
+		r["compatibility"] = clean
+	} else {
+		r["compatibility"] = nil
+	}
 	// Analytical fields are selected, never arbitrary event content or provider prose.
 	for _, k := range providerSafe {
-		if contains([]string{"cache", "fingerprints", "usage"}, k) {
+		if contains([]string{"cache", "fingerprints", "usage", "compatibility"}, k) {
 			continue
 		}
 		switch v := r[k].(type) {

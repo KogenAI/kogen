@@ -15,6 +15,15 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: not signed in
+      Official compatibility (text/tool input, normal routes only):
+      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
+        shape/high [go-live-2026-10-24]
+        build/medium [go-live-2026-10-24]
+        review/high [native-go-sol-review-2026-10-24]
+      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
+        review/medium [go-live-2026-10-24]
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
     When the caller runs "kogen provider login chatgpt" in the background
     And the browser completes sign-in for "user@example.com"
@@ -35,6 +44,15 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: not signed in
+      Official compatibility (text/tool input, normal routes only):
+      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
+        shape/high [go-live-2026-10-24]
+        build/medium [go-live-2026-10-24]
+        review/high [native-go-sol-review-2026-10-24]
+      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
+        review/medium [go-live-2026-10-24]
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
 
   @GPT-4
@@ -51,6 +69,15 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: not signed in
+      Official compatibility (text/tool input, normal routes only):
+      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
+        shape/high [go-live-2026-10-24]
+        build/medium [go-live-2026-10-24]
+        review/high [native-go-sol-review-2026-10-24]
+      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
+        review/medium [go-live-2026-10-24]
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
 
   @GPT-2
@@ -306,6 +333,15 @@ Feature: ChatGPT connection
       supergrok: signed in (grok@example.com)
       opencode-go: not signed in
       anthropic: not signed in
+      Official compatibility (text/tool input, normal routes only):
+      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
+        shape/high [go-live-2026-10-24]
+        build/medium [go-live-2026-10-24]
+        review/high [native-go-sol-review-2026-10-24]
+      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
+        review/medium [go-live-2026-10-24]
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
     Given the file "{home}/.kogen/credentials/supergrok.json" contains:
       """
@@ -319,6 +355,15 @@ Feature: ChatGPT connection
       supergrok: saved login cannot be used; run kogen provider login supergrok
       opencode-go: not signed in
       anthropic: not signed in
+      Official compatibility (text/tool input, normal routes only):
+      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
+        shape/high [go-live-2026-10-24]
+        build/medium [go-live-2026-10-24]
+        review/high [native-go-sol-review-2026-10-24]
+      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
+        review/medium [go-live-2026-10-24]
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
 
   @GPT-4
@@ -335,4 +380,38 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: key saved (not verified)
+      Official compatibility (text/tool input, normal routes only):
+      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
+        shape/high [go-live-2026-10-24]
+        build/medium [go-live-2026-10-24]
+        review/high [native-go-sol-review-2026-10-24]
+      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
+        review/medium [go-live-2026-10-24]
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
+      """
+
+  @GPT-4
+  Scenario: Offline machine catalog separates exact qualifications and evidence
+    When the caller runs "kogen provider list --json"
+    Then the exit code is 0
+    And stdout contains:
+      """
+      "schema_version":1
+      """
+    And stdout contains:
+      """
+      "id":"chatgpt-sol-6-1"
+      """
+    And stdout contains:
+      """
+      "id":"anthropic-sonnet-5-5"
+      """
+    And stdout contains:
+      """
+      "evidence_ids":["native-go-sol-review-2026-10-24"]
+      """
+    And stdout contains:
+      """
+      "max_input_tokens":null
       """

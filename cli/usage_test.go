@@ -239,3 +239,26 @@ func TestUsageProviderIsRetainedNotInferred(t *testing.T) {
 		}
 	}
 }
+
+func TestUsageRetainsCompatibilityWithoutQualifyingHistory(t *testing.T) {
+	selection := object{"status": "supported", "profile": "chatgpt-sol-6-1", "role": "review", "provider": "chatgpt", "model": "gpt-6.1-sol", "effort": "high"}
+	row := object{"outcome": "completed", "compatibility": selection}
+	got := normalizeUsage(object{"provider": row}, object{})
+	b, _ := json.Marshal(got["compatibility"])
+	want, _ := json.Marshal(selection)
+	if string(b) != string(want) {
+		t.Fatalf("%s != %s", b, want)
+	}
+	delete(row, "compatibility")
+	old := normalizeUsage(object{"provider": row}, object{})
+	if old["compatibility"] != nil {
+		t.Fatal(old)
+	}
+	legacy := normalizeUsage(object{"event": "request", "model": "gpt-6.1-sol", "effort": "high", "role": "review"}, object{})
+	if legacy["compatibility"] != nil {
+		t.Fatal(legacy)
+	}
+	if _, ok := row["compatibility"]; ok {
+		t.Fatal("rewrote historical input")
+	}
+}

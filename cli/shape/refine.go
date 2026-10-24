@@ -834,7 +834,7 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 			Role: ProviderRole(role), Instructions: refineInstructions(), Input: input, Tools: defs,
 			Scope: r.ev.Dir, Context: map[string]any{"phase": "shape", "role": "shape", "slug": r.slug},
 		}, r.cacheID)
-		input, err = r.window.prepare(windowPrep{
+		input, err = r.window.prepare(windowPrep{role: req.Role,
 			root: r.root, ev: r.ev, progress: r.s.Progress,
 			render: func(items []any) map[string]any { q := req; q.Input = items; return r.client.Body(q) },
 			state: func(head windowRef, count int, snapshot map[string]any, observations []any) map[string]any {

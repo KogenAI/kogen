@@ -623,7 +623,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 			Role: ProviderRole(sh.role), Instructions: ShaperInstructions(), Input: input, Tools: sh.toolDefs,
 			Scope: sh.ev.Dir, Context: map[string]any{"phase": "shape", "role": "shape", "slug": sh.slug},
 		}, sh.cacheID)
-		input, err = sh.window.prepare(windowPrep{
+		input, err = sh.window.prepare(windowPrep{role: req.Role,
 			root: sh.root, ev: sh.ev, progress: sh.progress,
 			render: func(items []any) map[string]any { r := req; r.Input = items; return sh.client.Body(r) },
 			state: func(head windowRef, count int, snapshot map[string]any, observations []any) map[string]any {

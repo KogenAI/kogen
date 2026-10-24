@@ -248,6 +248,7 @@ func TestOpenCodeGoErrorsAreClassifiedWithoutFallbackOrBodyText(t *testing.T) {
 			if c.reason == "model_unavailable" || c.name == "404" || c.name == "unsafe code" {
 				want += "|model kimi-k3 with effort high was sent to OpenCode Go unchanged and not retried; if OpenCode Go does not offer them, set another model or effort for this role in .kogen/project.yaml"
 			}
+			want += "|selection experimental: role unknown, provider opencode-go, configured model kimi-k3, effort high; edit .kogen/project.yaml (role selection)"
 			if strings.Join(se.Lines, "|") != want || strings.Contains(se.Render(), "SECRET_BODY_TEXT") {
 				t.Fatalf("lines = %v", se.Lines)
 			}

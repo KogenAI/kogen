@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -32,10 +33,15 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 		fmt.Println(line)
 		return 0, true
 	case "list":
+		if inv.json {
+			json.NewEncoder(os.Stdout).Encode(provider.Profiles())
+			return 0, true
+		}
 		home, _ := os.UserHomeDir()
 		for _, line := range provider.Status(home) {
 			fmt.Println(line)
 		}
+		fmt.Print(provider.OfficialText())
 		return 0, true
 	case "login":
 		s := sys.New()

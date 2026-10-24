@@ -219,7 +219,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		}
 		state = &OwnerContext{Mandatory: nonNil(mandatory), Observations: []any{}, History: []HistoryRef{}}
 	}
-	measured, err := agent.Measure(b.bodyOf(role, instructions, input, tools, owner))
+	measured, err := agent.Measure(b.bodyOf(role, instructions, input, tools, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
@@ -298,11 +298,11 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	message := map[string]any{"role": "user", "content": "Local working-window reset\n" + string(encoded)}
 	mandatory := append(slices.Clone(state.Mandatory), message)
 	reduced := append(slices.Clone(mandatory), newestExchange(input)...)
-	next, err := agent.Measure(b.bodyOf(role, instructions, reduced, tools, owner))
+	next, err := agent.Measure(b.bodyOf(role, instructions, reduced, tools, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
-	mand, err := agent.Measure(b.bodyOf(role, instructions, mandatory, tools, owner))
+	mand, err := agent.Measure(b.bodyOf(role, instructions, mandatory, tools, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}

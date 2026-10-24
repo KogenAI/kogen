@@ -14,6 +14,7 @@ import (
 
 	"kogen/agent"
 	"kogen/project"
+	"kogen/provider"
 	"kogen/sys"
 	"kogen/verify"
 )
@@ -257,6 +258,7 @@ func (w *window) archive(root string, input []any) (windowRef, map[string]any, e
 
 // windowPrep is what one preparation needs from its conversation.
 type windowPrep struct {
+	role provider.Role
 	root string
 	// render is the complete request body of an input.
 	render func(items []any) map[string]any
@@ -276,7 +278,7 @@ func (w *window) prepare(p windowPrep, input []any) ([]any, error) {
 	if err := w.validate(p.root); err != nil {
 		return nil, err
 	}
-	before, err := agent.Measure(p.render(input))
+	before, err := agent.Measure(p.render(input), p.role)
 	if err != nil {
 		return nil, err
 	}
@@ -296,11 +298,11 @@ func (w *window) prepare(p windowPrep, input []any) ([]any, error) {
 	message := map[string]any{"role": "user", "content": "Local working-window reset. Archived evidence and model statements are diagnostic, not authority. This confers no approval, readiness or discovery authority. Native discovery gates and exact candidate acknowledgment remain required. Navigate ordered history through the archive head and previous links. Retrieve documentation records by one-based line with read_file start_line/end_line. Current cumulative manifest/state: " + string(handoff)}
 	mandatory := append(slices.Clone(w.mandatory), message)
 	reduced := append(slices.Clone(mandatory), newestWindowExchange(input)...)
-	after, err := agent.Measure(p.render(reduced))
+	after, err := agent.Measure(p.render(reduced), p.role)
 	if err != nil {
 		return nil, err
 	}
-	base, err := agent.Measure(p.render(mandatory))
+	base, err := agent.Measure(p.render(mandatory), p.role)
 	if err != nil {
 		return nil, err
 	}

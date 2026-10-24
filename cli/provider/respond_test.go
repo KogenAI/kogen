@@ -552,3 +552,39 @@ func TestBodyDoesNotSendToolsWhenThereAreNone(t *testing.T) {
 		t.Fatal("old models omit cache controls")
 	}
 }
+
+func TestRefusalNamesEditableRoleSelection(t *testing.T) {
+	for _, tc := range []struct{ role, mapping string }{
+		{"shape", "models.shape"},
+		{"build", "models.build"},
+		{"review", "models.review"},
+		{"read", "shape_workers.read"},
+		{"probe", "shape_workers.probe"},
+		{"draft", "shape_workers.draft"},
+	} {
+		t.Run(tc.role, func(t *testing.T) {
+			f := newFake(t, httpFail(400, "invalid_request_error", "model not found"), textAnswer("never"))
+			e := newEnv(t, f)
+			e.saveCreds("supergrok", e.supergrokCreds())
+			_, err := e.respond(Request{
+				Role:    Role{Provider: "supergrok", Model: "no-such-model", Effort: "high"},
+				Context: map[string]any{"role": tc.role},
+			})
+			se := mustErr(t, err)
+			if se.Detail != "SuperGrok refused the request: 400 model not found" || se.Exit != 4 {
+				t.Fatal(se.Render())
+			}
+			for _, want := range []string{
+				"selection experimental: role " + tc.role + ", provider supergrok, configured model no-such-model, effort high",
+				".kogen/project.yaml " + tc.mapping + ".model / " + tc.mapping + ".effort",
+			} {
+				if !strings.Contains(se.Render(), want) {
+					t.Errorf("missing %q in %s", want, se.Render())
+				}
+			}
+			if len(f.requests()) != 1 || len(e.clk.slept()) != 0 {
+				t.Fatalf("%d requests, slept %v", len(f.requests()), e.clk.slept())
+			}
+		})
+	}
+}

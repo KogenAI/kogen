@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "id": "chatgpt-sol-6-1",
+      "provider": "chatgpt",
+      "model": "gpt-6.1-sol",
+      "route": "https://api.openai.com/v1/responses",
+      "documented_efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "limits": {
+        "context_tokens": 1050000,
+        "max_input_tokens": 922000,
+        "max_output_tokens": 128000,
+        "input_bytes": 524288,
+        "reserve_tokens": 131072
+      },
+      "settings": {
+        "wire": "responses",
+        "stream": true,
+        "effort": "reasoning.effort",
+        "reasoning": "encrypted",
+        "output": "provider-default",
+        "tools": "auto",
+        "schema": "native",
+        "replay": "responses-items",
+        "cache": "prompt_cache_key",
+        "images": "experimental"
+      },
+      "qualifications": [
+        {
+          "role": "shape",
+          "effort": "high",
+          "evidence_ids": [
+            "go-live-2026-10-24"
+          ]
+        },
+        {
+          "role": "build",
+          "effort": "medium",
+          "evidence_ids": [
+            "go-live-2026-10-24"
+          ]
+        },
+        {
+          "role": "review",
+          "effort": "high",
+          "evidence_ids": [
+            "native-go-sol-review-2026-10-24"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "go-live-2026-10-24",
+          "source_tree": "7e708f1c81a8d9d68956e422f2935b3959fc7639",
+          "archive_sha256": "eaa60cc4383f25180542bf97f572b653a773dbc46538a48f816e519c0b76beee",
+          "landed_commit": "bd800096ab51c34a8a4ce4fca7696122f0152b5b"
+        },
+        {
+          "id": "native-go-sol-review-2026-10-24",
+          "provider_tree": "ea5efa099be455516ed87e6ebc1840874f408b72",
+          "baseline_commit": "f38e488778c198e57d90ca1fc17a13c664168919",
+          "runs": [
+            {
+              "run_id": "553c44bd",
+              "runtime_version": "kogen d0bc4af0 (2026-10-24)",
+              "runtime_sha256": "fe374affa7b4b94ec67299dfe3639dd21b9e0e2fab194fe5f713b08480f5f536",
+              "start_head": "d0bc4af0804876eea2724b412451c1cdb7028248",
+              "landed_commit": "687f140700426b3b4ad3e3eae7f1d854762dad31",
+              "review_tree": "0341c848eaefb29fecd932ecb8f1f30d4537b12f",
+              "review_verdict": "approve",
+              "review_sha256": "9e559a179585b1604e5c429357a5b03fcfb9f33fb2abacc83fc0469ce11f9fe6"
+            },
+            {
+              "run_id": "b515525a",
+              "runtime_version": "kogen 687f1407 (2026-10-24)",
+              "runtime_sha256": "c0e21b0f7ef17cea2cee1eb5cf9a99bb85ae6bd6fc1eff4fa74a12f893a1a092",
+              "start_head": "687f140700426b3b4ad3e3eae7f1d854762dad31",
+              "landed_commit": "f38e488778c198e57d90ca1fc17a13c664168919",
+              "review_tree": "3f6f701def347f08f36519db434132ef1304aea3",
+              "review_verdict": "approve",
+              "review_sha256": "2464a2a68b05e63508745a5a65888fd0554f67347d7c92eaa163492b13a15c1c"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anthropic-sonnet-5-5",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "route": "https://api.anthropic.com/v1/messages",
+      "documented_efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "limits": {
+        "context_tokens": 1000000,
+        "max_input_tokens": null,
+        "max_output_tokens": 128000,
+        "input_bytes": 524288,
+        "reserve_tokens": 131072
+      },
+      "settings": {
+        "wire": "messages",
+        "stream": true,
+        "effort": "output_config.effort",
+        "reasoning": "adaptive",
+        "output": "max_tokens",
+        "tools": "auto",
+        "schema": "input_schema",
+        "replay": "signed-messages",
+        "cache": "ephemeral-breakpoints",
+        "images": "unsupported"
+      },
+      "qualifications": [
+        {
+          "role": "review",
+          "effort": "medium",
+          "evidence_ids": [
+            "go-live-2026-10-24"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "go-live-2026-10-24",
+          "source_tree": "7e708f1c81a8d9d68956e422f2935b3959fc7639",
+          "archive_sha256": "eaa60cc4383f25180542bf97f572b653a773dbc46538a48f816e519c0b76beee",
+          "landed_commit": "bd800096ab51c34a8a4ce4fca7696122f0152b5b"
+        }
+      ]
+    }
+  ]
+}

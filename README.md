@@ -44,6 +44,14 @@ A builder that observes a contradiction in protected fixtures can report it and 
 
 Kogen supports ChatGPT ("Sign in with ChatGPT", using your plan), SuperGrok subscription sign-in, explicitly selected OpenCode Go, Anthropic Claude via API key, and local or self-hosted OpenAI-compatible servers (Ollama, LM Studio, vLLM). Any nonempty `model` and `effort` is accepted for every provider and sent unchanged; known models are only recommended defaults (`gpt-6.1-sol` for ChatGPT, `grok-4.7` for SuperGrok, `kimi-k3` for OpenCode Go, `claude-opus-5-5` or `claude-sonnet-5-5` for Anthropic). If a provider refuses the model or effort, Kogen says what it sent, does not retry, and tells you to set another model or effort for that role in `.kogen/project.yaml`. Save your own Go workspace key through stdin with `kogen provider login opencode-go`; local status is `key saved (not verified)`, not subscription eligibility. Omitted per-role `provider` keeps ChatGPT; `provider: supergrok` is recommended with `grok-4.7` and `low`, `medium`, `high` or `xhigh` effort. Sign in with `kogen provider login supergrok`: follow the printed HTTPS address and code; Kogen does not open a browser for this device flow. `provider: openai-compatible` needs a `base_url` per role, for example `'http://localhost:11434/v1'` for Ollama, and an optional key from `kogen provider login openai-compatible`. `kogen provider list` shows the saved local logins without network access. No API-key or paid-route fallback is used. See [provider configuration and qualification](docs/configuration.md#providers). Kogen is the small core the rest of Kogen is built with: further features can be built through Kogen or developed directly while the tool is being qualified.
 
+Official text/tool compatibility is exact, not provider-wide: Sol 6.1 Shape/high,
+Build/medium and Review/high, plus Sonnet 5.5 Review/medium on their normal routes.
+Other selections remain experimental and are not blocked. `kogen provider list --json`
+publishes the offline profile/limits/settings catalog and row-level evidence. See
+[qualified model-family profiles](docs/model-family-qualification.md) for the
+separate historical evidence scopes, unchanged wire policy and experimental remainder
+of KOGEN-057; recommended defaults and saved logins do not establish qualification.
+
 Claude uses separate API billing, not a consumer Claude/Max subscription. Save a key
 privately with `kogen provider login anthropic` (stdin or echo-suppressed terminal).
 `~/.kogen/credentials/anthropic.json` is private; offline status is

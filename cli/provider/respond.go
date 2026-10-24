@@ -82,6 +82,9 @@ func CheckSeams(s *sys.Session) error {
 // InputBudgetBytes is the inclusive ceiling of one complete next request.
 const InputBudgetBytes = 524288
 
+// OutputReserveTokens is conservative accounting, not a wire allowance.
+const OutputReserveTokens = 131072
+
 // run is the state of one logical Respond.
 type run struct {
 	k       *call
@@ -198,9 +201,14 @@ func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs O
 	if err != nil {
 		return nil, err
 	}
-	if len(encoded) > InputBudgetBytes {
+	limits := Limits{}
+	if p := ResolveProfile(req.Role); p != nil {
+		limits = p.Limits
+	}
+	limit := UsableInputBytes(limits)
+	if !FitsInputBytes(len(encoded), limits) {
 		return nil, sys.Fail("candidate", "context_budget_exceeded", "Complete next request "+itoa(int64(len(encoded)))+
-			" bytes exceeds 524288; reserve 131072 tokens. Retain private source/replay; use external image preparation or ordinary Refine and new approval.", 1)
+			" bytes exceeds "+itoa(int64(limit))+"; reserve 131072 tokens. Retain private source/replay; use external image preparation or ordinary Refine and new approval.", 1)
 	}
 	_, hasKey := rend.body["prompt_cache_key"]
 	r := &run{k: k, req: req, obs: obs, cache: cache, key: key, state: st, rend: rend, encoded: encoded,
@@ -213,7 +221,23 @@ func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs O
 	} else {
 		resp, err = r.attempts()
 	}
-	return resp, modelHint(err, info, req.Role)
+	err = modelHint(err, info, req.Role)
+	if e, ok := err.(*sys.Error); ok && e.Class == "provider" && (e.Reason == "refused" || e.Reason == "model_unavailable" || e.Reason == "context_too_long") {
+		classification := Classify(req, s)
+		copy := *e
+		selector := ".kogen/project.yaml (role selection)"
+		role := classification.Role
+		if role == "shape" || role == "build" || role == "review" {
+			selector = ".kogen/project.yaml models." + role + ".model / models." + role + ".effort"
+		} else if role == "read" || role == "probe" || role == "draft" {
+			selector = ".kogen/project.yaml shape_workers." + role + ".model / shape_workers." + role + ".effort"
+		} else if role == "" {
+			role = "unknown"
+		}
+		copy.Lines = append(append([]string(nil), e.Lines...), "selection "+classification.Status+": role "+role+", provider "+classification.Provider+", configured model "+classification.Model+", effort "+classification.Effort+"; edit "+selector)
+		err = &copy
+	}
+	return resp, err
 }
 
 // modelHint adds the fix to a provider's refusal of the model or the request (KOGEN-057):
@@ -802,6 +826,7 @@ func (r *run) record(res result, err error, start time.Time, ts string) {
 	}
 	for k, v := range map[string]any{
 		"provider":                    r.k.info.Name,
+		"compatibility":               Classify(r.req, r.k.s).Map(),
 		"operation_id":                r.op.id,
 		"attempt_id":                  newID("attempt"),
 		"timestamp":                   ts,

@@ -59,7 +59,7 @@ Commands:
   login opencode-go        Save your OpenCode Go workspace key from stdin
   login anthropic          Save your Anthropic API key privately from stdin
   login openai-compatible  Save an optional key for an OpenAI-compatible host from stdin
-  list                     Show which providers Kogen is signed in to
+  list [--json]            Show local logins and official compatibility
 
 Logins belong to this machine, never to a repo.
 `
@@ -69,6 +69,7 @@ var pages = map[string]string{"top": topPage, "intent": intentPage, "provider": 
 // invocation is a parsed command line.
 type invocation struct {
 	provider string
+	json     bool
 	command  string // init, shape, refine, approve, build, login, list, uninstall, version
 	slug     string
 	file     string
@@ -102,7 +103,7 @@ var leaves = map[string]spec{
 	"intent resume":  {path: "intent resume", command: "resume", page: "intent", options: []string{"project"}, positional: []string{"<build-id>"}},
 	"intent build":   {path: "intent build", command: "build", page: "intent", options: []string{"project", "context"}, positional: []string{"<slug>"}},
 	"provider login": {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
-	"provider list":  {path: "provider list", command: "list", page: "provider"},
+	"provider list":  {path: "provider list", command: "list", page: "provider", options: []string{"json"}},
 }
 
 var hashRe = regexp.MustCompile(`^[0-9a-f]{6,64}$`)
@@ -173,6 +174,10 @@ func parse(args []string) (*invocation, string, *usageError) {
 			if !contains(leaf.options, name) {
 				return fail("unknown option '--%s'", name)
 			}
+			if name == "json" && !hasValue {
+				opts[name] = "true"
+				continue
+			}
 			if !hasValue {
 				if i+1 >= len(rest) {
 					return fail("--%s needs a value", name)
@@ -189,7 +194,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 	if len(pos) > len(leaf.positional) {
 		return fail("unexpected argument '%s'", pos[len(leaf.positional)])
 	}
-	inv := &invocation{command: leaf.command, project: opts["project"], by: opts["by"]}
+	inv := &invocation{json: opts["json"] == "true", command: leaf.command, project: opts["project"], by: opts["by"]}
 	if value, ok := opts["context"]; ok {
 		inv.context = &value
 	}

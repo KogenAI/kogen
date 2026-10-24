@@ -33,8 +33,8 @@ const (
 
 // Context budget of a request that carries images (the working-context measure).
 const (
-	InputBudgetBytes    = 524_288
-	OutputReserveTokens = 131_072
+	InputBudgetBytes    = provider.InputBudgetBytes
+	OutputReserveTokens = provider.OutputReserveTokens
 )
 
 var pngSignature = []byte{137, 80, 78, 71, 13, 10, 26, 10}
@@ -339,13 +339,18 @@ type Measurement struct {
 	Fits                bool
 }
 
-// Measure is the size of the JSON request body against the 524288-byte input budget.
-func Measure(body map[string]any) (Measurement, error) {
+// Measure sizes the complete JSON body against the global ceiling and, when a role
+// is supplied, any smaller documented family bound. Unknown families remain unknown.
+func Measure(body map[string]any, role ...provider.Role) (Measurement, error) {
 	enc, err := encodeJSON(body)
 	if err != nil {
 		return Measurement{}, err
 	}
-	return Measurement{len(enc), InputBudgetBytes, OutputReserveTokens, len(enc) <= InputBudgetBytes}, nil
+	limit := InputBudgetBytes
+	if len(role) > 0 {
+		limit = provider.RequestInputBytes(role[0])
+	}
+	return Measurement{len(enc), limit, OutputReserveTokens, len(enc) <= limit}, nil
 }
 
 // GuardImages refuses a request body that carries images and does not fit the context

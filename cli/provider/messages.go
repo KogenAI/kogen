@@ -33,6 +33,11 @@ func renderMessages(info Info, req Request, id string, input []any) (rendered, e
 		"thinking":      map[string]any{"type": "adaptive"},
 		"output_config": map[string]any{"effort": req.Role.Effort},
 	}
+	if p := ResolveProfile(req.Role); p != nil {
+		body["stream"] = p.Settings.Stream
+		body["thinking"] = map[string]any{"type": p.Settings.Reasoning}
+		body["max_tokens"] = p.Limits.Output
+	}
 	if len(req.Tools) > 0 {
 		tools := make([]any, len(req.Tools))
 		for i, t := range req.Tools {
@@ -42,7 +47,11 @@ func renderMessages(info Info, req Request, id string, input []any) (rendered, e
 		last := tools[len(tools)-1].(map[string]any)
 		last["cache_control"] = ephemeral()
 		boundaries = append(boundaries, "tools["+itoa(int64(len(tools)-1))+"]")
-		body["tool_choice"] = map[string]any{"type": "auto"}
+		choice := "auto"
+		if p := ResolveProfile(req.Role); p != nil {
+			choice = p.Settings.Tools
+		}
+		body["tool_choice"] = map[string]any{"type": choice}
 		body["tools"] = tools
 	}
 	body["system"] = []any{map[string]any{"type": "text", "text": req.Instructions, "cache_control": ephemeral()}}

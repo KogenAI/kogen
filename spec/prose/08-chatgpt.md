@@ -287,3 +287,56 @@ qualification, Linux and release real-use gates remain separate later obligation
 No provider has a model or effort allowlist. `.kogen/project.yaml` accepts any nonempty `model` and `effort` for every role and every provider, and Kogen sends them unchanged. OpenCode Go and OpenAI-compatible effort `default` sends no `reasoning_effort`. Known models are recommended defaults and hints only. A provider's refusal of the model or request keeps its first error line and adds the line `model <model> with effort <effort> was sent to <Label> unchanged and not retried; if <Label> does not offer them, set another model or effort for this role in .kogen/project.yaml`. The request is never retried and no other model is tried.
 
 `provider: openai-compatible` serves local and self-hosted OpenAI-compatible servers (for example Ollama `http://localhost:11434/v1`, LM Studio `http://localhost:1234/v1`, vLLM `http://localhost:8000/v1`). Each role using it needs `base_url`, an `http://` or `https://` URL with a host and no query; a trailing slash is trimmed. A role on any other provider that has `base_url` is refused. The request is the non-streaming Chat Completions wire of OpenCode Go, POSTed to `<base_url>/chat/completions`. A key is optional: `kogen provider login openai-compatible` reads it from stdin (not echoed on a terminal), saves it privately (0600) and prints `openai-compatible: key saved (not verified)`. With a key the request carries `Authorization: Bearer <key>`; without one it carries no Authorization header. A keyless host needs no login, and `kogen provider list` shows `openai-compatible: key saved (not verified)` only once a key is saved. The request carries no vendor cache field or header; usage reads `prompt_tokens_details.cached_tokens`, `prompt_cache_hit_tokens` or `cached_tokens` when reported. Images are unsupported, as for OpenCode Go. The unknown-provider message, help, Zsh completion and uninstall message name the provider. A role without `provider` stays ChatGPT.
+
+
+## Exact model-family qualification (remaining KOGEN-057 outcome)
+
+The [maintained qualification record](../../docs/model-family-qualification.md)
+embeds historical receipt facts, separate Sol Review/high native Go evidence,
+row-level citation mapping and the supported/experimental matrix. `kogen provider
+list` keeps all local-login lines and their order, then appends a clearly labelled
+official compatibility section. `--json` is the offline schema-version-1 companion,
+with exactly ordered profiles `chatgpt-sol-6-1` and `anthropic-sonnet-5-5`, documented
+limits/settings/efforts, qualifications and independently scoped evidence. Neither
+view contacts providers, refreshes credentials or verifies account access.
+
+Sol 6.1 qualifies Shape/high and Build/medium only from `go-live-2026-10-24`;
+Review/high cites only `native-go-sol-review-2026-10-24`. Sonnet 5.5 Review/medium
+cites only the go-live receipt. Other roles, efforts (including Sol Review/medium),
+versions, workers, routes and typed images are experimental. Unknown pairs have
+null profile, no inherited qualification and unknown family limits. Configuration
+stays open; known family settings apply even to unqualified role/effort selections.
+The exact resolver drives rendering and bounds as well as classification/presentation.
+
+Every new provider attempt has `compatibility: {status, profile, role, provider,
+model, effort}`, using actual native request context and configured strings.
+Only exact qualified text/tool selections on normal vendor routes are `supported`.
+Absent/unknown roles, either URL seam and generic compatible hosts are experimental;
+response-reported names never confer qualification. Refine uses Shape selection,
+not a worker's role. Old retained records without compatibility remain unknown:
+no history rewrites, implicit upgrades, fabricated usage or prices. Contextual
+refusals name this classification and editable YAML role selectors, with no numeric
+line fabrication, route fallback or extra retry.
+
+Sol preserves Responses streaming, reasoning.effort, encrypted replay, native/auto
+tools, store:false, prompt_cache_key, no private session header, cache options or
+new max-output field. Sonnet preserves streamed Messages, version 2026-10-21,
+adaptive thinking/output_config.effort, max_tokens:128000, input_schema/auto tools,
+exact signed-message replay and existing ephemeral cache breakpoints. It does not
+promise strict schemas or enable images, forced tools or manual thinking budgets.
+Their documented context/input/output limits are 1050000/922000/128000 and
+1000000/unknown/128000 tokens respectively. Documented efforts for both are low,
+medium, high, xhigh, max, not a claim of demonstrated Kogen behavior for each.
+
+The complete serialized request guard remains inclusive 524288 bytes with 131072
+reserved tokens, further constrained by the minimum known input and context minus
+reserve (conservative byte-as-token proxy). Output/reasoning share output allowance;
+reserve is not extra wire output. No clipping, authority/history loss or dropped
+tool pairs; unknown families are not claimed to fit. Provider context errors below
+the proxy remain honest failures. Native image refusals and external pixel-review
+handoffs stay unchanged. Synthetic fixtures prove policy/transport, not actual
+local servers, pixel interpretation, cache savings or account availability.
+
+Historical reuse requires unchanged qualified wire/input policy, ordinary final
+verification and fresh independent final-tree review. Material request/route/auth
+changes invalidate reuse, not authorize paid work or import historical approval.

@@ -188,7 +188,7 @@ func materialOpening(authority, source string, diagnostic []any) []any {
 // force pins even a source that fits.
 func (b *Attempt) materialPrepare(tree string, m materialSet, role project.Role, instructions string, tools, diagnostic []any, force bool) ([]any, error) {
 	measure := func(items []any) (agent.Measurement, error) {
-		return agent.Measure(b.bodyOf(role, instructions, items, tools, "review"))
+		return agent.Measure(b.bodyOf(role, instructions, items, tools, "review"), providerRole(role))
 	}
 	full := materialOpening(m.Authority, m.Source, diagnostic)
 	fit, err := measure(full)

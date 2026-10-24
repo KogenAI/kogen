@@ -19,6 +19,16 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 	if input == nil {
 		input = []any{}
 	}
+	if p := ResolveProfile(req.Role); p != nil {
+		if p.Settings.Images == "unsupported" && hasImage(input) {
+			return rendered{}, imageRefusal(info)
+		}
+		if p.Settings.Wire == "messages" {
+			info.wire = wireMessages
+		} else if p.Settings.Wire == "responses" {
+			info.wire = wireResponses
+		}
+	}
 	switch info.wire {
 	case wireChat:
 		return renderChat(info, req, id, input)
@@ -34,9 +44,18 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		"stream":       true,
 		"store":        false,
 	}
+	if p := ResolveProfile(req.Role); p != nil {
+		body["stream"] = p.Settings.Stream
+		if p.Settings.Reasoning == "encrypted" {
+			body["include"] = []any{"reasoning.encrypted_content"}
+		}
+	}
 	if len(req.Tools) > 0 {
 		body["tools"] = req.Tools
 		body["tool_choice"] = "auto"
+		if p := ResolveProfile(req.Role); p != nil {
+			body["tool_choice"] = p.Settings.Tools
+		}
 	}
 	r := rendered{body: body, mode: "implicit"}
 	switch {

@@ -60,7 +60,7 @@ Commands:
   login opencode-go        Save your OpenCode Go workspace key from stdin
   login anthropic          Save your Anthropic API key privately from stdin
   login openai-compatible  Save an optional key for an OpenAI-compatible host from stdin
-  list                     Show which providers Kogen is signed in to
+  list [--json]            Show local logins and official compatibility
 
 Logins belong to this machine, never to a repo.
 `},
@@ -101,6 +101,7 @@ func TestParseCommandTreeCLI1(t *testing.T) {
 		{name: "anthropic private login", args: []string{"provider", "login", "anthropic"}, want: invocation{command: "login", provider: "anthropic"}},
 		{name: "provider login", args: []string{"provider", "login", "chatgpt"}, want: invocation{command: "login", provider: "chatgpt"}},
 		{name: "supergrok login", args: []string{"provider", "login", "supergrok"}, want: invocation{command: "login", provider: "supergrok"}},
+		{name: "provider list JSON", args: []string{"provider", "list", "--json"}, want: invocation{command: "list", json: true}},
 		{name: "provider list", args: []string{"provider", "list"}, want: invocation{command: "list"}},
 		{name: "uninstall", args: []string{"uninstall"}, want: invocation{command: "uninstall"}},
 		{name: "version", args: []string{"version"}, want: invocation{command: "version"}},

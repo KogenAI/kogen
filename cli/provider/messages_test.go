@@ -345,6 +345,7 @@ func TestAnthropicErrorsAreClassifiedByStatusWithoutEchoingText(t *testing.T) {
 			if c.reason == "model_unavailable" || strings.Contains(c.diag, `"http_status":400`) {
 				want += "|model claude-opus-5-5 with effort high was sent to Anthropic unchanged and not retried; if Anthropic does not offer them, set another model or effort for this role in .kogen/project.yaml"
 			}
+			want += "|selection experimental: role unknown, provider anthropic, configured model claude-opus-5-5, effort high; edit .kogen/project.yaml (role selection)"
 			if strings.Join(se.Lines, "|") != want || strings.Contains(se.Render(), "SECRET") || strings.Contains(se.Render(), testKey) {
 				t.Fatalf("lines = %v", se.Lines)
 			}
