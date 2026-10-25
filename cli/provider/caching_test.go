@@ -37,14 +37,14 @@ var cachingCases = []cachingCase{
 	{name: "chatgpt", role: Role{Model: "gpt-6.1-sol", Effort: "high"}, prep: func(e *env) { e.saveCreds("chatgpt", e.chatgptCreds()) }, answer: responsesAnswer,
 		routing: func(r recorded) string {
 			key, _ := r.JSON["prompt_cache_key"].(string)
-			if got := r.Header.Get("Session-Id"); got != "" {
+			if got := r.Header.Get("session_id"); got != key || r.Header.Get("conversation_id") != key || r.Header.Get("Session-Id") != "" {
 				return "MISMATCH " + got + " vs " + key
 			}
 			return key
 		}},
 	{name: "supergrok", role: grokRole, prep: func(e *env) { e.saveCreds("supergrok", e.supergrokCreds()) }, answer: responsesAnswer,
 		routing: func(r recorded) string {
-			if r.Header.Get("Session-Id") != "" || r.Header.Get("X-Opencode-Session") != "" || r.Header.Get("X-Grok-Conv-Id") != "" {
+			if r.Header.Get("session_id") != "" || r.Header.Get("conversation_id") != "" || r.Header.Get("Session-Id") != "" || r.Header.Get("X-Opencode-Session") != "" || r.Header.Get("X-Grok-Conv-Id") != "" {
 				return "UNEXPECTED HEADER"
 			}
 			key, _ := r.JSON["prompt_cache_key"].(string)
@@ -54,7 +54,7 @@ var cachingCases = []cachingCase{
 		raw := map[string]any{"role": "assistant", "content": nil, "reasoning": fmt.Sprintf("thought %d", n), "tool_calls": []any{goCall(fmt.Sprintf("call_%d", n))}}
 		return jsonAnswer(200, goAnswer(raw, "tool_calls", "usage", map[string]any{"prompt_tokens": int64(1000 * n), "completion_tokens": int64(5), "prompt_cache_hit_tokens": int64(900 * n)}))
 	}, routing: func(r recorded) string {
-		if _, has := r.JSON["prompt_cache_key"]; has || r.Header.Get("Session-Id") != "" {
+		if _, has := r.JSON["prompt_cache_key"]; has || r.Header.Get("Session-Id") != "" || r.Header.Get("session_id") != "" || r.Header.Get("conversation_id") != "" {
 			return "UNEXPECTED FIELD"
 		}
 		return r.Header.Get("X-Opencode-Session")
@@ -63,7 +63,7 @@ var cachingCases = []cachingCase{
 		return sseAnswer(flat(one(start("input_tokens", int64(100*n), "cache_read_input_tokens", int64(900*n), "cache_creation_input_tokens", int64(0))),
 			block(0, map[string]any{"type": "thinking", "thinking": fmt.Sprintf("t%d", n), "signature": "sig"}), block(1, use(fmt.Sprintf("call_%d", n))), finish("tool_use"))...)
 	}, routing: func(r recorded) string {
-		for _, h := range []string{"Session-Id", "X-Opencode-Session", "X-Grok-Conv-Id"} {
+		for _, h := range []string{"Session-Id", "session_id", "conversation_id", "X-Opencode-Session", "X-Grok-Conv-Id"} {
 			if r.Header.Get(h) != "" {
 				return "UNEXPECTED HEADER"
 			}
@@ -290,8 +290,13 @@ func TestRetriesKeepTheConversationsIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := f2.requests()
-	if len(r) != 2 || !bytes.Equal(r[0].Body, r[1].Body) || r[0].Header.Get("Session-Id") != r[1].Header.Get("Session-Id") {
+	if len(r) != 2 || !bytes.Equal(r[0].Body, r[1].Body) {
 		t.Fatal("a transient-stream retry changed the request")
+	}
+	for _, h := range []string{"session_id", "conversation_id"} {
+		if got := r[0].Header.Get(h); got == "" || got != r[0].JSON["prompt_cache_key"] || got != r[1].Header.Get(h) {
+			t.Fatalf("a transient-stream retry lost affinity: %s = %q then %q", h, got, r[1].Header.Get(h))
+		}
 	}
 }
 

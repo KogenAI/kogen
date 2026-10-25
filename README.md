@@ -49,7 +49,7 @@ Build/medium and Review/high, plus Sonnet 5.5 Review/medium on their normal rout
 Other selections remain experimental and are not blocked. `kogen provider list --json`
 publishes the offline profile/limits/settings catalog and row-level evidence. See
 [qualified model-family profiles](docs/model-family-qualification.md) for the
-separate historical evidence scopes, unchanged wire policy and experimental remainder
+separate historical evidence scopes, current wire policy and experimental remainder
 of KOGEN-057; recommended defaults and saved logins do not establish qualification.
 
 Claude uses separate API billing, not a consumer Claude/Max subscription. Save a key
@@ -198,7 +198,7 @@ Preflight is not authorization: Build still performs its normal safety checks.
 local retained transport evidence without credentials or inference. It reports
 weighted cache ratios, nullable writes/lifetimes, unknown/inconsistent counts,
 failures and provenance; totals cover selected evidence, not just displayed rows.
-This is not account or weekly usage. Every model conversation has one cache identity (at most 64 characters, kept across retries, resets and resume, never shared with another conversation). ChatGPT sends it as `prompt_cache_key` without a private-backend session header, SuperGrok as `prompt_cache_key` (with one bounded refusal retry), OpenCode Go as `x-opencode-session`, and Anthropic marks ephemeral `cache_control` breakpoints on the last tool, last system block and newest message (at most four); OpenAI-compatible hosts get no vendor field or header (a host with prefix caching still benefits from the frozen front and append-only history). Kogen keeps full stateless encrypted replay, independent reviewers and fresh safety/verification gates, and the usage report shows the cached share from each provider's raw cache fields. Cache acceptance is
+This is not account or weekly usage. Every model conversation has one cache identity (at most 64 characters, kept across retries, resets and resume, never shared with another conversation). ChatGPT sends it as body `prompt_cache_key` and underscore headers `session_id` and `conversation_id`, SuperGrok as `prompt_cache_key` (with one bounded refusal retry), OpenCode Go as `x-opencode-session`, and Anthropic marks ephemeral `cache_control` breakpoints on the last tool, last system block and newest message (at most four); OpenAI-compatible hosts get no vendor field or header (a host with prefix caching still benefits from the frozen front and append-only history). Kogen keeps full stateless encrypted replay, independent reviewers and fresh safety/verification gates, and the usage report shows the cached share from each provider's raw cache fields. Cache acceptance is
 not proof of a hit, effective lifetime or live account qualification. See
 [usage scope, filters and uncertainty](docs/usage.md).
 

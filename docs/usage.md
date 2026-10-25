@@ -61,8 +61,8 @@ classifications, not explanations inferred from local fingerprints.
 Every model conversation has one cache identity (at most 64 characters), created
 when it starts and kept across retries, working-context resets and resume;
 different conversations, including independent reviewers, never share one. The
-identity goes to the provider as ChatGPT `prompt_cache_key` without a private-backend session
-header with the same value, SuperGrok `prompt_cache_key`, OpenCode Go
+identity goes to the provider as ChatGPT body `prompt_cache_key` and underscore headers
+`session_id` and `conversation_id`, each with the same value, SuperGrok `prompt_cache_key`, OpenCode Go
 `x-opencode-session`, and Anthropic ephemeral `cache_control` breakpoints on the
 last tool, last system block and newest message's last block (at most four).
 OpenAI-compatible hosts get no vendor field or header; the frozen front and
@@ -72,8 +72,12 @@ Responses stays `store:false,stream:true`, with full manual replay, including
 valid encrypted reasoning and assistant phase; no server conversation loading.
 Responses requests include `reasoning.encrypted_content` so stateless continuation
 can retain the returned opaque item rather than relying on stored server state.
-ChatGPT never sends `prompt_cache_options` or `prompt_cache_breakpoint` and has no
-cache-refusal retry; only SuperGrok has one bounded `prompt_cache_key` retry.
+ChatGPT never sends `prompt_cache_options` or `prompt_cache_breakpoint`. ChatGPT and
+SuperGrok retain their single exact-param `prompt_cache_key` compatibility retry
+under the original deadline, remembering unsupported body keys per conversation.
+Stripping or suppressing that key retains both ChatGPT headers and unsupported
+cache status; it is not successful cache qualification. A header refusal is an
+ordinary provider refusal, with no new retry, stripping or fallback.
 
 Raw cache fields are kept as the provider reports them: Responses
 `input_tokens_details.cached_tokens`; chat-compatible
@@ -240,7 +244,9 @@ reasoning, tool output or raw envelope. Complete replay lives only in private cu
 Go sends the conversation's cache identity as x-opencode-session with no inferred explicit controls/TTL. SuperGrok sends
 it as prompt_cache_key in the Responses body with the narrowly guarded one-time
 unsupported-parameter fallback (see configuration.md). Acceptance is not a benefit
-or savings claim. ChatGPT has no cache-refusal fallback; there is no cross-run registry. Cache042 remains OPEN, with miss causes UNKNOWN.
+or savings claim. ChatGPT retains its exact body-key compatibility retry while keeping
+both underscore affinity headers (see above); there is no cross-run registry.
+Cache042 remains OPEN, with miss causes UNKNOWN.
 
 OpenAI-compatible roles use the same Chat Completions counts as Go. They send no
 cache field or header, and the cached count is read from

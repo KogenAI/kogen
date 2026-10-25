@@ -60,6 +60,7 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 	r := rendered{body: body, mode: "implicit"}
 	switch {
 	case info.chatgpt():
+		r.headers = map[string]string{"session_id": id, "conversation_id": id}
 		if !unsupported {
 			body["prompt_cache_key"] = id
 		}

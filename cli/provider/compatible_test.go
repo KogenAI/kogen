@@ -47,7 +47,7 @@ func TestOpenAICompatibleSendsTheRoleToItsBaseURLWithoutAKey(t *testing.T) {
 	if r.Header.Get("Authorization") != "" {
 		t.Fatalf("no key must send no Authorization, got %q", r.Header.Get("Authorization"))
 	}
-	for _, h := range []string{"X-Opencode-Session", "Session-Id", "X-Grok-Conv-Id"} {
+	for _, h := range []string{"X-Opencode-Session", "Session-Id", "session_id", "conversation_id", "X-Grok-Conv-Id"} {
 		if r.Header.Get(h) != "" {
 			t.Errorf("vendor routing header %s sent to a generic host", h)
 		}

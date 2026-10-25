@@ -71,7 +71,7 @@ func TestRespondHappyPathWithFunctionCall(t *testing.T) {
 		t.Fatalf("%s %s", r.Method, r.Path)
 	}
 	// GPT-7: headers are exactly the application headers plus ordinary HTTP framing.
-	if got := headerNames(r.Header); !reflect.DeepEqual(got, []string{"Accept", "Authorization", "Connection", "Content-Length", "Content-Type"}) {
+	if got := headerNames(r.Header); !reflect.DeepEqual(got, []string{"Accept", "Authorization", "Connection", "Content-Length", "Content-Type", "Conversation_id", "Session_id"}) {
 		t.Fatalf("headers = %v", got)
 	}
 	if r.Header.Get("Authorization") != "Bearer fake-access-token" || r.Header.Get("Accept") != "text/event-stream" || r.Header.Get("Content-Type") != "application/json" {
@@ -101,9 +101,9 @@ func TestRespondHappyPathWithFunctionCall(t *testing.T) {
 			t.Fatalf("%s sent", k)
 		}
 	}
-	// The public SIWC route carries the stable body key without a private backend header.
+	// The public SIWC route carries the same bounded identity in body and routing headers.
 	key, _ := b["prompt_cache_key"].(string)
-	if key == "" || len(key) > MaxCacheID || r.Header.Get("Session-Id") != "" {
+	if key == "" || len(key) > MaxCacheID || r.Header.Get("Session-Id") != "" || r.Header.Get("session_id") != key || r.Header.Get("conversation_id") != key {
 		t.Fatalf("prompt_cache_key %q, session-id %q", key, r.Header.Get("Session-Id"))
 	}
 	if strings.Contains(string(r.Body), "prompt_cache_breakpoint") {
@@ -189,7 +189,7 @@ func TestRespondSuperGrokRequestAndHeaders(t *testing.T) {
 			t.Fatalf("%s sent", k)
 		}
 	}
-	if key, _ := b["prompt_cache_key"].(string); key == "" || len(key) > MaxCacheID || r.Header.Get("Session-Id") != "" {
+	if key, _ := b["prompt_cache_key"].(string); key == "" || len(key) > MaxCacheID || r.Header.Get("Session-Id") != "" || r.Header.Get("session_id") != "" || r.Header.Get("conversation_id") != "" {
 		t.Fatalf("SuperGrok routes with the body key only: key=%q session-id=%q", key, r.Header.Get("Session-Id"))
 	}
 	in := b["input"].([]any)

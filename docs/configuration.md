@@ -143,7 +143,7 @@ check remain mandatory.
 
 | Provider | Request |
 | --- | --- |
-| ChatGPT | `store:false`, `include:["reasoning.encrypted_content"]`, body `prompt_cache_key` as the cache identity, without private-backend session headers. Never `prompt_cache_options` or `prompt_cache_breakpoint`. Only a definite HTTP400 naming param exactly prompt_cache_key permits one retry with that key removed; unknown_parameter/unsupported_parameter qualify, and ChatGPT alone also accepts invalid_parameter with message exactly "prompt_cache_key is not supported on this model". The original deadline and complete replay remain; refusal stays with that conversation. |
+| ChatGPT | `store:false`, `include:["reasoning.encrypted_content"]`, body `prompt_cache_key` and underscore headers `session_id` and `conversation_id`, each equal to the cache identity. No private-backend `session-id` header. The headers remain when the body key is stripped or suppressed; a header refusal is an ordinary provider refusal with no new retry or fallback. Never `prompt_cache_options` or `prompt_cache_breakpoint`. Only a definite HTTP400 naming param exactly prompt_cache_key permits one retry with that key removed; unknown_parameter/unsupported_parameter qualify, and ChatGPT alone also accepts invalid_parameter with message exactly "prompt_cache_key is not supported on this model". The original deadline and complete replay remain; refusal stays with that conversation. |
 | SuperGrok | body `prompt_cache_key` = the cache identity; one bounded retry without that key after a definite refusal (below). |
 | OpenCode Go | header `x-opencode-session` = the cache identity on every request. |
 | Anthropic | `cache_control` ephemeral (five minutes) on the last tool, the last system block and the newest message's last block; at most four. |
@@ -152,8 +152,8 @@ check remain mandatory.
 Usage keeps each provider's raw cache fields and `kogen intent usage` reports the
 cached share from them (see [retained usage](usage.md)). Retained write-12h
 counts remain reportable; no 12h setting, prewarm or paid baseline/benchmark call
-is introduced. The GPT-5.6+ model split and the ChatGPT cache-refusal fallback of
-earlier Kogen versions are gone.
+is introduced. The GPT-5.6+ model split and the explicit cache-options fallback of
+earlier Kogen versions are gone; the exact body-key compatibility retry above remains.
 
 ## Declared shaping evidence
 
@@ -312,11 +312,12 @@ Only synchronous HTTP 400 with code unknown_parameter or unsupported_parameter a
 param exactly prompt_cache_key permits one retry removing just that field. The
 refusal survives the owner's checkpoint; later turns do not retry it. Other 400s,
 402/403s and failed streams never permit stripping. Rejected attempts retain unknown
-usage. ChatGPT has no cache-refusal fallback: it never sends `prompt_cache_options`
-or `prompt_cache_breakpoint`, and its policy/tools/effort and full stateless replay
-are unchanged; no Go/xAI controls are copied into it beyond the shared
-`prompt_cache_key`. There is no cross-conversation persistent refusal registry or
-component diagnostics.
+usage. ChatGPT retains only the exact body `prompt_cache_key` compatibility retry
+described in [Prompt caching](#prompt-caching); both underscore affinity headers
+remain on every attempt, including when that key is suppressed. It never sends
+`prompt_cache_options` or `prompt_cache_breakpoint`, and its policy/tools/effort and
+full stateless replay are unchanged. There is no cross-conversation persistent
+refusal registry or component diagnostics.
 
 ### OpenCode Go installed security handoff
 

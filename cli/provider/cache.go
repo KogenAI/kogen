@@ -15,7 +15,7 @@ import (
 // scope and store Cache.States() in the checkpoint. The provider package decides only where
 // the identity goes on the wire:
 //
-//	ChatGPT      body prompt_cache_key; no private-backend session header
+//	ChatGPT      body prompt_cache_key and headers session_id, conversation_id
 //	SuperGrok    body prompt_cache_key
 //	OpenCode Go  header x-opencode-session
 //	Anthropic    no routing value; cache_control ephemeral on the last tool, the last
@@ -27,7 +27,7 @@ import (
 const MaxCacheID = 64
 
 // CacheState is the memory of one independent conversation: its cache identity and whether
-// SuperGrok refused prompt_cache_key for it. A Build checkpoint stores these by key. Response
+// ChatGPT or SuperGrok refused prompt_cache_key for it. A Build checkpoint stores these by key. Response
 // is kept only so that version-3 checkpoints from the Elixir Kogen still read; it is never
 // sent.
 type CacheState struct {

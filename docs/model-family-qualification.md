@@ -57,8 +57,10 @@ Both profiles document efforts `low`, `medium`, `high`, `xhigh`, `max`; this is 
 qualification of all those selections. Sol uses streamed Responses,
 `reasoning.effort`, encrypted reasoning inclusion and ordered item replay, native
 tool schemas with auto choice, `store: false` and the conversation's
-`prompt_cache_key`. There is no `prompt_cache_options`, private session header or
-new maximum-output parameter. Output and reasoning share the documented output
+`prompt_cache_key`. The current contract additionally sends underscore `session_id`
+and `conversation_id` headers, each equal to the existing bounded conversation
+identity, even when exact-key compatibility suppresses the body key. There is no
+`prompt_cache_options`, private-backend `session-id` header or new maximum-output parameter. Output and reasoning share the documented output
 allowance; the 131072 reserve is conservative accounting, not extra wire allowance.
 ChatGPT typed-image plumbing remains experimental, not qualified visual interpretation.
 
@@ -87,6 +89,25 @@ Generic compatible hosts get no vendor cache controls or foreign credentials.
 Usage stays recorded even when models/prices are unknown. No new prices or
 subscription-cost estimates are inferred from vendor API pricing; synthetic tests
 prove transport/policy only, not cache savings or universal account access.
+
+## Changed-header qualification boundary
+
+The historical receipts below used the prior no-affinity-header policy. Their
+unchanged-wire comparisons describe those historical candidates, not this changed
+request. The catalog's text/tool evidence is not installed qualification for the
+new headers, nor proof of cache benefit. Local recording-server acceptance proves
+deterministic plumbing only. No historical approval or green check is imported.
+
+After Build, private installed-candidate qualification still requires the existing
+procedure and mandatory private authentication/consent handoff before any unadmitted
+live action. Keep the admitted route/model/auth/limits unchanged and bind the exact
+candidate and observed headers, input, replay, correctness and usage to retained
+evidence. A failed, null or unsupported attempt remains visible and is not installed
+qualification. External CACHE-BEST C3/KOGEN-060 observations (research draft author
+kogen-research-owner, measured against 687f1407) selected the two-header mechanism,
+not a savings threshold or all-model claim; reuse requires independently established
+relevant wire/input equivalence. No paid comparison or new benchmark framework is
+introduced, and independent Studio operations are untouched.
 
 ## Historical qualification custody
 
@@ -157,8 +178,10 @@ budgets, rejects forced tools and binds thinking to model/conversation; the exis
 demonstrated adaptive/auto/append-only policy is retained.
 
 Ordinary final verification and fresh independent final-tree review must establish
-that qualified request/route/auth bytes and semantics remain unchanged. Material
-changes invalidate historical reuse, not authorize paid work. Signed/pushed/private
+the current request/route/auth contract. Historical reuse requires unchanged qualified
+wire/input policy; the changed ChatGPT headers require new installed-candidate
+qualification as described above. Material changes invalidate historical reuse,
+not authorize paid work. Signed/pushed/private
 qualification/adoption are separate delivery operations: this documentation,
 synthetic acceptance and Intent approval do not claim them performed. No paid probe,
 authentication flow, credential copying, fallback, endpoint/billing/cap change,
