@@ -24,7 +24,7 @@ import (
 	"strings"
 	"syscall"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // Repo is a place to run Git commands: a work tree root (or any directory), the base

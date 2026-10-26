@@ -11,10 +11,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 )
 
 // Diagnostic is the optional diagnostic data of `kogen intent build --context <file>`: bounded
@@ -89,7 +89,7 @@ Diagnostic text follows:
 
 // ---- working context ----
 
-const reservedOutputTokens = agent.OutputReserveTokens
+const reservedOutputTokens = tools.OutputReserveTokens
 
 func hashHex(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -167,9 +167,9 @@ func safeFile(path string) bool {
 }
 
 // measure is the complete rendered request against the 524288-byte input budget.
-func (b *Attempt) bodyOf(role project.Role, instructions string, items, tools []any, owner string) map[string]any {
+func (b *Attempt) bodyOf(role project.Role, instructions string, items, defs []any, owner string) map[string]any {
 	return b.deps.Client.Body(provider.Request{
-		Role: providerRole(role), Instructions: instructions, Input: items, Tools: tools,
+		Role: providerRole(role), Instructions: instructions, Input: items, Tools: defs,
 		CacheID: b.cacheID(owner), Cache: provider.NewCache(b.PromptCache),
 	})
 }
@@ -204,7 +204,7 @@ func (b *Attempt) cacheID(owner string) string {
 // windows). Over budget, the earlier exchanges are archived (0600, hashed) and replaced by
 // a reset message; the mandatory opening messages and the newest exchange stay. It returns
 // the input to send.
-func (b *Attempt) prepareContext(owner string, role project.Role, instructions string, input, tools []any) ([]any, error) {
+func (b *Attempt) prepareContext(owner string, role project.Role, instructions string, input, defs []any) ([]any, error) {
 	if b.WorkingContext == nil {
 		b.WorkingContext = map[string]*OwnerContext{}
 	}
@@ -219,7 +219,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		}
 		state = &OwnerContext{Mandatory: nonNil(mandatory), Observations: []any{}, History: []HistoryRef{}}
 	}
-	measured, err := agent.Measure(b.bodyOf(role, instructions, input, tools, owner), providerRole(role))
+	measured, err := tools.Measure(b.bodyOf(role, instructions, input, defs, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	b.WorkingContext[owner] = state
 	if owner == "review" {
 		// Still-inline candidate source moves to pinned parts before the exchanges are reset.
-		if err := b.materialRelocate(role, instructions, tools); err != nil {
+		if err := b.materialRelocate(role, instructions, defs); err != nil {
 			return nil, err
 		}
 		state = b.WorkingContext[owner]
@@ -308,11 +308,11 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	message := map[string]any{"role": "user", "content": "Local working-window reset\n" + string(encoded)}
 	mandatory := append(slices.Clone(state.Mandatory), message)
 	reduced := append(slices.Clone(mandatory), newestExchange(input)...)
-	next, err := agent.Measure(b.bodyOf(role, instructions, reduced, tools, owner), providerRole(role))
+	next, err := tools.Measure(b.bodyOf(role, instructions, reduced, defs, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
-	mand, err := agent.Measure(b.bodyOf(role, instructions, mandatory, tools, owner), providerRole(role))
+	mand, err := tools.Measure(b.bodyOf(role, instructions, mandatory, defs, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +324,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		return nil, sys.Fail("candidate", "context_budget_exceeded", fmt.Sprintf(
 			"%s: measured %d bytes; mandatory %d bytes; ceiling %d, output reserve %d tokens. Retained checkpoint %s/checkpoint.json and history %s. "+
 				"Inspect custody; prepare a smaller supported image externally or use ordinary Refine and new exact approval if scope must change.",
-			owner, measured.RenderedBytes, mand.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, b.Run.Dir, strings.Join(paths, ", ")), 1)
+			owner, measured.RenderedBytes, mand.RenderedBytes, tools.InputBudgetBytes, reservedOutputTokens, b.Run.Dir, strings.Join(paths, ", ")), 1)
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o777); err != nil {
@@ -355,7 +355,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	state.History, state.Observations = history, observations
 	b.WorkingContext[owner] = state
 	b.s.Progress(fmt.Sprintf("kogen: %s local reset %d -> %d bytes; ceiling %d; reserve %d; history %s",
-		owner, measured.RenderedBytes, next.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, path))
+		owner, measured.RenderedBytes, next.RenderedBytes, tools.InputBudgetBytes, reservedOutputTokens, path))
 	return reduced, nil
 }
 
@@ -404,7 +404,7 @@ func observationsOf(input []any) []any {
 		}
 		if m["type"] == "function_call" && m["name"] == "finish" {
 			if args, ok := m["arguments"].(string); ok {
-				if summary, ok := agent.DecodeArguments(args)["summary"]; ok {
+				if summary, ok := tools.DecodeArguments(args)["summary"]; ok {
 					out = append(out, summary)
 				}
 			}

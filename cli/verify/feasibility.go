@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // Guidance is the shaping evidence guidance the shaper receives (SHP-10).

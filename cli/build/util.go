@@ -13,8 +13,8 @@ import (
 	"strings"
 	"unicode"
 
+	"kogen-loop/provider"
 	"kogen/project"
-	"kogen/provider"
 )
 
 func itoa(n int) string { return strconv.Itoa(n) }

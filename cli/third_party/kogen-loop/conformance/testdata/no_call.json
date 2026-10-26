@@ -1,0 +1,21 @@
+{
+  "description": "no-call ending: the model answers with text and no tool call; the text is a claim",
+  "task": {"prompt": "say hi"},
+  "exchanges": [
+    {"id": "resp-1", "usage": {"input_tokens": 4, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 2, "output_tokens_details": {"reasoning_tokens": 0}},
+     "items": [{"type": "message", "id": "msg-1", "role": "assistant", "content": [{"type": "output_text", "text": "All done.", "annotations": []}]}]}
+  ],
+  "expect": {
+    "exit": 0,
+    "requests": 1,
+    "events": [
+      {"type": "session.started", "resumed": false},
+      {"type": "request.started", "n": 1},
+      {"type": "request.attempt"},
+      {"type": "response", "n": 1, "response_id": "resp-1"},
+      {"type": "round.ended", "ending": "no_call", "terminal_tool": null, "claim": "All done.", "requests": 1,
+       "usage": {"input": 4, "cached": 0, "output": 2, "reasoning": 0, "state": "complete"}},
+      {"type": "session.ended", "status": "ended", "exit": 0}
+    ]
+  }
+}

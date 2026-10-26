@@ -212,3 +212,116 @@ Feature: Building
     And stderr contains "stage calculation gate passed"
     And stderr contains "stage compatibility gate passed"
     And the fake ChatGPT server received 3 requests
+
+  # The fake claude is a Node script, not a model: it answers like Claude Code and runs the
+  # PreToolUse hook command that Kogen put in the --settings file before each Write or Edit.
+  @LOOP-14 @LOOP-15
+  Scenario: The Claude Code executor produces the candidate and Kogen's own review and single commit land it
+    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And a fake claude with script "claude-correct-first-try" is on PATH
+    And the environment variable "ANTHROPIC_API_KEY" is "sk-ant-fake-not-a-key"
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 0
+    And HEAD has 1 new commit
+    And the committed contents of "calc.py" contain "isinstance"
+    And the fake claude ran 1 round
+    And fake claude round 1 received the argument "stream-json"
+    And fake claude round 1 received the argument "--session-id"
+    And no fake claude round received the argument "--bare"
+    And no fake claude round had the environment variable "ANTHROPIC_API_KEY"
+    And the run log records 1 executor round
+    And the review request contains the diff of "calc.py" against the start HEAD
+    And the fake ChatGPT server received 1 request
+
+  @LOOP-14 @LOOP-15
+  Scenario: A finish claim on a red tree returns Kogen's feedback to the same Claude session
+    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And a fake claude with script "claude-wrong-then-correct" is on PATH
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 0
+    And HEAD has 1 new commit
+    And the fake claude ran 2 rounds
+    And fake claude round 2 received the argument "--resume"
+    And fake claude round 2 resumed the session it started in round 1
+    And fake claude round 2 received a prompt containing "Verification pass 1 is not green."
+    And the run log records 2 executor rounds
+    And the run log shows verification pass 1 before review 1
+    And the fake ChatGPT server received 1 request
+
+  @LOOP-15
+  Scenario: The Claude Code hook refuses an Edit of a protected path and the Build still lands
+    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And a fake claude with script "claude-edits-protected-then-correct" is on PATH
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 0
+    And the run log shows an executor hook decision "deny" for the "Edit" tool
+    And the file ".style.cfg" is unchanged
+    And HEAD has 1 new commit
+    And the new commit does not change ".style.cfg"
+
+  @LOOP-14 @LOOP-15
+  Scenario: A protected file changed through Bash is not prevented but is detected and nothing is committed
+    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And a fake claude with script "claude-bash-writes-protected" is on PATH
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 1
+    And stdout contains "candidate/baseline_changed"
+    And stdout contains ".style.cfg"
+    And the run log records 1 executor round
+    And HEAD is unchanged
+    And no review request was sent
+
+  @LOOP-15
+  Scenario: A credential route that is not the subscription sign-in is refused before any edit
+    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And a fake claude with script "claude-api-key-auth" is on PATH
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 1
+    And stdout contains "executor/auth_refused"
+    And the fake claude emitted no tool call
+    And the file "calc.py" is unchanged
+    And HEAD is unchanged
+    And the fake ChatGPT server received 0 requests
+
+  @LOOP-15
+  Scenario: A Claude Code older than the qualified version is unavailable before any edit
+    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And a fake claude with script "claude-too-old" is on PATH
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 1
+    And stdout contains "executor/unavailable"
+    And the fake claude ran 0 rounds
+    And the file "calc.py" is unchanged
+    And HEAD is unchanged
+    And the fake ChatGPT server received 0 requests
+
+  @LOOP-14 @LOOP-10
+  Scenario: max_rounds leaves the candidate in place and the external checkpoint cannot be resumed
+    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 2}"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And a fake claude with script "claude-wrong-forever" is on PATH
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 1
+    And stdout contains "candidate/executor_round_limit"
+    And stdout contains "  edited: calc.py"
+    And the fake claude ran 2 rounds
+    And HEAD is unchanged
+    And no review request was sent
+    When the caller runs "kogen intent resume {build_id}"
+    Then the exit code is 1
+    And stdout contains "candidate/resume_refused"
+    And the fake claude ran 2 rounds
+    And HEAD is unchanged

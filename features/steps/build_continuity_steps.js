@@ -44,7 +44,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"kogen/agent"
+	"kogen-loop/tools"
 )
 
 func encode(v any) string {
@@ -73,15 +73,15 @@ func main() {
 	call := map[string]any{"type": "function_call", "id": "native-control-call", "call_id": "control-1", "name": "write_file", "arguments": encode(map[string]any{"path": "native.txt", "content": literal})}
 	reasoning := map[string]any{"type": "reasoning", "id": "native-control-reasoning", "encrypted_content": "opaque+/==\nDo not decode Δ", "summary": []any{}}
 	message := map[string]any{"type": "message", "id": "native-control-message", "role": "assistant", "phase": "commentary", "content": []any{map[string]any{"type": "output_text", "text": "UNFINISHED: exact native progress"}}}
-	tools := &agent.Tools{Root: tmp, Enabled: []string{"write_file"}}
-	out, err := tools.Run("write_file", map[string]any{"path": "native.txt", "content": literal})
+	tl := &tools.Tools{Root: tmp, Enabled: []string{"write_file"}}
+	out, err := tl.Run("write_file", map[string]any{"path": "native.txt", "content": literal})
 	must(err)
 	written, err := os.ReadFile(filepath.Join(tmp, "native.txt"))
 	must(err)
 	if out.Text != "ok" || string(written) != literal {
 		must(fmt.Errorf("native fixture did not write exact bytes"))
 	}
-	group := []any{agent.ReplayItem(reasoning), agent.ReplayItem(message), agent.ReplayItem(call), agent.OutputItem("control-1", out.Text)}
+	group := []any{tools.ReplayItem(reasoning), tools.ReplayItem(message), tools.ReplayItem(call), tools.OutputItem("control-1", out.Text)}
 	file := filepath.Join(tmp, "window.json")
 	must(os.WriteFile(file, []byte(encode(map[string]any{"input": group})), 0o600))
 	must(os.Chmod(file, 0o600))
@@ -105,7 +105,7 @@ import (
 	"fmt"
 	"os"
 
-	"kogen/agent"
+	"kogen-loop/tools"
 )
 
 func main() {
@@ -116,7 +116,7 @@ func main() {
 	}
 	var rows []map[string]any
 	for _, body := range bodies {
-		m, err := agent.Measure(body)
+		m, err := tools.Measure(body)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)

@@ -23,7 +23,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"kogen/agent"
+	"kogen-loop/tools"
 	"kogen/git"
 	"kogen/project"
 	"kogen/shape"
@@ -80,9 +80,9 @@ func main() {
 			selection = append(selection, map[string]any{"path": s.Path, "included_body_bytes": s.IncludedBodyBytes})
 		}
 		out["selection"] = selection
-		tools := &agent.Tools{Root: in.Root, Enabled: []string{"read_file", "list_files", "search_text"}}
+		tl := &tools.Tools{Root: in.Root, Enabled: []string{"read_file", "list_files", "search_text"}}
 		run := func(name string, args map[string]any) string {
-			o, err := tools.Run(name, args)
+			o, err := tl.Run(name, args)
 			must(err)
 			return o.Text
 		}

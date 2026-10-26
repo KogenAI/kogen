@@ -1,0 +1,3 @@
+{"name":"finish_after_write","only":"","needs":[],
+ "rounds":[{"actions":[{"write":{"path":"src/a.txt","content":"alpha\n"}},{"shell":"printf 'beta\\n' > src/b.txt"}],"end":"finish","claim":"wrote a and b","usage":{"input":120,"cached":20,"output":30}}],
+ "expect":{"rounds":[{"ending":"finish","usage_state":"complete"}],"files":{"src/a.txt":"alpha\n","src/b.txt":"beta\n"},"protected":"unchanged"}}

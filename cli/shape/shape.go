@@ -18,11 +18,12 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -452,7 +453,7 @@ func (sh *shaping) overlay() map[string][]byte {
 }
 
 func (sh *shaping) mainTools() []string {
-	return []string{agent.ReadFileTool, agent.ViewImageTool, agent.ListFilesTool, agent.SearchTextTool, agent.ProbeTool, agent.DocumentationTool}
+	return []string{tools.ReadFileTool, tools.ViewImageTool, tools.ListFilesTool, tools.SearchTextTool, agent.ProbeTool, tools.DocumentationTool}
 }
 
 // outcomeKind is how a conversation ended.
@@ -640,7 +641,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 		}
 		req.Input = input
 		call := sh.ev.BeginCall("shape", "", revision.Map(), "main shaping", sh.role)
-		resp, err := agent.Deliver(input, "shape", sh.ev.Record, func() (*provider.Response, error) {
+		resp, err := tools.Deliver(input, "shape", sh.ev.Record, func() (*provider.Response, error) {
 			r, err := sh.client.Respond(ctx, sh.s, req, call)
 			call.End(r, err)
 			return r, err
@@ -650,8 +651,8 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 		}
 		sh.progress(fmt.Sprintf("kogen: shape response %s wall_ms=%d", resp.Usage.Line(), time.Since(t0).Milliseconds()))
 		usage = usage.Add(resp.Usage)
-		calls := agent.Calls(resp.Items)
-		input = append(input, agent.Replay(resp.Items)...)
+		calls := tools.Calls(resp.Items)
+		input = append(input, tools.Replay(resp.Items)...)
 
 		var outputs []any
 		var result outcome
@@ -690,13 +691,13 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 					return outcome{}, usage, err
 				}
 				sh.noteTool(c.Name, out)
-				if c.Name == agent.DocumentationTool {
+				if c.Name == tools.DocumentationTool {
 					row := sh.ev.RetainDocumentation(c.Args(), out.Text)
 					started, finished := DocumentationProgress(row)
 					sh.progress(started)
 					sh.progress(finished)
 				}
-				if e := agent.ReadEvent(c, out, "shape"); e != nil {
+				if e := tools.ReadEvent(c, out, "shape"); e != nil {
 					sh.ev.Record(e)
 				}
 				outputs = append(outputs, toolOutput(c, out))
@@ -731,11 +732,11 @@ func nonNilStrings(s []string) []string {
 
 // noteTool records what a tool answer means for the conversation: reading the repository
 // counts as inspection, and a documentation result is kept for the lookups it may cite.
-func (sh *shaping) noteTool(name string, out agent.Output) {
+func (sh *shaping) noteTool(name string, out tools.Output) {
 	switch name {
-	case agent.ReadFileTool, agent.ListFilesTool, agent.SearchTextTool:
+	case tools.ReadFileTool, tools.ListFilesTool, tools.SearchTextTool:
 		sh.inspected = true
-	case agent.DocumentationTool:
+	case tools.DocumentationTool:
 		var result map[string]any
 		if err := json.Unmarshal([]byte(out.Text), &result); err == nil && result != nil {
 			sh.docs = append(sh.docs, result)
@@ -782,17 +783,17 @@ func (sh *shaping) writeManifest(revision Revision) (map[string]any, error) {
 var probeSummary = regexp.MustCompile(`\Aexit status: -?\d+\ntimed_out: (?:true|false)\nwall: [\d.]+ s(?:\n|\z)`)
 
 // runTool runs one of the shaper's read-only tools or its probe.
-func (sh *shaping) runTool(ctx context.Context, c agent.Call) (agent.Output, error) {
+func (sh *shaping) runTool(ctx context.Context, c tools.Call) (tools.Output, error) {
 	args := c.Args()
-	tools := sh.agentTools(ctx, sh.mainTools())
+	tl := sh.agentTools(ctx, sh.mainTools())
 	if c.Name != agent.ProbeTool {
-		return tools.Run(c.Name, args)
+		return tl.Run(c.Name, args)
 	}
 	sh.progress("kogen: probe: " + textOf(args["command"]))
-	var out agent.Output
+	var out tools.Output
 	_, err := sh.ev.ProbeText(nil, func() (string, error) {
 		var err error
-		out, err = tools.Run(c.Name, args)
+		out, err = tl.Run(c.Name, args)
 		return out.Text, err
 	})
 	if err != nil {
@@ -808,11 +809,11 @@ func (sh *shaping) runTool(ctx context.Context, c agent.Call) (agent.Output, err
 
 // agentTools are the tools a model may call in the checkout: names of them, the probe among
 // them when listed.
-func (sh *shaping) agentTools(ctx context.Context, names []string) *agent.Tools {
-	return &agent.Tools{
-		Root: sh.root, Session: sh.s, Repo: sh.repo, Enabled: names,
+func (sh *shaping) agentTools(ctx context.Context, names []string) *tools.Tools {
+	return &tools.Tools{
+		Root: sh.root, Session: sh.s, Repo: agent.Git(sh.repo), Enabled: names,
 		Probe:         func(command string, files any) (string, error) { return sh.probe(ctx, command, files) },
-		Documentation: agent.Documentation{UserAgent: documentationAgent(sh.client)},
+		Documentation: tools.Documentation{UserAgent: documentationAgent(sh.client)},
 	}
 }
 

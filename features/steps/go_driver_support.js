@@ -462,14 +462,14 @@ function configure(context, { setup = [], fix = [], checks = [], protect = [], a
   fs.writeFileSync(file, `version: 1\ncommands:\n${list('setup', setup, q)}${list('fix', fix, q)}${list('checks', checks, c => `name: ${c.name}\n      run: ${q(c.run)}`)}${acceptance}${protectText}${models}`);
 }
 
-// A tiny Go program that uses Kogen's packages (a module outside the repository that replaces "kogen" by <repo>/cli), for
+// A tiny Go program that uses Kogen's packages (a module outside the repository that replaces "kogen" by <repo>/cli and "kogen-loop" by <repo>/cli/third_party/kogen-loop), for
 // the few observations that need an internal function and have no user-visible form. Built once per source; returns
 // `(args, { input }) -> { out, code }`.
 async function goDriver(name, source) {
   const key = `go:${name}:${sha(source)}`;
   const bin = await once(key, async () => {
     const dir = path.join(workDir(), `go-${name}-${sha(source).slice(0, 8)}`); fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'go.mod'), `module driver\n\ngo 1.27\n\nrequire kogen v0.0.0\n\nreplace kogen => ${path.join(ROOT, 'cli')}\n`);
+    fs.writeFileSync(path.join(dir, 'go.mod'), `module driver\n\ngo 1.27.2\n\nrequire kogen v0.0.0\n\nrequire kogen-loop v0.0.0\n\nreplace kogen => ${path.join(ROOT, 'cli')}\n\nreplace kogen-loop => ${path.join(ROOT, 'cli', 'third_party', 'kogen-loop')}\n`);
     fs.writeFileSync(path.join(dir, 'main.go'), source);
     const env = { ...process.env, GOFLAGS: '-buildvcs=false', GOPROXY: 'off', GOTOOLCHAIN: 'local', GOWORK: 'off', HOME: process.env.HOME || dir };
     const out = path.join(dir, 'driver');
@@ -498,7 +498,7 @@ module.exports = {
 // ================================================================== Build-side accumulated suites (section added by the Build-side port)
 // Helpers for the suites that observe a run of Build, Review, Resume or recovery. Nothing above is changed.
 
-// A Go program kept in the repository at test/migration/drivers/<name>/ (its own module that replaces `kogen` by ../../../../cli),
+// A Go program kept in the repository at test/migration/drivers/<name>/ (its own module that replaces `kogen` by ../../../../cli and `kogen-loop` by ../../../../cli/third_party/kogen-loop),
 // for the few observations that need an internal function and have no user-visible form. Built once per run into the work
 // directory; returns `(args, { input, env, cwd }) -> { out, code }` (stdout and stderr interleaved).
 async function driverProgram(name) {

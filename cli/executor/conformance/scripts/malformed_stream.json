@@ -1,0 +1,3 @@
+{"name":"malformed_stream","only":"claude-code","needs":[],
+ "rounds":[{"actions":[],"end":"finish","claim":"","usage":null,"malformed":true}],
+ "expect":{"rounds":[],"error":"executor/protocol"}}

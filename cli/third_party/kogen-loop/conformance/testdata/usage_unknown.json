@@ -1,0 +1,22 @@
+{
+  "description": "the provider reports no usage: every category stays null and the state is unknown (nothing is estimated)",
+  "task": {"prompt": "finish"},
+  "exchanges": [
+    {"items": [{"type": "function_call", "call_id": "c1", "name": "finish", "arguments": "{\"summary\":\"done\"}"}]}
+  ],
+  "expect": {
+    "exit": 0,
+    "requests": 1,
+    "events": [
+      {"type": "session.started"},
+      {"type": "request.started", "n": 1},
+      {"type": "request.attempt"},
+      {"type": "response", "n": 1, "response_id": null,
+       "usage": {"input": null, "cached": null, "output": null, "reasoning": null, "state": "unknown", "source": "provider"}},
+      {"type": "tool.call", "call_id": "c1", "name": "finish"},
+      {"type": "round.ended", "ending": "terminal",
+       "usage": {"input": null, "cached": null, "output": null, "reasoning": null, "state": "unknown", "source": "provider"}},
+      {"type": "session.ended", "status": "ended", "exit": 0}
+    ]
+  }
+}

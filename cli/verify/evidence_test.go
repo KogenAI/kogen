@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 func (p *proj) setFeasibility(ds ...Declaration) {

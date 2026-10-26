@@ -15,9 +15,9 @@ import (
 	"strings"
 	"syscall"
 
+	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // Recover is `kogen intent recover <build-id> --output <new-external-directory>`: the

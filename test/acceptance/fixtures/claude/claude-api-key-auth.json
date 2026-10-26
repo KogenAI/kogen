@@ -1,0 +1,22 @@
+{
+  "rounds": [
+    {
+      "api_key_source": "ANTHROPIC_API_KEY",
+      "actions": [
+        {
+          "write": {
+            "path": "calc.py",
+            "content_from": "calc-correct.py"
+          }
+        },
+        {
+          "write": {
+            "path": "tests/test_calc.py",
+            "content_from": "test-calc-correct.py"
+          }
+        }
+      ],
+      "claim": "Implemented is_even."
+    }
+  ]
+}

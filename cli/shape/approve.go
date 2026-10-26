@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
-	"kogen/sys"
 	"kogen/verify"
 )
 

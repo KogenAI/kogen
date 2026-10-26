@@ -14,7 +14,7 @@ import (
 	"sync"
 	"syscall"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // BuildLockPath is the Build lock of the repository at root (AUT-4).

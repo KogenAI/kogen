@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 	"kogen/verify"
 )
 

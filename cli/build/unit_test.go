@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/tools"
 	"kogen/project"
-	"kogen/provider"
 	"kogen/verify"
 )
 
@@ -346,20 +346,20 @@ func TestMeasureIsTheExactUTF8SizeOfTheCompleteRequestWithInclusiveBoundaries(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := agent.Measure(body)
+	m, err := tools.Measure(body)
 	if err != nil || m.RenderedBytes != len(encoded) {
 		t.Fatalf("%v %d != %d", err, m.RenderedBytes, len(encoded))
 	}
 	contains(t, "body", string(encoded), "policy")
 	contains(t, "body", string(encoded), "sample")
 	body["padding"] = ""
-	empty, _ := agent.Measure(body)
+	empty, _ := tools.Measure(body)
 	for _, c := range []struct {
 		bytes int
 		fits  bool
 	}{{524_287, true}, {524_288, true}, {524_289, false}} {
 		body["padding"] = strings.Repeat("x", c.bytes-empty.RenderedBytes)
-		m, _ := agent.Measure(body)
+		m, _ := tools.Measure(body)
 		if m.RenderedBytes != c.bytes || m.InputBudgetBytes != 524_288 || m.OutputReserveTokens != 131_072 || m.Fits != c.fits {
 			t.Fatalf("%d: %+v", c.bytes, m)
 		}

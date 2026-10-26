@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // ModelResult is the Quint model check of one pass: not applicable ("none"), not run

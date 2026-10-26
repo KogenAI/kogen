@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 const demoSlug = "demo-intent"

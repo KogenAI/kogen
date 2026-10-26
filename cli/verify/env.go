@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // Tools are Kogen's own Node, Quint and Cucumber, as recorded at install (INS-4, LOOP-12).

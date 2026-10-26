@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
 )
@@ -76,6 +77,9 @@ func (b *Attempt) commit(ctx context.Context, ap Approved) (feedback string, lan
 		b.s.Puts(fmt.Sprintf("  note: %s:%s: %s", display(f["path"]), display(f["line"]), display(f["message"])))
 	}
 	b.s.Puts(fmt.Sprintf("  repairs: %d · tokens: %s · time: %s", b.Repairs, b.Usage.Total(), duration(b.elapsed())))
+	if x := b.Executor; x != nil && x.Name != executor.Native {
+		b.s.Puts("  executor: " + x.Name + " (" + x.Usage.line() + ")")
+	}
 	return "", true, nil
 }
 

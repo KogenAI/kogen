@@ -1,9 +1,10 @@
-// Package agent is what the shaper, the builder and the reviewer share: the prompts Kogen
-// gives each model, the tool definitions the models see, the tools themselves (read_file,
-// write_file, list_files, search_text, shell, view_image), the cut of long results and the
-// bookkeeping of the request / tool-call loop (replayed items, call/output pairing,
-// argument decoding). Every prompt byte, definition, result text and limit is the one the
-// models have always been given: they are part of Kogen's contract with them.
+// Package agent is what the shaper, the builder and the reviewer share that is Kogen's own:
+// the prompts Kogen gives each model and the definitions of Kogen's workflow tools (finish,
+// report_blocker, probe, the submit_* tools, shape_batch, worker_result). The generic tools
+// (read_file, write_file, list_files, search_text, shell, view_image, documentation), the cut
+// of long results and the bookkeeping of the request / tool-call loop live in kogen-loop's
+// tools package; Defs dispatches the generic names there. Every prompt byte and definition
+// is the one the models have always been given: they are part of Kogen's contract with them.
 package agent
 
 import (

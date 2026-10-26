@@ -5,7 +5,14 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"kogen-loop/tools"
 )
+
+// everyTool is the sixteen definitions: kogen-loop's generic tools and Kogen's own.
+var everyTool = []string{tools.ShellTool, tools.ViewImageTool, tools.ReadFileTool, tools.WriteFileTool, ReportBlockerTool, FinishTool,
+	tools.ListFilesTool, tools.SearchTextTool, ProbeTool, tools.DocumentationTool, SubmitTool, SubmitReviewTool, SubmitRefinementTool,
+	SubmitConfigurationTool, ShapeBatchTool, WorkerResultTool}
 
 // TestDefinitionsMatchTheElixirDefinitions compares every tool definition (Kogen.Tools.defs/1,
 // the submit_* definitions of shape, review, refine and init, shape_batch and worker_result)
@@ -19,13 +26,10 @@ func TestDefinitionsMatchTheElixirDefinitions(t *testing.T) {
 	if err := json.Unmarshal(data, &want); err != nil {
 		t.Fatal(err)
 	}
-	names := []string{ShellTool, ViewImageTool, ReadFileTool, WriteFileTool, ReportBlockerTool, FinishTool,
-		ListFilesTool, SearchTextTool, ProbeTool, DocumentationTool, SubmitTool, SubmitReviewTool, SubmitRefinementTool,
-		SubmitConfigurationTool, ShapeBatchTool, WorkerResultTool}
-	if len(names) != len(want) {
-		t.Fatalf("%d names, golden has %d", len(names), len(want))
+	if len(everyTool) != len(want) {
+		t.Fatalf("%d names, golden has %d", len(everyTool), len(want))
 	}
-	for _, name := range names {
+	for _, name := range everyTool {
 		t.Run(name, func(t *testing.T) {
 			var got any
 			if err := json.Unmarshal(mustJSON(t, Defs(name)[0]), &got); err != nil {
@@ -39,7 +43,7 @@ func TestDefinitionsMatchTheElixirDefinitions(t *testing.T) {
 }
 
 func TestDefsKeepTheOrderAskedFor(t *testing.T) {
-	defs := Defs(ShellTool, ReadFileTool, FinishTool)
+	defs := Defs(tools.ShellTool, tools.ReadFileTool, FinishTool)
 	var names []string
 	for _, d := range defs {
 		names = append(names, d["name"].(string))
@@ -50,7 +54,7 @@ func TestDefsKeepTheOrderAskedFor(t *testing.T) {
 	if got := Defs(); len(got) != 0 {
 		t.Errorf("Defs() = %v", got)
 	}
-	list := AsAny(Defs(ShellTool), Defs(FinishTool, ProbeTool))
+	list := AsAny(Defs(tools.ShellTool), Defs(FinishTool, ProbeTool))
 	if len(list) != 3 || list[2].(map[string]any)["name"] != "probe" {
 		t.Errorf("AsAny = %v", list)
 	}
@@ -75,9 +79,7 @@ func TestEveryDefinitionIsPlainJSON(t *testing.T) {
 			t.Errorf("%s is %T", path, v)
 		}
 	}
-	for _, name := range []string{ShellTool, ViewImageTool, ReadFileTool, WriteFileTool, ReportBlockerTool, FinishTool,
-		ListFilesTool, SearchTextTool, ProbeTool, DocumentationTool, SubmitTool, SubmitReviewTool, SubmitRefinementTool,
-		SubmitConfigurationTool, ShapeBatchTool, WorkerResultTool} {
+	for _, name := range everyTool {
 		walk(name, Defs(name)[0])
 	}
 }

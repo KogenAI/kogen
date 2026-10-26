@@ -12,10 +12,10 @@ import (
  "path/filepath"
  "strings"
  "time"
- "kogen/agent"
+ "kogen-loop/provider"
+ "kogen-loop/sys"
+ "kogen-loop/tools"
  "kogen/project"
- "kogen/provider"
- "kogen/sys"
 )
 
 // This is an external acceptance driver, not production policy. Only fixture credentials
@@ -85,8 +85,8 @@ func run(s selection) (map[string]any,error) {
  if s.Mode=="budget" {break}
  resp,e:=client.Respond(context.Background(),session,req,obs)
  if e!=nil {f,er:=fail(e);if er!=nil{return nil,er};failures=append(failures,f);break}
- calls=append(calls,len(agent.Calls(resp.Items)))
- if n==0 {req.Input=append(req.Input,agent.Replay(resp.Items)...);for _,call:=range agent.Calls(resp.Items) {req.Input=append(req.Input,call.Output("fixture tool result"))}}
+ calls=append(calls,len(tools.Calls(resp.Items)))
+ if n==0 {req.Input=append(req.Input,tools.Replay(resp.Items)...);for _,call:=range tools.Calls(resp.Items) {req.Input=append(req.Input,call.Output("fixture tool result"))}}
  }
  if s.Mode=="budget" {for _,target:=range []int{524287,524288,524289} {req.Input=[]any{map[string]any{"role":"user","content":""}};b,_:=json.Marshal(client.Body(req));req.Input[0].(map[string]any)["content"]=strings.Repeat("x",target-len(b));b,_=json.Marshal(client.Body(req));sizes=append(sizes,len(b));_,e:=client.Respond(context.Background(),session,req,obs);if e!=nil {f,er:=fail(e);if er!=nil{return nil,er};failures=append(failures,f)}}}
  return map[string]any{"selection":s,"records":records,"urls":tr.URLs,"rows":obs.Rows,"errors":failures,"calls":calls,"sizes":sizes},nil

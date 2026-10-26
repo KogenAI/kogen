@@ -1,0 +1,21 @@
+{
+  "pin": {
+    "module": "kogen-loop",
+    "protocol": "kogen-loop/v1",
+    "library": "loop/v1",
+    "digest": "4e1332b9f0aa686d76040466a965a43a5169ba9295631cf7bb9b8f62fb946638",
+    "files": 88,
+    "source_head": "bbf3fdd6d2e79b96eab6af23bcd6d66212893388",
+    "source_state": "clean"
+  },
+  "patch": "/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/integration-reference-v2.patch",
+  "archive": "/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/integration-new-files-v2.tar.gz",
+  "patch_sha256": "572944499c6b86d3dee6b0f3cb2b12cfa6496abe96508dff703b4331e9ad1219",
+  "archive_sha256": "7c9e49a61560ebdb6b2bfc1c9a4e6ab8e3333bc23c44357a88ac517e23ea84dd",
+  "fixes": [
+    "Native-qualified loop, including deadline cancellation and strict JSON regression repairs",
+    "sync excludes Kogen .kogen/ metadata and features/ acceptance fixtures",
+    "Claude scenario reads committed contents instead of mutating setup"
+  ],
+  "integration_check_note": "Root TestLoopPin could not run after syncing the qualified dependency: parent cli/go.mod still declares Go1.27, dependency declares Go1.27.2, so go mod tidy is required as ordinary native Build metadata reconciliation. This is not a pin check pass. Standalone dependency remains independently native-qualified; v2 frozen patch/archive unchanged."
+}

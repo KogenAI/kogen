@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/provider"
 	"kogen/shape"
-	"kogen/sys"
 )
 
 func must(err error) {

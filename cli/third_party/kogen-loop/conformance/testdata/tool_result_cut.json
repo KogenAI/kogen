@@ -1,0 +1,28 @@
+{
+  "description": "a shell result over 16384 bytes is cut (marker included) before the model sees it; tool.result reports cut=true",
+  "task": {"prompt": "print a lot"},
+  "exchanges": [
+    {"id": "resp-1", "usage": {"input_tokens": 3, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 3, "output_tokens_details": {"reasoning_tokens": 0}},
+     "items": [{"type": "function_call", "call_id": "c1", "name": "shell", "arguments": "{\"command\":\"yes abcdefghi | head -c 40000\"}"}]},
+    {"id": "resp-2", "usage": {"input_tokens": 3, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 3, "output_tokens_details": {"reasoning_tokens": 0}},
+     "items": [{"type": "function_call", "call_id": "c2", "name": "finish", "arguments": "{\"summary\":\"printed\"}"}]}
+  ],
+  "expect": {
+    "exit": 0,
+    "requests": 2,
+    "events": [
+      {"type": "session.started"},
+      {"type": "request.started", "n": 1},
+      {"type": "request.attempt"},
+      {"type": "response", "n": 1},
+      {"type": "tool.call", "call_id": "c1", "name": "shell"},
+      {"type": "tool.result", "call_id": "c1", "name": "shell", "cut": true},
+      {"type": "request.started", "n": 2},
+      {"type": "request.attempt"},
+      {"type": "response", "n": 2},
+      {"type": "tool.call", "call_id": "c2", "name": "finish"},
+      {"type": "round.ended", "ending": "terminal", "requests": 2},
+      {"type": "session.ended", "status": "ended", "exit": 0}
+    ]
+  }
+}

@@ -1,0 +1,279 @@
+# kogen-loop caller contract v1
+
+Status: maintained local caller contract, adopted 26 October 2026 from external reference revision 2. The reference's orchestrator-owned frozen status is historical, not authority for this tree. Changes go through this file and `api/` together, with the version rule below. Protocol id: `kogen-loop/v1`. Library API id: `loop/v1`.
+
+kogen-loop has two caller surfaces with the same semantics:
+
+1. **Go library** (`kogen-loop/loop`, `kogen-loop/provider`, `kogen-loop/tools`, `kogen-loop/sys`). Hosts can call it in process; this tree makes no current Kogen consumer claim.
+2. **Process protocol** (`kogen-loop run`, `kogen-loop capabilities`). Independent callers use it: one task in, JSON Lines events out, exit code.
+
+Neither surface knows Kogen's approval, Intent, baseline, verification, review, commit or checkpoint semantics.
+
+## 1. Invariants
+
+- **L1 Claims, not completion.** A round ends when the model calls a terminal tool (default `finish`) or answers without a tool call. The ending and any summary are model claims. kogen-loop never reports work as verified, approved or complete. No task field, flag or tool lets a model or caller mark a task successful.
+- **L2 Byte fidelity.** Moving code into kogen-loop doesn't change model-facing bytes or wire bodies:
+  - tool definitions given the same template variables;
+  - tool result texts and the 16384-byte cut;
+  - replay items;
+  - request bodies, cache identity placement, retry and stream accumulation.
+  The adopted golden tests guard these compatibility bytes.
+- **L3 No hidden fallback.** No provider, route, key or model substitution and no extra retries beyond the provider policy moved from Kogen (3 transport attempts, one unreadable-answer retry, one refresh after a 401 for sign-in routes). Refusals are reported honestly.
+- **L4 Unknown stays unknown.** Usage comes from provider-reported fields only. Missing values are `null` and the usage `state` is `partial` or `unknown`. Nothing is estimated.
+- **L5 Credentials.** The loop reads the existing store at `$HOME/.kogen/credentials/<provider>.json` (same format, 0600) with the same login/refresh behavior. It never prints, copies, proxies or exports tokens. Signing in remains the caller's job (`kogen provider login …`, or `provider.Login` for library callers).
+- **L6 Process custody.** Shell tools run in their own process groups. Cancellation, deadline or interruption terminates every group the loop started (SIGTERM, then SIGKILL after a bounded wait) before the call returns. A host binary calls `sys.MaybeSupervise(os.Args[1:])` and `sys.EnableSupervisor()` first in `main`, as Kogen does. `cmd/kogen-loop` does so too, so a killed host still takes its command groups down. A library caller that skips this keeps only the in-process termination.
+
+## 2. Go library API (`loop/v1`)
+
+```go
+package loop
+
+// Request is one model request of a round.
+type Request struct {
+    Owner        string        // conversation owner label (e.g. "build"); used for cache identity and events
+    Role         provider.Role // provider, model, effort, base URL
+    Instructions string
+    Input        []any         // Responses-style input items
+    Tools        []any         // model-facing tool definitions, sent verbatim
+}
+
+// Requester sends one request. It returns the response and the input actually sent
+// (a context policy may reduce it).
+type Requester interface {
+    Request(ctx context.Context, r Request) (*provider.Response, []any, error)
+}
+
+// ContextPolicy prepares the input of a request. The default refuses an over-budget request
+// (typed error loop/context_budget_exceeded) instead of silently clipping. Compaction,
+// working-window and summary experiments implement this interface.
+type ContextPolicy interface {
+    Prepare(ctx context.Context, r Request) ([]any, error)
+}
+
+// Direct is the provider-backed Requester (provider.Client.Respond) with a ContextPolicy
+// and an optional provider.Observer for attempt records.
+type Direct struct {
+    Client   *provider.Client
+    Session  *sys.Session
+    Policy   ContextPolicy      // nil: FailOverBudget{}
+    Observer provider.Observer  // nil: none
+    CacheID  string             // one cache identity per conversation (kept across rounds)
+    Cache    *provider.Cache
+}
+
+// Handled is a caller's answer to a tool call it intercepts.
+type Handled struct {
+    Handled  bool         // false: the engine runs the call with Round.Tools
+    Output   tools.Output // the call's output when Handled and not Terminal
+    Terminal bool         // the call ends the round after this batch (no output is appended)
+}
+
+// Hooks let a caller attach custody, checkpoints, events and policy without forking the engine.
+// Every hook is optional. A hook error stops the round and is returned unchanged.
+type Hooks struct {
+    BeforeRequest func(ctx context.Context, input []any) error
+    AfterResponse func(ctx context.Context, resp *provider.Response, sent []any) error
+    BeforeCall    func(ctx context.Context, call tools.Call, input []any) error
+    HandleCall    func(ctx context.Context, call tools.Call) (Handled, error)
+    AfterCall     func(ctx context.Context, call tools.Call, out tools.Output, terminal bool, input []any) error
+}
+
+// Round describes one round.
+type Round struct {
+    Owner        string
+    Role         provider.Role
+    Instructions string
+    Definitions  []any        // tool definitions sent to the model
+    Tools        *tools.Tools // executes non-handled calls (enabled set, protected/excluded paths)
+    Terminal     []string     // names that end the round without execution; default ["finish"]
+}
+
+type Ending string
+
+const (
+    EndTerminal Ending = "terminal" // a terminal tool was called
+    EndNoCall   Ending = "no_call"  // the model answered without any tool call
+)
+
+type Result struct {
+    Ending   Ending
+    Terminal *tools.Call        // last terminal call of the final batch (EndTerminal only)
+    Input    []any              // conversation after the round: sent input + replayed response items + outputs of non-terminal calls
+    Response *provider.Response // last response
+    Requests int                // requests sent in this round
+}
+
+func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (Result, error)
+```
+
+**Engine order (normative).** This is exactly the order Kogen's builder round used at `56eecd57`:
+
+1. `BeforeRequest(input)`.
+2. `resp, sent := rq.Request(...)`.
+3. `AfterResponse(resp, sent)`.
+4. `input = sent ++ tools.Replay(resp.Items)` and `calls = tools.Calls(resp.Items)`.
+5. For each call, in order:
+   1. Return `ctx.Err()` if it's set.
+   2. `BeforeCall(call, input ++ outs)`.
+   3. If the name is in `Terminal`, mark it terminal and don't execute it. When a batch has several terminal calls, the **last** one is `Result.Terminal`, as Kogen's builder keeps it; earlier ones stay unanswered.
+   4. Otherwise take `HandleCall` if it's set and handled; if not, `out, err := Tools.Call(call)` and use `out.Cut()`. `err` is returned as a stop and is only non-nil when a shell is interrupted.
+   5. `AfterCall(call, out, terminal, input ++ outs)`.
+   6. Append `call.Output(out)` to `outs` unless the call is terminal.
+6. If no call is terminal and `len(calls) > 0`, set `input = input ++ outs` and go to step 1.
+7. Otherwise return `Result{Ending, Terminal, Input: input ++ outs, …}`. The ending is `EndNoCall` when `len(calls) == 0`.
+
+Cancellation observed after a response/call hook returns nil stops the round
+before executing a tool, starting another request or returning an ending. A hook error still
+takes precedence and is returned unchanged.
+
+A multi-round conversation is the caller's: after a terminal call, the next round's input appends `tools.OutputItem(terminal.CallID(), feedback)`. After a no-call ending it appends a user message `{"role":"user","content":feedback}`. `loop.Session` (below) does this for standalone callers.
+
+```go
+// Session is a standalone multi-round conversation with optional transcript persistence.
+type SessionConfig struct {
+    Root         string
+    Role         provider.Role
+    Instructions string   // "": DefaultInstructions
+    Enabled      []string // generic tools; default read_file, write_file, list_files, search_text, shell
+    Protected    []string // write_file refuses these paths (prevention only; not detection)
+    Excluded     []string
+    Terminal     []string // default ["finish"]
+    Dir          string   // transcript directory ("" = in memory)
+    Client       *provider.Client
+    Session      *sys.Session
+    Emit         func(api.Event) // event sink (nil: discard)
+}
+func NewSession(cfg SessionConfig) (*Session, error)
+func ResumeSession(cfg SessionConfig) (*Session, error) // loads Dir/session.json; refuses mismatch (protocol, role, instructions/definitions digest)
+func (s *Session) Round(ctx context.Context, text string) (Result, error) // first: opening user message; later: feedback per the rule above
+```
+
+## 3. Process protocol (`kogen-loop/v1`)
+
+### Commands
+
+- `kogen-loop capabilities --json` prints one `api.Capabilities` object. It needs no network or credentials.
+- `kogen-loop run --task FILE|-` reads one `api.Task` (strict JSON: unknown fields refused) and runs **one round**. It writes JSON Lines `api.Event`s to stdout, nothing else. Diagnostics go to stderr.
+- `kogen-loop version` prints the module version/digest line.
+
+### Task (`api.Task`)
+
+```json
+{
+  "protocol": "kogen-loop/v1",
+  "root": "/abs/working/dir",
+  "role": {"provider": "chatgpt", "model": "gpt-6.1-sol", "effort": "medium", "base_url": ""},
+  "instructions": "",
+  "prompt": "what to do (first round) or feedback (resumed round)",
+  "tools": ["read_file", "write_file", "list_files", "search_text", "shell"],
+  "protected": [], "excluded": [],
+  "terminal": ["finish"],
+  "deadline_seconds": 0,
+  "session": {"dir": "", "resume": false},
+  "requires": []
+}
+```
+
+`requires` lists capability names the caller depends on (for example `"session_resume"`). A missing capability fails before any request with `loop/unsupported_capability`.
+
+### Events (`api.Event`)
+
+Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `type`. Types in v1:
+
+| type | fields |
+|---|---|
+| `session.started` | `session_id`, `resumed` (bool), `role`, `capabilities_digest` |
+| `request.started` | `n`, `owner`, `model`, `effort` |
+| `request.attempt` | `n`, `record` (the provider observer record, credentials never included) |
+| `response` | `n`, `response_id`, `usage` (`api.Usage`) |
+| `tool.call` | `call_id`, `name`, `arguments_sha256` |
+| `tool.result` | `call_id`, `name`, `result_sha256`, `bytes`, `cut` (bool). `bytes` and `result_sha256` describe what the model received, after the cut. |
+| `round.ended` | `ending` (`terminal`/`no_call`), `terminal_tool`, `claim` (terminal arguments or final text, bounded 16384 bytes; **a claim, not proof**), `requests`, `usage` (round total) |
+| `error` | `class`, `reason`, `detail` (same shape as `sys.Error`) |
+| `session.ended` | `status` (`ended`/`failed`/`interrupted`), `exit` |
+
+`session.ended` is always the last line. Callers must ignore unknown fields and unknown event types inside the same major version.
+
+### Usage (`api.Usage`)
+
+`{"input": n|null, "cached": n|null, "output": n|null, "reasoning": n|null, "state": "complete"|"partial"|"unknown", "source": "provider"}`
+
+`state` is computed over these four categories. Inconsistent provider usage becomes all `null` with `unknown`. A round total is `null` for a category as soon as one response lacks it.
+
+### Exit codes
+
+| code | meaning |
+|---|---|
+| 0 | the round ended (`round.ended` emitted) |
+| 1 | runtime or provider failure, including a missing sign-in (`error` emitted) |
+| 2 | invalid task, unsupported protocol or capability, missing transcript, `session_mismatch` |
+| 130 / 143 | interrupted by SIGINT / SIGTERM (`session.ended` status `interrupted`) |
+
+### Control
+
+- SIGINT or SIGTERM cancels the round, terminates all tool process groups (L6) and exits.
+- `deadline_seconds` > 0 bounds the whole round. Expiry is `error` `loop/deadline` with exit 1.
+- stdin carries only the task (`--task -`). There's no interactive control channel in v1.
+
+### Session resume (capability `session_resume: "transcript"`)
+
+With `session.dir`, the loop writes `session.json` atomically (0600, directory 0700) **after each completed round**:
+`{protocol, session_id, role, instructions_sha256, definitions_sha256, terminal, input}`. `terminal` is `{"call_id", "name"}` of the last round's terminal call, or `null` after a no-call ending. The cache identity is the `session_id`, so it survives a resume. A standalone `Session` answers every unanswered call id of the previous round with the feedback.
+
+`resume: true` loads it, refuses any mismatch (`loop/session_mismatch`), and runs one more round with `prompt` as feedback (rule in §2). A crash inside a round resumes from the last completed round. Tool effects after that boundary are the caller's to inspect: the loop doesn't replay or undo them. This standalone transcript is **not** Kogen's checkpoint format. Kogen keeps its own custody through hooks.
+
+## 4. Capabilities (`api.Capabilities`)
+
+```json
+{
+  "protocol": "kogen-loop/v1", "library": "loop/v1", "version": "<digest or dev label>",
+  "providers": ["chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible"],
+  "tools": ["read_file", "write_file", "list_files", "search_text", "shell", "view_image", "documentation"],
+  "terminal_default": ["finish"],
+  "session_resume": "transcript",
+  "context_policies": ["fail_over_budget"],
+  "usage": "provider",
+  "images": true,
+  "subagents": false,
+  "compaction": false
+}
+```
+
+`false` and missing capabilities are real absences, not hidden equivalents. Subagents, compaction, alternative read/edit tools and review/build mechanisms are future experiments behind `ContextPolicy`, `HandleCall` and tool registration. Defaults don't change without scoped evidence.
+
+## 5. Errors
+
+Typed `sys.Error{Class, Reason, Detail, Exit}`. Provider errors keep their existing classes and texts (moved from Kogen). New loop classes:
+- `loop/context_budget_exceeded`
+- `loop/deadline`
+- `loop/unsupported_capability`
+- `loop/session_mismatch`
+- `loop/invalid_task`
+- `loop/unsupported_protocol`
+
+## 6. Versioning and compatibility
+
+- **Additive changes in v1** (new optional task field with a safe default, new event type or field, new capability) need a contract note in this file and a conformance fixture. Callers ignore unknowns.
+- **Breaking changes** (removed or renamed field, changed meaning, changed engine order, changed default behavior) need `kogen-loop/v2` and `loop/v2`, and consumers must migrate deliberately.
+The external reference described a Kogen-owned synchronized copy at
+`cli/third_party/kogen-loop/`, a `replace` directive, sync script and
+`cli/loop-pin.json` digest checks. That is historical integration context, not
+implemented machinery or a verified current consumer/pin in this repository.
+Kogen-side synchronization and pin updates remain outside this component's scope.
+
+## 7. Conformance
+
+`conformance/` holds recorded fake-provider exchanges and expected event sequences. A change that alters an expected sequence must update the fixture in the same reviewable change and say why. Required cases:
+- terminal ending;
+- no-call ending;
+- multi-call batch with terminal in the middle (later calls still run; terminal output not appended);
+- handled call;
+- hook error stops the round;
+- tool result cut;
+- over-budget refusal;
+- deadline;
+- interruption with a running shell child (group terminated);
+- strict task refusal;
+- `requires` refusal;
+- transcript resume and mismatch refusal;
+- usage `unknown` preserved as `null`.

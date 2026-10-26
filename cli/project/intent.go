@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // Intent is `.kogen/intents/<slug>/intent.md` as read: `intent.md`, `acceptance.feature` and an

@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"kogen/agent"
+	"kogen-loop/tools"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 const shpWorkersConfig = "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nprotect: [guard.txt]\nshape_workers:\n  enabled: true\n  read: {model: luna, effort: medium}\n  probe: {model: luna, effort: medium}\n  draft: {model: luna, effort: max}\n"
@@ -602,7 +602,7 @@ func TestWorkersReceiveBoundedLongLineReadsAndReplayTheDeliveredDisplayExactly(t
 	shpEq(t, "worker requests", len(workers), 3)
 	continued, replayed := workers[1], workers[2]
 	delivered := shpOutputs(continued)["large"]
-	if want := agent.Cut("1\t" + original); delivered != want {
+	if want := tools.Cut("1\t" + original); delivered != want {
 		t.Fatalf("delivered %d bytes, want the cut display (%d bytes)", len(delivered), len(want))
 	}
 	if len(delivered) > 16_384 || !strings.Contains(delivered, "bytes omitted") {

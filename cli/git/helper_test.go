@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // testEnv is the process environment without Git's own variables, isolated from the

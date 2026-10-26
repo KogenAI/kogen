@@ -148,11 +148,12 @@ import (
 	"path/filepath"
 	"sync"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/build"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 )
 
 func encode(v any) string {
@@ -202,7 +203,7 @@ func main() {
 	case "measure":
 		var rows []any
 		for _, body := range in.Bodies {
-			r, err := agent.Measure(body)
+			r, err := tools.Measure(body)
 			must(err)
 			rows = append(rows, m{"rendered_bytes": r.RenderedBytes, "fits": r.Fits, "input_budget_bytes": r.InputBudgetBytes, "output_reserve_tokens": r.OutputReserveTokens})
 		}
@@ -218,7 +219,7 @@ func validation(images []struct{ Name, Base64 string }) {
 	tmp, err := os.MkdirTemp("", "image-validation-")
 	must(err)
 	defer os.RemoveAll(tmp)
-	tools := &agent.Tools{Root: tmp, Enabled: []string{"view_image"}}
+	tl := &tools.Tools{Root: tmp, Enabled: []string{"view_image"}}
 	advertised := false
 	for _, d := range agent.Defs("view_image") {
 		if d["name"] == "view_image" {
@@ -237,16 +238,16 @@ func validation(images []struct{ Name, Base64 string }) {
 			must(err)
 			must(os.WriteFile(p, raw, 0o644))
 		}
-		var out agent.Output
+		var out tools.Output
 		if advertised {
-			out, err = tools.Run("view_image", m{"path": img.Name})
+			out, err = tl.Run("view_image", m{"path": img.Name})
 			must(err)
 		} else {
-			out = agent.Output{Text: "native view_image not implemented"}
+			out = tools.Output{Text: "native view_image not implemented"}
 		}
 		cut := out.Cut()
 		uncut := out.Typed() && encode(cut.Value()) == encode(out.Value())
-		rows = append(rows, m{"name": img.Name, "output": out.Value(), "uncut": uncut, "framed": agent.OutputItem(img.Name, out.Value())})
+		rows = append(rows, m{"name": img.Name, "output": out.Value(), "uncut": uncut, "framed": tools.OutputItem(img.Name, out.Value())})
 	}
 	fmt.Println(encode(m{"rows": rows, "advertised": advertised}))
 }
@@ -257,19 +258,19 @@ func control(b []byte) {
 	call := m{"type": "function_call", "id": "control-item", "call_id": "control-call", "name": "view_image", "arguments": encode(m{"path": p})}
 	r := m{"type": "reasoning", "id": "opaque-item", "encrypted_content": "opaque+/==\nΔ\U0001F642", "summary": []any{}}
 	msg := m{"type": "message", "id": "message-item", "role": "assistant", "phase": "commentary", "content": []any{m{"type": "output_text", "text": "UNFINISHED synthetic observation"}}}
-	prefix := []any{agent.ReplayItem(r), agent.ReplayItem(msg), agent.ReplayItem(call)}
+	prefix := []any{tools.ReplayItem(r), tools.ReplayItem(msg), tools.ReplayItem(call)}
 	meta := m{"version": 1, "path": p, "sha256": hash(b), "bytes": len(b), "format": "png", "width": 1, "height": 1, "read_candidate": "UNKNOWN", "capture_candidate": "UNKNOWN", "route": "UNKNOWN", "viewport": "UNKNOWN", "fixture_state": "UNKNOWN"}
 	imageURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(b)
 	output := []any{m{"type": "input_text", "text": encode(meta)}, m{"type": "input_image", "image_url": imageURL}}
 	authority := m{"role": "user", "content": provider.ContractBlocks("synthetic stable authority", "synthetic current progress")}
-	items := append(append([]any{authority}, prefix...), agent.OutputItem("control-call", output))
-	tools := []any{
+	items := append(append([]any{authority}, prefix...), tools.OutputItem("control-call", output))
+	defs := []any{
 		m{"type": "function", "name": "view_image", "description": "Synthetic read-only image control", "parameters": m{"type": "object", "properties": m{"path": m{"type": "string"}}, "required": []any{"path"}, "additionalProperties": false}},
 		m{"type": "function", "name": "cache_data", "description": "Synthetic opaque-data schema, not cache controls", "parameters": m{"type": "object", "properties": m{"prompt_cache_options": m{"type": "string"}, "prompt_cache_breakpoint": m{"type": "string"}}, "required": []any{"prompt_cache_options", "prompt_cache_breakpoint"}, "additionalProperties": false}},
 	}
 	// The request as sent with cache controls, and as sent again after the provider refuses them: both read off the wire
 	// of one logical request answered by a local provider.
-	body, compatible := fallback(items, tools)
+	body, compatible := fallback(items, defs)
 
 	s := m{"opaque": opaque, "selected": base64.StdEncoding.EncodeToString(b)}
 	safeEvent := clone(meta)
@@ -289,9 +290,9 @@ func control(b []byte) {
 		pad += "Δ"
 	}
 	bad = append(bad, logsWith([]any{with("padding", pad)}, safeLogs["diagnostic"].(string)))
-	withReasoning := func(suffix string) any { x := clone(r); x["encrypted_content"] = opaque + suffix; return agent.ReplayItem(x) }
-	reviewCall := func(id string) m { x := clone(call); x["call_id"] = id; return agent.ReplayItem(x) }
-	reviewWindow := []any{withReasoning("-review"), reviewCall("image-review"), agent.OutputItem("image-review", output)}
+	withReasoning := func(suffix string) any { x := clone(r); x["encrypted_content"] = opaque + suffix; return tools.ReplayItem(x) }
+	reviewCall := func(id string) m { x := clone(call); x["call_id"] = id; return tools.ReplayItem(x) }
+	reviewWindow := []any{withReasoning("-review"), reviewCall("image-review"), tools.OutputItem("image-review", output)}
 	buildCallOnly := clone(call)
 	buildCallOnly["call_id"] = "image-build"
 	safety := m{
@@ -311,8 +312,8 @@ func control(b []byte) {
 		c["call_id"], c["id"] = "image-"+owner, "item-"+owner
 		rr := clone(r)
 		rr["encrypted_content"] = opaque + "-" + owner
-		pre := []any{agent.ReplayItem(rr), agent.ReplayItem(msg), agent.ReplayItem(c)}
-		return append(append([]any{}, pre...), agent.OutputItem(c["call_id"], output)), m{"owner": owner, "prefix": pre, "call_id": c["call_id"], "path": p, "width": 1, "height": 1, "base64": base64.StdEncoding.EncodeToString(b)}
+		pre := []any{tools.ReplayItem(rr), tools.ReplayItem(msg), tools.ReplayItem(c)}
+		return append(append([]any{}, pre...), tools.OutputItem(c["call_id"], output)), m{"owner": owner, "prefix": pre, "call_id": c["call_id"], "path": p, "width": 1, "height": 1, "base64": base64.StdEncoding.EncodeToString(b)}
 	}
 	buildInput, bg := group("build")
 	reviewInput, rg := group("review")

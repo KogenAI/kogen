@@ -13,9 +13,9 @@ import (
 	"slices"
 	"strings"
 
+	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // Readiness checks whether an Intent is ready to build (SHP-8): the SHP-5 rules, the model

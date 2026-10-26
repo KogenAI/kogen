@@ -16,7 +16,7 @@ import (
 	"strings"
 	"syscall"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // Tree returns the id of the candidate (VER-10): every tracked file and every untracked

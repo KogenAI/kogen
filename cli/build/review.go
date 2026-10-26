@@ -10,10 +10,11 @@ import (
 	"slices"
 	"strings"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -386,10 +387,10 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 		if err := b.Track(); err != nil {
 			return reviewVerdict{}, err
 		}
-		input := slices.Concat(active, agent.Replay(resp.Items))
-		calls := agent.Calls(resp.Items)
-		tools := &agent.Tools{
-			Root: b.Root, Session: b.s, Repo: b.repo, Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded,
+		input := slices.Concat(active, tools.Replay(resp.Items))
+		calls := tools.Calls(resp.Items)
+		tl := &tools.Tools{
+			Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded,
 		}
 
 		var outs []any
@@ -419,18 +420,18 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 				}
 				if probs != nil {
 					problems = probs
-					outs = append(outs, call.Output(agent.Cut("invalid verdict:\n"+strings.Join(probs, "\n"))))
+					outs = append(outs, call.Output(tools.Cut("invalid verdict:\n"+strings.Join(probs, "\n"))))
 				} else {
 					verdict = v
 					outs = append(outs, call.Output("accepted"))
 				}
 			default:
-				out, err := tools.Call(call)
+				out, err := tl.Call(call)
 				if err != nil {
 					return reviewVerdict{}, err
 				}
 				result := out.Cut()
-				if event := agent.ReadEvent(call, result, "review"); event != nil {
+				if event := tools.ReadEvent(call, result, "review"); event != nil {
 					b.Run.Event(event)
 				}
 				b.Run.Event(map[string]any{

@@ -1,0 +1,3 @@
+{"name":"harness_error_result","only":"claude-code","needs":[],
+ "rounds":[{"actions":[],"end":"finish","claim":"","usage":null,"harness_error":true}],
+ "expect":{"rounds":[],"error":"executor/failed"}}

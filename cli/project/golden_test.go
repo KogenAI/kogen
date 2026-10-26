@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // golden.json holds the results of the Elixir Kogen for the inputs below, generated once by

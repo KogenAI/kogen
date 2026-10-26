@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
 	"kogen/build"
-	"kogen/provider"
+	"kogen/executor"
+	"kogen/executor/claudecode"
+	"kogen/project"
 	"kogen/shape"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -21,6 +25,20 @@ type engineJob struct {
 	request     string
 	requestPath string // empty when the request came from stdin
 	diagnostic  *build.Diagnostic
+}
+
+// externalExecutor is the program's external build executors (docs/executor-contract.md):
+// Claude Code, run on the user's own sign-in, with this binary's hidden hook subcommand as its
+// write-prevention hook. Any other executor name is refused when the configuration is read.
+func externalExecutor(role project.Role) (executor.Executor, error) {
+	if role.Executor != project.ExecutorClaudeCode {
+		return nil, executor.Fail(executor.ReasonUnavailable, "executor "+role.Executor+" is not available in this program")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, executor.Fail(executor.ReasonUnavailable, "cannot locate this program for the executor hooks: "+err.Error())
+	}
+	return claudecode.New(claudecode.Options{HookCommand: []string{exe, claudecode.HookSubcommand}}), nil
 }
 
 // runEngine runs the Intent commands and init and returns the exit code.
@@ -49,10 +67,10 @@ func runEngine(job engineJob) int {
 		code, err = shape.Approve(s.Context(), s, shape.ApproveInput{Project: job.project, Slug: inv.slug,
 			Hash: inv.hash, By: inv.by, Tools: tools})
 	case "build":
-		code, err = build.Build(s.Context(), s, build.Input{Deps: build.Deps{Client: client, Tools: tools},
+		code, err = build.Build(s.Context(), s, build.Input{Deps: build.Deps{Client: client, Tools: tools, External: externalExecutor},
 			Project: job.project, Slug: inv.slug, Context: job.diagnostic})
 	case "resume":
-		code, err = build.Resume(s.Context(), s, build.ResumeInput{Deps: build.Deps{Client: client, Tools: tools},
+		code, err = build.Resume(s.Context(), s, build.ResumeInput{Deps: build.Deps{Client: client, Tools: tools, External: externalExecutor},
 			Project: job.project, ID: inv.slug})
 	case "recover":
 		code, err = build.Recover(s.Context(), s, build.RecoverInput{Project: job.project, ID: inv.slug, Output: job.output})

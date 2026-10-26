@@ -300,3 +300,31 @@ Feature: Project setup
     Then the exit code is 0
     And stdout contains "Setup: true"
     And stdout contains "Left out: setup-1 (mkdir seeded) is not repeatable: its second run failed with status 1; setup-2 (echo run >> runs.txt) is not repeatable: its second run changed runs.txt"
+
+  @SET-14 @LOOP-14
+  Scenario: An executor on the review role is a configuration error
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    And the project config sets "models.review" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 3
+    And stdout contains "environment/project_config_invalid: {abs:.kogen/project.yaml}"
+    And stdout contains "executor"
+    And the fake ChatGPT server received 0 requests
+
+  @SET-14
+  Scenario: The Claude Code executor forbids a provider on the build role
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    And the project config sets "models.build" to "{executor: claude-code, provider: anthropic, model: claude-sonnet-5-5, effort: high}"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 3
+    And stdout contains "environment/project_config_invalid: {abs:.kogen/project.yaml}"
+    And stdout contains "provider"
+    And the fake ChatGPT server received 0 requests

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	"kogen-loop/sys"
 	"kogen/git"
-	"kogen/sys"
 )
 
 // testEnv is the process environment without Git's own variables, isolated from the

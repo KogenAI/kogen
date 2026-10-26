@@ -1,0 +1,1 @@
+{"name":"interrupt_kills_children","only":"","needs":[],"cancel_after_seconds":4,"rounds":[{"actions":[{"spawn_orphan":true},{"shell":"sleep 30"}],"end":"finish","claim":"never","usage":null}],"expect":{"rounds":[],"error":"executor/","no_live_child":true}}

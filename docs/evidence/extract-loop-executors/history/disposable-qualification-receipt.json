@@ -1,0 +1,65 @@
+{
+  "at": "2026-10-26T10:17:31.092818+00:00",
+  "candidate": "dev+ee4666d2",
+  "scope": "Disposable real Claude Code executor fixture only; not native product source adoption",
+  "auth": {
+    "loggedIn": true,
+    "authMethod": "claude.ai",
+    "apiProvider": "firstParty",
+    "subscriptionType": "max"
+  },
+  "init": [
+    {
+      "model": "claude-sonnet-5-5",
+      "apiKeySource": "none",
+      "session_id": "d78d53b9-20d7-437b-8a28-3f297aa3a602",
+      "claude_code_version": "2.1.306"
+    }
+  ],
+  "build_result": {
+    "attempt_usage": {
+      "input": 17148,
+      "cached": 11136,
+      "output": 239,
+      "reasoning": 67
+    },
+    "build": "486eea71",
+    "commit": "3442008f7fecd33d9dfbc6b878b8f0930622712e",
+    "executor": {
+      "name": "claude-code",
+      "version": "claude-code 2.1.306 (Claude Code)",
+      "session_id": "d78d53b9-20d7-437b-8a28-3f297aa3a602",
+      "rounds": 1,
+      "usage": {
+        "input": 68606,
+        "cached": 56016,
+        "output": 633,
+        "reasoning": null,
+        "state": "complete",
+        "source": "harness",
+        "cost_usd": 0.0622796
+      }
+    },
+    "model_active_ms": 21801,
+    "not_run": [],
+    "outcome": "landed",
+    "passes": 1,
+    "repairs": 0,
+    "resumed_from": null,
+    "reviews": 1,
+    "root_build": null,
+    "slug": "is-even",
+    "start_head": "300e2b33a5917a4e41fc4c73ecc6063ac35ed9eb",
+    "unknown_requests": 0,
+    "usage": {
+      "input": 17148,
+      "cached": 11136,
+      "output": 239,
+      "reasoning": 67
+    }
+  },
+  "signed_commit_verified": true,
+  "clean": true,
+  "first_setup_failure": "Original disposable script identity failed inherited guard before inference; corrected script preserves actual identity/signing/guards. Original failed evidence retained.",
+  "approval_actor_correction": "The executed script labelled --by as Opus orchestrator; root Codex actually executed the fixture approval under user delegation. It is caller-supplied attribution, not authenticated Opus/native product approval. Maintained script corrected for future runs."
+}

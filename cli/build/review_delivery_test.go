@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"kogen-loop/tools"
 	"kogen/agent"
 )
 
@@ -87,7 +88,7 @@ func inWindow(req map[string]any) (read map[string]bool, images int) {
 		switch m["type"] {
 		case "function_call":
 			if m["name"] == "read_file" {
-				path, _ := agent.DecodeArguments(m["arguments"].(string))["path"].(string)
+				path, _ := tools.DecodeArguments(m["arguments"].(string))["path"].(string)
 				calls[m["call_id"]] = path
 			}
 		case "function_call_output":
@@ -190,12 +191,12 @@ func TestAReviewWhosePartsAndScreenshotsCannotShareAWindowConvergesOnItsDelivere
 		}
 		partBytes += int(st.Size())
 	}
-	if partBytes+imageBytes <= agent.InputBudgetBytes {
+	if partBytes+imageBytes <= tools.InputBudgetBytes {
 		t.Fatalf("parts %d + screenshots %d bytes fit one window", partBytes, imageBytes)
 	}
 	for _, req := range f.requests() {
 		raw, _ := json.Marshal(req)
-		if len(raw) > agent.InputBudgetBytes+4096 {
+		if len(raw) > tools.InputBudgetBytes+4096 {
 			t.Fatalf("a request of %d bytes", len(raw))
 		}
 		read, images := inWindow(req)
@@ -263,15 +264,15 @@ func TestAReviewResetReportsEachImageAtItsNewestDeliveryOnlyForThisReview(t *tes
 	writeFile(t, filepath.Join(e.root, shot), string(noisePNG(t, 7, 4)), 0o644)
 	inline := materialSet{Authority: "exact approved authority", Source: "# Diff of existing/deleted paths\n" + strings.Repeat("s", 30_000), Files: []map[string]any{}}
 	authority := materialOpening(inline.Authority, inline.Source, nil)[0]
-	tools := &agent.Tools{Root: e.root, Session: b.s, Repo: b.repo, Enabled: reviewToolNames}
+	tl := &tools.Tools{Root: e.root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames}
 	calls := 0
 	view := func() []any {
 		calls++
 		id := "view" + itoa(calls)
 		arguments := `{"path":"` + shot + `"}`
-		call := agent.Call{Item: map[string]any{"type": "function_call", "call_id": id, "name": "view_image",
+		call := tools.Call{Item: map[string]any{"type": "function_call", "call_id": id, "name": "view_image",
 			"arguments": arguments}, Name: "view_image", Arguments: arguments}
-		out, err := tools.Call(call)
+		out, err := tl.Call(call)
 		if err != nil {
 			t.Fatal(err)
 		}

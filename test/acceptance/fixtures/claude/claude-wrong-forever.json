@@ -1,0 +1,21 @@
+{
+  "rounds": [
+    {
+      "actions": [
+        {
+          "write": {
+            "path": "calc.py",
+            "content_from": "calc-wrong.py"
+          }
+        },
+        {
+          "write": {
+            "path": "tests/test_calc.py",
+            "content_from": "test-calc-wrong.py"
+          }
+        }
+      ],
+      "claim": "Implemented is_even."
+    }
+  ]
+}

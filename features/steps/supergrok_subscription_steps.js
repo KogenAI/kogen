@@ -449,10 +449,10 @@ import (
 	"sort"
 	"strings"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 )
 
 type m = map[string]any
@@ -512,7 +512,7 @@ func main() {
 	replay := func(items []map[string]any) []any {
 		var out []any
 		for _, it := range items {
-			if r := agent.ReplayItem(it); r != nil {
+			if r := tools.ReplayItem(it); r != nil {
 				out = append(out, r)
 			}
 		}
@@ -543,7 +543,7 @@ func main() {
 		role := provider.Role{Provider: "chatgpt", Model: "grok-4.7", Effort: "high"}
 		r1 := respond(role, "control-native", input, []any{tool("read_file")})
 		call := callOf(r1.Items)
-		input2 := append(append(append([]any{}, input...), replay(r1.Items)...), agent.OutputItem(call["call_id"], "# Fixture project\n"))
+		input2 := append(append(append([]any{}, input...), replay(r1.Items)...), tools.OutputItem(call["call_id"], "# Fixture project\n"))
 		respond(role, "control-native", input2, []any{tool("read_file")})
 		fmt.Println(encode(m{"legacy_keys": legacyKeys, "workers": workers, "legacy_body": legacyBody, "explicit_body": explicitBody}))
 	case "workflow":
@@ -556,17 +556,17 @@ func main() {
 		role := provider.Role{Provider: "chatgpt", Model: "grok-4.7", Effort: "high"}
 		b1 := respond(buildRole, "control-build", input, buildTools)
 		imageCall := callOf(b1.Items)
-		tools := &agent.Tools{Root: home, Enabled: []string{"view_image"}}
-		out, err := tools.Run("view_image", m{"path": "pixel.png"})
+		tl := &tools.Tools{Root: home, Enabled: []string{"view_image"}}
+		out, err := tl.Run("view_image", m{"path": "pixel.png"})
 		must(err)
 		if !out.Typed() {
 			must(fmt.Errorf("view_image did not return typed pixels: %s", out.Text))
 		}
-		buildInput := append(append(append([]any{}, input...), replay(b1.Items)...), agent.OutputItem(imageCall["call_id"], out.Value()))
+		buildInput := append(append(append([]any{}, input...), replay(b1.Items)...), tools.OutputItem(imageCall["call_id"], out.Value()))
 		respond(buildRole, "control-build", buildInput, buildTools)
 		r1 := respond(role, "control-review", input, reviewTools)
 		reviewCall := callOf(r1.Items)
-		reviewInput := append(append(append([]any{}, input...), replay(r1.Items)...), agent.OutputItem(reviewCall["call_id"], "# Fixture project\n"))
+		reviewInput := append(append(append([]any{}, input...), replay(r1.Items)...), tools.OutputItem(reviewCall["call_id"], "# Fixture project\n"))
 		respond(role, "control-review", reviewInput, reviewTools)
 		fmt.Println("{}")
 	case "legacy-config":

@@ -11,11 +11,11 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	gitpkg "kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -88,7 +88,7 @@ func exactSourceDelivery(t *testing.T, role project.Role) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fit, err := agent.Measure(b.bodyOf(role, "policy", input, nil, "review")); err != nil || !fit.Fits {
+	if fit, err := tools.Measure(b.bodyOf(role, "policy", input, nil, "review")); err != nil || !fit.Fits {
 		t.Fatalf("the opening request does not fit: %v %+v", err, fit)
 	}
 	blocks := input[0].(map[string]any)["content"].([]any)
@@ -97,7 +97,7 @@ func exactSourceDelivery(t *testing.T, role project.Role) {
 	if len(refs) <= 1 {
 		t.Fatalf("%d parts", len(refs))
 	}
-	tools := &agent.Tools{Root: b.Root, Enabled: []string{"read_file"}}
+	tl := &tools.Tools{Root: b.Root, Enabled: []string{"read_file"}}
 	var exchanges [][]any
 	var rebuilt strings.Builder
 	for n, ref := range refs {
@@ -111,7 +111,7 @@ func exactSourceDelivery(t *testing.T, role project.Role) {
 		if st, _ := os.Stat(filepath.Dir(ref.Path)); st.Mode().Perm() != 0o700 {
 			t.Fatalf("part folder mode %v", st.Mode().Perm())
 		}
-		out, err := tools.Run("read_file", map[string]any{"path": ref.Path})
+		out, err := tl.Run("read_file", map[string]any{"path": ref.Path})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -445,7 +445,7 @@ func TestFittedInlineSourceRelocatesOnPressure(t *testing.T) {
 			blocks := active[0].(map[string]any)["content"].([]any)
 			eq(t, "authority", blocks[0].(map[string]any)["text"].(string), m.Authority)
 			contains(t, "active", jsonText(active), m.Checks)
-			if fit, err := agent.Measure(b.bodyOf(materialRole(), "policy", active, nil, "review")); err != nil || !fit.Fits {
+			if fit, err := tools.Measure(b.bodyOf(materialRole(), "policy", active, nil, "review")); err != nil || !fit.Fits {
 				t.Fatalf("does not fit: %v %+v", err, fit)
 			}
 			if unread, err := b.materialUnread(active); err != nil || len(unread) != parts {

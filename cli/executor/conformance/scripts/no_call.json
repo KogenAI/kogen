@@ -1,0 +1,3 @@
+{"name":"no_call","only":"","needs":[],
+ "rounds":[{"actions":[],"end":"no_call","claim":"nothing to do","usage":{"input":50,"cached":0,"output":5}}],
+ "expect":{"rounds":[{"ending":"no_call","usage_state":"complete"}],"protected":"unchanged"}}

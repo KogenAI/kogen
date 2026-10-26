@@ -14,8 +14,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"kogen-loop/provider"
 	"kogen/project"
-	"kogen/provider"
 	"kogen/verify"
 )
 

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"kogen/provider"
+	"kogen-loop/provider"
+	"kogen/executor"
+	"kogen/project"
 	"kogen/verify"
 )
 
@@ -21,6 +23,10 @@ type Deps struct {
 	Reviewer Reviewer
 	// Legacy reads a version 3 checkpoint. Nil: see newLegacy.
 	Legacy LegacyDecoder
+	// External returns the executor of a build role that selects an external executor
+	// (`executor: claude-code`). Nil: such a role stops with executor/unavailable ("not
+	// available in this program"). The native builder never uses it.
+	External func(role project.Role) (executor.Executor, error)
 }
 
 // Approved is the result of a review that approves: the green pass whose exact tree was

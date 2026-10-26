@@ -1,0 +1,31 @@
+{
+  "description": "the provider reports only input and output tokens: cached and reasoning stay null, the state is partial, and the round total keeps them null",
+  "task": {"prompt": "finish"},
+  "exchanges": [
+    {"id": "resp-1", "usage": {"input_tokens": 7, "output_tokens": 3},
+     "items": [{"type": "function_call", "call_id": "c1", "name": "shell", "arguments": "{\"command\":\"true\"}"}]},
+    {"id": "resp-2", "usage": {"input_tokens": 8, "output_tokens": 4},
+     "items": [{"type": "function_call", "call_id": "c2", "name": "finish", "arguments": "{\"summary\":\"done\"}"}]}
+  ],
+  "expect": {
+    "exit": 0,
+    "requests": 2,
+    "events": [
+      {"type": "session.started"},
+      {"type": "request.started", "n": 1},
+      {"type": "request.attempt"},
+      {"type": "response", "n": 1,
+       "usage": {"input": 7, "cached": null, "output": 3, "reasoning": null, "state": "partial", "source": "provider"}},
+      {"type": "tool.call", "call_id": "c1", "name": "shell"},
+      {"type": "tool.result", "call_id": "c1", "name": "shell"},
+      {"type": "request.started", "n": 2},
+      {"type": "request.attempt"},
+      {"type": "response", "n": 2,
+       "usage": {"input": 8, "cached": null, "output": 4, "reasoning": null, "state": "partial", "source": "provider"}},
+      {"type": "tool.call", "call_id": "c2", "name": "finish"},
+      {"type": "round.ended", "ending": "terminal", "requests": 2,
+       "usage": {"input": 15, "cached": null, "output": 7, "reasoning": null, "state": "partial", "source": "provider"}},
+      {"type": "session.ended", "status": "ended", "exit": 0}
+    ]
+  }
+}

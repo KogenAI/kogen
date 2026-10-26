@@ -1,0 +1,4 @@
+{"name":"two_rounds_feedback","only":"","needs":[],
+ "rounds":[{"actions":[{"write":{"path":"a.txt","content":"one\n"}}],"end":"finish","claim":"first","usage":{"input":100,"cached":0,"output":10}},
+           {"actions":[{"write":{"path":"b.txt","content":"two\n"}}],"end":"finish","claim":"second","usage":{"input":140,"cached":90,"output":12}}],
+ "expect":{"rounds":[{"ending":"finish","usage_state":"complete"},{"ending":"finish","usage_state":"complete"}],"files":{"a.txt":"one\n","b.txt":"two\n"},"feedback_seen":true,"protected":"unchanged"}}

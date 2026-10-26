@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 type feasGolden struct {

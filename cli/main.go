@@ -8,8 +8,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"kogen-loop/sys"
 	"kogen/build"
-	"kogen/sys"
+	"kogen/executor/claudecode"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -245,9 +246,23 @@ func isHelpFlag(tok string) bool {
 }
 
 func main() {
+	// The executor hook runs before anything else: Claude Code starts it for every tool call,
+	// so it must be fast and print nothing but its answer.
+	if code, ok := executorHook(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); ok {
+		os.Exit(code)
+	}
 	sys.MaybeSupervise(os.Args[1:])
 	sys.EnableSupervisor()
 	os.Exit(run(os.Args[1:], installRoot))
+}
+
+// executorHook is the hidden subcommand Claude Code's hooks run (docs/executor-contract.md).
+// handled is false for every other command line.
+func executorHook(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int, handled bool) {
+	if len(args) == 0 || args[0] != claudecode.HookSubcommand {
+		return 0, false
+	}
+	return claudecode.RunHook(args[1:], stdin, stdout, stderr), true
 }
 
 // run is one kogen invocation and returns its exit code. locate finds the installation root

@@ -1,7 +1,7 @@
 // Command driver exposes the three internal functions the review-refine-working-room suite observes and that have no
-// user-visible form of their own: how a received item is replayed (agent.ReplayItem), what a production tool delivers
-// to the model for a call (agent.Tools.Run then the shared bounded delivery), and how the complete rendered request
-// body is measured against the context budget (provider.Client.Body and agent.Measure).
+// user-visible form of their own: how a received item is replayed (tools.ReplayItem), what a production tool delivers
+// to the model for a call (tools.Tools.Run then the shared bounded delivery), and how the complete rendered request
+// body is measured against the context budget (provider.Client.Body and tools.Measure).
 //
 //	driver replay                    JSON array of items on stdin -> JSON array of their replayed form (null: not replayed)
 //	driver tool <root> <name> <json> the text the model receives for one production tool call in <root>
@@ -16,8 +16,8 @@ import (
 	"os"
 	"strings"
 
-	"kogen/agent"
-	"kogen/provider"
+	"kogen-loop/provider"
+	"kogen-loop/tools"
 )
 
 func encode(v any) []byte {
@@ -59,7 +59,7 @@ func measure(spec map[string]any) map[string]any {
 	complete := true
 	for _, n := range []int{budget - 1, budget, budget + 1} {
 		b := body(n)
-		m, err := agent.Measure(b)
+		m, err := tools.Measure(b)
 		if err != nil {
 			fail(err)
 		}
@@ -84,14 +84,14 @@ func main() {
 		}
 		out := make([]any, len(items))
 		for i, item := range items {
-			if r := agent.ReplayItem(item); r != nil {
+			if r := tools.ReplayItem(item); r != nil {
 				out[i] = r
 			}
 		}
 		os.Stdout.Write(encode(out))
 	case len(os.Args) == 5 && os.Args[1] == "tool":
-		tools := &agent.Tools{Root: os.Args[2], Enabled: []string{"read_file", "list_files", "search_text"}}
-		out, err := tools.Run(os.Args[3], agent.DecodeArguments(os.Args[4]))
+		tl := &tools.Tools{Root: os.Args[2], Enabled: []string{"read_file", "list_files", "search_text"}}
+		out, err := tl.Run(os.Args[3], tools.DecodeArguments(os.Args[4]))
 		if err != nil {
 			fail(err)
 		}

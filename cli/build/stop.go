@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 	"kogen/verify"
 )
 
@@ -40,6 +40,9 @@ func (b *Attempt) result(outcome string, extra map[string]any) map[string]any {
 	}
 	for k, v := range extra {
 		m[k] = v
+	}
+	if b.Executor != nil {
+		m["executor"] = b.Executor
 	}
 	if b.StageProgress != nil {
 		m["stage_progress"] = b.StageProgress.value()

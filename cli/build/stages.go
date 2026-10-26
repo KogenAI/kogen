@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 	"kogen/verify"
 )
 

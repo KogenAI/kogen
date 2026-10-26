@@ -88,7 +88,7 @@ Oversized initial Review source is covered by the review-material tests of the `
 
 ## Native selected-image evidence
 
-The `agent` package's `view_image` tests exercise the shared callable PNG validation,
+The `view_image` tests of the `tools` package (kogen-loop, synchronized into `cli/third_party/kogen-loop`) exercise the shared callable PNG validation,
 typed output/cut behavior, immutable selected bytes, complete request accounting at
 524287/524288/524289 bytes including Unicode and image envelopes, and bounded factual
 delivery events. The native-image-evidence Intent scenarios exercise installed Shape,

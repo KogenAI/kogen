@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
-	"kogen/sys"
 )
 
 const preflightLimitationText = "Setup, checks, hooks, providers, tool availability, signing and full readiness/resume safety were not executed or established. Build revalidates normally."

@@ -17,8 +17,8 @@ import (
 	"sync"
 	"syscall"
 
-	"kogen/provider"
-	"kogen/sys"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
 )
 
 // runNative runs the commands implemented in Go. ok is false for commands that are not.

@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
 	gitpkg "kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 

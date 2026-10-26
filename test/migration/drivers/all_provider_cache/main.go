@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"kogen/agent"
-	"kogen/provider"
-	"kogen/sys"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"os"
 	"strings"
 	"time"
@@ -37,11 +37,11 @@ func run() error {
 	client := &provider.Client{Cache: provider.NewCache(nil)}
 	obs := &observer{}
 	role := provider.Role{Provider: text(c, "provider"), Model: text(c, "model"), Effort: text(c, "effort")}
-	tools := []any{map[string]any{"type": "function", "name": "read_file", "description": "Read exact text", "parameters": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []any{"path"}, "additionalProperties": false}, "strict": true}}
+	defs := []any{map[string]any{"type": "function", "name": "read_file", "description": "Read exact text", "parameters": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []any{"path"}, "additionalProperties": false}, "strict": true}}
 	base := []any{map[string]any{"role": "user", "content": provider.ContractBlocks(text(a, "contract"), "dynamic suffix")}}
 	scope := "fixture-build"
 	req := func(input []any) provider.Request {
-		return provider.Request{Role: role, Instructions: text(a, "policy"), Input: input, Tools: tools, Scope: scope, Single: c["single"] == true, Budget: 10 * time.Second, Context: map[string]any{"phase": "shape", "role": "shape"}}
+		return provider.Request{Role: role, Instructions: text(a, "policy"), Input: input, Tools: defs, Scope: scope, Single: c["single"] == true, Budget: 10 * time.Second, Context: map[string]any{"phase": "shape", "role": "shape"}}
 	}
 	call := func(input []any) (map[string]any, *provider.Response) {
 		r, e := client.Respond(context.Background(), s, req(input), obs)
@@ -83,13 +83,13 @@ func run() error {
 		if r != nil {
 			next := append([]any{}, base...)
 			for _, it := range r.Items {
-				if replay := agent.ReplayItem(it); replay != nil {
+				if replay := tools.ReplayItem(it); replay != nil {
 					next = append(next, replay)
 				}
 			}
 			for _, it := range r.Items {
 				if it["type"] == "function_call" {
-					next = append(next, agent.OutputItem(it["call_id"], text(a, "tool_result")+":"+fmt.Sprint(it["call_id"])))
+					next = append(next, tools.OutputItem(it["call_id"], text(a, "tool_result")+":"+fmt.Sprint(it["call_id"])))
 				}
 			}
 			saved, _ := json.Marshal(client.Cache.States())

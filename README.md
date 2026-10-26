@@ -3,7 +3,7 @@
 Kogen takes one requested feature through five steps in your own Git repository:
 
 1. **Shape**: a model writes the feature as short prose, executable Gherkin with step definitions, and a Quint model when the change has meaningful state. It inspects the repository and settles material technical questions itself. It finds and retrieves current authoritative external documentation when a task depends on it. It keeps a native record of each documentation lookup. It asks you only about open UI/UX choices.
-2. **Build**: after you approve the exact files, Kogen's own model/tool loop implements it.
+2. **Build**: after you approve the exact files, Kogen's own model/tool loop ([kogen-loop](cli/third_party/kogen-loop/README.md)) implements it. Alternatively, an executor you select, such as your installed Claude Code, implements it ([executor contract](docs/executor-contract.md)). Either way, Kogen alone verifies, reviews and commits.
 3. **Verify**: the acceptance scenarios run against the real code, with the model check and the project's checks; failures go back to the builder until everything passes.
 4. **Review and fix**: an independent reviewer investigates and repairs concrete defects. Kogen verifies changed final files; failures stay with that reviewer. Maintenance preferences are notes. An unresolved substantive blocker stops with preserved work instead of restarting the builder/review loop.
 5. **Commit**: one commit of exactly the verified and reviewed contents, with your own Git configuration.
@@ -147,8 +147,10 @@ layer under concurrent local work; focused checks remain the development loop.
 
 | Path | What |
 | --- | --- |
-| `cli/` | the `kogen` program (Go, standard library only): the command line, providers and sign-in, shaping, the build loop, verification, review and commit, project commands in process groups under a watchdog; its packages sit beside `main` and carry their own tests |
-| `packaging/` | `package.sh`, `install.sh`, the release README, the pinned Quint and Cucumber packages, third-party licences |
+| `cli/` | the `kogen` program (Go, standard library plus the in-tree kogen-loop module, also standard library only): the command line, shaping, the Build, executors, verification, review and commit, project commands in process groups under a watchdog; its packages sit beside `main` and carry their own tests |
+| `cli/third_party/kogen-loop/` | the pinned copy of kogen-loop: providers and sign-in, tools, the round engine and process custody. Written only by `packaging/sync-kogen-loop.sh`; `cli/loop-pin.json` holds its digest |
+| `cli/executor/` | the [executor contract](docs/executor-contract.md), its conformance scripts and the Claude Code executor |
+| `packaging/` | `package.sh`, `install.sh`, `sync-kogen-loop.sh`, the release README, the pinned Quint and Cucumber packages, third-party licences |
 | `spec/` | prose, Gherkin and Quint specification, and its checks |
 | `docs/` | `configuration.md`, `testing-rules.md` (the test-selection rules Kogen gives its models and follows itself), `testing-strategy.md` (Kogen's own test layers and gates) |
 | `examples/` | the example app for real-use tests, with the qualification of its checks |

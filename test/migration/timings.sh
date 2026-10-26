@@ -10,7 +10,7 @@ now() { perl -MTime::HiRes=time -e 'printf "%.6f\n", time'; }
 (cd cli && go build ./... >/dev/null)            # warm the build cache once
 t0=$(now); (cd cli && go build -a -o "$work/kogen-forced" .) ; t1=$(now)
 t2=$(now); (cd cli && go build -o "$work/kogen" .) ; t3=$(now)
-t4=$(now); (cd cli && go test -count=1 ./project ./sys >/dev/null) ; t5=$(now)
+t4=$(now); (cd cli && go test -count=1 ./project >/dev/null) ; t5=$(now)
 tar -xzf "$archive" -C "$work"
 top=$(ls -d "$work"/kogen-*/ | head -1)
 HOME="$work/home" sh "$top/install.sh" --prefix "$work/prefix" >/dev/null

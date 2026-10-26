@@ -6,31 +6,38 @@ import (
 	"slices"
 	"strings"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
+	"kogen/executor"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
-// The builder's tools: the file and command tools plus the two terminal tools.
-var (
-	builderTools = []string{"shell", "read_file", "view_image", "write_file"}
-	builderDefs  = []string{"shell", "read_file", "view_image", "write_file", "finish", "report_blocker"}
-)
-
-// openingMessage is the builder's first message (LOOP-2): the Intent, its acceptance
-// feature and model, the project's README and testing rules, the configured commands, the
-// protected paths and the file list, as two blocks (the stable authority and the dynamic
-// evidence behind it).
+// openingMessage is the builder's first message (LOOP-2) as the native conversation opens
+// with it: the brief as two input_text blocks (the stable authority and the dynamic evidence
+// behind it).
 func (b *Attempt) openingMessage() ([]any, error) {
+	brief, err := b.brief()
+	if err != nil {
+		return nil, err
+	}
+	return provider.ContractBlocks(brief.Stable, brief.Dynamic), nil
+}
+
+// brief is the task of the builder (LOOP-2), whichever executor does the work: the Intent,
+// its acceptance feature and model, the project's README and testing rules, the configured
+// commands, the protected paths (the stable authority) and the file list (the dynamic
+// evidence behind it).
+func (b *Attempt) brief() (executor.Brief, error) {
 	modelText := ""
 	if t, err := readFile(b.Root, project.ModelPath(b.Slug)); err == nil {
 		modelText = "\n# model.qnt\n\n```quint\n" + string(t) + "```\n"
 	}
 	feature, err := readFile(b.Root, project.FeaturePath(b.Slug))
 	if err != nil {
-		return nil, err
+		return executor.Brief{}, err
 	}
 	readme := "(no README.md)"
 	if t, err := readFile(b.Root, "README.md"); err == nil {
@@ -68,16 +75,19 @@ func (b *Attempt) openingMessage() ([]any, error) {
 		manifestNotice + "\n\n"
 	files, err := b.repo.OK("ls-files", "--cached", "--others", "--exclude-standard")
 	if err != nil {
-		return nil, err
+		return executor.Brief{}, err
 	}
-	return provider.ContractBlocks(stable, "# Files\n\n"+files), nil
+	return executor.Brief{Stable: stable, Dynamic: "# Files\n\n" + files}, nil
 }
 
-// drive is the builder's conversation (LOOP-1..7): a request, its tool calls, and after the
-// builder finishes (or answers without a tool call) the fixers and a verification pass; a
-// red pass goes back to the same builder, a green one to review and commit. newRound starts
-// a numbered round before the first request.
-func (b *Attempt) drive(ctx context.Context, input []any, newRound bool) error {
+// drive is the builder's conversation (LOOP-1..7), whichever executor runs it: a round (the
+// executor's requests and tool calls), and after the builder finishes (or answers without a
+// tool call) the fixers and a verification pass; a red pass goes back to the same session as
+// feedback, a green one to review and commit. newRound starts a numbered round before the
+// round. An external executor's round is a claim like any other: Kogen's baseline and HEAD
+// detection runs after it, and its round cap is enforced here.
+func (b *Attempt) drive(ctx context.Context, sess executor.Session, in executor.Input, newRound bool) error {
+	rounds := 0
 	for {
 		if newRound {
 			if err := b.facts.update(b, "building", ""); err != nil {
@@ -89,132 +99,32 @@ func (b *Attempt) drive(ctx context.Context, input []any, newRound bool) error {
 			}
 			b.s.Progress(fmt.Sprintf("kogen: building (round %d)", b.Round))
 		}
-		next, again, landed, err := b.turn(ctx, input)
+		res, err := b.runRound(ctx, sess, in)
+		if err != nil {
+			return err
+		}
+		if b.ext != nil {
+			rounds++
+			if err := b.afterExternalRound(res, rounds); err != nil {
+				return err
+			}
+		}
+		feedback, landed, err := b.roundEnd(ctx)
 		if err != nil || landed {
 			return err
 		}
-		input, newRound = next, again
+		if b.ext != nil && b.ext.maxRounds > 0 && rounds >= b.ext.maxRounds {
+			return executor.RoundLimit(b.ext.maxRounds)
+		}
+		in, newRound = executor.Input{Feedback: feedback}, true
 	}
-}
-
-// turn is one builder request with the tool calls it asks for. It returns the conversation
-// for the next request and whether that request starts a new round; landed means the Build
-// committed.
-func (b *Attempt) turn(ctx context.Context, input []any) (next []any, newRound, landed bool, err error) {
-	if err := b.facts.update(b, "building", ""); err != nil {
-		return nil, false, false, err
-	}
-	if err := b.Save(Continuation{Stage: StageBuilder, Input: input}); err != nil {
-		return nil, false, false, err
-	}
-	role := b.Config.Models["build"]
-	resp, active, err := b.Request(ctx, RequestSpec{
-		Owner: "build", Role: role, Instructions: agent.Prompt(agent.Builder), Input: input,
-		Tools: agent.AsAny(agent.Defs(builderDefs...)),
-	})
-	if err != nil {
-		return nil, false, false, err
-	}
-	if err := b.Track(); err != nil {
-		return nil, false, false, err
-	}
-	input = slices.Concat(active, agent.Replay(resp.Items))
-	calls := agent.Calls(resp.Items)
-	tools := &agent.Tools{
-		Root: b.Root, Session: b.s, Repo: b.repo, Enabled: builderTools, Protected: b.Baseline, Excluded: b.Excluded,
-	}
-	var outs []any
-	var finish *agent.Call
-	for i := range calls {
-		call := calls[i]
-		if err := b.s.Err(); err != nil {
-			return nil, false, false, err
-		}
-		args := call.Args()
-		if err := b.validateStagesAs(Continuation{Stage: StageBuilder, Input: input}); err != nil {
-			return nil, false, false, err
-		}
-		if err := b.validateWorkingContext(); err != nil {
-			return nil, false, false, err
-		}
-		if err := project.ValidateSource(b.SourceProvenance); err != nil {
-			return nil, false, false, err
-		}
-		if err := b.Save(Continuation{Stage: StageTool, Owner: "build", Input: slices.Concat(input, outs)}); err != nil {
-			return nil, false, false, err
-		}
-		var result agent.Output
-		isFinish := false
-		switch call.Name {
-		case "finish":
-			isFinish = true
-		case "report_blocker":
-			text, err := b.reportBlocker(args, call)
-			if err != nil {
-				return nil, false, false, err
-			}
-			result = agent.Output{Text: text}
-		default:
-			out, err := tools.Call(call)
-			if err != nil {
-				return nil, false, false, err
-			}
-			result = out.Cut()
-		}
-		if !isFinish {
-			if event := agent.ReadEvent(call, result, "build"); event != nil {
-				b.Run.Event(event)
-			}
-		}
-		var resultLog any = "finish"
-		if !isFinish {
-			resultLog = provider.Fingerprint(result.Value())
-		}
-		b.Run.Event(map[string]any{
-			"event": "tool_call", "call_id": call.CallID(), "name": call.Name,
-			"arguments": provider.Fingerprint(call.Arguments), "result": resultLog,
-		})
-		done := &Completed{Call: call.Item, Result: "finish"}
-		if !isFinish {
-			done.Result = result.Value()
-		}
-		if err := b.Save(Continuation{Stage: StageTool, Owner: "build", Input: slices.Concat(input, outs), Completed: done}); err != nil {
-			return nil, false, false, err
-		}
-		if call.Name == "shell" {
-			if err := b.BaselineIntact(); err != nil {
-				return nil, false, false, err
-			}
-		}
-		if isFinish {
-			finish = &calls[i]
-		} else {
-			outs = append(outs, call.Output(result))
-		}
-	}
-	if finish == nil && len(calls) > 0 {
-		return slices.Concat(input, outs), false, false, nil
-	}
-	var finishItem map[string]any
-	if finish != nil {
-		finishItem = finish.Item
-	}
-	input = slices.Concat(input, outs)
-	if err := b.Save(Continuation{Stage: StageBuilderVerify, Input: input, Finish: finishItem}); err != nil {
-		return nil, false, false, err
-	}
-	feedback, landed, err := b.roundEnd(ctx)
-	if err != nil || landed {
-		return nil, false, landed, err
-	}
-	return b.afterRound(input, finishItem, feedback), true, false, nil
 }
 
 // afterRound is the conversation after a round's verification: the feedback answers the
 // finish call, or is a user message when the builder ended without one.
 func (b *Attempt) afterRound(input []any, finish map[string]any, feedback string) []any {
 	if finish != nil {
-		return append(slices.Clone(input), agent.OutputItem(finish["call_id"], agent.Cut(feedback)))
+		return append(slices.Clone(input), tools.OutputItem(finish["call_id"], tools.Cut(feedback)))
 	}
 	return append(slices.Clone(input), map[string]any{"role": "user", "content": feedback})
 }
@@ -223,7 +133,7 @@ func (b *Attempt) afterRound(input []any, finish map[string]any, feedback string
 // nonempty unique current protected paths, a reason and observed evidence) stops the Build
 // as BUILDER-REPORTED build_blocked, provided HEAD and the protected bytes are still the
 // original; anything else is feedback and grants nothing.
-func (b *Attempt) reportBlocker(args map[string]any, call agent.Call) (string, error) {
+func (b *Attempt) reportBlocker(args map[string]any, call tools.Call) (string, error) {
 	if !validBlocker(args, b.Baseline) {
 		return "invalid blocker: supply exactly nonempty unique current protected paths, reason and observed evidence strings; " +
 			"no write permission is granted; continue ordinary implementation repairs", nil
@@ -256,8 +166,8 @@ func (b *Attempt) reportBlocker(args map[string]any, call agent.Call) (string, e
 		"BUILDER-REPORTED protected-baseline contradiction; edits are left in place; this report is not independently proven", 1)
 	e.Lines = []string{
 		"paths: " + strings.Join(paths, ", "),
-		"reason: " + agent.Cut(args["reason"].(string)),
-		"evidence: " + agent.Cut(args["evidence"].(string)),
+		"reason: " + tools.Cut(args["reason"].(string)),
+		"evidence: " + tools.Cut(args["evidence"].(string)),
 	}
 	return "", e
 }
@@ -405,21 +315,27 @@ func (b *Attempt) verifyAndReview(ctx context.Context) (string, bool, error) {
 
 // ---- resume of a conversation stage ----
 
-// resumeStage continues the Build from its checkpointed stage.
+// resumeStage continues the Build from its checkpointed stage. Only the native builder
+// resumes: the checkpoint of an external executor is refused (resume capability: none).
 func (b *Attempt) resumeStage(ctx context.Context) error {
+	if x := b.Executor; x != nil && x.Name != executor.Native {
+		return resumeRefused("Builds by executor " + x.Name + " cannot be resumed in this version (resume capability: none); " +
+			"inspect the preserved candidate or start a fresh Build")
+	}
 	if err := provider.RequireLogin(b.s.Getenv("HOME"), buildRoles(b.Config)); err != nil {
 		return err
 	}
 	c := b.Continuation
 	switch c.Stage {
 	case StageBuilder:
-		return b.drive(ctx, c.Input, false)
+		return b.drive(ctx, b.nativeSession(c.Input, nil, nil), executor.Input{}, false)
 	case StageBuilderVerify:
+		sess := b.nativeSession(nil, c.Input, c.Finish)
 		feedback, landed, err := b.roundEnd(ctx)
 		if err != nil || landed {
 			return err
 		}
-		return b.drive(ctx, b.afterRound(c.Input, c.Finish, feedback), true)
+		return b.drive(ctx, sess, executor.Input{Feedback: feedback}, true)
 	default: // the review stages
 		approved, err := b.deps.reviewer().Resume(ctx, b)
 		if err != nil {

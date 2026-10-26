@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
+	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // PreflightInput is one `kogen intent preflight <slug> [--json]`.

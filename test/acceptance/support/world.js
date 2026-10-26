@@ -124,6 +124,7 @@ class AcceptanceWorld extends World {
     this.commandOverride = null;
     this.homeConfig = true;
     this.toolPath = null;
+    this.fakeClaude = null;
     this.hiddenPrograms = new Set();
     this.extraEnv = {};
     this.nodePath = null;
@@ -155,6 +156,7 @@ class AcceptanceWorld extends World {
     pieces.push(path.dirname(PYTHON_BIN));
     if (this.projectFixture === 'ex-app') pieces.push(...ELIXIR_DIRS);
     if (this.toolPath) pieces.unshift(this.toolPath);
+    if (this.fakeClaude) pieces.unshift(this.fakeClaude.binDir);
     if (this.gitPath) pieces.push(path.dirname(this.gitPath));
     pieces.push('/usr/bin', '/bin', '/usr/sbin', '/sbin');
     const hidden = this.hiddenPrograms || new Set();
@@ -217,6 +219,7 @@ class AcceptanceWorld extends World {
     this.privateInstall = null;
     this.commandOverride = null;
     this.toolPath = null;
+    this.fakeClaude = null;
     this.hiddenPrograms = new Set();
     this.extraEnv = {};
     this.notedHashes = new Map();

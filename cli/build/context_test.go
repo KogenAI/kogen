@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/agent"
+	"kogen-loop/tools"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -336,7 +336,7 @@ func resetRetains(t *testing.T, role project.Role) {
 	if err := b.validateWorkingContext(); err != nil {
 		t.Fatal(err)
 	}
-	if m, err := agent.Measure(b.bodyOf(role, "policy", got, nil, "review")); err != nil || !m.Fits {
+	if m, err := tools.Measure(b.bodyOf(role, "policy", got, nil, "review")); err != nil || !m.Fits {
 		t.Fatalf("the reset conversation does not fit: %v %+v", err, m)
 	}
 	runs := filepath.Join(e.root, ".kogen/local/runs")

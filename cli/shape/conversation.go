@@ -1,10 +1,10 @@
 package shape
 
 import (
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/tools"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
 )
 
 // A conversation's prompt-cache identity (provider.NewCacheID: at most 64 characters, no
@@ -33,12 +33,12 @@ func conversationRequest(req provider.Request, cacheID string) provider.Request 
 
 // toolOutput is the delivered result of one tool call (Shape.output): bounded text, or
 // unchanged typed content. Text is cut once, here, and replayed as stored.
-func toolOutput(c agent.Call, result any) map[string]any {
+func toolOutput(c tools.Call, result any) map[string]any {
 	switch v := result.(type) {
-	case agent.Output:
+	case tools.Output:
 		return c.Output(v.Cut())
 	case string:
-		return c.Output(agent.Cut(v))
+		return c.Output(tools.Cut(v))
 	}
 	return c.Output(result)
 }

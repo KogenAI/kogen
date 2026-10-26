@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 func TestShapeOneShotWritesThePackageAndPrintsTheLines(t *testing.T) {

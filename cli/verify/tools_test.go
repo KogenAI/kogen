@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 func configWith(commands ...string) *project.Config {

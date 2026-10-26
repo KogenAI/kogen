@@ -17,11 +17,12 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -317,13 +318,13 @@ func initAsk(ctx context.Context, s *sys.Session, in InitInput, detected project
 	var source strings.Builder
 	for _, p := range append(slices.Clone(initSources), ci...) {
 		if text, ok := sources[p]; ok {
-			source.WriteString("\n## File " + p + "\n\n```\n" + agent.Cut(text) + "\n```\n")
+			source.WriteString("\n## File " + p + "\n\n```\n" + tools.Cut(text) + "\n```\n")
 		}
 	}
 	input := []any{map[string]any{
 		"role": "user",
 		"content": "# Detected\n\n" + initDetectedJSON(detected) +
-			"\n\n# Tracked files\n\n" + agent.Cut(strings.Join(tracked, "\n")) + "\n" + source.String(),
+			"\n\n# Tracked files\n\n" + tools.Cut(strings.Join(tracked, "\n")) + "\n" + source.String(),
 	}}
 	ctxInfo := InitContext{Tracked: tracked, Contents: manifests, DetectedChecks: detected.Checks}
 	proposal, usage, err := initConverse(ctx, s, in, provider.Role{Provider: role.Provider, Model: role.Model, Effort: role.Effort, BaseURL: role.BaseURL}, input, ctxInfo)
@@ -391,19 +392,19 @@ func initJSONString(s string) string {
 // invalid; a second failure ends init (provider/init_invalid).
 func initConverse(ctx context.Context, s *sys.Session, in InitInput, role provider.Role, input []any, vctx InitContext) (InitProposal, provider.Usage, error) {
 	var usage provider.Usage
-	tools := agent.AsAny(agent.Defs(agent.SubmitConfigurationTool))
+	defs := agent.AsAny(agent.Defs(agent.SubmitConfigurationTool))
 	// The setup conversation has no records of its own; its cache identity lives as long as it.
 	cacheID := newCacheID()
 	for attempt := 1; ; attempt++ {
 		resp, err := in.Client.Respond(ctx, s, conversationRequest(provider.Request{
-			Role: role, Instructions: agent.Prompt(agent.Init), Input: input, Tools: tools,
+			Role: role, Instructions: agent.Prompt(agent.Init), Input: input, Tools: defs,
 		}, cacheID), nil)
 		if err != nil {
 			return InitProposal{}, usage, err
 		}
 		usage = usage.Add(resp.Usage)
-		var call *agent.Call
-		for _, c := range agent.Calls(resp.Items) {
+		var call *tools.Call
+		for _, c := range tools.Calls(resp.Items) {
 			if c.Name == agent.SubmitConfigurationTool {
 				c := c
 				call = &c
@@ -421,7 +422,7 @@ func initConverse(ctx context.Context, s *sys.Session, in InitInput, role provid
 		if attempt == 2 {
 			return InitProposal{}, usage, sys.Fail("provider", "init_invalid", "the model did not return a valid configuration; nothing was written", 4)
 		}
-		input = append(slices.Clone(input), agent.Replay(resp.Items)...)
+		input = append(slices.Clone(input), tools.Replay(resp.Items)...)
 		if call == nil {
 			input = append(input, map[string]any{"role": "user", "content": "Answer by calling submit_configuration."})
 		} else {

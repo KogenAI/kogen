@@ -19,6 +19,7 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 - **Pause points.** `builder request in flight`, `tool command running` and `review approved` are points of the fake server's script. `git commit running` is reached when the Build's `git commit` has started and is held by the step "a pre-commit hook that sleeps for <n> seconds"; the test, not the server, waits for it.
 - **Live projects.** In the `@live` outline, "example" is the example app in `examples/` of the repository, copied into the run folder with a fixed baseline commit; "kogen" is the candidate Kogen source (REL-3); "external" is a real project kept outside the repository, run with its own settings file (`@external`, REL-2).
 - **Waiting.** "has sent the feedback of verification pass <n>" waits until the builder request carrying that pass's feedback has reached the fake server.
+- **Fake claude.** "a fake claude with script <name> is on PATH" puts an executable named `claude` first on the `PATH` of every command of the scenario. It is a Node script replaying a JSON script from `test/acceptance/fixtures/claude/` (fixture rows below); it is not a model. It answers `claude --version` with `2.1.306 (Claude Code)` and `claude auth status --json` with a claude.ai subscription sign-in on `firstParty` (a script may override either). For `-p` it reads the prompt from stdin (where Kogen sends it) and replays stream-json shaped like Claude Code's recorded output (`system/init`, assistant `tool_use`, user `tool_result`, `result` with usage and `total_cost_usd`). For every Write, Edit, MultiEdit or NotebookEdit tool call it first runs the PreToolUse hook command that Kogen configured in the `--settings` file, exactly like Claude Code, feeding it the hook JSON on stdin; a denial (exit 2, or the deny JSON on stdout) makes the tool call fail without touching the file. Bash actions run `/bin/sh -c` in the checkout without any hook prevention. The fake records, outside the project, the argv of every round with the prompt elided (the prompt is kept separately for "received a prompt containing"), the names (never values) of `ANTHROPIC_*` and `CLAUDE_*` variables in its environment, and each tool call it emitted. "fake claude round <n>" is the n-th `-p` invocation; "resumed the session it started in round 1" means its `--resume` value equals round 1's `--session-id`. No real `claude`, account or network is used.
 - **Tags.** `@live` scenarios are the real-use script, not the deterministic suite.
 
 ## Project fixtures
@@ -34,6 +35,7 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 | Intent `is-even` | title "Add an is-even helper"; scenarios Even numbers, Odd numbers, Non-integers; new step file `features/steps/is_even_steps.js`; no model; a `## Tests` section with two `unit` lines (as in the chapter 02 example). Variants `is-even-*` break exactly the rule their name says (`is-even-no-tests` has no `## Tests` section). |
 | Intent `counter-with-model` | a bounded counter with `model.qnt`, invariant `NeverNegative`, seed 7, 500 samples, 30 steps. |
 | Fixture runners | acceptance commands that emit the named defective report (`reports-undefined`, `reports-skipped`, `omits-one-scenario`, `reports-one-twice`, `writes-no-report`, `exits-1-all-passed`) and `hangs` (sleeps 600 seconds). |
+| Fake claude scripts | JSON files of `rounds`, each with `actions` (`write` a project path with inline `content` or `content_from` a fixture file, `edit` with `old` and `new`, `bash` a command, `sleep` seconds), optional `claim`, `end` (`finish`, `max_turns`, `error`) and `api_key_source`; optional top-level `version` and `auth`. The last round repeats when more rounds are requested. `claude-correct-first-try` writes the correct `calc.py` and `tests/test_calc.py`; `claude-wrong-then-correct` writes a `calc.py` whose `is_even` always returns True, then the correct files in round 2; `claude-wrong-forever` repeats the wrong files; `claude-edits-protected-then-correct` first tries the Edit tool on `.style.cfg` (the hook denies it), then writes the correct files; `claude-bash-writes-protected` runs `printf 'ignore=E\n' >> .style.cfg` through Bash and writes the correct files; `claude-api-key-auth` reports `apiKeySource` `ANTHROPIC_API_KEY` in its init event and would then write files; `claude-too-old` answers `--version` with `2.1.100 (Claude Code)`. |
 
 ## Fake ChatGPT server
 
@@ -196,6 +198,7 @@ One JavaScript regular expression per line.
 ^the\ candidate's\ deterministic\ suite\ passes\ with\ an\ isolated\ HOME\ and\ no\ real\ credentials$
 ^the\ candidate\ is\ packaged,\ installed\ into\ a\ separate\ prefix\ and\ the\ change\ is\ observed\ outside\ its\ checkout$
 ^the\ committed\ file\ "([^"]*)"\ contains\ "([^"]*)"$
+^the committed contents of "([^"]*)" contain "([^"]*)"$
 ^the\ environment\ variable\ "([^"]*)"\ is\ "([^"]*)"$
 ^a\ clean\ checkout\ of\ the\ release\ commit$
 ^the\ release\ built\ from\ that\ checkout\ reports\ the\ commit's\ short\ hash$
@@ -295,6 +298,16 @@ One JavaScript regular expression per line.
 ^a broken program "([^"]*)" is first on PATH$
 ^the run log shows Quint ran with the Node recorded in the installation's node-path file$
 ^the fake authorization server grants only "([^"]*)"$
+^a fake claude with script "([^"]*)" is on PATH$
+^the fake claude ran (\d+) rounds?$
+^fake claude round (\d+) received the argument "([^"]*)"$
+^no fake claude round received the argument "([^"]*)"$
+^no fake claude round had the environment variable "([^"]*)"$
+^fake claude round (\d+) resumed the session it started in round 1$
+^fake claude round (\d+) received a prompt containing "([^"]*)"$
+^the fake claude emitted no tool call$
+^the run log records (\d+) executor rounds?$
+^the run log shows an executor hook decision "([^"]*)" for the "([^"]*)" tool$
 ```
 
 Verification vocabulary: a green pass means completed fresh setup, acceptance, model and configured checks on exact disposable candidate inputs, with stable scratch inputs and workspace. It never means successful workspace-only commands.

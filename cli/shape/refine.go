@@ -17,11 +17,12 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -309,7 +310,7 @@ func (r *refine) run(ctx context.Context) (exit int, err error) {
 		return 0, err
 	}
 	input := []any{map[string]any{"role": "user", "content": blocks}}
-	defs := agent.AsAny(agent.Defs(agent.ReadFileTool, agent.ListFilesTool, agent.SearchTextTool, agent.ProbeTool, agent.DocumentationTool, agent.SubmitRefinementTool))
+	defs := agent.AsAny(agent.Defs(tools.ReadFileTool, tools.ListFilesTool, tools.SearchTextTool, agent.ProbeTool, tools.DocumentationTool, agent.SubmitRefinementTool))
 	r.window = newRefineWindow(r.evidence, input)
 	r.cacheID = startConversation(r.ev, "refine")
 	changes, ready, usage, err := r.converse(ctx, role, defs, input)
@@ -862,8 +863,8 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 		}
 		r.s.Progress(fmt.Sprintf("kogen: refinement response %s wall_ms=%d", resp.Usage.Line(), time.Since(started).Milliseconds()))
 		usage = usage.Add(resp.Usage)
-		replay := agent.Replay(resp.Items)
-		calls := agent.Calls(resp.Items)
+		replay := tools.Replay(resp.Items)
+		calls := tools.Calls(resp.Items)
 
 		var outputs []any
 		var result refineOutcome
@@ -889,7 +890,7 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 				if err != nil {
 					return nil, nil, usage, err
 				}
-				if c.Name == agent.DocumentationTool {
+				if c.Name == tools.DocumentationTool {
 					row := r.ev.RetainDocumentation(c.Args(), out.Text)
 					started, finished := DocumentationProgress(row)
 					r.s.Progress(started)
@@ -928,20 +929,20 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 }
 
 // runTool runs one of the read-only tools or the probe in the scratch checkout.
-func (r *refine) runTool(ctx context.Context, c agent.Call) (agent.Output, error) {
-	tools := &agent.Tools{
-		Root: r.scratch, Session: r.s, Repo: r.scratchR,
-		Enabled:       []string{agent.ReadFileTool, agent.ListFilesTool, agent.SearchTextTool, agent.ProbeTool, agent.DocumentationTool},
+func (r *refine) runTool(ctx context.Context, c tools.Call) (tools.Output, error) {
+	tl := &tools.Tools{
+		Root: r.scratch, Session: r.s, Repo: agent.Git(r.scratchR),
+		Enabled:       []string{tools.ReadFileTool, tools.ListFilesTool, tools.SearchTextTool, agent.ProbeTool, tools.DocumentationTool},
 		Probe:         func(command string, files any) (string, error) { return r.probe(ctx, command, files) },
-		Documentation: agent.Documentation{UserAgent: documentationAgent(r.client)},
+		Documentation: tools.Documentation{UserAgent: documentationAgent(r.client)},
 	}
 	if c.Name != agent.ProbeTool {
-		return tools.Run(c.Name, c.Args())
+		return tl.Run(c.Name, c.Args())
 	}
-	var out agent.Output
+	var out tools.Output
 	_, err := r.ev.ProbeText(nil, func() (string, error) {
 		var err error
-		out, err = tools.Run(c.Name, c.Args())
+		out, err = tl.Run(c.Name, c.Args())
 		return out.Text, err
 	})
 	return out, err

@@ -1,0 +1,30 @@
+{
+  "description": "a batch with finish in the middle: the call before and the call after it both run; finish is not executed and has no tool.result",
+  "files": {"a.txt": "alpha\n", "b.txt": "beta\n"},
+  "task": {"prompt": "read both and finish"},
+  "exchanges": [
+    {"id": "resp-1", "usage": {"input_tokens": 10, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 9, "output_tokens_details": {"reasoning_tokens": 0}},
+     "items": [
+       {"type": "function_call", "call_id": "c1", "name": "read_file", "arguments": "{\"path\":\"a.txt\"}"},
+       {"type": "function_call", "call_id": "c2", "name": "finish", "arguments": "{\"summary\":\"partial\"}"},
+       {"type": "function_call", "call_id": "c3", "name": "read_file", "arguments": "{\"path\":\"b.txt\"}"}
+     ]}
+  ],
+  "expect": {
+    "exit": 0,
+    "requests": 1,
+    "events": [
+      {"type": "session.started"},
+      {"type": "request.started", "n": 1},
+      {"type": "request.attempt"},
+      {"type": "response", "n": 1},
+      {"type": "tool.call", "call_id": "c1", "name": "read_file"},
+      {"type": "tool.result", "call_id": "c1", "name": "read_file", "cut": false},
+      {"type": "tool.call", "call_id": "c2", "name": "finish"},
+      {"type": "tool.call", "call_id": "c3", "name": "read_file"},
+      {"type": "tool.result", "call_id": "c3", "name": "read_file", "cut": false},
+      {"type": "round.ended", "ending": "terminal", "terminal_tool": "finish", "claim": "{\"summary\":\"partial\"}", "requests": 1},
+      {"type": "session.ended", "status": "ended", "exit": 0}
+    ]
+  }
+}

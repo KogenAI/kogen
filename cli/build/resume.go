@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 )
 
 var buildID = regexp.MustCompile(`^[a-f0-9]{8}$`)
@@ -170,6 +171,12 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	}
 	if b.Blocker != nil {
 		return refuse(id, "protected-contract blocker requires correction and fresh approval", "")
+	}
+	// An external executor's Build has resume capability none: refuse before any new run,
+	// facts or checkpoint exists, like every other refusal here.
+	if x := b.Executor; x != nil && x.Name != executor.Native {
+		return refuse(id, "Builds by executor "+x.Name+" cannot be resumed in this version (resume capability: none); "+
+			"inspect the preserved candidate or start a fresh Build", "")
 	}
 	approval, err := os.ReadFile(project.ApprovalPath(root, b.Slug))
 	saved, derr := decodeBase64(doc.Approval)

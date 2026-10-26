@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // localFacts publishes the integration records of one Build under `.kogen/local`

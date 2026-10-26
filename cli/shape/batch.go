@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 )
 
 // One bounded native batch: the shaper may hand 1 to 3 independent read, probe or draft jobs
@@ -52,9 +53,9 @@ func strs(list []string) []any {
 func workerNames(role string) []string {
 	switch role {
 	case "read":
-		return []string{agent.ReadFileTool, agent.ListFilesTool, agent.SearchTextTool}
+		return []string{tools.ReadFileTool, tools.ListFilesTool, tools.SearchTextTool}
 	case "probe":
-		return []string{agent.ReadFileTool, agent.ListFilesTool, agent.SearchTextTool, agent.ProbeTool}
+		return []string{tools.ReadFileTool, tools.ListFilesTool, tools.SearchTextTool, agent.ProbeTool}
 	}
 	return nil
 }
@@ -242,7 +243,7 @@ type jobState struct {
 	calls   int // model requests made
 	tools   int // ordinary tool calls
 	probes  int
-	pending []agent.Call
+	pending []tools.Call
 	running bool
 	result  map[string]any
 	cacheID string // this worker conversation's cache identity
@@ -392,12 +393,12 @@ func (sh *shaping) complete(states []*jobState, d workerDone, brief map[string]a
 		sh.failJob(st, brief, diagnostic(d.err))
 		return
 	}
-	calls := agent.Calls(d.resp.Items)
+	calls := tools.Calls(d.resp.Items)
 	if len(calls) == 0 {
 		sh.failJob(st, brief, "worker returned no result or tools")
 		return
 	}
-	st.input = append(st.input, agent.Replay(d.resp.Items)...)
+	st.input = append(st.input, tools.Replay(d.resp.Items)...)
 	st.pending = calls
 }
 
@@ -435,17 +436,17 @@ func (sh *shaping) execute(ctx context.Context, st *jobState, brief map[string]a
 		sh.failJob(st, brief, "probe bound exhausted")
 		return nil
 	}
-	tools := sh.agentTools(ctx, names)
-	var out agent.Output
+	tl := sh.agentTools(ctx, names)
+	var out tools.Output
 	var err error
 	if probeAllowed {
 		_, err = sh.ev.ProbeText(map[string]any{"job": st.job.id, "role": st.job.role}, func() (string, error) {
 			var err error
-			out, err = tools.Run(c.Name, args)
+			out, err = tl.Run(c.Name, args)
 			return out.Text, err
 		})
 	} else {
-		out, err = tools.Run(c.Name, args)
+		out, err = tl.Run(c.Name, args)
 	}
 	if err != nil {
 		return err

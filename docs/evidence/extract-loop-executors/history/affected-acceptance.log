@@ -1,0 +1,20 @@
+..............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................F-.....................................................................................................................
+
+Failed scenarios:
+  1) The Claude Code executor produces the candidate and Kogen's own review and single commit land it # ../../spec/features/04-building.feature:219
+       And the review request contains the diff of "calc.py" against the start HEAD # steps/steps.js:45
+           AssertionError [ERR_ASSERTION]: review request did not contain the diff of calc.py
+               + expected - actual
+           
+               -false
+               +true
+           
+               at reviewAssertions (/Users/almirsarajcic/Areas/Kogen/worktrees/loop-integration-20261026/test/acceptance/support/handlers.js:477:12)
+               at dispatchAssertions (/Users/almirsarajcic/Areas/Kogen/worktrees/loop-integration-20261026/test/acceptance/support/handlers.js:1818:54)
+               at dispatch (/Users/almirsarajcic/Areas/Kogen/worktrees/loop-integration-20261026/test/acceptance/support/handlers.js:1316:10)
+               at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+3 hooks (3 passed)
+45 scenarios (44 passed, 1 failed)
+658 steps (656 passed, 1 skipped, 1 failed)
+3m 0.062s (2m 59.973s executing your code)

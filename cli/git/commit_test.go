@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // candidate is a fixture with an edit and a new file, and the spec of its commit.

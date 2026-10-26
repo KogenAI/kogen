@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // Recovery of a builder-reported protected blocker (`kogen intent recover`).

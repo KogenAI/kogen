@@ -510,3 +510,27 @@ Usual addresses: Ollama `http://localhost:11434/v1`, LM Studio
 
 The unknown-provider message, `kogen help`, the Zsh completion and the uninstall
 message all name `openai-compatible`. Roles that omit `provider` stay on ChatGPT.
+
+## Build executor
+
+`models.build` alone may name who runs the builder:
+
+```yaml
+models:
+  build: {executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 6}
+```
+
+- **`executor`** is `native` (the default; Kogen's own builder with the provider settings above, byte for byte as before) or `claude-code`. Any other name, or `executor` or `max_rounds` on `shape` or `review`, is a configuration error. Shape, Refine and review stay native. Written out, `executor: native` reads exactly like leaving the key out.
+- **`claude-code`** runs your installed Claude Code CLI headless as the builder. `provider` and `base_url` are refused with it; `model` and `effort` are required and passed to Claude Code unchanged (`--model`, and `--effort` where the installed version supports it).
+- **`max_rounds`** (a positive integer, `claude-code` only) caps how many builder rounds Kogen gives the executor. The default is 6. A Build that reaches the cap without a verified, reviewed candidate stops with `candidate/executor_round_limit`; the candidate stays in the checkout.
+
+**Prerequisites.** Claude Code 2.1.295 or later, installed and signed in with your Claude subscription (`claude auth login`). Kogen never uses an API key, an API base URL or `--bare` for it, strips those variables from the child's environment, and refuses a run whose reported sign-in is not the subscription (`executor/auth_refused`). It does not read, copy or store Claude Code's tokens. A missing binary or an older version stops the Build with `executor/unavailable`. The builder needs no Kogen provider login; the review still does. Claude Code's usage and cost figures are what Claude Code reports and its own API-equivalent estimate, not a bill; the commit summary prints them on an `executor:` line.
+
+**What Kogen still owns.** The approved Intent and protected baseline, the fixers, every verification pass and stage gate, independent review (native, with your `models.review`), the single verified commit, the checkpoints and recovery. A builder's finish is a claim: a red result goes back to the same Claude Code session as feedback, and only a green, reviewed, still identical tree is committed.
+
+**Prevention, detection and verification are separate.**
+- *Prevention* is best effort and belongs to the executor: for Claude Code, a PreToolUse hook (this program's hidden `__kogen_executor_hook` subcommand) denies Write, Edit, MultiEdit and NotebookEdit of protected paths, `.git` and anything outside the checkout. Shell commands are not prevented.
+- *Detection* is Kogen's, whatever the executor does: after every round the approved baseline must be unchanged and HEAD must not have moved (`candidate/baseline_changed`, `candidate/head_moved`).
+- *Verification* is Kogen's exact-tree verification, review and commit. Neither the hook nor a worktree or permission mode counts as process isolation.
+
+**Resume.** A Build run by Claude Code cannot be resumed (its resume capability is none): `kogen intent resume` refuses its checkpoint with `candidate/resume_refused`. Inspect the preserved candidate, or start a fresh Build. The native builder's resume is unchanged, and so are its checkpoints.

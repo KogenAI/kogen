@@ -116,10 +116,10 @@ import (
 	"strings"
 	"time"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 )
 
 func must(err error) {
@@ -145,7 +145,7 @@ func main() {
 	if role.Provider == "" {
 		role.Provider = "opencode-go"
 	}
-	tools := []any{map[string]any{"type": "function", "name": "read_file", "description": "Read the fixture", "parameters": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []any{"path"}, "additionalProperties": false}, "strict": true}}
+	defs := []any{map[string]any{"type": "function", "name": "read_file", "description": "Read the fixture", "parameters": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []any{"path"}, "additionalProperties": false}, "strict": true}}
 	base := []any{map[string]any{"role": "user", "content": str(c, "contract")}}
 	mode := str(c, "mode")
 	var result any
@@ -172,9 +172,9 @@ func main() {
 	case "budget":
 		client := provider.NewClient("kogen test (driver)")
 		render := func(text string) map[string]any {
-			return client.Body(provider.Request{Role: role, Instructions: str(c, "policy"), Input: []any{map[string]any{"role": "user", "content": text}}, Tools: tools, Scope: "budget"})
+			return client.Body(provider.Request{Role: role, Instructions: str(c, "policy"), Input: []any{map[string]any{"role": "user", "content": text}}, Tools: defs, Scope: "budget"})
 		}
-		empty, err := agent.Measure(render(""))
+		empty, err := tools.Measure(render(""))
 		must(err)
 		isChat, bytes, fits, reserve := true, []any{}, []any{}, []any{}
 		for _, n := range []int{524287, 524288, 524289} {
@@ -182,7 +182,7 @@ func main() {
 			_, hasInput := body["input"]
 			_, hasMessages := body["messages"].([]any)
 			isChat = isChat && hasMessages && !hasInput
-			m, err := agent.Measure(body)
+			m, err := tools.Measure(body)
 			must(err)
 			bytes, fits, reserve = append(bytes, m.RenderedBytes), append(fits, m.Fits), append(reserve, m.OutputReserveTokens)
 		}
@@ -210,7 +210,7 @@ func main() {
 		invoke := func(items []any, scope string) map[string]any {
 			obs := &collector{}
 			t := time.Now()
-			resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: str(c, "policy"), Input: items, Tools: tools, Budget: time.Duration(budget) * time.Millisecond, Scope: scope}, obs)
+			resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: str(c, "policy"), Input: items, Tools: defs, Budget: time.Duration(budget) * time.Millisecond, Scope: scope}, obs)
 			r := map[string]any{"value": nil, "metadata": obs.last, "elapsed": time.Since(t).Milliseconds()}
 			var e *sys.Error
 			switch {
@@ -229,7 +229,7 @@ func main() {
 		results := []any{first}
 		if first["outcome"] == "completed" {
 			items, _ := first["items"].([]map[string]any)
-			replay := agent.Replay(items)
+			replay := tools.Replay(items)
 			var call map[string]any
 			for _, it := range items {
 				if it["type"] == "function_call" {
@@ -238,7 +238,7 @@ func main() {
 				}
 			}
 			next := append(append([]any{}, input...), replay...)
-			next = append(next, agent.OutputItem(call["call_id"], "PRIVATE_TOOL_BODY"))
+			next = append(next, tools.OutputItem(call["call_id"], "PRIVATE_TOOL_BODY"))
 			// The conversation's cache identity is saved with its checkpoint and restored by a resumed process.
 			saved, err := json.Marshal(client.Cache.States())
 			must(err)

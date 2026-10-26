@@ -1,0 +1,7 @@
+kogen-loop
+Copyright 2026 Optimum Tech, LLC
+
+Licensed under the Apache License, Version 2.0.
+
+The sys, provider and tools packages were moved from Kogen (KogenAI/kogen,
+source commit 56eecd572a6e07184863939254a90d9a2dc44e96, Apache-2.0, same copyright holder).

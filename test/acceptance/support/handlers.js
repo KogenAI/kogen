@@ -24,6 +24,7 @@ const {
   intentFiles,
   counterFiles,
 } = require('./fake-servers');
+const { executorSteps } = require('./executor-steps');
 
 const topHelp = `Commands:\n  context    Read checkout-local facts (JSON)\n  completion zsh  Print standalone Zsh completion\n  init       Prepare this Git repository for Kogen\n  intent     Shape, approve and build an Intent\n  provider   Sign in to a provider and show logins\n  uninstall  Remove the installed kogen\n  version    Show the Kogen version\n  help       List commands\n\nRun kogen <command> to see its subcommands and options.\n`;
 const intentHelp = `Usage: kogen intent <command> <slug> [arguments] [options]\n\nCommands:\n  shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)\n  refine <slug> <sha256> <file|->  Correct existing files; require fresh approval\n  approve <slug> [<hash>]   Show the review card, or approve the Intent\n  build <slug>              Build, verify, review and commit the approved Intent\n  recover <build-id> --output <directory>  Preserve a protected blocker and clear implementation only\n  resume <build-id>         Continue a stopped Build in this checkout\n  list                     List packages and Build attempts\n  usage [run-id]          Explain local retained provider usage\n  inspect <run-id>         Inspect recorded Build evidence\n  preflight <slug>         Observe read-only prerequisites\n\nOptions:\n  --project <checkout>  Project checkout (default: current directory)\n  --by <name>           Approver (default: your Git identity)\n  --context <file>      Fresh Build diagnostic data only (not resume)\n  --output <directory>  Recover only: NEW directory outside the checkout (required)\n`;
@@ -114,6 +115,8 @@ function setConfigKey(world, key, value) {
     'commands.acceptance.steps_dir': /^    steps_dir:.*$/m,
     protect: /^protect:.*$/m,
     'models.shape': /^  shape:.*$/m,
+    'models.build': /^  build:.*$/m,
+    'models.review': /^  review:.*$/m,
   };
   const line = lineMap[key];
   assert.ok(line, `unsupported config setting in fixture: ${key}`);
@@ -968,6 +971,7 @@ async function dispatch(world, pattern, values, attachment) {
   const label = plainPattern(pattern);
   const args = values;
   refuseLiveStep(label);
+  if (await executorSteps(world, label, args, () => latestRunDir(world))) return;
   const result = () => lastResult(world);
   const root = () => world.project || world.workspace;
 
@@ -1809,6 +1813,11 @@ async function dispatchAssertions(world, label, args, attachment) {
     const result = JSON.parse(fs.readFileSync(path.join(latestRunDir(world), 'result.json'), 'utf8'));
     assert.equal(result.reviews, Number(args[0]));
     assert.equal(result.passes, Number(args[1]));
+    return;
+  }
+  if (label.startsWith('the committed contents of ')) {
+    const contents = git(world, ['show', `HEAD:${args[0]}`]);
+    assert.ok(contents.includes(args[1]), `committed ${args[0]} did not contain ${args[1]}`);
     return;
   }
   if (label.startsWith('the review request')) return reviewAssertions(world, label, args);

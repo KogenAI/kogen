@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
+	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -48,6 +49,8 @@ type Attempt struct {
 	intent *project.Intent
 	model  *project.ModelSpec
 	diag   *Diagnostic
+	// ext is the external build executor of a fresh Build (nil: the native builder).
+	ext *externalBuild
 }
 
 // noRunNotice follows a refusal that happened before any run was created (stdout, indented
@@ -179,8 +182,14 @@ func cleanPaths(repo *git.Repo, intent *project.Intent) ([]string, error) {
 	return excluded, nil
 }
 
+// buildRoles are the provider roles a Build signs in with: the review's, and the builder's
+// unless an external executor serves it (it uses its own sign-in, never a Kogen provider's).
 func buildRoles(cfg *project.Config) []provider.Role {
-	return []provider.Role{providerRole(cfg.Models["build"]), providerRole(cfg.Models["review"])}
+	var roles []provider.Role
+	if role := cfg.Models["build"]; !role.External() {
+		roles = append(roles, providerRole(role))
+	}
+	return append(roles, providerRole(cfg.Models["review"]))
 }
 
 func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg *project.Config, start string, out **Attempt) error {
@@ -223,6 +232,10 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 		return sys.Fail("intent", "lint", err.Error(), 1)
 	}
 	plan := stageDefs(stages)
+	ext, err := selectExecutor(in.Deps, cfg.Models["build"])
+	if err != nil {
+		return err
+	}
 	if err := provider.RequireLogin(s.Getenv("HOME"), buildRoles(cfg)); err != nil {
 		return err
 	}
@@ -277,7 +290,7 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 			Usage: zeroTokens(), AttemptUsage: zeroTokens(), CacheIDs: map[string]string{},
 			StagePlan: plan, StageProgress: initialProgress(plan),
 		},
-		s: s, deps: in.Deps, repo: repo, cache: provider.NewCache(nil), facts: facts, intent: intent, model: intent.Model, diag: in.Context,
+		s: s, deps: in.Deps, repo: repo, cache: provider.NewCache(nil), facts: facts, intent: intent, model: intent.Model, diag: in.Context, ext: ext,
 	}
 	*out = b
 	run.Event(map[string]any{"event": "start", "slug": slug, "start_head": start, "approved": approval.SHA256})
@@ -316,15 +329,16 @@ func (b *Attempt) begin(ctx context.Context) error {
 	if err := b.Track(); err != nil {
 		return err
 	}
-	content, err := b.openingMessage()
+	brief, err := b.brief()
 	if err != nil {
 		return err
 	}
-	input := []any{map[string]any{"role": "user", "content": content}}
-	if b.diag != nil {
-		input = append(input, b.diag.message())
+	sess, err := b.startBuilder(ctx, brief)
+	if err != nil {
+		return err
 	}
-	return b.drive(ctx, input, true)
+	defer sess.Close()
+	return b.drive(ctx, sess, executor.Input{}, true)
 }
 
 func (b *Attempt) readiness() *verify.Readiness {
@@ -514,7 +528,7 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 			"pass": b.Pass, "repair": b.Repairs,
 		},
 	}
-	resp, err := agent.Deliver(input, sp.Owner, b.Run.Event, func() (*provider.Response, error) {
+	resp, err := tools.Deliver(input, sp.Owner, b.Run.Event, func() (*provider.Response, error) {
 		return b.deps.Client.Respond(ctx, b.s, req, attempts{b.Run})
 	})
 	if err != nil {

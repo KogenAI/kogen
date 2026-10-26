@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // CommitMessage is the Build's commit message: the Intent title, an empty line, and the

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/agent"
-	"kogen/provider"
-	"kogen/sys"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/verify"
 )
 
@@ -142,7 +142,7 @@ func TestRepeatedWindowsArchiveExactInputAndPreviousHandoffKeepingFullNewestBatc
 	if !reflect.DeepEqual(reduced[0], f.authority[0]) || !reflect.DeepEqual(reduced[len(reduced)-6:], windowExchange(3)) {
 		t.Fatalf("the reduced input keeps the authority first and the newest batch whole: %v", reduced)
 	}
-	if m, _ := agent.Measure(f.prep().render(reduced)); !m.Fits {
+	if m, _ := tools.Measure(f.prep().render(reduced)); !m.Fits {
 		t.Fatal("the reduced request does not fit")
 	}
 	if len(f.win.history) != 1 {
@@ -214,7 +214,7 @@ func TestTheResetEventMeasuresTheRequestOfTheNewWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actual, _ := agent.Measure(f.prep().render(reduced))
+	actual, _ := tools.Measure(f.prep().render(reduced))
 	var event map[string]any
 	for _, e := range windowEvents(t, f.root) {
 		if e["event"] == "working_context_reset" {

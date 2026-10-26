@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"kogen/agent"
-	"kogen/provider"
-	"kogen/sys"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 )
 
 type request struct {
@@ -42,7 +42,7 @@ func must(err error) {
 	}
 }
 
-func tools() []any {
+func toolDefs() []any {
 	return []any{map[string]any{
 		"type": "function", "name": "read_file", "description": "Read local text", "strict": true,
 		"parameters": map[string]any{
@@ -92,10 +92,10 @@ func main() {
 // ceiling and measures each the way the engine does.
 func budget(client *provider.Client, role provider.Role) map[string]any {
 	render := func(text string) map[string]any {
-		return client.Body(provider.Request{Role: role, Instructions: "LOCAL_POLICY", Input: []any{map[string]any{"role": "user", "content": text}}, Tools: tools(), Scope: "budget"})
+		return client.Body(provider.Request{Role: role, Instructions: "LOCAL_POLICY", Input: []any{map[string]any{"role": "user", "content": text}}, Tools: toolDefs(), Scope: "budget"})
 	}
 	size := func(text string) int {
-		m, err := agent.Measure(render(text))
+		m, err := tools.Measure(render(text))
 		must(err)
 		return m.RenderedBytes
 	}
@@ -109,7 +109,7 @@ func budget(client *provider.Client, role provider.Role) map[string]any {
 			n += target - size(strings.Repeat("x", n))
 		}
 		body := render(strings.Repeat("x", n))
-		m, err := agent.Measure(body)
+		m, err := tools.Measure(body)
 		must(err)
 		bodies = append(bodies, body)
 		bytes, fits, reserve = append(bytes, m.RenderedBytes), append(fits, m.Fits), append(reserve, m.OutputReserveTokens)
@@ -140,7 +140,7 @@ func invoke(client *provider.Client, s *sys.Session, role provider.Role, c reque
 	if budget == 0 {
 		budget = 15 * time.Second
 	}
-	resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: "LOCAL_POLICY", Input: input, Tools: tools(), Budget: budget, Scope: scope}, obs)
+	resp, err := client.Respond(s.Context(), s, provider.Request{Role: role, Instructions: "LOCAL_POLICY", Input: input, Tools: toolDefs(), Budget: budget, Scope: scope}, obs)
 	o := outcome{Records: obs.rows, Elapsed: time.Since(started).Milliseconds()}
 	if err != nil {
 		var e *sys.Error
@@ -179,9 +179,9 @@ func transport(client *provider.Client, s *sys.Session, role provider.Role, c re
 	}
 	if len(calls) > 0 {
 		next := append([]any{}, input...)
-		next = append(next, agent.Replay(first.Items)...)
+		next = append(next, tools.Replay(first.Items)...)
 		for _, call := range calls {
-			next = append(next, agent.OutputItem(call["call_id"], "LOCAL_TOOL_RESULT:"+fmt.Sprint(call["call_id"])))
+			next = append(next, tools.OutputItem(call["call_id"], "LOCAL_TOOL_RESULT:"+fmt.Sprint(call["call_id"])))
 		}
 		// The saved conversation is reloaded from its serialized form.
 		saved, err := json.Marshal(next)

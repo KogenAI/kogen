@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
+	"kogen-loop/provider"
 	"kogen/agent"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
 )
 
 // The shaper's context: a deterministic, index-first navigation of the checkout (every file

@@ -1,0 +1,3 @@
+{"name":"protected_shell_write","only":"","needs":[],
+ "rounds":[{"actions":[{"shell":"printf 'tampered\\n' > protected/contract.txt"}],"end":"finish","claim":"done","usage":{"input":80,"cached":0,"output":9}}],
+ "expect":{"rounds":[{"ending":"finish","usage_state":"complete"}],"protected":"changed"}}

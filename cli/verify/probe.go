@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // ProbeResult is one probe: the command's exit status, whether the 5-minute limit stopped

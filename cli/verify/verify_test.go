@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"kogen-loop/sys"
 	"kogen/project"
-	"kogen/sys"
 )
 
 func TestGreenPassRunsEveryItemInOrderOnTheCleanCandidate(t *testing.T) {

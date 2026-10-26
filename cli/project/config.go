@@ -12,9 +12,10 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 // ConfigPath is the project configuration, relative to the repository root.
@@ -23,10 +24,27 @@ const ConfigPath = ".kogen/project.yaml"
 // Role is one model selection. Provider "" means the role names no provider (legacy ChatGPT).
 // BaseURL is set only for the openai-compatible provider (the host's /v1 base); it is
 // omitted from JSON when empty so existing checkpoints keep their bytes.
+//
+// Executor and MaxRounds belong to the build role only (docs/executor-contract.md): Executor
+// is "" for the native builder (also when the file says `executor: native`) or "claude-code";
+// MaxRounds is claude-code's round cap, 0 when the file sets none. Both are omitted from JSON
+// when empty for the same reason.
 type Role struct {
 	Provider, Model, Effort string
 	BaseURL                 string `json:",omitempty"`
+	Executor                string `json:",omitempty"`
+	MaxRounds               int    `json:",omitempty"`
 }
+
+// Executor names a build role may select (the native one is the empty Executor).
+const (
+	ExecutorNative     = "native"
+	ExecutorClaudeCode = "claude-code"
+)
+
+// External reports whether the role is served by an external executor instead of Kogen's own
+// provider-backed builder.
+func (r Role) External() bool { return r.Executor != "" && r.Executor != ExecutorNative }
 
 // Check is a project check: a unique lowercase name and its command.
 type Check struct{ Name, Run string }
@@ -287,16 +305,115 @@ func (v *validator) models(node *yamlNode) map[string]Role {
 			v.add(p.line, "unknown key "+p.key)
 			continue
 		}
-		m, e, ok := modelEffort(p.node, false)
+		rest, exec, rounds, ok := v.executorKeys(p)
+		if !ok {
+			continue
+		}
+		if exec == ExecutorClaudeCode {
+			if r, ok := v.externalRole(rest, "models."+p.key, p.line); ok {
+				r.Executor, r.MaxRounds = exec, rounds
+				roles[p.key] = r
+			}
+			continue
+		}
+		m, e, ok := modelEffort(rest, false)
 		if !ok {
 			v.add(p.line, "models."+p.key+" must be {model, effort}")
 			continue
 		}
-		if r, ok := v.roleConfig(p.node.pairs, "models."+p.key, p.line, m, e); ok {
+		if r, ok := v.roleConfig(rest.pairs, "models."+p.key, p.line, m, e); ok {
 			roles[p.key] = r
 		}
 	}
 	return roles
+}
+
+// maxRoundsRe is a positive decimal integer as the configuration spells it.
+var maxRoundsRe = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
+
+// executorKeys separates the `executor` and `max_rounds` keys of a models role from the rest
+// of its mapping (docs/executor-contract.md section 5). They are valid for the build role
+// only; max_rounds only with executor claude-code. ok is false when the role must be skipped
+// (a problem was reported). rest is the mapping without the two keys.
+func (v *validator) executorKeys(p yamlPair) (rest *yamlNode, exec string, rounds int, ok bool) {
+	rest = p.node
+	if p.node.kind != kindMap {
+		return rest, "", 0, true
+	}
+	var execPair, roundsPair *yamlPair
+	var kept []yamlPair
+	for i := range p.node.pairs {
+		switch p.node.pairs[i].key {
+		case "executor":
+			execPair = &p.node.pairs[i]
+		case "max_rounds":
+			roundsPair = &p.node.pairs[i]
+		default:
+			kept = append(kept, p.node.pairs[i])
+		}
+	}
+	if execPair == nil && roundsPair == nil {
+		return rest, "", 0, true
+	}
+	path := "models." + p.key
+	if p.key != "build" {
+		for _, pr := range []*yamlPair{execPair, roundsPair} {
+			if pr != nil {
+				v.add(pr.line, path+"."+pr.key+": executor is supported for the build role only")
+			}
+		}
+		return nil, "", 0, false
+	}
+	copied := *p.node
+	copied.pairs = kept
+	rest = &copied
+	ok = true
+	if execPair != nil {
+		n := execPair.node
+		if n.kind == kindScalar && !n.null && isString(n) && (n.text == ExecutorNative || n.text == ExecutorClaudeCode) {
+			if n.text == ExecutorClaudeCode {
+				exec = ExecutorClaudeCode
+			}
+		} else {
+			v.add(execPair.line, path+".executor must be native or claude-code")
+			ok = false
+		}
+	}
+	if roundsPair != nil {
+		n := roundsPair.node
+		switch {
+		case !(n.kind == kindScalar && !n.null && !n.quoted && maxRoundsRe.MatchString(n.text)):
+			v.add(roundsPair.line, path+".max_rounds must be a positive integer")
+			ok = false
+		case exec != ExecutorClaudeCode:
+			v.add(roundsPair.line, path+".max_rounds is only for executor claude-code")
+			ok = false
+		default:
+			rounds, _ = strconv.Atoi(n.text)
+		}
+	}
+	return rest, exec, rounds, ok
+}
+
+// externalRole is a role served by an external executor: Kogen's provider keys do not apply
+// (the executor uses its own sign-in), model and effort are required and passed through.
+func (v *validator) externalRole(node *yamlNode, path string, line int) (Role, bool) {
+	good := true
+	for _, p := range node.pairs {
+		if p.key == "provider" || p.key == "base_url" {
+			v.add(p.line, path+"."+p.key+" is not allowed with executor claude-code")
+			good = false
+		}
+	}
+	if !good {
+		return Role{}, false
+	}
+	m, e, ok := modelEffort(node, true)
+	if !ok {
+		v.add(line, path+" with executor claude-code must be {model, effort} non-blank strings")
+		return Role{}, false
+	}
+	return Role{Model: m, Effort: e}, true
 }
 
 // modelEffort reads a role mapping: only model, effort, provider and base_url keys, model and

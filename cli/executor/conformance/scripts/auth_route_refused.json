@@ -1,0 +1,3 @@
+{"name":"auth_route_refused","only":"claude-code","needs":[],
+ "rounds":[{"actions":[{"write":{"path":"x.txt","content":"x\n"}}],"end":"finish","claim":"","usage":null,"api_key_auth":true}],
+ "expect":{"rounds":[],"error":"executor/auth_refused","absent":["x.txt"]}}

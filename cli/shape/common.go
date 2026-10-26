@@ -12,11 +12,11 @@ import (
 	"strings"
 	"unicode"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 )
 
 // Helpers shared by the commands of this package (shape, refine, approve, preflight, init).
@@ -62,7 +62,7 @@ func ShapeRoles(cfg *project.Config) []provider.Role {
 }
 
 // ReplayItems is the replayed items of a response as a conversation's next input items.
-func ReplayItems(items []map[string]any) []any { return agent.Replay(items) }
+func ReplayItems(items []map[string]any) []any { return tools.Replay(items) }
 
 // InspectStrings renders a list of strings the way Elixir's inspect/1 does: `["a", "b"]`, on
 // one line however long it is.

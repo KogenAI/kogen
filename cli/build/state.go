@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"kogen-loop/provider"
 	"kogen/project"
-	"kogen/provider"
 	"kogen/verify"
 )
 
@@ -202,6 +202,32 @@ type State struct {
 	StagePlan     []stageDef      `json:"stage_plan,omitempty"`
 	StageProgress *StageProgress  `json:"stage_progress,omitempty"`
 	StageEvidence []StageEvidence `json:"stage_evidence,omitempty"`
+	// Executor identifies the external executor that produced the candidate and what it
+	// reported (docs/executor-contract.md); nil for the native builder, so a native checkpoint
+	// keeps its bytes. A checkpoint that has it is never resumed.
+	Executor *ExecutorState `json:"executor,omitempty"`
+}
+
+// ExecutorState is an external executor's identity and its running totals in a Build:
+// harness-reported figures, never provider-exact and never a bill.
+type ExecutorState struct {
+	Name      string        `json:"name"`
+	Version   string        `json:"version"`
+	SessionID string        `json:"session_id"`
+	Rounds    int           `json:"rounds"`
+	Usage     ExecutorUsage `json:"usage"`
+}
+
+// ExecutorUsage sums the usage the executor reported over the rounds. A count is nil once a
+// round did not report it (unknown stays unknown); CostUSD is the harness's own estimate.
+type ExecutorUsage struct {
+	Input     *int     `json:"input"`
+	Cached    *int     `json:"cached"`
+	Output    *int     `json:"output"`
+	Reasoning *int     `json:"reasoning"`
+	State     string   `json:"state"`
+	Source    string   `json:"source"`
+	CostUSD   *float64 `json:"cost_usd,omitempty"`
 }
 
 // requiredStateKeys are the fields a checkpoint state must carry.
@@ -367,6 +393,9 @@ func (s *State) valid(doc *Checkpoint) bool {
 		if !t.valid() {
 			return false
 		}
+	}
+	if x := s.Executor; x != nil && (x.Name == "" || x.Rounds < 0) {
+		return false
 	}
 	c := &s.Continuation
 	if !c.valid() {

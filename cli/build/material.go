@@ -11,11 +11,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/git"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -187,9 +188,9 @@ func materialOpening(authority, source string, diagnostic []any) []any {
 // replaces it. A mandatory authority and catalog that still do not fit refuse before any
 // file is created. tree "" is a saved historical source whose tree binding is unavailable;
 // force pins even a source that fits.
-func (b *Attempt) materialPrepare(tree string, m materialSet, role project.Role, instructions string, tools, diagnostic []any, force bool) ([]any, error) {
-	measure := func(items []any) (agent.Measurement, error) {
-		return agent.Measure(b.bodyOf(role, instructions, items, tools, "review"), providerRole(role))
+func (b *Attempt) materialPrepare(tree string, m materialSet, role project.Role, instructions string, defs, diagnostic []any, force bool) ([]any, error) {
+	measure := func(items []any) (tools.Measurement, error) {
+		return tools.Measure(b.bodyOf(role, instructions, items, defs, "review"), providerRole(role))
 	}
 	full := materialOpening(m.Authority, m.Source, diagnostic)
 	fit, err := measure(full)
@@ -273,7 +274,7 @@ from this catalog, or import builder conversation, reasoning or judgments.
 		return nil, sys.Fail("candidate", "context_budget_exceeded", fmt.Sprintf(
 			"review: mandatory authority/catalog %d bytes exceeds ceiling %d, output reserve %d tokens; checkpoint %s/checkpoint.json. "+
 				"Inspect custody; ordinary Refine and new exact approval are required if scope must change.",
-			bound.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, b.Run.Dir), 1)
+			bound.RenderedBytes, tools.InputBudgetBytes, reservedOutputTokens, b.Run.Dir), 1)
 	}
 
 	if err := materialPrivateDir(filepath.Dir(dir)); err != nil {
@@ -308,7 +309,7 @@ from this catalog, or import builder conversation, reasoning or judgments.
 // request outgrows its window. A checkpoint of an older version holds exact saved blocks
 // without their material or tree: those historical bytes are relocated as saved, never
 // rebuilt from the checkout. Nothing happens once the review's source is already pinned.
-func (b *Attempt) materialRelocate(role project.Role, instructions string, tools []any) error {
+func (b *Attempt) materialRelocate(role project.Role, instructions string, defs []any) error {
 	state := b.WorkingContext["review"]
 	if state == nil || len(state.Mandatory) == 0 {
 		return nil
@@ -348,7 +349,7 @@ func (b *Attempt) materialRelocate(role project.Role, instructions string, tools
 	if state.SourceTree != nil {
 		tree = *state.SourceTree
 	}
-	_, err := b.materialPrepare(tree, m, role, instructions, tools, state.Mandatory[1:], true)
+	_, err := b.materialPrepare(tree, m, role, instructions, defs, state.Mandatory[1:], true)
 	return err
 }
 
@@ -516,7 +517,7 @@ func (c *reviewCustody) delivered(root string) map[string]bool {
 				continue
 			}
 			arguments, _ := call["arguments"].(string)
-			path, ok := agent.DecodeArguments(arguments)["path"].(string)
+			path, ok := tools.DecodeArguments(arguments)["path"].(string)
 			if !ok {
 				continue
 			}
@@ -573,16 +574,16 @@ func (b *Attempt) reviewDelivery(input, kept []any, tree string) (map[string]any
 			"parts": len(c.parts), "delivered": len(c.parts) - len(unread), "unread": unread,
 		}
 	}
-	key := func(e agent.ImageEntry) string { return display(e.Meta["path"]) + "\x00" + display(e.Meta["sha256"]) }
+	key := func(e tools.ImageEntry) string { return display(e.Meta["path"]) + "\x00" + display(e.Meta["sha256"]) }
 	window := map[string]bool{}
-	for _, e := range agent.ImageEntries(kept) {
+	for _, e := range tools.ImageEntries(kept) {
 		window[key(e)] = true
 	}
 	images := []any{}
 	newest := map[string]map[string]any{}
 	// This review's archived windows, oldest first, then the input given, the newest window.
 	for _, w := range append(slices.Clone(c.windows[min(c.own, len(c.windows)):]), c.windows[0]) {
-		for _, e := range agent.ImageEntries(w) {
+		for _, e := range tools.ImageEntries(w) {
 			k := key(e)
 			image, ok := newest[k]
 			if !ok {

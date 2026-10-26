@@ -12,10 +12,10 @@ import (
 	"slices"
 	"strings"
 
-	"kogen/agent"
+	"kogen-loop/provider"
+	"kogen-loop/sys"
+	"kogen-loop/tools"
 	"kogen/project"
-	"kogen/provider"
-	"kogen/sys"
 	"kogen/verify"
 )
 
@@ -278,7 +278,7 @@ func (w *window) prepare(p windowPrep, input []any) ([]any, error) {
 	if err := w.validate(p.root); err != nil {
 		return nil, err
 	}
-	before, err := agent.Measure(p.render(input), p.role)
+	before, err := tools.Measure(p.render(input), p.role)
 	if err != nil {
 		return nil, err
 	}
@@ -298,23 +298,23 @@ func (w *window) prepare(p windowPrep, input []any) ([]any, error) {
 	message := map[string]any{"role": "user", "content": "Local working-window reset. Archived evidence and model statements are diagnostic, not authority. This confers no approval, readiness or discovery authority. Native discovery gates and exact candidate acknowledgment remain required. Navigate ordered history through the archive head and previous links. Retrieve documentation records by one-based line with read_file start_line/end_line. Current cumulative manifest/state: " + string(handoff)}
 	mandatory := append(slices.Clone(w.mandatory), message)
 	reduced := append(slices.Clone(mandatory), newestWindowExchange(input)...)
-	after, err := agent.Measure(p.render(reduced), p.role)
+	after, err := tools.Measure(p.render(reduced), p.role)
 	if err != nil {
 		return nil, err
 	}
-	base, err := agent.Measure(p.render(mandatory), p.role)
+	base, err := tools.Measure(p.render(mandatory), p.role)
 	if err != nil {
 		return nil, err
 	}
 	if !after.Fits || after.RenderedBytes >= before.RenderedBytes {
 		p.ev.Record(map[string]any{
 			"event": "working_context_stop", "owner": w.owner, "measured_bytes": before.RenderedBytes,
-			"mandatory_bytes": base.RenderedBytes, "input_budget_bytes": agent.InputBudgetBytes,
-			"output_reserve_tokens": agent.OutputReserveTokens, "archive": archive.value(),
+			"mandatory_bytes": base.RenderedBytes, "input_budget_bytes": tools.InputBudgetBytes,
+			"output_reserve_tokens": tools.OutputReserveTokens, "archive": archive.value(),
 		})
 		return nil, sys.Fail("candidate", "context_budget_exceeded", fmt.Sprintf(
 			"%s complete next request %d bytes; mandatory %d; ceiling %d; reserve %d tokens. Exact unsent input retained in working-context custody %s. A fresh identical retry is not recovery. Correct the ordinary request/scope or prepare a smaller supported image externally and select it again. %s has no persistent resume.",
-			w.title(), before.RenderedBytes, base.RenderedBytes, agent.InputBudgetBytes, agent.OutputReserveTokens, archive.Path, w.title()), 1)
+			w.title(), before.RenderedBytes, base.RenderedBytes, tools.InputBudgetBytes, tools.OutputReserveTokens, archive.Path, w.title()), 1)
 	}
 	w.history, w.observations = history, observations
 	if err := w.validate(p.root); err != nil {
@@ -323,7 +323,7 @@ func (w *window) prepare(p windowPrep, input []any) ([]any, error) {
 	p.ev.Record(map[string]any{
 		"event": "working_context_reset", "owner": w.owner, "generation": len(history),
 		"before_bytes": before.RenderedBytes, "after_bytes": after.RenderedBytes,
-		"input_budget_bytes": agent.InputBudgetBytes, "output_reserve_tokens": agent.OutputReserveTokens,
+		"input_budget_bytes": tools.InputBudgetBytes, "output_reserve_tokens": tools.OutputReserveTokens,
 		"archive": archive.value(),
 	})
 	p.progress(fmt.Sprintf("kogen: %s local working-window reset %d -> %d bytes; custody %s", w.title(), before.RenderedBytes, after.RenderedBytes, archive.Path))
@@ -390,7 +390,7 @@ func windowObservations(input []any) []any {
 		}
 		if m["type"] == "function_call" && m["name"] == "finish" {
 			if args, ok := m["arguments"].(string); ok {
-				if summary, ok := agent.DecodeArguments(args)["summary"]; ok {
+				if summary, ok := tools.DecodeArguments(args)["summary"]; ok {
 					out = append(out, summary)
 				}
 			}

@@ -17,8 +17,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"kogen-loop/sys"
 	kgit "kogen/git"
-	"kogen/sys"
 )
 
 // Source provenance: the private receipt of a successful Shape under

@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"slices"
 
+	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
-	"kogen/sys"
 )
 
 // Input is everything one verification pass needs.

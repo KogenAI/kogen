@@ -1,17 +1,15 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
 
-// Tool names.
+	"kogen-loop/tools"
+)
+
+// Kogen's tool names. The generic tools (shell, view_image, read_file, write_file, list_files,
+// search_text, documentation) are named and defined by kogen-loop/tools.
 const (
-	ShellTool         = "shell"
-	ViewImageTool     = "view_image"
-	ReadFileTool      = "read_file"
-	WriteFileTool     = "write_file"
-	ListFilesTool     = "list_files"
-	SearchTextTool    = "search_text"
 	ProbeTool         = "probe"
-	DocumentationTool = "documentation"
 	FinishTool        = "finish"
 	ReportBlockerTool = "report_blocker"
 
@@ -64,10 +62,10 @@ func pathAndContent(minItems bool) map[string]any {
 	return l
 }
 
-// Defs returns the model-facing definition of each named tool, in order: the file, search and
-// command tools, the terminal tools (finish, report_blocker, the submit_* tools) and the
-// shaper's probe, shape_batch and worker_result. A name that is not one of those panics: the
-// names are fixed by the program.
+// Defs returns the model-facing definition of each named tool, in order: the generic file,
+// search and command tools come from kogen-loop/tools; the terminal tools (finish,
+// report_blocker, the submit_* tools) and the shaper's probe, shape_batch and worker_result
+// are Kogen's. A name that is none of those panics: the names are fixed by the program.
 func Defs(names ...string) []map[string]any {
 	out := make([]map[string]any, len(names))
 	for i, n := range names {
@@ -77,34 +75,13 @@ func Defs(names ...string) []map[string]any {
 }
 
 // AsAny is the definitions as the Tools list of a provider.Request.
-func AsAny(defs ...[]map[string]any) []any {
-	var out []any
-	for _, d := range defs {
-		for _, m := range d {
-			out = append(out, m)
-		}
-	}
-	return out
-}
+func AsAny(defs ...[]map[string]any) []any { return tools.AsAny(defs...) }
 
 func definition(name string) map[string]any {
+	if d, ok := tools.Definition(name); ok {
+		return d
+	}
 	switch name {
-	case ShellTool:
-		return fun(name,
-			"Run a command with /bin/sh -c in the repository root. stdin is closed. Returns the exit status and the combined stdout and stderr. Commands have no time limit. Run finite commands, including tests and browser suites, in the foreground until completion; do not poll them through repeated sleep/tail/ps calls. Only persistent commands (dev servers, watch modes) belong in the background with output to a log file; read their logs and stop them yourself.",
-			map[string]any{"command": str()}, "command")
-	case ViewImageTool:
-		return fun(name,
-			"View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
-			map[string]any{"path": str()}, "path")
-	case ReadFileTool:
-		return fun(name,
-			"Read a file of the repository, with line numbers. Paths are relative to the repository root.",
-			map[string]any{"path": str(), "start_line": integer(), "end_line": integer()}, "path")
-	case WriteFileTool:
-		return fun(name,
-			"Write the whole content of a file of the repository (created with its folders if needed).",
-			map[string]any{"path": str(), "content": str()}, "path", "content")
 	case ReportBlockerTool:
 		return fun(name,
 			"Stop with a BUILDER-REPORTED protected-baseline contradiction. Supply concrete current protected file paths, the contradiction, and observed command/step/error evidence. Ordinary implementation failures or expected missing-feature red require repair, not a blocker. This never authorizes protected writes or skips a successful gate.",
@@ -113,14 +90,6 @@ func definition(name string) map[string]any {
 		return fun(name,
 			"Say the implementation is complete. Kogen then runs the fixers and every check, and a reviewer reviews the code; failures come back to you.",
 			map[string]any{"summary": str()}, "summary")
-	case ListFilesTool:
-		return fun(name,
-			"List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
-			map[string]any{"path": str()})
-	case SearchTextTool:
-		return fun(name,
-			"Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
-			map[string]any{"pattern": str(), "path": str()}, "pattern")
 	case ProbeTool:
 		return fun(name,
 			"Run a quick throwaway command with /bin/sh -c in a scratch copy of the working tree (with its installed dependencies and builds), never in the project, to prove a risky assumption. Optional scratch files are written first. Stopped after 5 minutes. Returns the exit status, whether it timed out, the wall time and the combined output.",
@@ -135,18 +104,6 @@ func definition(name string) map[string]any {
 					},
 				},
 			}, "command")
-	case DocumentationTool:
-		return fun(name,
-			"Shape documentation lookup discovers sources and retrieves current authoritative documentation.",
-			map[string]any{
-				"operation": map[string]any{"type": "string", "enum": []any{"search", "fetch"}},
-				"query":     str(),
-				"url":       str(),
-				"base": map[string]any{
-					"type":        "string",
-					"description": "Optional origin. When present, every request in this call uses that origin and no other host.",
-				},
-			}, "operation")
 	case SubmitTool:
 		return submitDef()
 	case SubmitReviewTool:

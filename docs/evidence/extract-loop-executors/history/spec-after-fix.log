@@ -1,0 +1,35 @@
+== Gherkin parse, tags, requirement coverage, step vocabulary, trace
+requirements 108, scenarios 178, pickles 243, step patterns 214, distinct steps 736
+spec check: ok
+== quint typecheck + test shaping.qnt
+  12 passing (21ms)
+== quint typecheck + test build.qnt
+  23 passing (18ms)
+== quint typecheck + test run_control.qnt
+  6 passing (26ms)
+== quint run shaping.qnt --invariant Safety (seed 7, 2000 samples, 20 steps)
+[ok] No violation found (1290ms at 1550 traces/second).
+== quint run build.qnt --invariant Safety (seed 11, 3000 samples, 60 steps)
+[ok] No violation found (1663ms at 1804 traces/second).
+== quint run run_control.qnt --invariant Safety (seed 3, 3000 samples, 30 steps)
+[ok] No violation found (1170ms at 2564 traces/second).
+== non-vacuity ok: shaping.qnt reaches not(st != Building)
+== non-vacuity ok: shaping.qnt reaches not(st != Built)
+== non-vacuity ok: build.qnt reaches not(phase != Done)
+== non-vacuity ok: build.qnt reaches not(reason != "baseline_changed")
+== non-vacuity ok: build.qnt reaches not(reason != "review_invalid")
+== non-vacuity ok: build.qnt reaches not(reason != "review_blocked")
+== non-vacuity ok: build.qnt reaches not(reason != "build_blocked")
+== non-vacuity ok: build.qnt reaches not(reason != "head_moved")
+== non-vacuity ok: build.qnt reaches not(reason != "context_exhausted")
+== non-vacuity ok: build.qnt reaches not(reason != "provider")
+== non-vacuity ok: build.qnt reaches not(reason != "commit_failed")
+== non-vacuity ok: build.qnt reaches not(reason != "hook_changed_commit")
+== non-vacuity ok: build.qnt reaches not(phase != Interrupted)
+== non-vacuity ok: run_control.qnt reaches not(not(status == Ended and signal == SigInt))
+== non-vacuity ok: run_control.qnt reaches not(not(status == Ended and signal == SigTerm))
+== non-vacuity ok: run_control.qnt reaches not(not(status == Ended and signal == SigHup))
+== non-vacuity ok: run_control.qnt reaches not(not(status == Ended and signal == InternalError))
+== non-vacuity ok: run_control.qnt reaches not(not(status == Ended and signal == InternalError and committed))
+== non-vacuity ok: run_control.qnt reaches not(refusal != "build_running")
+spec checks: all ok

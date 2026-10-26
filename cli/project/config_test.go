@@ -1,6 +1,7 @@
 package project
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/sys"
+	"kogen-loop/sys"
 )
 
 func mustParse(t *testing.T, text string) *Config {
@@ -477,5 +478,102 @@ func TestLoadConfigOfTheRepository(t *testing.T) {
 	}
 	if _, err := LoadConfig(root); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// ---- the executor of the build role (docs/executor-contract.md section 5) ----
+
+func TestBuildExecutorSelection(t *testing.T) {
+	for _, tt := range []struct {
+		name, build string
+		want        Role
+	}{
+		{"claude-code with model and effort", "{executor: claude-code, model: claude-sonnet-5-5, effort: high}",
+			Role{Model: "claude-sonnet-5-5", Effort: "high", Executor: "claude-code"}},
+		{"claude-code with max_rounds", "{executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 6}",
+			Role{Model: "claude-sonnet-5-5", Effort: "high", Executor: "claude-code", MaxRounds: 6}},
+		{"key order does not matter", "{max_rounds: 12, effort: low, model: m, executor: claude-code}",
+			Role{Model: "m", Effort: "low", Executor: "claude-code", MaxRounds: 12}},
+		{"quoted executor name", `{executor: "claude-code", model: m, effort: e}`, Role{Model: "m", Effort: "e", Executor: "claude-code"}},
+		// Written out, the native executor is the native builder: no value differs from a file
+		// that says nothing, so checkpoints keep their bytes.
+		{"native written out", "{executor: native, model: gpt-6.1-sol, effort: medium}", Role{Model: "gpt-6.1-sol", Effort: "medium"}},
+		{"native keeps its provider", "{executor: native, provider: supergrok, model: grok-4.7, effort: low}",
+			Role{Provider: "supergrok", Model: "grok-4.7", Effort: "low"}},
+		{"no executor", "{model: gpt-6.1-sol, effort: medium}", Role{Model: "gpt-6.1-sol", Effort: "medium"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := mustParse(t, "version: 1\nmodels:\n  build: "+tt.build+"\n")
+			if got := cfg.Models["build"]; got != tt.want {
+				t.Fatalf("build = %+v, want %+v", got, tt.want)
+			}
+			if want := tt.want.Executor == "claude-code"; cfg.Models["build"].External() != want {
+				t.Fatalf("External() = %v", !want)
+			}
+		})
+	}
+	// Block form.
+	cfg := mustParse(t, "version: 1\nmodels:\n  build:\n    executor: claude-code\n    model: m\n    effort: e\n    max_rounds: 2\n")
+	if got := cfg.Models["build"]; got != (Role{Model: "m", Effort: "e", Executor: "claude-code", MaxRounds: 2}) {
+		t.Fatalf("block form %+v", got)
+	}
+	// The other roles keep their defaults.
+	if cfg.Models["shape"] != DefaultModels()["shape"] || cfg.Models["review"] != DefaultModels()["review"] {
+		t.Fatalf("other roles changed: %+v", cfg.Models)
+	}
+}
+
+func TestBuildExecutorConfigurationErrors(t *testing.T) {
+	const head = "version: 1\nmodels:\n  "
+	for _, tt := range []struct{ name, text, want string }{
+		{"unknown executor", "build: {executor: codex, model: m, effort: e}", "line 3: models.build.executor must be native or claude-code"},
+		{"executor is not a string", "build: {executor: true, model: m, effort: e}", "line 3: models.build.executor must be native or claude-code"},
+		{"executor is empty", "build: {executor: , model: m, effort: e}", "line 3: models.build.executor must be native or claude-code"},
+		{"claude-code forbids provider", "build: {executor: claude-code, provider: anthropic, model: m, effort: e}",
+			"line 3: models.build.provider is not allowed with executor claude-code"},
+		{"claude-code forbids base_url", "build: {executor: claude-code, base_url: 'http://localhost:1/v1', model: m, effort: e}",
+			"line 3: models.build.base_url is not allowed with executor claude-code"},
+		{"claude-code needs a model", "build: {executor: claude-code, effort: e}", "line 3: models.build with executor claude-code must be {model, effort} non-blank strings"},
+		{"claude-code needs an effort", "build: {executor: claude-code, model: m}", "line 3: models.build with executor claude-code must be {model, effort} non-blank strings"},
+		{"claude-code needs non-blank model", "build: {executor: claude-code, model: ' ', effort: e}", "line 3: models.build with executor claude-code must be {model, effort} non-blank strings"},
+		{"claude-code takes no other key", "build: {executor: claude-code, model: m, effort: e, sandbox: true}", "line 3: models.build with executor claude-code must be {model, effort} non-blank strings"},
+		{"max_rounds needs claude-code", "build: {model: m, effort: e, max_rounds: 3}", "line 3: models.build.max_rounds is only for executor claude-code"},
+		{"max_rounds with native", "build: {executor: native, model: m, effort: e, max_rounds: 3}", "line 3: models.build.max_rounds is only for executor claude-code"},
+		{"max_rounds zero", "build: {executor: claude-code, model: m, effort: e, max_rounds: 0}", "line 3: models.build.max_rounds must be a positive integer"},
+		{"max_rounds negative", "build: {executor: claude-code, model: m, effort: e, max_rounds: -1}", "line 3: models.build.max_rounds must be a positive integer"},
+		{"max_rounds fraction", "build: {executor: claude-code, model: m, effort: e, max_rounds: 2.5}", "line 3: models.build.max_rounds must be a positive integer"},
+		{"max_rounds text", "build: {executor: claude-code, model: m, effort: e, max_rounds: six}", "line 3: models.build.max_rounds must be a positive integer"},
+		{"max_rounds quoted", `build: {executor: claude-code, model: m, effort: e, max_rounds: "6"}`, "line 3: models.build.max_rounds must be a positive integer"},
+		{"max_rounds leading zero", "build: {executor: claude-code, model: m, effort: e, max_rounds: 06}", "line 3: models.build.max_rounds must be a positive integer"},
+		{"executor on shape", "shape: {executor: claude-code, model: m, effort: e}", "line 3: models.shape.executor: executor is supported for the build role only"},
+		{"native executor on review", "review: {executor: native, model: m, effort: e}", "line 3: models.review.executor: executor is supported for the build role only"},
+		{"max_rounds on review", "review: {model: m, effort: e, max_rounds: 3}", "line 3: models.review.max_rounds: executor is supported for the build role only"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			se := configError(t, head+tt.text+"\n", "f")
+			if se.Class != "environment" || se.Reason != "project_config_invalid" || se.Exit != 3 || !slices.Equal(se.Lines, []string{tt.want}) {
+				t.Fatalf("%+v", se)
+			}
+		})
+	}
+}
+
+func TestExecutorKeysAreNotAcceptedAnywhereElse(t *testing.T) {
+	// The workers are not build roles: the keys are unknown to them, as before.
+	se := configError(t, "version: 1\nshape_workers:\n  enabled: false\n  read: {executor: claude-code, model: m, effort: e}\n", "f")
+	if !slices.Equal(se.Lines, []string{"line 4: shape_workers.read must be {model, effort} strings"}) {
+		t.Fatalf("%+v", se)
+	}
+}
+
+func TestNativeRoleJSONKeepsItsBytes(t *testing.T) {
+	// The new fields are omitted when empty, so checkpoints of native Builds do not change.
+	b, err := json.Marshal(Role{Provider: "chatgpt", Model: "m", Effort: "e"})
+	if err != nil || string(b) != `{"Provider":"chatgpt","Model":"m","Effort":"e"}` {
+		t.Fatalf("%s %v", b, err)
+	}
+	b, _ = json.Marshal(Role{Model: "m", Effort: "e", Executor: "claude-code", MaxRounds: 4})
+	if string(b) != `{"Provider":"","Model":"m","Effort":"e","Executor":"claude-code","MaxRounds":4}` {
+		t.Fatalf("%s", b)
 	}
 }
