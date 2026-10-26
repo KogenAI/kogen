@@ -85,6 +85,11 @@ JS
 mkdir -p "$work/docs" && cp docs/testing-rules.md docs/configuration.md "$work/docs/"
 printf '%s\n' "$target" > "$work/TARGET"
 
+# INS-2: explicit public modes, independent of the caller's umask and of copied owner-only inputs.
+# Only the disposable payload is touched; find never follows symlinks and -type skips them.
+find "$work" -type d -exec chmod 0755 {} +
+find "$work" -type f \( -perm -0100 -o -perm -0010 -o -perm -0001 \) -exec chmod 0755 {} + -o -type f -exec chmod 0644 {} +
+
 tar -C "$src/dist" -czf "$work.tar.gz" "$name"
 rm -rf "$work"
 echo "$work.tar.gz"

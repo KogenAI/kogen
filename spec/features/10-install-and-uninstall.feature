@@ -93,3 +93,8 @@ Feature: Install and uninstall
     And the file "{home}/.kogen/credentials/anthropic.json" exists
     And the file "{home}/.kogen/credentials/anthropic.lock" exists
     And the file ".kogen/project.yaml" exists
+
+  @INS-2
+  Scenario: Release archives own their public modes independently of copied inputs and caller umask
+    When I package public payloads with all executable bit classes under both caller umasks
+    Then the public payloads preserve their contents and inputs with explicit public modes

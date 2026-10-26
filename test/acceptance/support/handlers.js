@@ -25,6 +25,7 @@ const {
   counterFiles,
 } = require('./fake-servers');
 const { executorSteps } = require('./executor-steps');
+const { publicArchiveSteps } = require('./public-archive-modes');
 
 const topHelp = `Commands:\n  context    Read checkout-local facts (JSON)\n  completion zsh  Print standalone Zsh completion\n  init       Prepare this Git repository for Kogen\n  intent     Shape, approve and build an Intent\n  provider   Sign in to a provider and show logins\n  uninstall  Remove the installed kogen\n  version    Show the Kogen version\n  help       List commands\n\nRun kogen <command> to see its subcommands and options.\n`;
 const intentHelp = `Usage: kogen intent <command> <slug> [arguments] [options]\n\nCommands:\n  shape <slug> <file|->     Shape an Intent from a request file (- reads stdin)\n  refine <slug> <sha256> <file|->  Correct existing files; require fresh approval\n  approve <slug> [<hash>]   Show the review card, or approve the Intent\n  build <slug>              Build, verify, review and commit the approved Intent\n  recover <build-id> --output <directory>  Preserve a protected blocker and clear implementation only\n  resume <build-id>         Continue a stopped Build in this checkout\n  list                     List packages and Build attempts\n  usage [run-id]          Explain local retained provider usage\n  inspect <run-id>         Inspect recorded Build evidence\n  preflight <slug>         Observe read-only prerequisites\n\nOptions:\n  --project <checkout>  Project checkout (default: current directory)\n  --by <name>           Approver (default: your Git identity)\n  --context <file>      Fresh Build diagnostic data only (not resume)\n  --output <directory>  Recover only: NEW directory outside the checkout (required)\n`;
@@ -972,6 +973,7 @@ async function dispatch(world, pattern, values, attachment) {
   const args = values;
   refuseLiveStep(label);
   if (await executorSteps(world, label, args, () => latestRunDir(world))) return;
+  if (await publicArchiveSteps(world, label)) return;
   const result = () => lastResult(world);
   const root = () => world.project || world.workspace;
 

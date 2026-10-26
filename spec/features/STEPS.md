@@ -94,6 +94,8 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 One JavaScript regular expression per line.
 
 ```steps
+^I package public payloads with all executable bit classes under both caller umasks$
+^the public payloads preserve their contents and inputs with explicit public modes$
 ^readiness setup records executions outside the checkout$
 ^readiness has executed (\d+) times?$
 ^the original refinement readiness receipt has status "([^"]*)"$
