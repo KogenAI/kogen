@@ -65,7 +65,7 @@ func TestAnthropicReplayRetainsOpaqueBlocksOnceAndGroupsParallelResults(t *testi
 	}
 	evs = append(evs, finish("tool_use")...)
 	res := parseMessages(sse(evs...))
-	if res.kind != resOK || res.usage != (Usage{Input: 130, Cached: 20, Output: 12}) || !reflect.DeepEqual(res.meta, map[string]any{"id": "msg_fixture", "model": claudeRole.Model}) ||
+	if res.kind != resOK || res.usage != (Usage{Input: 130, Cached: 20, Output: 12}) || !reflect.DeepEqual(res.meta, map[string]any{"id": "msg_fixture", "model": claudeRole.Model, "anthropic_stop_reason": "tool_use", "anthropic_end_turn_tool_use": false}) ||
 		*res.known.Write != 10 || res.known.Write30m != nil || res.known.Write12h != nil || res.known.Reasoning != nil || *res.known.Input != 130 {
 		t.Fatalf("%+v", res)
 	}
@@ -156,8 +156,10 @@ func TestAnthropicCompleteValidationPrecedesExposingAnyCall(t *testing.T) {
 		"server tool":      block(1, map[string]any{"type": "server_tool_use"}),
 		"thinking w/o sig": block(1, map[string]any{"type": "thinking", "thinking": "t", "signature": ""}),
 	} {
-		if res := parseMessages(sse(flat(prefix, later, finish("tool_use"))...)); res.kind != resInvalid {
-			t.Errorf("%s: %+v", name, res)
+		for _, reason := range []string{"end_turn", "tool_use"} {
+			if res := parseMessages(sse(flat(prefix, later, finish(reason))...)); res.kind != resInvalid || len(res.items) != 0 {
+				t.Errorf("%s/%s: %+v", reason, name, res)
+			}
 		}
 	}
 	for _, reason := range []string{"max_tokens", "refusal", "pause_turn", "stop_sequence"} {
@@ -512,5 +514,84 @@ func TestKeyProviderInterruptEndsTheRequest(t *testing.T) {
 		if recs := obs.records(); len(recs) != 1 || recs[0]["outcome"] != "cancelled" || recs[0]["usage_state"] != "unknown" {
 			t.Fatalf("%s: records %v", name, recs)
 		}
+	}
+}
+
+func TestAnthropicCompleteToolBatches(t *testing.T) {
+	for _, reason := range []string{"end_turn", "tool_use"} {
+		for _, count := range []int{1, 2} {
+			events := one(start())
+			for i := 0; i < count; i++ {
+				events = append(events, block(i, use(string(rune('a'+i))))...)
+			}
+			res := parseMessages(sse(flat(events, finish(reason))...))
+			if res.kind != resOK || len(res.items) != count+1 || res.meta["anthropic_stop_reason"] != reason || res.meta["anthropic_end_turn_tool_use"] != (reason == "end_turn") {
+				t.Fatalf("%s/%d: %+v", reason, count, res)
+			}
+		}
+	}
+}
+
+func TestAnthropicSyntheticEndTurnDeltas(t *testing.T) {
+	for _, reason := range []string{"end_turn", "tool_use"} {
+		m := start("input_tokens", int64(12), "cache_read_input_tokens", int64(48000), "cache_creation_input_tokens", int64(300))
+		m["message"].(map[string]any)["id"] = "msg_synthetic_01"
+		m["message"].(map[string]any)["model"] = "claude-sonnet-5-5"
+		events := flat(one(m),
+			one(ev("content_block_start", "index", int64(0), "content_block", map[string]any{"type": "thinking", "thinking": ""})),
+			one(ev("content_block_delta", "index", int64(0), "delta", map[string]any{"type": "thinking_delta", "thinking": "opaque"})),
+			one(ev("content_block_delta", "index", int64(0), "delta", map[string]any{"type": "signature_delta", "signature": "opaque-signature"})),
+			one(ev("content_block_stop", "index", int64(0))),
+			one(ev("content_block_start", "index", int64(1), "content_block", with(use("toolu_synthetic_01"), "input", map[string]any{}))),
+			one(ev("content_block_delta", "index", int64(1), "delta", map[string]any{"type": "input_json_delta", "partial_json": `{"path":`})),
+			one(ev("content_block_delta", "index", int64(1), "delta", map[string]any{"type": "input_json_delta", "partial_json": `"lib/helper.go"}`})),
+			one(ev("content_block_stop", "index", int64(1))),
+			one(ev("message_delta", "delta", map[string]any{"stop_reason": reason}, "usage", map[string]any{"output_tokens": int64(812)})), one(ev("message_stop")))
+		res := parseMessages(sse(events...))
+		if res.kind != resOK || len(res.items) != 2 || res.items[1]["arguments"] != `{"path":"lib/helper.go"}` || res.items[1]["call_id"] != "toolu_synthetic_01" || res.usage != (Usage{Input: 48312, Cached: 48000, Output: 812}) {
+			t.Fatalf("%s: %+v", reason, res)
+		}
+	}
+}
+
+func TestAnthropicAttemptTerminalMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name, reason string
+		blocks       []map[string]any
+		ok, marker   bool
+	}{
+		{"end tools", "end_turn", []map[string]any{use("a")}, true, true},
+		{"ordinary tools", "tool_use", []map[string]any{use("a")}, true, false},
+		{"text", "end_turn", []map[string]any{{"type": "text", "text": "private-response-text"}}, true, false},
+		{"invalid later", "end_turn", []map[string]any{use("a"), with(use("b"), "input", []any{})}, false, false},
+		{"disallowed", "max_tokens", []map[string]any{use("a")}, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := start()
+			m["message"].(map[string]any)["model"] = testKey
+			events := one(m)
+			for i, b := range tc.blocks {
+				events = append(events, block(i, b)...)
+			}
+			e, _ := keyEnv(t, "anthropic", sseAnswer(flat(events, finish(tc.reason))...))
+			obs := &observer{}
+			resp, err := e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Input: user("hi")}, obs)
+			if (err == nil) != tc.ok {
+				t.Fatalf("response=%+v err=%v", resp, err)
+			}
+			rec := obs.records()[0]
+			var stop any
+			if tc.ok {
+				stop = tc.reason
+			}
+			if rec["anthropic_stop_reason"] != stop || rec["anthropic_end_turn_tool_use"] != tc.marker || rec["effective_model"] != nil {
+				t.Fatalf("record = %s", jsonOf(t, rec))
+			}
+			for _, secret := range []string{testKey, "private-response-text", "lib/helper.go"} {
+				if strings.Contains(jsonOf(t, rec), secret) {
+					t.Fatalf("record leaks %s", secret)
+				}
+			}
+		})
 	}
 }

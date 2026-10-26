@@ -256,8 +256,8 @@ Indexed contiguous streaming blocks, terminal status and every tool input valida
 before exposing any call. Ordered text/thinking/signature/redacted thinking and
 exact tool inputs replay once; parallel tool_results gather in the immediately
 following user message with exact tool_use_id. Raw blocks survive private replay,
-working windows and v3 checkpoints. Only useful end_turn text or tool_use with a
-valid batch succeeds. Empty/malformed/unknown actionable blocks, refusal,
+working windows and v3 checkpoints. Only useful end_turn text or a complete validated tool batch under either
+end_turn or tool_use succeeds; text may accompany calls but is not required. Empty/malformed/unknown actionable blocks, refusal,
 max_tokens, stop_sequence and pause_turn fail honestly; model_context_window_exceeded
 is context_too_long. Pings/informational events do not establish completion.
 
@@ -267,6 +267,10 @@ Network/cut/429/5xx including 529 use unchanged three attempts (2s/8s), under on
 refused, transient exhaustion unavailable, malformed completion invalid_response,
 all exit 4. Only safe bounded structural diagnostics are retained, never arbitrary
 upstream messages/bodies or keys outside the required transport header.
+Anthropic attempt records include anthropic_stop_reason and the JSON boolean
+anthropic_end_turn_tool_use. Successful completions retain their terminal reason;
+the marker is true only for end_turn with a nonempty validated tool batch. Failed
+attempts record null/false. These fields are not added to other providers.
 
 Usage reports selected provider/model/effort, nullable effective metadata and IDs.
 Input sums input_tokens, cache_read_input_tokens and cache_creation_input_tokens

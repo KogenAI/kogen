@@ -714,9 +714,11 @@ func (r *run) completeMessages(stream, key string) (result, error) {
 	}
 	res := parseMessages(stream)
 	if res.kind == resOK {
-		meta := make(map[string]any, len(res.meta))
-		for name, v := range res.meta {
-			meta[name] = safeIdentifier(v, key)
+		meta := map[string]any{
+			"id":                          safeIdentifier(res.meta["id"], key),
+			"model":                       safeIdentifier(res.meta["model"], key),
+			"anthropic_stop_reason":       res.meta["anthropic_stop_reason"],
+			"anthropic_end_turn_tool_use": res.meta["anthropic_end_turn_tool_use"],
 		}
 		res.meta = meta
 	}
@@ -858,6 +860,11 @@ func (r *run) record(res result, err error, start time.Time, ts string) {
 		rec["provider_failure"] = res.diag
 	case res.kind == resUnauthorized && r.k.info.key:
 		rec["provider_failure"] = res.fail.diagnostics()
+	}
+	if r.k.info.Name == "anthropic" {
+		rec["anthropic_stop_reason"] = meta["anthropic_stop_reason"]
+		marker, _ := meta["anthropic_end_turn_tool_use"].(bool)
+		rec["anthropic_end_turn_tool_use"] = marker
 	}
 	if completed {
 		r.cacheStatus, _ = cache["status"].(string)

@@ -365,7 +365,7 @@ func blank(v any) bool {
 
 // parseMessages judges a whole Messages stream: a cut stream is transient, an unreadable or
 // unsuccessful one invalid, an exhausted context window a definite refusal; only a complete,
-// valid end_turn with text or tool_use with calls is an answer, and no call is exposed
+// valid end_turn with text or calls, or tool_use with calls, is an answer, and no call is exposed
 // unless every block is valid.
 func parseMessages(text string) result {
 	invalid := result{kind: resInvalid, detail: "malformed Anthropic completion"}
@@ -427,7 +427,7 @@ func (s *messageState) result() result {
 			valid = false
 		}
 	}
-	ok := (s.stop == "end_turn" && len(texts) > 0 && len(calls) == 0) || (s.stop == "tool_use" && len(calls) > 0)
+	ok := (s.stop == "end_turn" && (len(texts) > 0 || len(calls) > 0)) || (s.stop == "tool_use" && len(calls) > 0)
 	if !valid || !ok {
 		return result{kind: resInvalid, detail: "non-success Anthropic completion"}
 	}
@@ -454,6 +454,8 @@ func (s *messageState) result() result {
 	if inconsistent {
 		state = UsageInconsistent
 	}
+	s.meta["anthropic_stop_reason"] = s.stop
+	s.meta["anthropic_end_turn_tool_use"] = s.stop == "end_turn" && len(calls) > 0
 	return result{kind: resOK, items: items, usage: toUsage(known, state), known: known, state: state, meta: s.meta}
 }
 
