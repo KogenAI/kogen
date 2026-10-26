@@ -2,7 +2,9 @@ package build
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -135,6 +137,9 @@ func TestTheReviewerApprovesUnchangedCodeWithoutRepairs(t *testing.T) {
 		t.Fatalf("%d review requests", len(reqs))
 	}
 	req := reqs[0]
+	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(requestInstructions(req)))); got != "1ab7ff81c6b94254ac71958230859fd9c76ffc15baa25ad2552017cbd11cceb9" {
+		t.Fatalf("emitted reviewer prompt hash = %s", got)
+	}
 	// A fresh conversation: one opening message, the reviewer's tools, no builder replay.
 	input := requestInput(req)
 	if len(input) != 1 {
@@ -279,16 +284,26 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 		eq(t, "attempts", len(review["attempts"].([]any)), 1)
 	})
 	t.Run("problems sent back", func(t *testing.T) {
-		for name, tc := range map[string]struct {
+		cases := map[string]struct {
 			args any
 			want string
 		}{
 			"unknown path": {map[string]any{"verdict": "changes", "findings": []any{map[string]any{"path": "nowhere.txt", "line": 3, "severity": "blocking", "message": "x"}}}, "nowhere.txt is not a file of the repository"},
 			"no blocker":   {map[string]any{"verdict": "changes", "findings": []any{finding("note", "x")}}, "a changes verdict needs at least one blocking finding"},
 			"bad finding":  {map[string]any{"verdict": "approve", "findings": []any{map[string]any{"path": "app.txt", "line": 1.5, "severity": "note", "message": "x"}}}, "each finding needs path (string), line (integer), severity (blocking or note) and message"},
-			"no verdict":   {map[string]any{"verdict": "maybe", "findings": []any{}}, "submit_review needs verdict (approve or changes) and a findings list"},
-			"no findings":  {map[string]any{"verdict": "approve"}, "submit_review needs verdict (approve or changes) and a findings list"},
-		} {
+			"no verdict":   {map[string]any{"verdict": "maybe", "findings": []any{}}, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was a string with an unsupported value"},
+			"no findings":  {map[string]any{"verdict": "approve"}, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was missing"},
+		}
+		for i, row := range reviewShapeCases() {
+			if row.accepted {
+				continue
+			}
+			cases[fmt.Sprintf("matrix %d", i)] = struct {
+				args any
+				want string
+			}{decodeReviewArgs(t, row.args), row.problem}
+		}
+		for name, tc := range cases {
 			t.Run(name, func(t *testing.T) {
 				e := newEnv(t)
 				f := e.prov
@@ -298,7 +313,18 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 				eq(t, "exit", a.exit, 0)
 				reqs := f.reviewRequests()
 				eq(t, "review requests", len(reqs), 2)
-				contains(t, "retry", requestText(reqs[1]), "invalid verdict:\\n"+strings.ReplaceAll(tc.want, `"`, `\"`))
+				var outputs []string
+				for _, raw := range requestInput(reqs[1]) {
+					item, _ := raw.(map[string]any)
+					if item["type"] == "function_call_output" {
+						output, _ := item["output"].(string)
+						outputs = append(outputs, output)
+					}
+				}
+				eq(t, "submit_review tool output", outputs, []string{"invalid verdict:\n" + tc.want})
+				if strings.Contains(strings.Join(outputs, ""), "PRIVATE_REVIEW_MARKER") {
+					t.Fatal("private value disclosed")
+				}
 			})
 		}
 	})
@@ -1287,5 +1313,73 @@ func TestAResumedFittedReviewOfALargerSourcePinsItAndDeliversIt(t *testing.T) {
 	parts, _ := filepath.Glob(filepath.Join(e.root, ".kogen/local/runs/*/review-source/*/*.json"))
 	if r.exit != 0 || len(parts) == 0 {
 		t.Fatalf("exit %d, %d parts\n%s\n%s", r.exit, len(parts), r.shown(), r.errs.String())
+	}
+}
+
+// reviewShapeCases covers the accepted set as well as shape and inner-validation failures.
+func reviewShapeCases() []struct {
+	args     string
+	accepted bool
+	problem  string
+} {
+	return []struct {
+		args     string
+		accepted bool
+		problem  string
+	}{
+		{`{"verdict":"approve","findings":[]}`, true, ""},
+		{`{"verdict":"approve","findings":[{"path":"app.txt","line":1,"severity":"note","message":"PRIVATE_REVIEW_MARKER"}]}`, true, ""},
+		{`{"verdict":"changes","findings":[{"path":"app.txt","line":1,"severity":"blocking","message":"PRIVATE_REVIEW_MARKER"}]}`, true, ""},
+		{`{"verdict":"approve","findings":"[]"}`, false, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was a string"},
+		{`{"verdict":"approve","findings":"[{\"path\":\"app.txt\",\"line\":1,\"severity\":\"note\",\"message\":\"PRIVATE_REVIEW_MARKER\"}]"}`, false, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was a string"},
+		{`{"verdict":"approve"}`, false, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was missing"},
+		{`{"verdict":"approve","findings":null}`, false, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was null"},
+		{`{"verdict":"approve","findings":{"private":"PRIVATE_REVIEW_MARKER"}}`, false, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was an object"},
+		{`{"verdict":"approve","findings":true}`, false, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was a boolean"},
+		{`{"verdict":"approve","findings":12345}`, false, "submit_review needs verdict (approve or changes) and a findings list; findings must be a JSON array of objects but was a number"},
+		{`{"findings":[]}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was missing"},
+		{`{"verdict":null,"findings":[]}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was null"},
+		{`{"verdict":12345,"findings":[]}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was a number"},
+		{`{"verdict":false,"findings":[]}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was a boolean"},
+		{`{"verdict":{"private":"PRIVATE_REVIEW_MARKER"},"findings":[]}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was an object"},
+		{`{"verdict":["PRIVATE_REVIEW_MARKER"],"findings":[]}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was an array"},
+		{`{"verdict":"PRIVATE_REVIEW_MARKER","findings":[]}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was a string with an unsupported value"},
+		{`{}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was missing; findings must be a JSON array of objects but was missing"},
+		{`{"verdict":"PRIVATE_REVIEW_MARKER","findings":"PRIVATE_REVIEW_MARKER"}`, false, "submit_review needs verdict (approve or changes) and a findings list; verdict must be approve or changes but was a string with an unsupported value; findings must be a JSON array of objects but was a string"},
+		{`{"verdict":"changes","findings":[]}`, false, "a changes verdict needs at least one blocking finding"},
+		{`{"verdict":"approve","findings":[{"path":"app.txt","line":1,"severity":"blocking","message":"PRIVATE_REVIEW_MARKER"}]}`, false, "an approve verdict cannot have blocking findings"},
+		{`{"verdict":"approve","findings":[{"path":"app.txt","line":1.5,"severity":"note","message":"PRIVATE_REVIEW_MARKER"}]}`, false, "each finding needs path (string), line (integer), severity (blocking or note) and message"},
+	}
+}
+
+func decodeReviewArgs(t *testing.T, text string) map[string]any {
+	t.Helper()
+	var args map[string]any
+	dec := json.NewDecoder(strings.NewReader(text))
+	dec.UseNumber()
+	if err := dec.Decode(&args); err != nil {
+		t.Fatal(err)
+	}
+	return args
+}
+
+func TestReviewValidateAcceptanceSet(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "app.txt"), []byte("candidate"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := &reviewRun{b: &Attempt{Root: root}}
+	for i, tc := range reviewShapeCases() {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			verdict, problems, err := r.validate(decodeReviewArgs(t, tc.args), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			eq(t, "accepted", verdict != nil, tc.accepted)
+			eq(t, "diagnostic", strings.Join(problems, "; "), tc.problem)
+			if strings.Contains(strings.Join(problems, ""), "PRIVATE_REVIEW_MARKER") {
+				t.Fatal("private value disclosed")
+			}
+		})
 	}
 }

@@ -487,7 +487,39 @@ func (r *reviewRun) validate(args map[string]any, input []any) (*reviewVerdict, 
 	verdict, _ := args["verdict"].(string)
 	list, isList := args["findings"].([]any)
 	if (verdict != "approve" && verdict != "changes") || !isList {
-		return nil, []string{"submit_review needs verdict (approve or changes) and a findings list"}, nil
+		// Report only JSON types, never submitted contents.
+		kind := func(field string) string {
+			value, present := args[field]
+			if !present {
+				return "missing"
+			}
+			switch value.(type) {
+			case nil:
+				return "null"
+			case string:
+				return "a string"
+			case bool:
+				return "a boolean"
+			case []any:
+				return "an array"
+			case map[string]any:
+				return "an object"
+			default:
+				return "a number"
+			}
+		}
+		var details []string
+		if verdict != "approve" && verdict != "changes" {
+			typ := kind("verdict")
+			if typ == "a string" {
+				typ += " with an unsupported value"
+			}
+			details = append(details, "verdict must be approve or changes but was "+typ)
+		}
+		if !isList {
+			details = append(details, "findings must be a JSON array of objects but was "+kind("findings"))
+		}
+		return nil, []string{"submit_review needs verdict (approve or changes) and a findings list; " + strings.Join(details, "; ")}, nil
 	}
 	var problems []string
 	var findings []map[string]any

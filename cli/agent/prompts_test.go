@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -36,6 +37,10 @@ func TestPromptsAreByteEqualToTheElixirFunctions(t *testing.T) {
 				t.Fatalf("no golden entry for %s", name)
 			}
 			text := Prompt(name)
+			// Keep the historical Elixir fixture unchanged; only this sentence changed.
+			if name == Reviewer {
+				text = strings.Replace(text, reviewerBatchParagraph, reviewerOldSentence, 1)
+			}
 			sum := sha256.Sum256([]byte(text))
 			if len(text) != w.Bytes || hex.EncodeToString(sum[:]) != w.Sha256 {
 				t.Errorf("%s: %d bytes sha256 %x, want %d bytes sha256 %s", name, len(text), sum, w.Bytes, w.Sha256)
@@ -146,4 +151,24 @@ func jsonText(t *testing.T, s string) string {
 	t.Helper()
 	b := mustJSON(t, s)
 	return string(b[1 : len(b)-1])
+}
+
+const reviewerOldSentence = "Read other files only to fill a context gap, and batch independent lookups."
+const reviewerBatchParagraph = "Read other files only to fill a context gap. Every request re-sends the whole conversation, so work in a few wide rounds, not one call per turn: issue all pinned-part reads and needed context lookups together in your first tool round; never re-read text already supplied inline or read earlier; then make related repairs together and run your focused probes (stated limits, empty or zero values, error paths) in one combined shell command where possible. Code that proves correct usually needs only three rounds: reads, one probe round, then submit_review. Add a round only when a result raises a new concern or a repair needs checking; after a repair, run the configured fixer and the focused tests together in one command. Never spend a round on a lone lookup or on re-confirming a result you already have."
+
+func TestReviewerBatchPromptBytesAndUnchangedSchema(t *testing.T) {
+	text := Prompt(Reviewer)
+	if strings.Contains(text, reviewerOldSentence) || strings.Count(text, reviewerBatchParagraph) != 1 {
+		t.Fatal("reviewer must replace exactly the old batching sentence")
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(text))); got != "1ab7ff81c6b94254ac71958230859fd9c76ffc15baa25ad2552017cbd11cceb9" {
+		t.Fatalf("reviewer hash = %s", got)
+	}
+	defs, err := os.ReadFile("defs.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(defs)); got != "b921e44cb5f52d493169809ee8374164d94fa5071c7c811b41cc416a1476b3d1" {
+		t.Fatalf("schema source hash = %s", got)
+	}
 }
