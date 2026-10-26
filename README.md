@@ -231,6 +231,14 @@ Refine/new-approval guidance. Provider context errors below the proxy remain hon
 
 Version 3 checkpoints retain the active owner/window, archives, findings and source binding;
 version 2 and older are explicitly unsupported, inspectable and refused without changes.
+Resume requires the user's index to record exactly the saved staging. A plain `git status` that
+only refreshed entries' stat cache (timestamps, inode, size) after the stop is not a change and is
+reported; any staged path, mode, object, stage, flag or extension change (including Git's
+cache-tree, so even restaging identical content refuses), a version 4 or split index, or a
+damaged index still refuses (Studio Build 543748f1). Fail closed means setups whose `git status`
+also rewrites an extension (untracked cache, fsmonitor) or that write index version 4 or a zero
+checksum (`feature.manyFiles`, `index.skipHash`) still refuse after a status. `kogen intent recover`
+keeps exact index byte equality.
 Missing, altered or unsafe bound custody is a refusal, not a new Build. Editing makes old
 green evidence stale, and a reviewer reset neither clears blockers nor starts a new critique.
 

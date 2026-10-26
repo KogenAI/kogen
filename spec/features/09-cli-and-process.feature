@@ -233,6 +233,43 @@ Feature: CLI and process
     And HEAD is unchanged
     And HEAD has 1 new commit
 
+  @AUT-6 @LOOP-10 @model:run_control
+  Scenario: A plain git status that only refreshed the index does not stop the resume
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    And the caller is signed in to ChatGPT
+    And the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-correct-first-try" pausing at "review approved"
+    And the caller runs "kogen intent build is-even" in the background
+    And the fake ChatGPT server reaches "review approved"
+    When the caller sends SIGINT to the kogen command
+    Then within 15 seconds the kogen command has exited
+    When the caller runs "touch -t 203001010000 README.md"
+    And the caller runs "git status --porcelain"
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    And the caller runs "kogen intent resume {build_id}"
+    Then the exit code is 0
+    And stderr contains "the index stat cache was refreshed since Build"
+    And stderr contains "staged entries are unchanged"
+    And HEAD has 1 new commit
+
+  @AUT-6 @LOOP-10 @model:run_control
+  Scenario: Resume refuses a change to what the index stages
+    Given a Git project from fixture "py-calc"
+    And the project is initialized and configured
+    And the caller is signed in to ChatGPT
+    And the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-correct-first-try" pausing at "review approved"
+    And the caller runs "kogen intent build is-even" in the background
+    And the fake ChatGPT server reaches "review approved"
+    When the caller sends SIGINT to the kogen command
+    Then within 15 seconds the kogen command has exited
+    When the caller runs "git update-index --chmod=+x README.md"
+    And the caller runs "kogen intent resume {build_id}"
+    Then the exit code is 1
+    And stdout contains "index/staged custody changed"
+    And HEAD is unchanged
+
   @CLI-9
   Scenario: A damaged installation is an environment error
     Given the installed kogen has no lib/VERSION

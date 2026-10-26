@@ -1,7 +1,11 @@
 package git
 
 import (
+	"bytes"
 	"crypto/rand"
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io/fs"
@@ -80,4 +84,106 @@ func randomHex(n int) string {
 	b := make([]byte, n)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// ObjectFormat is the repository's object hash: sha1 or sha256.
+func (r *Repo) ObjectFormat() (string, error) {
+	return r.okTrim(nil, "rev-parse", "--show-object-format")
+}
+
+// StagedEquivalent reports whether two index files record exactly the same staging, so that a
+// plain `git status` refreshing the index after a Build stopped is not mistaken for a change.
+// Both must be complete version 2 or 3 indexes of the repository's object format whose trailing
+// checksum holds. They must have the same version, the same entries in the same order (path,
+// mode, object, stage, flags and extended flags, byte for byte) and the same extensions, byte
+// for byte. Only each entry's stat cache (ctime, mtime, dev, ino, uid, gid and size, which Git
+// rewrites when it re-examines the working tree) may differ. A version 4 or split index, a
+// missing or damaged checksum or anything else unrecognised is equivalent only when the bytes
+// are equal: custody fails closed.
+func StagedEquivalent(a, b []byte, format string) bool {
+	if bytes.Equal(a, b) {
+		return true
+	}
+	x, ok1 := stagedForm(a, format)
+	y, ok2 := stagedForm(b, format)
+	return ok1 && ok2 && bytes.Equal(x, y)
+}
+
+// stagedForm is an index without the stat cache of its entries (zeroed) and without its
+// checksum, or false when it is not a complete supported index.
+func stagedForm(data []byte, format string) ([]byte, bool) {
+	var size int
+	var sum func([]byte) []byte
+	switch format {
+	case "sha1":
+		size, sum = sha1.Size, func(b []byte) []byte { s := sha1.Sum(b); return s[:] }
+	case "sha256":
+		size, sum = sha256.Size, func(b []byte) []byte { s := sha256.Sum256(b); return s[:] }
+	default:
+		return nil, false
+	}
+	if len(data) < 12+size || string(data[:4]) != "DIRC" {
+		return nil, false
+	}
+	body := data[:len(data)-size]
+	if !bytes.Equal(sum(body), data[len(body):]) {
+		return nil, false
+	}
+	version := binary.BigEndian.Uint32(data[4:8])
+	if version != 2 && version != 3 {
+		return nil, false
+	}
+	out := bytes.Clone(body)
+	off := 12
+	for n := binary.BigEndian.Uint32(data[8:12]); n > 0; n-- {
+		// ctime, mtime, dev, ino (24 bytes), mode (4), uid, gid, size (12), object, flags.
+		fixed := 40 + size + 2
+		if off+fixed > len(body) {
+			return nil, false
+		}
+		flags := binary.BigEndian.Uint16(body[off+40+size:])
+		name := off + fixed
+		if flags&0x4000 != 0 {
+			if version < 3 {
+				return nil, false
+			}
+			name += 2
+		}
+		end := bytes.IndexByte(body[min(name, len(body)):], 0)
+		if end < 1 {
+			return nil, false
+		}
+		if length := int(flags & 0xfff); length != min(end, 0xfff) {
+			return nil, false
+		}
+		// The entry is padded with 1 to 8 NULs to a multiple of 8 bytes.
+		next := off + (name-off+end+8)&^7
+		if next > len(body) || !allZero(body[name+end:next]) {
+			return nil, false
+		}
+		clear(out[off : off+24])
+		clear(out[off+28 : off+40])
+		off = next
+	}
+	for off < len(body) {
+		if off+8 > len(body) {
+			return nil, false
+		}
+		signature := string(body[off : off+4])
+		length := int(binary.BigEndian.Uint32(body[off+4 : off+8]))
+		if signature == "link" || off+8+length > len(body) {
+			return nil, false
+		}
+		off += 8 + length
+	}
+	return out, true
+}
+
+func allZero(b []byte) bool {
+	for _, c := range b {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
 }

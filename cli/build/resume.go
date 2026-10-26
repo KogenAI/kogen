@@ -195,9 +195,19 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	if intent, err := project.ReadIntent(root, b.Slug, nil); err != nil || intent.Text != b.IntentText {
 		return refuse(id, "saved Intent differs from exact approved contract", "")
 	}
+	// The user's index must record exactly what it recorded at the checkpoint. A plain `git
+	// status` may since have refreshed its stat cache: that alone is not a change.
 	savedIndex, _ := decodeBase64(doc.Index)
-	if current, err := os.ReadFile(b.GitIndex); err != nil || !bytes.Equal(current, savedIndex) {
+	currentIndex, err := os.ReadFile(b.GitIndex)
+	if err != nil {
 		return refuse(id, "index/staged custody changed", "")
+	}
+	refreshed := !bytes.Equal(currentIndex, savedIndex)
+	if refreshed {
+		format, err := repo.ObjectFormat()
+		if err != nil || !git.StagedEquivalent(currentIndex, savedIndex, format) {
+			return refuse(id, "index/staged custody changed", "")
+		}
 	}
 	original := filepath.Join(b.Run.Dir, "index-at-start")
 	if backup, err := os.ReadFile(original); err != nil || !bytes.Equal(backup, savedIndex) {
@@ -232,7 +242,8 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(run.Dir, "index-at-start"), savedIndex, 0o666); err != nil {
+	// The custody copy is the user's index as it is now, equivalent to the saved one.
+	if err := os.WriteFile(filepath.Join(run.Dir, "index-at-start"), currentIndex, 0o666); err != nil {
 		return err
 	}
 	b.facts = facts
@@ -242,7 +253,13 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	b.AttemptUsage = zeroTokens()
 	*out = b
 	s.Puts(fmt.Sprintf("resuming Build %s as %s (root %s)", id, run.ID, root0))
-	run.Event(map[string]any{"event": "resume", "parent": id, "root": root0})
+	event := map[string]any{"event": "resume", "parent": id, "root": root0}
+	if refreshed {
+		s.Progress("kogen: the index stat cache was refreshed since Build " + id + "; staged entries are unchanged")
+		event["index"] = "stat_refreshed"
+		event["checkpoint_index_sha256"], event["index_sha256"] = hashHex(savedIndex), hashHex(currentIndex)
+	}
+	run.Event(event)
 	if err := b.Save(b.Continuation); err != nil {
 		return err
 	}

@@ -45,7 +45,12 @@ Continuation is explicit: `kogen intent resume <build-id> [--project <checkout>]
 the ordinary Build lock and reads an atomically published version 3 `checkpoint.json` (with working-window and source continuity state).
 It validates checkout identity, original HEAD, exact approval, complete protected
 baseline/configuration, candidate bytes/modes/additions/deletions, excluded Intent custody
-and index before model calls or mutations. Original staged owned acceptance remains valid.
+and index before model calls or mutations. The index must record exactly the saved staging: the same
+version, entries (path, mode, object, stage, flags, extended flags) and extensions byte for byte
+(including Git's cache-tree); only each entry's
+stat cache (ctime, mtime, dev, ino, uid, gid, size), which a plain `git status` refreshes, may differ,
+and only between complete version 2/3 indexes with valid checksums. Other forms must be byte-identical.
+Original staged owned acceptance remains valid.
 Unsafe/damaged/incompatible state is `candidate/resume_refused` (1); missing/legacy state
 is `candidate/resume_unsupported` (1), with ID and inspection/correction/fresh-approval guidance.
 No files, index, HEAD, approval or prior evidence are repaired on refusal. An exact already

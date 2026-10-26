@@ -2,9 +2,12 @@ package git
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestIndexCustodyRestoresWhatTheUserStaged(t *testing.T) {
@@ -72,4 +75,149 @@ func TestReadTreeStagesATree(t *testing.T) {
 	}
 	equal(t, "staged", f.git(t, "diff", "--cached", "--name-only"), "a.txt\n")
 	equal(t, "head", f.Head(), start)
+}
+
+// touch rewrites a tracked file with its own bytes and a later mtime, then lets `git status`
+// refresh the index's stat cache.
+func (f *fixture) touch(t *testing.T, rel string) {
+	t.Helper()
+	path := filepath.Join(f.Dir, rel)
+	data := must(os.ReadFile(path))
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(3 * time.Second)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	f.git(t, "status", "--porcelain")
+}
+
+func TestAStatCacheRefreshKeepsTheStagingEquivalent(t *testing.T) {
+	for _, format := range []string{"sha1", "sha256"} {
+		t.Run(format, func(t *testing.T) {
+			f := newFixture(t)
+			if format == "sha256" {
+				root := t.TempDir()
+				run(t, root, f.Env, "init", "-q", "--object-format=sha256")
+				f = &fixture{Repo: New(root, f.Env), Hooks: f.Hooks, Env: f.Env}
+				f.write(t, "README.md", "readme\n")
+				f.git(t, "add", ".")
+			}
+			f.write(t, "other.txt", "other\n")
+			f.git(t, "add", "other.txt")
+			// Version 3 with extended flags, kept on both sides.
+			f.git(t, "update-index", "--skip-worktree", "other.txt")
+			equal(t, "object format", must(f.ObjectFormat()), format)
+			before := must(f.IndexBytes())
+			f.touch(t, "README.md")
+			after := must(f.IndexBytes())
+			if bytes.Equal(before, after) {
+				t.Fatal("status did not refresh the index")
+			}
+			equal(t, "version", before[7], byte(3))
+			equal(t, "equivalent", StagedEquivalent(before, after, format), true)
+			equal(t, "other format", StagedEquivalent(before, after, map[string]string{"sha1": "sha256", "sha256": "sha1"}[format]), false)
+		})
+	}
+}
+
+func TestStagingDifferencesAndUnsupportedFormsAreNotEquivalent(t *testing.T) {
+	f := newFixture(t)
+	f.write(t, "other.txt", "other\n")
+	f.git(t, "add", "other.txt")
+	f.git(t, "write-tree") // a complete cache-tree extension
+	base := must(f.IndexBytes())
+	reset := func() {
+		f.write(t, "other.txt", "other\n")
+		if err := os.WriteFile(must(f.IndexPath()), base, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mutate := map[string]func(){
+		"content":         func() { f.write(t, "other.txt", "changed\n"); f.git(t, "add", "other.txt") },
+		"removed path":    func() { f.git(t, "rm", "-q", "--cached", "other.txt") },
+		"mode":            func() { f.git(t, "update-index", "--chmod=+x", "other.txt") },
+		"assume-valid":    func() { f.git(t, "update-index", "--assume-unchanged", "other.txt") },
+		"skip-worktree":   func() { f.git(t, "update-index", "--skip-worktree", "other.txt") },
+		"intent-to-add":   func() { f.write(t, "new.txt", "n\n"); f.git(t, "add", "-N", "new.txt") },
+		"version 4":       func() { f.git(t, "update-index", "--index-version", "4") },
+		"split index":     func() { f.git(t, "update-index", "--split-index") },
+		"untracked cache": func() { f.git(t, "update-index", "--untracked-cache"); f.git(t, "status", "--porcelain") },
+		// The entries return to their saved staging, but Git's cache-tree extension was
+		// invalidated: still not equivalent (fail closed).
+		"restaged identically": func() {
+			f.git(t, "update-index", "--chmod=+x", "other.txt")
+			f.git(t, "update-index", "--chmod=-x", "other.txt")
+		},
+	}
+	for name, change := range mutate {
+		t.Run(name, func(t *testing.T) {
+			reset()
+			change()
+			after := must(f.IndexBytes())
+			if bytes.Equal(base, after) {
+				t.Fatal("no change reached the index")
+			}
+			equal(t, "equivalent", StagedEquivalent(base, after, "sha1"), false)
+		})
+	}
+	reset()
+	// Damaged, truncated or forged bytes fail closed, even with unchanged staging.
+	damaged := bytes.Clone(base)
+	damaged[len(damaged)-1] ^= 1
+	equal(t, "damaged checksum", StagedEquivalent(base, damaged, "sha1"), false)
+	equal(t, "truncated", StagedEquivalent(base, base[:len(base)-5], "sha1"), false)
+	equal(t, "empty", StagedEquivalent(base, nil, "sha1"), false)
+	equal(t, "identical bytes", StagedEquivalent(damaged, damaged, "sha1"), true)
+	// A stat-only change with a recomputed checksum is equivalent; the same change to the name
+	// length is not.
+	forge := func(edit func(b []byte)) []byte {
+		b := bytes.Clone(base[:len(base)-20])
+		edit(b)
+		s := sha1.Sum(b)
+		return append(b, s[:]...)
+	}
+	equal(t, "forged stat", StagedEquivalent(base, forge(func(b []byte) { b[12+8] ^= 0xff; b[12+36] ^= 1 }), "sha1"), true)
+	equal(t, "forged mode", StagedEquivalent(base, forge(func(b []byte) { b[12+27] ^= 1 }), "sha1"), false)
+	equal(t, "forged name length", StagedEquivalent(base, forge(func(b []byte) { b[12+61] ^= 1 }), "sha1"), false)
+	// Git's skipHash writes a zero checksum: unsupported, so only identical bytes match.
+	zero := append(bytes.Clone(base[:len(base)-20]), make([]byte, 20)...)
+	equal(t, "zero checksum", StagedEquivalent(zero, forge(func(b []byte) { b[12+8] ^= 0xff }), "sha1"), false)
+	zeroStat := append(bytes.Clone(zero[:len(zero)-20]), make([]byte, 20)...)
+	zeroStat[12+8] ^= 0xff
+	equal(t, "zero checksums on both sides", StagedEquivalent(zero, zeroStat, "sha1"), false)
+}
+
+func TestALongPathAndASha256IndexKeepTheirStagingExact(t *testing.T) {
+	f := newFixture(t)
+	// A 5001-byte name (flags hold 0xFFF), staged without a working-tree file; it sorts first.
+	long := "A" + strings.Repeat("x", 5000)
+	oid := strings.TrimSpace(f.git(t, "rev-parse", "HEAD:README.md"))
+	f.git(t, "update-index", "--add", "--cacheinfo", "100644,"+oid+","+long)
+	base := must(f.IndexBytes())
+	equal(t, "first entry is the long name", string(base[12+62:12+62+len(long)]), long)
+	forge := func(edit func(b []byte)) []byte {
+		b := bytes.Clone(base[:len(base)-20])
+		edit(b)
+		s := sha1.Sum(b)
+		return append(b, s[:]...)
+	}
+	// Stat bytes of the long entry and of the entry after it (whose offset depends on the long
+	// name's padding).
+	next := 12 + (62+len(long)+8)&^7
+	equal(t, "next entry is README.md", string(base[next+62:next+62+9]), "README.md")
+	equal(t, "long path stat", StagedEquivalent(base, forge(func(b []byte) { b[12+8] ^= 1; b[next+8] ^= 1 }), "sha1"), true)
+	equal(t, "long path mode", StagedEquivalent(base, forge(func(b []byte) { b[12+27] ^= 1 }), "sha1"), false)
+	equal(t, "next entry mode", StagedEquivalent(base, forge(func(b []byte) { b[next+27] ^= 1 }), "sha1"), false)
+
+	root := t.TempDir()
+	run(t, root, f.Env, "init", "-q", "--object-format=sha256")
+	g := &fixture{Repo: New(root, f.Env), Hooks: f.Hooks, Env: f.Env}
+	g.write(t, "README.md", "readme\n")
+	g.git(t, "add", ".")
+	before := must(g.IndexBytes())
+	g.write(t, "README.md", "changed\n")
+	g.git(t, "add", ".")
+	equal(t, "sha256 content", StagedEquivalent(before, must(g.IndexBytes()), "sha256"), false)
 }
