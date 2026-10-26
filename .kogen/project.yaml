@@ -31,9 +31,10 @@ models:
     model: gpt-6.1-sol
     effort: high
   build:
-    provider: chatgpt
-    model: gpt-6.1-sol
+    executor: claude-code
+    model: claude-sonnet-5-5
     effort: medium
+    max_rounds: 6
   review:
     provider: chatgpt
     model: gpt-6.1-sol
