@@ -379,6 +379,9 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 		resp, active, err := b.Request(ctx, RequestSpec{
 			Owner: "review", Role: r.sess.Role, Instructions: agent.Prompt(agent.Reviewer),
 			Input: r.sess.Input, Tools: r.tools, Retain: retain,
+			Prefill: func(input []any) ([]any, error) {
+				return b.prefillSource(r.sess.Role, agent.Prompt(agent.Reviewer), r.tools, input)
+			},
 		})
 		if err != nil {
 			return reviewVerdict{}, err

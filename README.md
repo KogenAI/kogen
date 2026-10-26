@@ -261,8 +261,8 @@ re-pinned on every reset. Supported version-3 inline checkpoints use their exact
 saved blocks, including explicit resume after a provider failure, without restarting
 Review or Build. Older source without an established tree binding is labelled
 historical, never reconstructed from an edited checkout. Every newly pinned part
-must reach the reviewer through a complete matching read_file output in a completed
-continuation before approval. Each Review reset handoff carries `review_delivery`: the
+must reach the reviewer through a complete matching read_file output, or a Kogen native
+source-data message carrying that exact text, in a completed continuation before approval. Each Review reset handoff carries `review_delivery`: the
 pinned-part tree and whether it is current, delivered count and unread part numbers, and
 every image this review was given, as of its newest delivery (path, SHA-256, read candidate,
 current, pixels still in the next window). A reviewer that could not tell what it already

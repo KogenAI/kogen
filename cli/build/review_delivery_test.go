@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"math/rand"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -113,6 +114,10 @@ func confirmingReviewer(t *testing.T, f *fakeProvider, shots []string) handler {
 		reqs := f.reviewRequests()
 		req := reqs[len(reqs)-1]
 		known, images := inWindow(req)
+		// The scripted reviewer sees complete native source data in this request too.
+		for path := range prefilledParts(t, req) {
+			known[path] = true
+		}
 		parts := pinnedOf(req)
 		if reset := resetHandoff(t, req); reset != nil {
 			if d, ok := reset["review_delivery"].(map[string]any); ok {
@@ -149,6 +154,50 @@ func confirmingReviewer(t *testing.T, f *fakeProvider, shots []string) handler {
 	}
 }
 
+// prefilledParts is path -> read of every native pinned-source message a review request
+// carries. It parses the request itself and fails unless each read is, byte for byte, the
+// "1\t" line-numbered text of the part file read_file returns (the file without its trailing
+// newline).
+func prefilledParts(t *testing.T, req map[string]any) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, it := range requestInput(req) {
+		m, _ := it.(map[string]any)
+		text, ok := m["content"].(string)
+		if !ok || m["role"] != "user" {
+			continue
+		}
+		body, ok := strings.CutPrefix(text, prefillMarker+"\n")
+		if !ok {
+			continue
+		}
+		var doc struct {
+			Version int `json:"version"`
+			Parts   []struct {
+				Path string `json:"path"`
+				Read string `json:"read"`
+			} `json:"parts"`
+		}
+		if err := json.Unmarshal([]byte(body), &doc); err != nil {
+			t.Fatalf("prefill message: %v", err)
+		}
+		if doc.Version != 1 {
+			t.Fatalf("prefill version %d", doc.Version)
+		}
+		for _, e := range doc.Parts {
+			data, err := os.ReadFile(e.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "1\t" + strings.TrimRight(string(data), "\n"); e.Read != want {
+				t.Fatalf("prefilled %s: %d bytes, want the %d bytes read_file returns", e.Path, len(e.Read), len(want))
+			}
+			out[e.Path] = e.Read
+		}
+	}
+	return out
+}
+
 func TestAReviewWhosePartsAndScreenshotsCannotShareAWindowConvergesOnItsDeliveredParts(t *testing.T) {
 	t.Parallel()
 	// Direct core repair (KOGEN-048, Studio Build 543748f1): the review reset reports what was delivered.
@@ -168,7 +217,34 @@ func TestAReviewWhosePartsAndScreenshotsCannotShareAWindowConvergesOnItsDelivere
 	f := e.prov
 	content := strings.Repeat("0123456789abcdef-line\n", 4_100)
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": content}, "finish", map[string]any{"summary": "done"}))
-	shared := confirmingReviewer(t, f, shots)
+	confirming := confirmingReviewer(t, f, shots)
+	// Every read_file path the reviewer is scripted to call, recorded from its own responses.
+	readCalls := make(chan string, 4096)
+	shared := func(w http.ResponseWriter, r *http.Request) {
+		rec := httptest.NewRecorder()
+		confirming(rec, r)
+		for _, line := range strings.Split(rec.Body.String(), "\n") {
+			data, ok := strings.CutPrefix(line, "data: ")
+			if !ok {
+				continue
+			}
+			var event struct {
+				Item map[string]any `json:"item"`
+			}
+			if json.Unmarshal([]byte(data), &event) != nil || event.Item["name"] != "read_file" {
+				continue
+			}
+			arguments, _ := event.Item["arguments"].(string)
+			if path, ok := tools.DecodeArguments(arguments)["path"].(string); ok {
+				readCalls <- path
+			}
+		}
+		for k, v := range rec.Header() {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(rec.Code)
+		w.Write(rec.Body.Bytes())
+	}
 	for i := 0; i < 60; i++ {
 		f.then(shared)
 	}
@@ -200,6 +276,9 @@ func TestAReviewWhosePartsAndScreenshotsCannotShareAWindowConvergesOnItsDelivere
 			t.Fatalf("a request of %d bytes", len(raw))
 		}
 		read, images := inWindow(req)
+		for path := range prefilledParts(t, req) {
+			read[path] = true
+		}
 		if images == len(shots) && len(read) == len(parts) {
 			t.Fatal("one window held every part and every screenshot")
 		}
@@ -215,7 +294,46 @@ func TestAReviewWhosePartsAndScreenshotsCannotShareAWindowConvergesOnItsDelivere
 			reads++
 		}
 	}
-	eq(t, "part reads", reads, len(parts))
+	// Each pinned part reached the reviewer once: natively in a request the provider answered
+	// (every review request was: the script outlasts them and the last was the approval), or
+	// by a read_file call, never both.
+	close(readCalls)
+	var readPaths []string
+	for p := range readCalls {
+		readPaths = append(readPaths, filepath.Clean(p))
+	}
+	eq(t, "part reads", reads, len(readPaths))
+	read := map[string]bool{}
+	for _, p := range readPaths {
+		read[p] = true
+	}
+	eq(t, "distinct part reads", len(read), len(readPaths))
+	pinned := map[string]bool{}
+	for _, p := range parts {
+		pinned[filepath.Clean(p)] = true
+	}
+	prefilled := map[string]bool{}
+	for _, req := range reqs {
+		for p := range prefilledParts(t, req) {
+			prefilled[filepath.Clean(p)] = true
+		}
+	}
+	for p := range read {
+		if !pinned[p] {
+			t.Fatalf("read_file of %s, which is not a pinned part", p)
+		}
+		if prefilled[p] {
+			t.Fatalf("part %s arrived natively and again by read_file", p)
+		}
+	}
+	for p := range prefilled {
+		if !pinned[p] {
+			t.Fatalf("prefilled %s is not a pinned part", p)
+		}
+	}
+	if len(prefilled)+len(read) != len(parts) {
+		t.Fatalf("%d prefilled + %d read parts, want %d pinned", len(prefilled), len(read), len(parts))
+	}
 	// Every pinned handoff counts the parts delivered so far, never fewer than before, and the
 	// last one names every screenshot, current and archived.
 	var last map[string]any

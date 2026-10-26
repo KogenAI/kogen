@@ -477,6 +477,10 @@ type RequestSpec struct {
 	// Retain records the input actually sent (after working-context resets) in the
 	// continuation the request is checkpointed with. Nil: the builder's Continuation.Input.
 	Retain func(c *Continuation, input []any)
+	// Prefill, when set, may append native data to the input after the working window is
+	// prepared and before the request is checkpointed, so the checkpoint, the archive and the
+	// request all hold exactly what is sent.
+	Prefill func(input []any) ([]any, error)
 }
 
 // Request sends one request of a conversation and returns the response and the input that
@@ -500,6 +504,11 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 	input, err := b.prepareContext(sp.Owner, sp.Role, sp.Instructions, sp.Input, sp.Tools)
 	if err != nil {
 		return nil, nil, err
+	}
+	if sp.Prefill != nil {
+		if input, err = sp.Prefill(input); err != nil {
+			return nil, nil, err
+		}
 	}
 	cont := b.Continuation
 	switch {

@@ -13,7 +13,7 @@ import (
 
 	"kogen-loop/provider"
 	"kogen-loop/sys"
-	"kogen-loop/tools"
+	agent "kogen-loop/tools"
 	"kogen/project"
 )
 
@@ -89,7 +89,7 @@ Diagnostic text follows:
 
 // ---- working context ----
 
-const reservedOutputTokens = tools.OutputReserveTokens
+const reservedOutputTokens = agent.OutputReserveTokens
 
 func hashHex(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -167,9 +167,9 @@ func safeFile(path string) bool {
 }
 
 // measure is the complete rendered request against the 524288-byte input budget.
-func (b *Attempt) bodyOf(role project.Role, instructions string, items, defs []any, owner string) map[string]any {
+func (b *Attempt) bodyOf(role project.Role, instructions string, items, tools []any, owner string) map[string]any {
 	return b.deps.Client.Body(provider.Request{
-		Role: providerRole(role), Instructions: instructions, Input: items, Tools: defs,
+		Role: providerRole(role), Instructions: instructions, Input: items, Tools: tools,
 		CacheID: b.cacheID(owner), Cache: provider.NewCache(b.PromptCache),
 	})
 }
@@ -204,7 +204,7 @@ func (b *Attempt) cacheID(owner string) string {
 // windows). Over budget, the earlier exchanges are archived (0600, hashed) and replaced by
 // a reset message; the mandatory opening messages and the newest exchange stay. It returns
 // the input to send.
-func (b *Attempt) prepareContext(owner string, role project.Role, instructions string, input, defs []any) ([]any, error) {
+func (b *Attempt) prepareContext(owner string, role project.Role, instructions string, input, tools []any) ([]any, error) {
 	if b.WorkingContext == nil {
 		b.WorkingContext = map[string]*OwnerContext{}
 	}
@@ -219,7 +219,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		}
 		state = &OwnerContext{Mandatory: nonNil(mandatory), Observations: []any{}, History: []HistoryRef{}}
 	}
-	measured, err := tools.Measure(b.bodyOf(role, instructions, input, defs, owner), providerRole(role))
+	measured, err := agent.Measure(b.bodyOf(role, instructions, input, tools, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
@@ -230,12 +230,11 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	b.WorkingContext[owner] = state
 	if owner == "review" {
 		// Still-inline candidate source moves to pinned parts before the exchanges are reset.
-		if err := b.materialRelocate(role, instructions, defs); err != nil {
+		if err := b.materialRelocate(role, instructions, tools); err != nil {
 			return nil, err
 		}
 		state = b.WorkingContext[owner]
 	}
-	observations := uniqueItems(append(slices.Clone(state.Observations), observationsOf(input)...))
 	tree, err := b.repo.Tree(b.Start, b.Excluded)
 	if err != nil {
 		return nil, err
@@ -255,12 +254,6 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		passTree, failing, notRun = pass.Tree, nonNil(pass.Failing), nonNil(pass.NotRun)
 	}
 	path := filepath.Join(b.Run.Dir, "working-context", owner, fmt.Sprintf("%d.json", len(state.History)+1))
-	archive, err := encodeJSON(map[string]any{"input": input})
-	if err != nil {
-		return nil, err
-	}
-	archive = append(archive, '\n')
-	history := append(slices.Clone(state.History), HistoryRef{Path: path, SHA256: hashHex(archive)})
 	var findings any = []any{}
 	if b.LastReview != nil {
 		findings = nonNil(b.LastReview.Findings)
@@ -269,54 +262,112 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	if err != nil {
 		return nil, err
 	}
-	refs := make([]any, len(history))
-	for i, h := range history {
-		refs[i] = map[string]any{"path": h.Path, "sha256": h.SHA256}
+	// A reference the mandatory opening already lists verbatim (the pinned source parts of the
+	// review's catalog) is not repeated in the reset: native history custody keeps all of them.
+	mandatoryText := mandatoryTexts(state.Mandatory)
+	// construct is the reset window of one input: its observations, the archive of exactly
+	// that input, the reset message and the request that keeps the mandatory opening, the
+	// reset and the newest exchange. deferred is nil unless pinned reads were deferred.
+	construct := func(in []any, deferred []int) (resetWindow, agent.Measurement, error) {
+		var w resetWindow
+		w.observations = uniqueItems(append(slices.Clone(state.Observations), observationsOf(in)...))
+		archive, err := encodeJSON(map[string]any{"input": in})
+		if err != nil {
+			return w, agent.Measurement{}, err
+		}
+		w.archive = append(archive, '\n')
+		w.history = append(slices.Clone(state.History), HistoryRef{Path: path, SHA256: hashHex(w.archive)})
+		refs := make([]any, 0, len(w.history))
+		inCatalog := 0
+		for i, h := range w.history {
+			ref := map[string]any{"path": h.Path, "sha256": h.SHA256}
+			// The new archive is always carried.
+			if encoded, err := encodeJSON(ref); i < len(state.History) && err == nil && listedIn(mandatoryText, string(encoded)) {
+				inCatalog++
+				continue
+			}
+			refs = append(refs, ref)
+		}
+		var delivery map[string]any
+		if owner == "review" {
+			if delivery, err = b.reviewDelivery(in, newestExchange(in), tree); err != nil {
+				return w, agent.Measurement{}, err
+			}
+		}
+		reset := map[string]any{
+			"version":         1,
+			"owner":           owner,
+			"phase":           b.Continuation.Stage,
+			"repair_owner":    owner,
+			"repairs":         b.Repairs,
+			"candidate_tree":  tree,
+			"approval_sha256": approval,
+			"checks": map[string]any{
+				"status": status, "candidate_tree": passTree, "failing": failing, "not_run": notRun,
+			},
+			"unfinished":            w.observations,
+			"stage_navigation":      b.State.navigation(),
+			"findings":              findings,
+			"history":               refs,
+			"frozen_material":       "Initial check evidence is historical. Only native results for the current candidate authorize eligibility.",
+			"observation_authority": "Model observations are not approvals or proof; only native exact-candidate gates authorize completion.",
+		}
+		if delivery != nil {
+			// A reviewer that cannot tell what it already received rebuilds it in every window.
+			reset["review_delivery"] = delivery
+		}
+		if inCatalog > 0 {
+			reset["history_in_catalog"] = map[string]any{
+				"count": inCatalog,
+				"note": "These pinned source part references are listed in full in the pinned candidate source catalog of the " +
+					"mandatory opening message above; they remain part of native history custody.",
+			}
+		}
+		if deferred != nil {
+			reset["deferred_reads"] = map[string]any{
+				"parts": deferred,
+				"note":  "native: these reads did not fit this window and are not counted; read them again",
+			}
+		}
+		encoded, err := project.EncodeJSON(reset)
+		if err != nil {
+			return w, agent.Measurement{}, err
+		}
+		message := map[string]any{"role": "user", "content": "Local working-window reset\n" + string(encoded)}
+		w.mandatory = append(slices.Clone(state.Mandatory), message)
+		w.reduced = append(slices.Clone(w.mandatory), newestExchange(in)...)
+		next, err := agent.Measure(b.bodyOf(role, instructions, w.reduced, tools, owner), providerRole(role))
+		return w, next, err
 	}
-	var delivery map[string]any
-	if owner == "review" {
-		if delivery, err = b.reviewDelivery(input, newestExchange(input), tree); err != nil {
+	window, next, err := construct(input, nil)
+	if err != nil {
+		return nil, err
+	}
+	mand, err := agent.Measure(b.bodyOf(role, instructions, window.mandatory, tools, owner), providerRole(role))
+	if err != nil {
+		return nil, err
+	}
+	refused := func() bool { return !next.Fits || next.RenderedBytes >= measured.RenderedBytes }
+	suffix := ""
+	if refused() && owner == "review" && mand.Fits {
+		// The newest exchange is an unsplittable call batch. Complete reads of pinned source
+		// parts that have not reached the model yet are deferred, last first, to a native
+		// output that is never counted as delivery; the archive keeps what is actually sent.
+		deferrals, custody, err := b.deferrable(input)
+		if err != nil {
 			return nil, err
 		}
+		substituted := slices.Clone(input)
+		for k := len(deferrals) - 1; k >= 0 && refused(); k-- {
+			substituted[deferrals[k].index] = deferrals[k].item
+			parts := custody.deferredParts(b.Root, substituted, deferrals[k:])
+			if window, next, err = construct(substituted, parts); err != nil {
+				return nil, err
+			}
+			suffix = fmt.Sprintf("; deferred %d pinned part reads", len(deferrals)-k)
+		}
 	}
-	reset := map[string]any{
-		"version":         1,
-		"owner":           owner,
-		"phase":           b.Continuation.Stage,
-		"repair_owner":    owner,
-		"repairs":         b.Repairs,
-		"candidate_tree":  tree,
-		"approval_sha256": approval,
-		"checks": map[string]any{
-			"status": status, "candidate_tree": passTree, "failing": failing, "not_run": notRun,
-		},
-		"unfinished":            observations,
-		"stage_navigation":      b.State.navigation(),
-		"findings":              findings,
-		"history":               refs,
-		"frozen_material":       "Initial check evidence is historical. Only native results for the current candidate authorize eligibility.",
-		"observation_authority": "Model observations are not approvals or proof; only native exact-candidate gates authorize completion.",
-	}
-	if delivery != nil {
-		// A reviewer that cannot tell what it already received rebuilds it in every window.
-		reset["review_delivery"] = delivery
-	}
-	encoded, err := project.EncodeJSON(reset)
-	if err != nil {
-		return nil, err
-	}
-	message := map[string]any{"role": "user", "content": "Local working-window reset\n" + string(encoded)}
-	mandatory := append(slices.Clone(state.Mandatory), message)
-	reduced := append(slices.Clone(mandatory), newestExchange(input)...)
-	next, err := tools.Measure(b.bodyOf(role, instructions, reduced, defs, owner), providerRole(role))
-	if err != nil {
-		return nil, err
-	}
-	mand, err := tools.Measure(b.bodyOf(role, instructions, mandatory, defs, owner), providerRole(role))
-	if err != nil {
-		return nil, err
-	}
-	if !next.Fits || next.RenderedBytes >= measured.RenderedBytes {
+	if refused() {
 		var paths []string
 		for _, h := range state.History {
 			paths = append(paths, h.Path)
@@ -324,7 +375,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		return nil, sys.Fail("candidate", "context_budget_exceeded", fmt.Sprintf(
 			"%s: measured %d bytes; mandatory %d bytes; ceiling %d, output reserve %d tokens. Retained checkpoint %s/checkpoint.json and history %s. "+
 				"Inspect custody; prepare a smaller supported image externally or use ordinary Refine and new exact approval if scope must change.",
-			owner, measured.RenderedBytes, mand.RenderedBytes, tools.InputBudgetBytes, reservedOutputTokens, b.Run.Dir, strings.Join(paths, ", ")), 1)
+			owner, measured.RenderedBytes, mand.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, b.Run.Dir, strings.Join(paths, ", ")), 1)
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o777); err != nil {
@@ -341,7 +392,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	}
 	werr := f.Chmod(0o600)
 	if werr == nil {
-		_, werr = f.Write(archive)
+		_, werr = f.Write(window.archive)
 	}
 	if werr == nil {
 		werr = f.Sync()
@@ -352,11 +403,130 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	if werr != nil {
 		return nil, werr
 	}
-	state.History, state.Observations = history, observations
+	state.History, state.Observations = window.history, window.observations
 	b.WorkingContext[owner] = state
-	b.s.Progress(fmt.Sprintf("kogen: %s local reset %d -> %d bytes; ceiling %d; reserve %d; history %s",
-		owner, measured.RenderedBytes, next.RenderedBytes, tools.InputBudgetBytes, reservedOutputTokens, path))
-	return reduced, nil
+	b.s.Progress(fmt.Sprintf("kogen: %s local reset %d -> %d bytes; ceiling %d; reserve %d; history %s%s",
+		owner, measured.RenderedBytes, next.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, path, suffix))
+	return window.reduced, nil
+}
+
+// resetWindow is what one working-window reset keeps: the archive of the input it replaces,
+// the history and observations with it, the mandatory messages (the opening and the reset) and
+// the request to send.
+type resetWindow struct {
+	archive      []byte
+	history      []HistoryRef
+	observations []any
+	mandatory    []any
+	reduced      []any
+}
+
+// deferral is one complete, not yet delivered read of a pinned source part in the newest
+// exchange: where it is in the input, the part and the native output that stands in for it.
+type deferral struct {
+	index int
+	path  string
+	item  map[string]any
+}
+
+// deferrable lists, in input order, the outputs of the newest exchange that are complete
+// reads (exactly the text read_file returns) of a current pinned source part which no earlier
+// exchange or archived window delivered. Nothing else is ever deferred. It also returns the
+// review's custody for naming and checking the parts.
+func (b *Attempt) deferrable(input []any) ([]deferral, *reviewCustody, error) {
+	c, err := b.reviewCustody(input)
+	if err != nil || c == nil || len(c.sources) == 0 {
+		return nil, nil, err
+	}
+	kept := newestExchange(input)
+	start := len(input) - len(kept)
+	// What reached the model before the newest exchange.
+	earlier := *c
+	earlier.windows = slices.Clone(c.windows)
+	earlier.windows[0] = input[:start]
+	read := earlier.delivered(b.Root)
+	var out []deferral
+	for j, item := range kept {
+		answer, _ := item.(map[string]any)
+		if answer["type"] != "function_call_output" {
+			continue
+		}
+		for _, prior := range kept[:j] {
+			call, _ := prior.(map[string]any)
+			if call["type"] != "function_call" || call["name"] != "read_file" || call["call_id"] != answer["call_id"] {
+				continue
+			}
+			arguments, _ := call["arguments"].(string)
+			path, ok := agent.DecodeArguments(arguments)["path"].(string)
+			if !ok {
+				continue
+			}
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(b.Root, path)
+			}
+			path = filepath.Clean(path)
+			want, ok := c.sources[path]
+			if !ok || read[path] || answer["output"] != want {
+				continue
+			}
+			replacement := map[string]any{}
+			for k, v := range answer {
+				replacement[k] = v
+			}
+			replacement["output"] = fmt.Sprintf("not delivered: pinned review source part %d did not fit this working window "+
+				"with the mandatory authority and catalog; it is not counted as read. Read it again with read_file in a "+
+				"later response; keep batching unread parts (about 10 per response), using fewer per response only as needed to fit.", c.numbers[path])
+			out = append(out, deferral{index: start + j, path: path, item: replacement})
+			break
+		}
+	}
+	return out, c, nil
+}
+
+// deferredParts are the sorted numbers of the deferred parts that the substituted input does
+// not deliver (a part read completely again in the same exchange is delivered).
+func (c *reviewCustody) deferredParts(root string, substituted []any, deferred []deferral) []int {
+	now := *c
+	now.windows = slices.Clone(c.windows)
+	now.windows[0] = substituted
+	read := now.delivered(root)
+	parts := []int{}
+	for _, d := range deferred {
+		if n := c.numbers[d.path]; !read[d.path] && !slices.Contains(parts, n) {
+			parts = append(parts, n)
+		}
+	}
+	slices.Sort(parts)
+	return parts
+}
+
+// mandatoryTexts is the text of the mandatory opening messages: string content, or the text
+// blocks of block content.
+func mandatoryTexts(mandatory []any) []string {
+	var texts []string
+	for _, it := range mandatory {
+		m, _ := it.(map[string]any)
+		switch content := m["content"].(type) {
+		case string:
+			texts = append(texts, content)
+		case []any:
+			for _, block := range content {
+				if text, ok := materialText(block); ok {
+					texts = append(texts, text)
+				}
+			}
+		}
+	}
+	return texts
+}
+
+func listedIn(texts []string, needle string) bool {
+	for _, text := range texts {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeApprovalSHA(encoded string) (string, error) {
@@ -404,7 +574,7 @@ func observationsOf(input []any) []any {
 		}
 		if m["type"] == "function_call" && m["name"] == "finish" {
 			if args, ok := m["arguments"].(string); ok {
-				if summary, ok := tools.DecodeArguments(args)["summary"]; ok {
+				if summary, ok := agent.DecodeArguments(args)["summary"]; ok {
 					out = append(out, summary)
 				}
 			}

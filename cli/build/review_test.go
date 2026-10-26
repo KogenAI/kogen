@@ -983,12 +983,14 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 	e := newEnv(t)
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
-	var first string
+	var manual string
 	f.then(func(w http.ResponseWriter, r *http.Request) {
 		parts := catalogParts(reviewCatalog(f.t, f.reviewRequests()[0]))
-		first = parts[0]
+		// Native prefill carries the unread parts from the front of the catalog, so the last
+		// part is the one the first request cannot have carried (asserted below).
+		manual = parts[len(parts)-1]
 		// A read and an approval in one response deliver nothing.
-		f.calls("read_file", map[string]any{"path": first}, "submit_review", map[string]any{"verdict": "approve", "findings": []any{}})(w, r)
+		f.calls("read_file", map[string]any{"path": manual}, "submit_review", map[string]any{"verdict": "approve", "findings": []any{}})(w, r)
 	}, submit(f, "approve"))
 	start := e.head()
 	a := e.reviewed()
@@ -999,15 +1001,70 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 	reqs := f.reviewRequests()
 	eq(t, "review requests", len(reqs), 2)
 	parts := catalogParts(reviewCatalog(t, reqs[0]))
+	pinned := map[string]bool{}
+	for _, p := range parts {
+		pinned[p] = true
+	}
+	// What each answered request carried natively, each part verified byte for byte.
+	prefilled1 := prefilledParts(t, reqs[0])
+	prefilled2 := prefilledParts(t, reqs[1])
+	for _, prefill := range []map[string]string{prefilled1, prefilled2} {
+		for path := range prefill {
+			if !pinned[path] {
+				t.Fatalf("prefilled %s is not a pinned part", path)
+			}
+		}
+	}
+	if _, ok := prefilled1[manual]; ok {
+		t.Fatalf("the part the response reads (%s) was already prefilled in its own request", manual)
+	}
+	if _, ok := prefilled2[manual]; ok {
+		t.Fatalf("the part read in the first response (%s) was prefilled again after its read completed", manual)
+	}
+	// Unread parts, sorted as the approval check lists them, given the parts delivered so far.
+	unreadAfter := func(delivered map[string]bool) []string {
+		var left []string
+		for _, p := range parts {
+			if !delivered[p] {
+				left = append(left, p)
+			}
+		}
+		slices.Sort(left)
+		return left
+	}
+	problemFor := func(left []string) string {
+		return "Read all pinned source evidence before approving: " + itoa(len(left)) + " unread part(s); use read_file on " +
+			strings.Join(left[:min(8, len(left))], ", ")
+	}
+	// First response: only its request's prefill was delivered; its own read is not yet.
+	delivered := map[string]bool{}
+	for path := range prefilled1 {
+		delivered[path] = true
+	}
+	unread1 := unreadAfter(delivered)
+	eq(t, "first unread", len(unread1), len(parts)-len(prefilled1))
+	// Second response: the first prefill, the second request's prefill and the completed read.
+	for path := range prefilled2 {
+		delivered[path] = true
+	}
+	delivered[manual] = true
+	unread2 := unreadAfter(delivered)
+	if len(unread2) == 0 {
+		t.Fatalf("the fixture delivered all %d parts", len(parts))
+	}
 	second := requestText(reqs[1])
-	contains(t, "second", second, "Read all pinned source evidence before approving: "+itoa(len(parts))+" unread part(s); use read_file on "+strings.ReplaceAll(first, `\`, `\\`))
+	escaped, err := json.Marshal(problemFor(unread1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contains(t, "second", second, string(escaped[1:len(escaped)-1]))
 	contains(t, "second", second, "invalid verdict:")
 	// The second approval, after one completed read, still names the remaining parts.
 	events := eventsNamed(e.events(id), "review")
 	last := events[len(events)-1]
 	eq(t, "verdict", last["verdict"], any("invalid"))
 	problems := last["problems"].([]any)
-	contains(t, "problems", problems[0].(string), "Read all pinned source evidence before approving: "+itoa(len(parts)-1)+" unread part(s); use read_file on ")
+	eq(t, "problem", problems[0].(string), problemFor(unread2))
 	review := e.runPath(id, "review-1.json")
 	if _, err := os.Stat(review); !os.IsNotExist(err) {
 		t.Fatal("an invalid review has a review record")
