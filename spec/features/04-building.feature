@@ -43,6 +43,7 @@ Feature: Building
     And the review request 5 contains "Local working-window reset"
     And the review request 5 contains "Source provenance: unavailable (legacy)"
     And the review request 5 contains "# Pinned complete candidate source evidence"
+    And the review request 5 contains "review_delivery"
     And the review request 6 contains "review_source"
 
   @LOOP-7 @VER-12 @GIT-8 @model:build

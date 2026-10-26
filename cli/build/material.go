@@ -1,6 +1,7 @@
 package build
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -438,12 +439,44 @@ func materialPrefix(text string, n int) int {
 // input given and the exact archived windows of the review's working context; outputs still
 // pending in the current response batch are deliberately not passed in.
 func (b *Attempt) materialUnread(input []any) ([]string, error) {
+	c, err := b.reviewCustody(input)
+	if err != nil || c == nil {
+		return nil, err
+	}
+	read := c.delivered(b.Root)
+	var unread []string
+	for path := range c.sources {
+		if !read[path] {
+			unread = append(unread, path)
+		}
+	}
+	slices.Sort(unread)
+	return unread, nil
+}
+
+// reviewCustody is the review's completed windows (the input given, then its exact archived
+// windows, oldest first) and its current pinned parts: the complete text read_file returns for
+// each, its part number and the parts in history order. A review's parts enter the history
+// before any window of that review is archived (pinned when the review starts, or at its first
+// reset), so own (an index of windows) is where the current review's archived windows begin:
+// the earlier ones belong to earlier reviews. Without current parts no archived window is its.
+// (A review converted from a version 3 checkpoint may have archived windows before its parts;
+// their images are then left out, and the reviewer views them again.)
+type reviewCustody struct {
+	windows [][]any
+	sources map[string]string
+	numbers map[string]int
+	parts   []string
+	own     int
+}
+
+func (b *Attempt) reviewCustody(input []any) (*reviewCustody, error) {
 	state := b.WorkingContext["review"]
 	if state == nil {
 		return nil, nil
 	}
-	sources := map[string]string{}
-	windows := [][]any{input}
+	c := &reviewCustody{windows: [][]any{input}, sources: map[string]string{}, numbers: map[string]int{}}
+	c.own = len(state.History) + 1
 	for _, ref := range state.History {
 		data, err := os.ReadFile(ref.Path)
 		if err != nil {
@@ -455,13 +488,28 @@ func (b *Attempt) materialUnread(input []any) ([]string, error) {
 		}
 		doc, _ := v.(map[string]any)
 		window, _ := doc["input"].([]any)
-		windows = append(windows, window)
+		c.windows = append(c.windows, window)
 		if source, ok := doc["review_source"].(map[string]any); ok && display(source["review"]) == itoa(b.Review) {
-			sources[ref.Path] = "1\t" + strings.TrimRight(string(data), "\n")
+			c.sources[ref.Path] = "1\t" + strings.TrimRight(string(data), "\n")
+			part, _ := source["part"].(json.Number)
+			n, err := part.Int64()
+			if err != nil || n < 1 {
+				n = 0
+			}
+			c.numbers[ref.Path] = int(n)
+			if len(c.parts) == 0 {
+				c.own = len(c.windows)
+			}
+			c.parts = append(c.parts, ref.Path)
 		}
 	}
+	return c, nil
+}
+
+// delivered is the pinned parts some window delivered completely (see materialUnread).
+func (c *reviewCustody) delivered(root string) map[string]bool {
 	read := map[string]bool{}
-	for _, window := range windows {
+	for _, window := range c.windows {
 		for i, item := range window {
 			call, _ := item.(map[string]any)
 			if call["type"] != "function_call" || call["name"] != "read_file" {
@@ -473,9 +521,9 @@ func (b *Attempt) materialUnread(input []any) ([]string, error) {
 				continue
 			}
 			if !filepath.IsAbs(path) {
-				path = filepath.Join(b.Root, path)
+				path = filepath.Join(root, path)
 			}
-			want, ok := sources[filepath.Clean(path)]
+			want, ok := c.sources[filepath.Clean(path)]
 			if !ok {
 				continue
 			}
@@ -487,12 +535,72 @@ func (b *Attempt) materialUnread(input []any) ([]string, error) {
 			}
 		}
 	}
-	var unread []string
-	for path := range sources {
-		if !read[path] {
-			unread = append(unread, path)
+	return read
+}
+
+// reviewDelivery is what a reviewer's working-window reset reports of the native delivery of
+// its evidence, so that it does not rebuild in every window what it already received: the
+// pinned source parts (the tree they were pinned from, whether that is the candidate tree, how
+// many were delivered and the numbers still unread) and every image this review was given, in
+// order of first delivery, as of its newest delivery (the tree it was read from, whether that is
+// the candidate tree and whether its pixels stay in the next window). These are facts the
+// approval check and image custody already establish, not findings, judgments or approval; a
+// part or image of another tree is not current.
+func (b *Attempt) reviewDelivery(input, kept []any, tree string) (map[string]any, error) {
+	c, err := b.reviewCustody(input)
+	if err != nil || c == nil {
+		return nil, err
+	}
+	var source any
+	if len(c.parts) > 0 {
+		read := c.delivered(b.Root)
+		unread := []int{}
+		for _, path := range c.parts {
+			if c.numbers[path] == 0 {
+				return nil, fmt.Errorf("pinned review source %s has no part number", path)
+			}
+			if !read[path] {
+				unread = append(unread, c.numbers[path])
+			}
+		}
+		slices.Sort(unread)
+		var pinned any
+		if t, ok := strings.CutPrefix(filepath.Base(filepath.Dir(c.parts[0])), itoa(b.Review)+"-"); ok && t != "historical" {
+			pinned = t
+		}
+		source = map[string]any{
+			"tree": pinned, "current": pinned == tree,
+			"parts": len(c.parts), "delivered": len(c.parts) - len(unread), "unread": unread,
 		}
 	}
-	slices.Sort(unread)
-	return unread, nil
+	key := func(e agent.ImageEntry) string { return display(e.Meta["path"]) + "\x00" + display(e.Meta["sha256"]) }
+	window := map[string]bool{}
+	for _, e := range agent.ImageEntries(kept) {
+		window[key(e)] = true
+	}
+	images := []any{}
+	newest := map[string]map[string]any{}
+	// This review's archived windows, oldest first, then the input given, the newest window.
+	for _, w := range append(slices.Clone(c.windows[min(c.own, len(c.windows)):]), c.windows[0]) {
+		for _, e := range agent.ImageEntries(w) {
+			k := key(e)
+			image, ok := newest[k]
+			if !ok {
+				image = map[string]any{"path": e.Meta["path"], "sha256": e.Meta["sha256"]}
+				newest[k] = image
+				images = append(images, image)
+			}
+			image["read_candidate"], image["current"], image["in_window"] = e.Meta["read_candidate"], e.Meta["read_candidate"] == tree, window[k]
+		}
+	}
+	return map[string]any{
+		"review": b.Review,
+		"source": source,
+		"images": images,
+		"note": "Native delivery facts, not findings, judgments, approval or proof. Pinned parts delivered " +
+			"by complete read_file outputs stay counted for the approval check across working-window resets; " +
+			"a pinned part is frozen evidence of its tree, so reading it again returns the same text. Pixels of " +
+			"images not in_window are archived, not in this window: use view_image again to inspect them. " +
+			"Parts or images of a tree other than candidate_tree are not current.",
+	}, nil
 }

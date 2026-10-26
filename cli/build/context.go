@@ -273,6 +273,12 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	for i, h := range history {
 		refs[i] = map[string]any{"path": h.Path, "sha256": h.SHA256}
 	}
+	var delivery map[string]any
+	if owner == "review" {
+		if delivery, err = b.reviewDelivery(input, newestExchange(input), tree); err != nil {
+			return nil, err
+		}
+	}
 	reset := map[string]any{
 		"version":         1,
 		"owner":           owner,
@@ -290,6 +296,10 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		"history":               refs,
 		"frozen_material":       "Initial check evidence is historical. Only native results for the current candidate authorize eligibility.",
 		"observation_authority": "Model observations are not approvals or proof; only native exact-candidate gates authorize completion.",
+	}
+	if delivery != nil {
+		// A reviewer that cannot tell what it already received rebuilds it in every window.
+		reset["review_delivery"] = delivery
 	}
 	encoded, err := project.EncodeJSON(reset)
 	if err != nil {

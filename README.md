@@ -252,7 +252,12 @@ saved blocks, including explicit resume after a provider failure, without restar
 Review or Build. Older source without an established tree binding is labelled
 historical, never reconstructed from an edited checkout. Every newly pinned part
 must reach the reviewer through a complete matching read_file output in a completed
-continuation before approval. Native current-tree checks alone determine eligibility.
+continuation before approval. Each Review reset handoff carries `review_delivery`: the
+pinned-part tree and whether it is current, delivered count and unread part numbers, and
+every image this review was given, as of its newest delivery (path, SHA-256, read candidate,
+current, pixels still in the next window). A reviewer that could not tell what it already
+received rebuilt it in every window (Studio Build 543748f1); these facts are not findings or
+approval. Native current-tree checks alone determine eligibility.
 
 Native Refine also preflights complete rendered requests within one invocation.
 At completed response/tool-batch boundaries it archives oversized input under
