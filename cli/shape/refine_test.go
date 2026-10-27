@@ -323,6 +323,7 @@ func TestRefineLargeRepositoryUsesNavigationAndKeepsCompleteOwnedAuthority(t *te
 }
 
 func TestRefineWritesTheCorrectionAndPrintsTheLines(t *testing.T) {
+	serialTmp(t)
 	f := newRefFx(t, refOpts{approved: true}, refSubmit("c1", refIntentPath, refTitled))
 	before := f.pkg()
 	index := f.index()
@@ -935,6 +936,7 @@ func TestRefineOnlyOneSubmissionCountsPerResponse(t *testing.T) {
 // ---- refusals and unsupported corrections keep the draft ----
 
 func TestRefineInvalidUnsupportedProviderAndNotReadyResultsPreserveTheReadyDraft(t *testing.T) {
+	serialTmp(t)
 	undefined := "Feature: Fixture\n  Scenario: Undefined\n    Then a new undefined sentence\n"
 	cases := []struct {
 		name    string
@@ -1327,6 +1329,7 @@ func TestRefineAnApprovedCorrectionArchivesTheExactApprovalAndNeedsAFreshOne(t *
 }
 
 func TestRefineFailedAndCancelledApprovedCorrectionsPreservePackageRawApprovalAndIndex(t *testing.T) {
+	serialTmp(t)
 	undefined := "Feature: Fixture\n  Scenario: Undefined\n    Then a new undefined sentence\n"
 	for _, kind := range []string{"provider", "invalid", "not ready", "cancel"} {
 		t.Run(kind, func(t *testing.T) {
@@ -1472,6 +1475,7 @@ func TestRefineAnExternalEditWhileRefiningIsPreservedAndPreventsPublication(t *t
 }
 
 func TestRefineInterruptionDuringAProbePreservesThePackageAndRetainsEvidence(t *testing.T) {
+	serialTmp(t)
 	for _, c := range []struct {
 		signal string
 		exit   int
@@ -1777,6 +1781,7 @@ func TestRefineRollsBackItsReceiptWhenTheCheckoutChangesDuringPublication(t *tes
 }
 
 func TestRefineProbeReportsTimeoutObservationFailure(t *testing.T) {
+	serialTmp(t)
 	restore := verify.ContractProbeRun(func(*sys.Session, string, string, sys.Options) (sys.Result, error) {
 		return sys.Result{}, fmt.Errorf("%w: group query failed", sys.ErrTimeoutObservation)
 	})

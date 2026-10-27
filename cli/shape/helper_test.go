@@ -245,21 +245,69 @@ type shpFx struct {
 	Client *provider.Client
 }
 
+// serialTmps holds the temporary folder of the tests that look into the process's temporary
+// folder for leftovers: they point TMPDIR at it, so they cannot run in parallel.
+type serialTmpDirs struct{ m sync.Map }
+
+var serialTmps serialTmpDirs
+
+// parallelTests are the tests already marked parallel (a test may build several fixtures).
+var parallelTests sync.Map
+
+// dir is the test's own serial temporary folder. A subtest of a serial test is serial too and
+// gets its own TMPDIR, so its leftover checks look where its scratch is created.
+func (s *serialTmpDirs) dir(t *testing.T) string {
+	t.Helper()
+	name := t.Name()
+	if d, ok := s.m.Load(name); ok {
+		return d.(string)
+	}
+	for i := strings.LastIndex(name, "/"); i > 0; i = strings.LastIndex(name[:i], "/") {
+		if _, ok := s.m.Load(name[:i]); ok {
+			serialTmp(t)
+			d, _ := s.m.Load(name)
+			return d.(string)
+		}
+	}
+	return ""
+}
+
+// serialTmp makes the test run alone, with TMPDIR in a folder only it uses; call it first.
+func serialTmp(t *testing.T) {
+	t.Helper()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	serialTmps.m.Store(t.Name(), tmp)
+}
+
 // newShpFx is a committed project whose acceptance runner replays a prepared report (red by
 // default), a signed-in home and a provider that plays steps.
 func newShpFx(t *testing.T, steps ...shpStep) *shpFx {
 	t.Helper()
-	tmp := t.TempDir()
-	t.Setenv("TMPDIR", tmp)
+	tmp := serialTmps.dir(t)
+	if tmp == "" {
+		// A fixture shares no process-wide state, so its test runs beside the others.
+		if _, again := parallelTests.LoadOrStore(t.Name(), true); !again {
+			t.Parallel()
+		}
+		tmp = t.TempDir()
+	}
 	f := &shpFx{t: t, Root: t.TempDir(), Home: t.TempDir(), Aux: t.TempDir(), Tmp: tmp}
 	f.Prov = newShpProvider(t, steps...)
 	f.Env = shpEnv("HOME="+f.Home, "KOGEN_PROVIDER_URL="+f.Prov.srv.URL)
 	f.Repo = git.New(f.Root, f.Env)
 	f.git("init", "-q")
-	f.git("config", "user.name", "Fixture")
-	f.git("config", "user.email", "fixture@example.invalid")
-	f.git("config", "core.hooksPath", t.TempDir())
-	f.git("config", "commit.gpgsign", "false")
+	cfg := "[user]\n\tname = Fixture\n\temail = fixture@example.invalid\n[core]\n\thooksPath = " + t.TempDir() + "\n[commit]\n\tgpgsign = false\n"
+	conf, err := os.OpenFile(filepath.Join(f.Root, ".git", "config"), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err == nil {
+		_, err = conf.WriteString(cfg)
+		if cerr := conf.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.write(".gitignore", ".kogen/local/\n")
 	f.write("README.md", "# Calc\n\nA tiny calculator.\n")
 	f.write("app.txt", "red\n")
