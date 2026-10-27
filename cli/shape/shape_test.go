@@ -250,7 +250,8 @@ func TestShapeStepFileStates(t *testing.T) {
 	// Editing an existing step file shows as edited; the Intent's own steps are new.
 	files := shpFiles()
 	list := files["files"].([]any)
-	list = append(list, map[string]any{"path": "features/steps/calc_steps.js", "content": "Given('a calculator', function () {});\nGiven('the number {int}', function () {});\n"})
+	list = append(list, map[string]any{"path": "features/steps/calc_steps.js", "content": "const { Given } = require('@cucumber/cucumber');\nGiven('the number {int}', function () {});\n"})
+	list[2] = map[string]any{"path": "features/steps/is_even_steps.js", "content": "const { Then } = require('@cucumber/cucumber');\nThen('it is even', function () {});\nThen('it is not even', function () {});\n"}
 	files["files"] = list
 	intent := strings.Replace(shpIntentMD, "- features/steps/is_even_steps.js\n", "- features/steps/is_even_steps.js\n- features/steps/calc_steps.js\n", 1)
 	list[0] = map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": intent}

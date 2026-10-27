@@ -1057,6 +1057,14 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 	if err := sh.fixAttempt(ctx, files); err != nil {
 		return "", outcome{}, err
 	}
+	sh.progress("kogen: checking step code")
+	feedback, err := sh.stepSelfcheck(ctx)
+	if err != nil {
+		return "", outcome{}, err
+	}
+	if feedback != "" {
+		return feedback, outcome{kind: outInvalid, problems: strings.Split(feedback, "\n")[1:]}, nil
+	}
 	sh.progress("kogen: checking readiness")
 	text, result, err := sh.certify(ctx, files)
 	if err != nil {

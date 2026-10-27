@@ -206,7 +206,7 @@ const shpSlug = "is-even"
 
 const shpFeature = "Feature: Is even\n  Scenario: Even numbers\n    Given the number 4\n    Then it is even\n  Scenario: Odd numbers\n    Given the number 3\n    Then it is not even\n"
 
-const shpSteps = "// steps\nGiven('the number {int}', function () {});\n"
+const shpSteps = "// steps\nconst { Given, Then } = require('@cucumber/cucumber');\nGiven('the number {int}', function () {});\nThen('it is even', function () {});\nThen('it is not even', function () {});\n"
 
 const shpIntentMD = "# Add an is-even check\n\nSlug: is-even\nModel: not applicable — a pure function without state\nAcceptance:\n- .kogen/intents/is-even/acceptance.feature\n- features/steps/is_even_steps.js\n\ncalc.is_even(n) returns True for even integers.\n\n## Decisions\n- Non-integers raise TypeError. (source: request)\n\n## Source comparison\n- The request asks for is_even; the feature covers it.\n\n## Tests\n- is_even returns True for even integers: add test_is_even in tests/test_calc.py (unit)\n\n## Feasibility\n- none\n"
 
