@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,15 +64,32 @@ type fakeConfig struct {
 	// AuthFail fails the round like Claude Code does for an invalid CLAUDE_CODE_OAUTH_TOKEN: an
 	// assistant event with error authentication_failed, then an is_error success result with a 401.
 	AuthFail bool `json:"auth_fail"`
-	// StderrToken echoes $CLAUDE_CODE_OAUTH_TOKEN to stderr in two writes (split mid-token) and
+	// StderrToken echoes the fd 3 token to stderr in two writes (split mid-token) and
 	// exits 1.
 	StderrToken bool `json:"stderr_token"`
 	// AuthStderrToken does the same in `auth status`.
 	AuthStderrToken bool `json:"auth_stderr_token"`
 }
 
+// readFD3Token reads the stored token from fd 3, as Claude Code does with
+// CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3.
+func readFD3Token() string {
+	fd3Once.Do(func() {
+		if os.Getenv("CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR") == "3" {
+			b, _ := io.ReadAll(os.NewFile(3, "token"))
+			fd3Token = string(b)
+		}
+	})
+	return fd3Token
+}
+
+var (
+	fd3Once  sync.Once
+	fd3Token string
+)
+
 func echoTokenToStderr() {
-	tok := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")
+	tok := readFD3Token()
 	h := len(tok) / 2
 	fmt.Fprint(os.Stderr, strings.Repeat("x", 280)+"debug: token="+tok[:h])
 	time.Sleep(100 * time.Millisecond)
@@ -134,6 +152,7 @@ func fakeClaude(cfgPath string, args []string) int {
 	os.WriteFile(filepath.Join(cfg.State, fmt.Sprintf("argv-%d.json", n)), aj, 0o600)
 	ej, _ := json.Marshal(os.Environ())
 	os.WriteFile(filepath.Join(cfg.State, fmt.Sprintf("env-%d.json", n)), ej, 0o600)
+	os.WriteFile(filepath.Join(cfg.State, fmt.Sprintf("fd3-%d", n)), []byte(readFD3Token()), 0o600)
 	if cfg.ExitBeforeStdin {
 		fmt.Fprintln(os.Stderr, "fake claude: dying before reading the prompt")
 		return cfg.ExitCode

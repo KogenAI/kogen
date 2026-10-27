@@ -41,7 +41,7 @@ type Options struct {
 	// applied on top.
 	Env []string
 	// Token is the stored Claude Code subscription token (`claude setup-token`), set as
-	// CLAUDE_CODE_OAUTH_TOKEN after the strip list; empty means none is stored.
+	// fd 3 of every child that gets it; empty means none is stored.
 	Token string
 	// KillGrace is the wait between SIGTERM and SIGKILL of the process group (default 5s).
 	KillGrace time.Duration
@@ -149,7 +149,7 @@ func (a *adapter) claudeVersion(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := a.run(ctx, bin, nil, "--version")
+	out, err := a.run(ctx, bin, nil, "", "--version")
 	if err != nil {
 		return "", err
 	}
@@ -173,7 +173,7 @@ func (a *adapter) redact(s string) string {
 }
 
 // run runs a no-model-call claude subcommand with the stripped environment and a bounded output.
-func (a *adapter) run(ctx context.Context, bin string, env []string, args ...string) ([]byte, error) {
+func (a *adapter) run(ctx context.Context, bin string, env []string, token string, args ...string) ([]byte, error) {
 	if env == nil {
 		env = childEnv(a.opts.Env, "", "")
 	}
@@ -184,7 +184,10 @@ func (a *adapter) run(ctx context.Context, bin string, env []string, args ...str
 	var buf, errBuf limitedBuffer
 	cmd.Stdout, cmd.Stderr = &buf, &errBuf
 	cmd.WaitDelay = 2 * time.Second
-	err := cmd.Run()
+	err := startWithToken(cmd, token, cmd.Start)
+	if err == nil {
+		err = cmd.Wait()
+	}
 	if cmd.Process != nil {
 		// Run has reaped the leader; stop any children it left behind, including
 		// on a successful preflight or a child holding an output pipe open.
@@ -199,6 +202,38 @@ func (a *adapter) run(ctx context.Context, bin string, env []string, args ...str
 		return buf.Bytes(), executor.Fail(executor.ReasonUnavailable, "`claude "+strings.Join(args, " ")+"` failed: "+bound(a.redact(strings.TrimSpace(errBuf.String())), 300))
 	}
 	return buf.Bytes(), nil
+}
+
+// tokenPipe returns the read end of a fresh pipe holding exactly token, its write end closed.
+func tokenPipe(token string) (*os.File, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	_, err = w.WriteString(token)
+	if cerr := w.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+	return r, nil
+}
+
+// startWithToken starts cmd through start. With a token the child gets it on fd 3; Kogen's
+// read end is closed after the start, also when the start fails.
+func startWithToken(cmd *exec.Cmd, token string, start func() error) error {
+	if token == "" {
+		return start()
+	}
+	r, err := tokenPipe(token)
+	if err != nil {
+		return executor.Fail(executor.ReasonFailed, "cannot create a pipe: "+err.Error())
+	}
+	defer r.Close()
+	cmd.ExtraFiles = []*os.File{r}
+	return start()
 }
 
 var versionRe = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
@@ -363,7 +398,7 @@ const tokenAuthMethod = "oauth_token"
 // authStatus runs `claude auth status --json` with the stripped env and requires the
 // subscription sign-in on Anthropic's own API.
 func (a *adapter) authStatus(ctx context.Context, bin string, env []string) (authInfo, error) {
-	out, runErr := a.run(ctx, bin, env, "auth", "status", "--json")
+	out, runErr := a.run(ctx, bin, env, a.opts.Token, "auth", "status", "--json")
 	if ctx.Err() != nil {
 		return authInfo{}, classify(ctx)
 	}

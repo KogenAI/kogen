@@ -34,7 +34,7 @@ func TestPreflightStopsOwnedChildren(t *testing.T) {
 			a := New(Options{}).(*adapter)
 			done := make(chan error, 1)
 			go func() {
-				_, err := a.run(ctx, binary, nil, ready, effect)
+				_, err := a.run(ctx, binary, nil, "", ready, effect)
 				done <- err
 			}()
 			for {

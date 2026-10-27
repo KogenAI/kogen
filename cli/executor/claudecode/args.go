@@ -52,7 +52,8 @@ const maxPromptBytes = 16 << 20
 var stripEnv = []string{
 	"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
 	"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
-	"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_PROFILE",
+	"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
+	"ANTHROPIC_PROFILE",
 	// Cloud credentials and credential-file/profile selectors must not be inherited,
 	// even when the corresponding Claude route selector has also been stripped.
 	"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN",
@@ -65,7 +66,7 @@ var stripEnv = []string{
 	"CLAUDE_PID", "CLAUDE_EFFORT", "CLAUDE_CODE_EXECPATH",
 	// The effort override outranks --effort; Kogen passes the configured effort explicitly.
 	"CLAUDE_CODE_EFFORT_LEVEL",
-	// Set by Kogen only together with a stored token.
+	// Kogen never sets the scrub variable: with a token it makes Claude Code report mode default.
 	"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB",
 }
 
@@ -74,8 +75,8 @@ var stripEnv = []string{
 var setEnv = []string{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"}
 
 // childEnv is base minus the strip list, plus setEnv, HOME when home is not empty and
-// CLAUDE_CODE_OAUTH_TOKEN (with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1) when a stored token is given
-// (the strip list always applies first).
+// CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3 when a stored token is given (the strip list always
+// applies first). The token itself travels on fd 3 (see tokenPipe), never in the env.
 func childEnv(base []string, home, token string) []string {
 	drop := map[string]bool{"HOME": home != ""}
 	for _, k := range stripEnv {
@@ -96,9 +97,7 @@ func childEnv(base []string, home, token string) []string {
 		out = append(out, "HOME="+home)
 	}
 	if token != "" {
-		out = append(out, "CLAUDE_CODE_OAUTH_TOKEN="+token)
-		// Claude Code must not hand the token on to the processes it runs (Bash tool, hooks).
-		out = append(out, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1")
+		out = append(out, "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3")
 	}
 	return out
 }

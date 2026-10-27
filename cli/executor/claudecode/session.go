@@ -169,7 +169,7 @@ func (s *session) runRound(ctx context.Context, n int, prompt string) (executor.
 		return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "cannot create a pipe: "+err.Error())
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = sr, pw, stderr
-	if err := cmd.Start(); err != nil {
+	if err := startWithToken(cmd, s.a.opts.Token, cmd.Start); err != nil {
 		pw.Close()
 		sr.Close()
 		sw.Close()

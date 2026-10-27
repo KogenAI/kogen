@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -897,8 +898,8 @@ func TestMalformedTrailingJSONIsProtocolFailure(t *testing.T) {
 
 func TestChildEnvStoredToken(t *testing.T) {
 	t.Parallel()
-	got := childEnv([]string{"CLAUDE_CODE_OAUTH_TOKEN=inherited", "ANTHROPIC_API_KEY=k", "PATH=/bin"}, "/h", "sk-ant-oat01-SYNTHETIC-STORED")
-	want := []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "HOME=/h", "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-SYNTHETIC-STORED", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1"}
+	got := childEnv([]string{"CLAUDE_CODE_OAUTH_TOKEN=inherited", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=9", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR=9", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1", "ANTHROPIC_API_KEY=k", "PATH=/bin"}, "/h", "sk-ant-oat01-SYNTHETIC-STORED")
+	want := []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "HOME=/h", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("env %v", got)
 	}
@@ -990,12 +991,42 @@ func TestTokenRoundAcceptsInit(t *testing.T) {
 	if _, err := s.Round(context.Background(), executor.Input{}); err != nil {
 		t.Fatal(err)
 	}
-	var scrub bool
+	var fd bool
 	for _, kv := range h.f.env(1) {
-		scrub = scrub || kv == "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1"
+		fd = fd || kv == "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3"
+		if strings.HasPrefix(kv, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") || strings.HasPrefix(kv, "CLAUDE_CODE_OAUTH_TOKEN=") {
+			t.Fatalf("round env has %s", kv)
+		}
 	}
-	if !scrub {
-		t.Fatal("round env lacks CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1")
+	if !fd {
+		t.Fatal("round env lacks CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3")
+	}
+}
+
+// Every round gets its own fd 3 pipe holding exactly the token.
+func TestTokenOnFD3EveryRound(t *testing.T) {
+	t.Parallel()
+	const token = "sk-ant-oat01-SYNTHETIC-FD3"
+	h := newHarness(t, fakeConfig{
+		Auth:   `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}`,
+		Init:   tokenInitEvent,
+		Script: conformance.Script{Rounds: []conformance.RoundScript{finishRound, finishRound}},
+	})
+	opts := h.f.options()
+	opts.Token = token
+	s, err := h.start(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for n := 1; n <= 2; n++ {
+		if _, err := s.Round(context.Background(), executor.Input{Feedback: "again"}); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := os.ReadFile(filepath.Join(h.f.cfg.State, fmt.Sprintf("fd3-%d", n)))
+		if string(got) != token {
+			t.Fatalf("round %d fd 3 = %q", n, got)
+		}
 	}
 }
 
@@ -1045,8 +1076,7 @@ func grepTree(t *testing.T, dir, needle string) []string {
 func TestRedactTokenFromRunRecords(t *testing.T) {
 	t.Parallel()
 	const token = "sk-ant-oat01-SYNTHETIC-REDACT-ME"
-	script := oneRound(conformance.RoundScript{End: "finish", Claim: "done",
-		Actions: []conformance.Action{{Shell: `printenv CLAUDE_CODE_OAUTH_TOKEN`}}})
+	script := oneRound(finishRound)
 	h := newHarness(t, fakeConfig{
 		Auth: `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}`, Init: tokenInitEvent,
 		Result: map[string]any{"result": "claim echoes " + token}, Script: script,
@@ -1134,7 +1164,7 @@ func TestRunRedactsBeforeBounding(t *testing.T) {
 	a := New(Options{Token: tok}).(*adapter)
 	script := "printf '%s' \"$PAD$TOK\" >&2; exit 1"
 	env := append(os.Environ(), "PAD="+strings.Repeat("x", 290), "TOK="+tok)
-	_, err := a.run(context.Background(), "/bin/sh", env, "-c", script)
+	_, err := a.run(context.Background(), "/bin/sh", env, "", "-c", script)
 	if err == nil {
 		t.Fatal("no error")
 	}
