@@ -56,7 +56,17 @@ func file(name string) string {
 // Prompt is the complete text of the named prompt, byte for byte what the model receives
 // (including its final newline). It panics on a name that is not one of the constants: the
 // names are fixed by the program, not by users.
-func Prompt(name string) string { return Render(file(name), shared()) }
+func Prompt(name string) string {
+	text := Render(file(name), shared())
+	if name == Reviewer {
+		text += "\n" + LimitRaises + "\n"
+	}
+	return text
+}
+
+// LimitRaises is the review rule on raised timeouts, retries and limits; the native reviewer
+// prompt and the external review task both carry it.
+const LimitRaises = "Limit raises: a change that raises a timeout, deadline, retry or attempt count, size or count limit, or wait duration (in code, configuration, tests or scripts, including go test -timeout, Playwright or cucumber timeouts and ExUnit timeouts) is a blocking finding unless the Intent, or a profile cited in the change, shows that the extra work is needed and cannot be removed. The finding names the file:line, the old and new value, and asks for the profile or a speed-up. Lowering a limit, or adding a new bound where none existed, is not flagged by this rule."
 
 // Render replaces each {{name}} in template with vars[name]; text without a matching
 // variable stays as it is.

@@ -51,6 +51,7 @@ type fileEvidence struct {
 const reviewTask = "# Review task\n\n" +
 	"Review the candidate above against the approved Intent. The complete authority, the check results, the diff and the full text of every changed file are included in this message; they are Kogen's exact data for this candidate.\n" +
 	"Repair concrete defects within the approved Intent with your tools; protected paths cannot be edited. Maintenance preferences are non-blocking notes.\n" +
+	agent.LimitRaises + "\n" +
 	"Finish with the structured verdict: verdict approve or changes, and findings {path, line, severity blocking|note, message}. A changes verdict needs a blocking finding; an approve verdict has none. Kogen verifies any contents you changed and tells you the actual results."
 
 func (x reviewExternal) Resume(context.Context, *Attempt) (Approved, error) {

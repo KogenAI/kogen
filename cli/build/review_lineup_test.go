@@ -3,6 +3,7 @@ package build
 import (
 	"context"
 	"encoding/json"
+	"kogen/agent"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,6 +172,9 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 		// The reviewer gets the authority and the candidate, never the builder's claim.
 		contains(t, "brief", brief, "# Intent")
 		contains(t, "brief", brief, "--- app.txt")
+		if strings.Count(brief, agent.LimitRaises) != 1 {
+			t.Fatalf("brief must carry the limit rule once")
+		}
 		lacks(t, "brief", brief, "the fixture is candidate")
 		lacks(t, "brief", brief, "build-session")
 		id := e.onlyRun()

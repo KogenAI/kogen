@@ -37,6 +37,9 @@ func TestPromptsAreByteEqualToTheElixirFunctions(t *testing.T) {
 				t.Fatalf("no golden entry for %s", name)
 			}
 			text := Prompt(name)
+			if name == Reviewer {
+				text = strings.Replace(text, "\n"+LimitRaises+"\n", "", 1)
+			}
 			// Keep the historical Elixir fixture unchanged; only this sentence changed.
 			if name == Reviewer {
 				text = strings.Replace(text, reviewerBatchParagraph, reviewerOldSentence, 1)
@@ -158,6 +161,10 @@ const reviewerBatchParagraph = "Read other files only to fill a context gap. Eve
 
 func TestReviewerBatchPromptBytesAndUnchangedSchema(t *testing.T) {
 	text := Prompt(Reviewer)
+	if strings.Count(text, LimitRaises) != 1 {
+		t.Fatal("reviewer must carry the limit rule once")
+	}
+	text = strings.Replace(text, "\n"+LimitRaises+"\n", "", 1)
 	if strings.Contains(text, reviewerOldSentence) || strings.Count(text, reviewerBatchParagraph) != 1 {
 		t.Fatal("reviewer must replace exactly the old batching sentence")
 	}
