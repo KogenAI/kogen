@@ -16,7 +16,7 @@ commands:
     - name: test
       run: 'if test -f mix.exs; then mix test; fi'
     - name: go-test
-      run: '(cd cli && go test -race -count=1 -timeout 30m ./...)'
+      run: '(cd cli && go test -race -count=1 ./...)'
     - name: spec
       run: '(cd spec && sh check.sh)'
     - name: cucumber
