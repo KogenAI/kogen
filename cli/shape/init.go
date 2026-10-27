@@ -695,7 +695,7 @@ func initCommittedCopy(s *sys.Session, repo *git.Repo, root, clone string, track
 	for i, p := range restore {
 		quoted[i] = initShellQuote(p)
 	}
-	res, err := s.Run(git.UnsetPrefix()+"git archive --format=tar HEAD -- "+strings.Join(quoted, " ")+" | tar -xf - -C "+initShellQuote(clone), root, sys.Options{})
+	res, err := s.Run(git.UnsetPrefix()+"git archive --format=tar HEAD -- "+strings.Join(quoted, " ")+" | tar -xf - -C "+initShellQuote(clone), root, sys.Options{KillGroupOnExit: true})
 	if err != nil {
 		return err
 	}
@@ -721,7 +721,7 @@ func initExec(s *sys.Session, tools verify.Tools, command, dir string) (sys.Resu
 			env[k] = v
 		}
 	}
-	return s.Run(command, dir, sys.Options{Env: env})
+	return s.Run(command, dir, sys.Options{Env: env, KillGroupOnExit: true})
 }
 
 func initVerify(ctx context.Context, s *sys.Session, in InitInput, repo *git.Repo, clone string, candidates InitProposal, runner string) (initResult, error) {

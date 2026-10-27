@@ -215,7 +215,10 @@ type messageState struct {
 	meta          map[string]any
 }
 
-type malformed struct{ diag map[string]any }
+type malformed struct {
+	diag      map[string]any
+	transient bool
+}
 
 func invalidEvidence(category string, qualifier string, value any, allowed map[string]bool) map[string]any {
 	d := map[string]any{"anthropic_invalid": category}
@@ -234,10 +237,10 @@ var blockTypes = map[string]bool{"text": true, "tool_use": true, "thinking": tru
 var deltaTypes = map[string]bool{"text_delta": true, "input_json_delta": true, "thinking_delta": true, "signature_delta": true, "citations_delta": true}
 
 func invalidMessage(category string) malformed {
-	return malformed{invalidEvidence(category, "", nil, nil)}
+	return malformed{diag: invalidEvidence(category, "", nil, nil)}
 }
 func qualified(category, key string, value any, allowed map[string]bool) malformed {
-	return malformed{invalidEvidence(category, key, value, allowed)}
+	return malformed{diag: invalidEvidence(category, key, value, allowed)}
 }
 
 func (malformed) Error() string { return "malformed Anthropic completion" }
@@ -246,6 +249,9 @@ func (s *messageState) apply(e map[string]any) error {
 	typ, _ := e["type"].(string)
 	if typ == "error" {
 		ebody, _ := asMap(e["error"])
+		if t, _ := ebody["type"].(string); transientErrorTypes[t] {
+			return malformed{diag: map[string]any{"anthropic_transient": "sse_error", "error_type": t}, transient: true}
+		}
 		return qualified("sse_error", "error_type", ebody["type"], errorTypes)
 	}
 	if !messageEvents[typ] {
@@ -412,7 +418,13 @@ func parseMessages(text string) result {
 			continue
 		}
 		if err := s.apply(f.event); err != nil {
-			invalid.diag = err.(malformed).diag
+			m := err.(malformed)
+			if m.transient {
+				cut.detail = "Anthropic transient stream error"
+				cut.diag = m.diag
+				return cut
+			}
+			invalid.diag = m.diag
 			return invalid
 		}
 	}
@@ -536,3 +548,5 @@ var errorTypes = map[string]bool{
 	"invalid_request_error": true, "authentication_error": true, "billing_error": true, "permission_error": true,
 	"not_found_error": true, "request_too_large": true, "rate_limit_error": true, "api_error": true, "overloaded_error": true,
 }
+
+var transientErrorTypes = map[string]bool{"overloaded_error": true, "api_error": true, "rate_limit_error": true}

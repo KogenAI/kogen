@@ -122,5 +122,5 @@ func run(ctx context.Context, s *sys.Session, tools Tools, command, dir string, 
 	for k, v := range extra {
 		env[k] = v
 	}
-	return s.Run(command, dir, sys.Options{Env: env})
+	return s.Run(command, dir, sys.Options{Env: env, KillGroupOnExit: true})
 }

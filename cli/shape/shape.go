@@ -1153,7 +1153,7 @@ func (sh *shaping) fixAttempt(ctx context.Context, paths []string) error {
 	}
 	for i, cmd := range sh.cfg.Fix {
 		sh.progress(fmt.Sprintf("kogen: running fix-%d: %s", i+1, cmd))
-		if _, err := sh.s.Run(cmd, sh.root, sys.Options{}); err != nil {
+		if _, err := sh.s.Run(cmd, sh.root, sys.Options{KillGroupOnExit: true}); err != nil {
 			return err
 		}
 	}

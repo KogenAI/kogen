@@ -12,7 +12,7 @@ func TestAnthropicInvalidDiagnostics(t *testing.T) {
 		stream string
 		want   map[string]any
 	}{
-		{"error", sse(ev("error", "error", map[string]any{"type": "overloaded_error", "message": "secret"})), map[string]any{"anthropic_invalid": "sse_error", "error_type": "overloaded_error"}},
+		{"error", sse(ev("error", "error", map[string]any{"type": "invalid_request_error", "message": "secret"})), map[string]any{"anthropic_invalid": "sse_error", "error_type": "invalid_request_error"}},
 		{"unknown", sse(ev("error", "error", map[string]any{"type": "secret"})), map[string]any{"anthropic_invalid": "sse_error", "error_type": "unknown"}},
 		{"frame", sse(start()) + "data: {broken\n\n" + sse(finish("end_turn")...), map[string]any{"anthropic_invalid": "frame_json_or_shape"}},
 		{"ordering", sse(ev("message_stop")), map[string]any{"anthropic_invalid": "ordering_or_shape"}},

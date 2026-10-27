@@ -126,6 +126,33 @@ Cancellation observed after a response/call hook returns nil stops the round
 before executing a tool, starting another request or returning an ending. A hook error still
 takes precedence and is returned unchanged.
 
+### Process-group sweep and foreign-kill refusal (Go library)
+
+`sys.Options.KillGroupOnExit` (default false): after the command's leader has ended,
+`Session.Run` sends SIGTERM to its process group, polls like `Terminate` and sends
+SIGKILL to what remains; it returns when the group has no member. It never sets
+`TimedOut`, changes `Status` or `Output` or adds an error, and adds no default timeout.
+The sweep does not reach a process that left the group (`setsid`, own-session
+`nohup`, double-fork daemons, Gradle-style daemons). Group kill is not a sandbox.
+The `shell` tool does not set it: its background servers survive between calls, and
+round and engine cleanup end them with the round.
+
+`sys.Options.RefuseForeignKill` (default false) makes `Run` call
+`ForeignKill(command, s.Owned)` before starting anything. A refusal starts nothing,
+records no group and returns `Result{Status: 126, Output: RefusalText(rule), Rule: rule}`
+with a nil error. Rule ids: `pkill-killall`, `kill-foreign-pid`. `Session.Owned(pid)` is
+true for a pid or group in `Groups()` or a live descendant of one. The `shell` tool
+enables it and returns exactly `RefusalText(rule)` as tool text; the session's
+`tool.result` event gains `"rule"` only for a refused call. `ForeignKill` is a text
+filter that stops the model's habit, not a bypass: `eval "$(echo ... | base64 -d)"`,
+`sh -c "$VAR"`, `python -c 'os.kill'`, `find -exec kill`, a script file containing
+`pkill`, `busybox killall` and computed ids pass.
+
+Claude Code executor (Kogen side): Kogen kills `claude`'s group on cancel, Close and
+round end. A blocking PreToolUse hook on the `Bash` matcher using `ForeignKill` is
+possible but unverified and belongs to a separate item, K-SAFE-2. Kogen cannot see or
+stop what `claude` runs between hooks, or processes that leave the group.
+
 ### Caller-owned shell duration (Go tools only)
 
 `tools.Tools` adds `ShellTimeout time.Duration`. Nonpositive values are off;
@@ -249,7 +276,7 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 | `request.attempt` | `n`, `record` (the provider observer record, credentials never included) |
 | `response` | `n`, `response_id`, `usage` (`api.Usage`) |
 | `tool.call` | `call_id`, `name`, `arguments_sha256` |
-| `tool.result` | `call_id`, `name`, `result_sha256`, `bytes`, `cut` (bool). `bytes` and `result_sha256` describe what the model received, after the cut. |
+| `tool.result` | `call_id`, `name`, `result_sha256`, `bytes`, `cut` (bool), and `rule` only for a refused shell call. `bytes` and `result_sha256` describe what the model received, after the cut. |
 | `round.ended` | `ending` (`terminal`/`no_call`), `terminal_tool`, `claim` (terminal arguments or final text, bounded 16384 bytes; **a claim, not proof**), `requests`, `usage` (round total) |
 | `error` | `class`, `reason`, `detail` (same shape as `sys.Error`) |
 | `session.ended` | `status` (`ended`/`failed`/`interrupted`), `exit` |

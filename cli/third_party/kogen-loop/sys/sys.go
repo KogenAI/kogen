@@ -153,6 +153,14 @@ type Options struct {
 	// FinishOnInterrupt waits for the command to end after an interrupt (git commit), so
 	// Kogen sees what it left behind (CLI-7).
 	FinishOnInterrupt bool
+	// KillGroupOnExit sweeps the command's process group once its leader has ended:
+	// SIGTERM, polling like Terminate, then SIGKILL; Run returns when the group has no
+	// member. It changes no Status, Output or TimedOut and reaches no process that left
+	// the group (setsid, double-fork daemons). Default false.
+	KillGroupOnExit bool
+	// RefuseForeignKill refuses, before anything starts, a command ForeignKill refuses:
+	// Status 126, RefusalText as Output, Rule set, no error. Default false.
+	RefuseForeignKill bool
 }
 
 // Result is a finished command: exit status (128+signal when killed), combined output
@@ -161,6 +169,7 @@ type Result struct {
 	Status   int
 	Output   string
 	TimedOut bool
+	Rule     string // rule id of a refusal, "" otherwise
 }
 
 // Run runs `/bin/sh -c command` in dir. It returns *Interrupted when the caller
@@ -171,6 +180,11 @@ type Result struct {
 // return ErrTimeoutObservation after teardown. Context does not change nonpositive
 // Timeout or FinishOnInterrupt behavior. The caller still owns execution custody.
 func (s *Session) Run(command, dir string, opts Options) (Result, error) {
+	if opts.RefuseForeignKill {
+		if rule, refused := ForeignKill(command, s.Owned); refused {
+			return Result{Status: 126, Output: RefusalText(rule), Rule: rule}, nil
+		}
+	}
 	s.Debug("command in " + dir + ": " + command)
 	cmd, release, err := supervised(command)
 	if err != nil {
@@ -252,7 +266,19 @@ func (s *Session) Run(command, dir string, opts Options) (Result, error) {
 	if err := s.Err(); err != nil {
 		return Result{}, err
 	}
+	if opts.KillGroupOnExit {
+		sweepGroup(pgid)
+	}
 	return Result{Status: exitStatus(cmd.ProcessState), Output: buf.String(), TimedOut: timedOut}, nil
+}
+
+// sweepGroup ends what the finished command left in its group and waits until the
+// group has no member. A group that is already empty costs one failed kill (ESRCH).
+func sweepGroup(pgid int) {
+	Terminate([]int{pgid})
+	for i := 0; i < 50 && syscall.Kill(-pgid, 0) != syscall.ESRCH; i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // commandLifecycle arbitrates the command's completion against a timer callback

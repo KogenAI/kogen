@@ -176,7 +176,7 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 	if observer != nil {
 		started = s.Groups()
 	}
-	r, err := probeRun(s, pr.Command, scratch, sys.Options{Context: ctx, Timeout: deadline, Env: pr.Tools.env()})
+	r, err := probeRun(s, pr.Command, scratch, sys.Options{Context: ctx, Timeout: deadline, Env: pr.Tools.env(), KillGroupOnExit: true, RefuseForeignKill: true})
 	if errors.Is(err, sys.ErrTimeoutObservation) {
 		return ProbeResult{}, fmt.Errorf("probe failed: the timeout observation failed, so the probe's result is unknown: %w", err)
 	}

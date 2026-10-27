@@ -48,7 +48,7 @@ func (r *Repo) Commit(s *sys.Session, spec CommitSpec) (string, error) {
 		return "", err
 	}
 	res, err := s.Run(UnsetPrefix()+"git commit -q -F "+shellQuote(spec.MessageFile), r.Dir,
-		sys.Options{FinishOnInterrupt: true})
+		sys.Options{FinishOnInterrupt: true, KillGroupOnExit: true})
 	if err != nil {
 		r.undoIfLanded(spec.Start)
 		return "", err
@@ -143,7 +143,7 @@ func (r *Repo) CheckCommitMsg(s *sys.Session, title, slug string) error {
 		return err
 	}
 	defer os.Remove(msg)
-	res, err := s.Run(UnsetPrefix()+"git hook run --ignore-missing commit-msg -- "+shellQuote(msg), r.Dir, sys.Options{})
+	res, err := s.Run(UnsetPrefix()+"git hook run --ignore-missing commit-msg -- "+shellQuote(msg), r.Dir, sys.Options{KillGroupOnExit: true})
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func (r *Repo) CommitPaths(s *sys.Session, subject string, paths []string, hadHe
 	for i, p := range paths {
 		quoted[i] = shellQuote(p)
 	}
-	res, err := s.Run(UnsetPrefix()+"git commit -q -F "+shellQuote(msg)+" -- "+strings.Join(quoted, " "), r.Dir, sys.Options{})
+	res, err := s.Run(UnsetPrefix()+"git commit -q -F "+shellQuote(msg)+" -- "+strings.Join(quoted, " "), r.Dir, sys.Options{KillGroupOnExit: true})
 	if err != nil {
 		return "", err
 	}

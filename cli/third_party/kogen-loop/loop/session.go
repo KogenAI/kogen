@@ -271,6 +271,7 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 
 	var usages []api.Usage
 	cutCalls := map[string]bool{}
+	rules := map[string]string{}
 	s.requests = 0
 	rd := Round{
 		Owner: "loop", Role: s.cfg.Role, Instructions: s.instructions, Definitions: s.defs,
@@ -309,6 +310,9 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			}
 			cut := out.Cut()
 			cutCalls[fmt.Sprint(call.CallID())] = cut.Text != out.Text
+			if out.Rule != "" {
+				rules[fmt.Sprint(call.CallID())] = out.Rule
+			}
 			return Handled{Handled: true, Output: cut}, nil
 		},
 		AfterCall: func(ctx context.Context, call tools.Call, out tools.Output, terminal bool, in []any) error {
@@ -320,10 +324,14 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			if d := provider.Fingerprint(out.Value()); d != nil {
 				sum, size = d.SHA256, d.Bytes
 			}
-			s.emit(api.EventToolResult, map[string]any{
+			fields := map[string]any{
 				"call_id": call.CallID(), "name": call.Name, "result_sha256": sum, "bytes": size,
 				"cut": cutCalls[fmt.Sprint(call.CallID())],
-			})
+			}
+			if rule := rules[fmt.Sprint(call.CallID())]; rule != "" {
+				fields["rule"] = rule
+			}
+			s.emit(api.EventToolResult, fields)
 			return nil
 		},
 	}

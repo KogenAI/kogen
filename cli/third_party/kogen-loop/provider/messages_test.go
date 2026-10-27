@@ -203,7 +203,7 @@ func TestAnthropicCompleteValidationPrecedesExposingAnyCall(t *testing.T) {
 		}
 	}
 	// a stream error event, an event after the stop and a mismatched event name are unreadable
-	if res := parseMessages(sse(flat(prefix, one(ev("error", "error", map[string]any{"type": "overloaded_error"})))...) + "\n"); res.kind != resInvalid {
+	if res := parseMessages(sse(flat(prefix, one(ev("error", "error", map[string]any{"type": "overloaded_error"})))...) + "\n"); res.kind != resTransient {
 		t.Errorf("error event: %+v", res)
 	}
 	if res := parseMessages(sse(flat(prefix, finish("tool_use"), one(ev("content_block_start", "index", int64(1), "content_block", use("z"))))...)); res.kind != resInvalid {

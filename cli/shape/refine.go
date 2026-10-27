@@ -1164,7 +1164,7 @@ func (r *refine) submit(ctx context.Context, args map[string]any) (string, refin
 // the run.
 func (r *refine) check(ctx context.Context, attempt int, paths []string) (string, refineOutcome, error) {
 	for _, command := range r.cfg.Fix {
-		res, err := r.s.Run(command, r.scratch, sys.Options{})
+		res, err := r.s.Run(command, r.scratch, sys.Options{KillGroupOnExit: true})
 		if err != nil {
 			return "", refineOutcome{}, err
 		}

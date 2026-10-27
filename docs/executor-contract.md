@@ -157,3 +157,9 @@ Build-level guarantees (E1–E3) are tested once in `cli/build` with a fake `Exe
 - A kogen-loop change reaches Kogen only as a reviewable copy diff plus a pin update. The copy builds offline and inside Kogen's scratch verification copies.
 - An executor contract change updates this file, `executor.go`, the conformance scripts and every adapter driver in the same change.
 - The Claude Code adapter records the exact `claude --version` and the init event's reported model and auth route on every run. It refuses versions below its qualified minimum.
+
+## Process-group safety (K-SAFE)
+
+Kogen enforces: a probe (Shape, Refine, or declared feasibility evidence) runs with `KillGroupOnExit` and `RefuseForeignKill`, so a probe command that would stop processes the run did not start (`pkill`, `killall`, `kill` of a foreign pid, decided by the loop's `sys.ForeignKill`) is refused with status 126 and the loop's refusal text, and the round continues. Every other command Kogen runs through `sys.Session.Run` (setup, fix, configured checks, acceptance, hooks, git) sweeps its process group when it ends, without refusing anything. The native builder's `shell` tool is the loop's own: it refuses foreign kills but does not sweep, so background servers outlive a call until round and engine cleanup stop what Kogen started.
+
+Kogen cannot enforce this for the Claude Code executor: its own Bash tool runs outside Kogen's `sys.Session.Run`, so neither refusal nor sweep applies. A Bash `PreToolUse` hook using `sys.ForeignKill` is a separate item, K-SAFE-2. Processes that leave the group with `setsid` are not reached.

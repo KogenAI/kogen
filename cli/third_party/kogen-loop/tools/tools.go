@@ -24,6 +24,8 @@ import (
 type Output struct {
 	Text  string
 	Parts []any
+	// Rule is the rule id of a refused shell call, "" otherwise.
+	Rule string
 }
 
 // Typed reports whether the output is typed parts.
@@ -99,8 +101,8 @@ func (t *Tools) RunContext(ctx context.Context, name string, args map[string]any
 	case SearchTextTool:
 		return Output{Text: t.searchText(args)}, nil
 	case ShellTool:
-		text, err := t.shell(ctx, args)
-		return Output{Text: text}, err
+		text, rule, err := t.shell(ctx, args)
+		return Output{Text: text, Rule: rule}, err
 	case ProbeTool:
 		text, err := t.probe(args)
 		return Output{Text: text}, err
@@ -410,24 +412,30 @@ func (t *Tools) searchText(args map[string]any) string {
 
 // shell runs /bin/sh -c in the repository root with stdin closed and ShellTimeout.
 // Only an expired timeout prefixes the ordinary exit status and combined output.
-func (t *Tools) shell(ctx context.Context, args map[string]any) (string, error) {
+// A command that would stop processes this run did not start is refused with
+// sys.RefusalText as ordinary tool text. KillGroupOnExit stays off: background servers
+// outlive a call, and round and engine cleanup end them with the round.
+func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string, error) {
 	command, msg := stringArg(args, "command")
 	if msg != "" {
-		return msg, nil
+		return msg, "", nil
 	}
-	opts := sys.Options{Timeout: t.ShellTimeout}
+	opts := sys.Options{Timeout: t.ShellTimeout, RefuseForeignKill: true}
 	if t.ShellTimeout > 0 {
 		opts.Context = ctx
 	}
 	res, err := t.session().Run(command, t.Root, opts)
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	if res.Rule != "" {
+		return res.Output, res.Rule, nil
 	}
 	text := "exit status: " + strconv.Itoa(res.Status) + "\n" + res.Output
 	if res.TimedOut {
 		text = "timed out after " + t.ShellTimeout.String() + "\n" + text
 	}
-	return text, nil
+	return text, "", nil
 }
 
 func (t *Tools) probe(args map[string]any) (string, error) {
