@@ -2,10 +2,15 @@ package verify
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"kogen-loop/sys"
 )
 
 // SHP-10: the production deadline is five minutes; a probe still running at its deadline is
@@ -41,5 +46,42 @@ func TestContractedProbeDeadlineIsRestored(t *testing.T) {
 	restore()
 	if probeDeadline != ProbeTimeout || probeObserver != nil {
 		t.Fatalf("probe deadline %v after restore, want %v", probeDeadline, ProbeTimeout)
+	}
+}
+
+// The probe hands its context and deadline to the session, whose fired-timeout custody wait
+// a cancelled context then stops (it reports the context's error, not a timed-out result).
+func TestProbeCancelledContextStopsTheCustodyWait(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	var got sys.Options
+	restore := ContractProbeRun(func(_ *sys.Session, _, _ string, o sys.Options) (sys.Result, error) {
+		got = o
+		cancel()
+		return sys.Result{}, ctx.Err()
+	})
+	defer restore()
+	r, err := RunProbe(ctx, sessionFor(root), root, "sleep 600", nil)
+	if !errors.Is(err, context.Canceled) || r.TimedOut {
+		t.Fatalf("result %+v, err %v, want context.Canceled", r, err)
+	}
+	if got.Context != ctx || got.Timeout != ProbeTimeout {
+		t.Fatalf("options = %+v, want the probe's context and the 5-minute deadline", got)
+	}
+}
+
+// A timeout whose whole-group absence cannot be proven is a failed probe, not a timed-out result.
+func TestProbeTimeoutObservationFailureIsNotATimedOutResult(t *testing.T) {
+	root := t.TempDir()
+	restore := ContractProbeRun(func(*sys.Session, string, string, sys.Options) (sys.Result, error) {
+		return sys.Result{}, fmt.Errorf("%w: observation failed", sys.ErrTimeoutObservation)
+	})
+	defer restore()
+	r, err := RunProbe(context.Background(), sessionFor(root), root, "sleep 600", nil)
+	if !errors.Is(err, sys.ErrTimeoutObservation) {
+		t.Fatalf("err = %v, want sys.ErrTimeoutObservation", err)
+	}
+	if !strings.Contains(err.Error(), "timeout observation failed") || r.TimedOut {
+		t.Fatalf("result %+v, err %q", r, err)
 	}
 }

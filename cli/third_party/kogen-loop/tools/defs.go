@@ -1,6 +1,9 @@
 package tools
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Generic tool names. Kogen's workflow tools (finish, report_blocker, the submit_* tools,
 // shape_batch, worker_result and the probe definition) stay in Kogen.
@@ -104,6 +107,18 @@ func Definition(name string) (map[string]any, bool) {
 			}, "operation"), true
 	}
 	return nil, false
+}
+
+// Definition returns a generic definition matching this Tools configuration.
+// Only a positive ShellTimeout changes the shell description. Callers pass these
+// definitions and the same Tools instance to Round; package defaults stay unbounded.
+func (t *Tools) Definition(name string) (map[string]any, bool) {
+	d, ok := Definition(name)
+	if ok && name == ShellTool && t.ShellTimeout > 0 {
+		d["description"] = strings.Replace(d["description"].(string), "Commands have no time limit.",
+			"Each shell call has a caller-configured time limit of "+t.ShellTimeout.String()+". A timed-out command's process group is stopped before a timed-out result is returned.", 1)
+	}
+	return d, ok
 }
 
 // Defs returns the definition of each named generic tool, in order. A name that is not a

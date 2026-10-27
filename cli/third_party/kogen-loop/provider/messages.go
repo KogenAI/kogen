@@ -215,26 +215,50 @@ type messageState struct {
 	meta          map[string]any
 }
 
-type malformed struct{}
+type malformed struct{ diag map[string]any }
+
+func invalidEvidence(category string, qualifier string, value any, allowed map[string]bool) map[string]any {
+	d := map[string]any{"anthropic_invalid": category}
+	if qualifier != "" {
+		v, ok := value.(string)
+		if !ok || !allowed[v] {
+			v = "unknown"
+		}
+		d[qualifier] = v
+	}
+	return d
+}
+
+var stopTypes = map[string]bool{"end_turn": true, "tool_use": true, "max_tokens": true, "refusal": true, "pause_turn": true, "stop_sequence": true, "model_context_window_exceeded": true}
+var blockTypes = map[string]bool{"text": true, "tool_use": true, "thinking": true, "redacted_thinking": true, "server_tool_use": true}
+var deltaTypes = map[string]bool{"text_delta": true, "input_json_delta": true, "thinking_delta": true, "signature_delta": true, "citations_delta": true}
+
+func invalidMessage(category string) malformed {
+	return malformed{invalidEvidence(category, "", nil, nil)}
+}
+func qualified(category, key string, value any, allowed map[string]bool) malformed {
+	return malformed{invalidEvidence(category, key, value, allowed)}
+}
 
 func (malformed) Error() string { return "malformed Anthropic completion" }
 
 func (s *messageState) apply(e map[string]any) error {
 	typ, _ := e["type"].(string)
 	if typ == "error" {
-		return malformed{}
+		ebody, _ := asMap(e["error"])
+		return qualified("sse_error", "error_type", ebody["type"], errorTypes)
 	}
 	if !messageEvents[typ] {
 		return nil // pings and unknown informational events
 	}
 	if s.done {
-		return malformed{}
+		return invalidMessage("event_after_stop")
 	}
 	switch typ {
 	case "message_start":
 		m, ok := asMap(e["message"])
 		if s.started || !ok {
-			return malformed{}
+			return invalidMessage("ordering_or_shape")
 		}
 		u, err := usageMap(m["usage"])
 		if err != nil {
@@ -245,7 +269,7 @@ func (s *messageState) apply(e map[string]any) error {
 		i, okI := asInt(e["index"])
 		b, okB := asMap(e["content_block"])
 		if !s.started || s.active != nil || s.stop != nil || !okI || !okB || int(i) != len(s.blocks) {
-			return malformed{}
+			return invalidMessage("ordering_or_shape")
 		}
 		s.active = copyMap(b)
 		s.fragments = ""
@@ -253,19 +277,19 @@ func (s *messageState) apply(e map[string]any) error {
 		i, okI := asInt(e["index"])
 		d, okD := asMap(e["delta"])
 		if s.active == nil || s.stop != nil || !okI || !okD || int(i) != len(s.blocks) {
-			return malformed{}
+			return invalidMessage("ordering_or_shape")
 		}
 		return s.delta(d)
 	case "content_block_stop":
 		i, okI := asInt(e["index"])
 		if s.active == nil || s.stop != nil || !okI || int(i) != len(s.blocks) {
-			return malformed{}
+			return invalidMessage("ordering_or_shape")
 		}
 		b := s.active
 		if b["type"] == "tool_use" && s.fragments != "" {
 			v, err := decodeJSON([]byte(s.fragments))
 			if err != nil {
-				return malformed{}
+				return invalidMessage("tool_input_json")
 			}
 			b["input"] = v
 		}
@@ -273,14 +297,14 @@ func (s *messageState) apply(e map[string]any) error {
 	case "message_delta":
 		d, ok := asMap(e["delta"])
 		if !s.started || s.active != nil || !ok {
-			return malformed{}
+			return invalidMessage("ordering_or_shape")
 		}
 		stop := s.stop
 		if v := d["stop_reason"]; v != nil && v != false {
 			stop = v
 		}
 		if s.stop != nil && !reflect.DeepEqual(stop, s.stop) {
-			return malformed{}
+			return qualified("changed_stop_reason", "stop_reason", stop, stopTypes)
 		}
 		u, err := usageMap(e["usage"])
 		if err != nil {
@@ -292,7 +316,7 @@ func (s *messageState) apply(e map[string]any) error {
 		}
 	case "message_stop":
 		if !s.started || s.active != nil || s.stop == nil {
-			return malformed{}
+			return invalidMessage("ordering_or_shape")
 		}
 		s.done = true
 	}
@@ -337,7 +361,7 @@ func (s *messageState) delta(d map[string]any) error {
 			}
 		}
 	}
-	return malformed{}
+	return qualified("unsupported_delta", "delta_type", d["type"], deltaTypes)
 }
 
 func usageMap(v any) (map[string]any, error) {
@@ -347,7 +371,7 @@ func usageMap(v any) (map[string]any, error) {
 	if m, ok := asMap(v); ok {
 		return copyMap(m), nil
 	}
-	return nil, malformed{}
+	return nil, invalidMessage("invalid_usage_shape")
 }
 
 func copyMap(m map[string]any) map[string]any {
@@ -375,6 +399,7 @@ func parseMessages(text string) result {
 		if f.invalid {
 			for _, g := range fs {
 				if g.event != nil && g.event["type"] == "message_stop" {
+					invalid.diag = invalidEvidence("frame_json_or_shape", "", nil, nil)
 					return invalid
 				}
 			}
@@ -387,6 +412,7 @@ func parseMessages(text string) result {
 			continue
 		}
 		if err := s.apply(f.event); err != nil {
+			invalid.diag = err.(malformed).diag
 			return invalid
 		}
 	}
@@ -399,11 +425,15 @@ func parseMessages(text string) result {
 	return s.result()
 }
 
+func blockTypesValue(v any) bool { s, ok := v.(string); return ok && blockTypes[s] }
+
 func (s *messageState) result() result {
 	var calls []map[string]any
 	var texts []any
 	valid := true
+	var diag map[string]any
 	for _, b := range s.blocks {
+		before := valid
 		switch b["type"] {
 		case "text":
 			t, ok := b["text"].(string)
@@ -426,17 +456,31 @@ func (s *messageState) result() result {
 		default:
 			valid = false
 		}
+		if before && !valid {
+			category := "invalid_block"
+			if !blockTypesValue(b["type"]) || b["type"] == "server_tool_use" {
+				category = "unsupported_block"
+			}
+			diag = invalidEvidence(category, "block_type", b["type"], blockTypes)
+		}
 	}
 	ok := (s.stop == "end_turn" && (len(texts) > 0 || len(calls) > 0)) || (s.stop == "tool_use" && len(calls) > 0)
 	if !valid || !ok {
-		return result{kind: resInvalid, detail: "non-success Anthropic completion"}
+		if diag == nil {
+			category := "non_success_stop"
+			if s.stop == "end_turn" || s.stop == "tool_use" {
+				category = "empty_result"
+			}
+			diag = invalidEvidence(category, "stop_reason", s.stop, stopTypes)
+		}
+		return result{kind: resInvalid, detail: "non-success Anthropic completion", diag: diag}
 	}
 	ids := map[string]bool{}
 	for _, c := range calls {
 		ids[c["id"].(string)] = true // every id is a valid string by now
 	}
 	if len(ids) != len(calls) {
-		return result{kind: resInvalid, detail: "non-success Anthropic completion"}
+		return result{kind: resInvalid, detail: "non-success Anthropic completion", diag: invalidEvidence("duplicate_tool_id", "", nil, nil)}
 	}
 	content := make([]any, len(s.blocks))
 	for i, b := range s.blocks {

@@ -38,6 +38,17 @@ const ProbeTimeout = 5 * time.Minute
 // contracted it with ContractProbeDeadline. It is not a user-visible setting.
 var probeDeadline = ProbeTimeout
 
+// probeRun runs the probe command; tests replace it with ContractProbeRun.
+var probeRun = (*sys.Session).Run
+
+// ContractProbeRun is a test hook: probes run fn instead of the session's Run, until the
+// returned function restores the production runner.
+func ContractProbeRun(fn func(s *sys.Session, command, dir string, o sys.Options) (sys.Result, error)) (restore func()) {
+	prev := probeRun
+	probeRun = fn
+	return func() { probeRun = prev }
+}
+
 // probeObserver, when set by ObserveProbes, hears about every probe that ran.
 var probeObserver func(ProbeObservation)
 
@@ -165,7 +176,10 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 	if observer != nil {
 		started = s.Groups()
 	}
-	r, err := s.Run(pr.Command, scratch, sys.Options{Timeout: deadline, Env: pr.Tools.env()})
+	r, err := probeRun(s, pr.Command, scratch, sys.Options{Context: ctx, Timeout: deadline, Env: pr.Tools.env()})
+	if errors.Is(err, sys.ErrTimeoutObservation) {
+		return ProbeResult{}, fmt.Errorf("probe failed: the timeout observation failed, so the probe's result is unknown: %w", err)
+	}
 	if err != nil {
 		return ProbeResult{}, err
 	}

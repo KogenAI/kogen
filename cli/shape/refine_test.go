@@ -1775,3 +1775,54 @@ func TestRefineRollsBackItsReceiptWhenTheCheckoutChangesDuringPublication(t *tes
 	shpEq(t, "receipt", receiptOf(f), original)
 	refText(t, "approval", f.read(".kogen/local/approvals/is-even.json"), f.approval)
 }
+
+func TestRefineProbeReportsTimeoutObservationFailure(t *testing.T) {
+	restore := verify.ContractProbeRun(func(*sys.Session, string, string, sys.Options) (sys.Result, error) {
+		return sys.Result{}, fmt.Errorf("%w: group query failed", sys.ErrTimeoutObservation)
+	})
+	defer restore()
+	f := newRefFx(t, refOpts{approved: true}, refProbe("c1", "sleep 600"))
+	before := f.pkg()
+	exit, err := f.refine(f.hash0)
+	if !errors.Is(err, sys.ErrTimeoutObservation) || exit == 0 {
+		t.Fatalf("exit %d, err %v, want a failure wrapping sys.ErrTimeoutObservation", exit, err)
+	}
+	shpContains(t, "message", err.Error(), "timeout observation failed")
+	if len(f.Prov.requests()) != 1 {
+		t.Fatalf("the failure was fed back to the model: %d requests", len(f.Prov.requests()))
+	}
+	refEqual(t, "package", f.pkg(), before)
+	probes := shpNamed(f.evidenceEvents(), "probe_result")
+	shpEq(t, "probe events", len(probes), 1)
+	shpEq(t, "probe status", probes[0]["status"], any("failed"))
+}
+
+func TestRefineAnthropicInvalidProviderFailureReachesTheResult(t *testing.T) {
+	f := newRefFx(t, refOpts{})
+	step := shpAnthropic(f.shpFx)
+	f.Prov.route = func(map[string]any) *shpStep { return &step }
+	f.hash0 = f.hash()
+	before := f.pkg()
+	exit, err := f.refine(f.hash0)
+	e := shpWantError(t, err, "provider", "invalid_response", "", 4)
+	shpEq(t, "exit", exit, 4)
+	shpContains(t, "rendered", e.Render(), `provider failure: {"anthropic_invalid":"ordering_or_shape"}`)
+	result, err := os.ReadFile(filepath.Join(f.evidence(), "result.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(result, &doc); err != nil {
+		t.Fatal(err)
+	}
+	failure, _ := doc["provider_failure"].(map[string]any)
+	if len(failure) != 1 || failure["anthropic_invalid"] != "ordering_or_shape" {
+		t.Fatalf("provider_failure = %v", doc["provider_failure"])
+	}
+	for _, text := range []string{e.Render(), string(result)} {
+		if strings.Contains(text, "PRIVATE-PAYLOAD-MARKER") {
+			t.Fatalf("the raw payload leaked:\n%s", text)
+		}
+	}
+	refEqual(t, "package", f.pkg(), before)
+}

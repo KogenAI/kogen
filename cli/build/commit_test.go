@@ -1,8 +1,13 @@
 package build
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -337,4 +342,49 @@ func TestALargeUnicodeStartupCheckIsRecordedCutAndTheBuildContinues(t *testing.T
 		t.Fatalf("recorded output: %d bytes, valid %v", len(output), validUTF8(output))
 	}
 	contains(t, "recorded output", output, "cut in the run log")
+}
+
+func TestBuildAnthropicInvalidProviderFailureReachesResultAndOutcome(t *testing.T) {
+	e := newEnv(t)
+	cfgPath := filepath.Join(e.root, ".kogen/project.yaml")
+	cfg, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	role := regexp.MustCompile(`(?m)^  build:\n(    .*\n)+`)
+	if !role.Match(cfg) {
+		t.Fatalf("no build role in:\n%s", cfg)
+	}
+	writeFile(t, cfgPath, string(role.ReplaceAll(cfg, []byte("  build: {provider: anthropic, model: claude-sonnet-5-5, effort: high}\n"))), 0o644)
+	e.run("git", "add", ".kogen/project.yaml")
+	e.run("git", "commit", "-qm", "anthropic build role")
+	e.approve()
+	dir := filepath.Join(e.home, ".kogen", "credentials")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key, _ := json.Marshal(map[string]any{"provider": "anthropic", "api_key": "sk-ant-FIXTURE-KEY"})
+	if err := os.WriteFile(filepath.Join(dir, "anthropic.json"), key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.prov.then(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"PRIVATE-PAYLOAD-MARKER\"}}\n\n")
+	})
+	a := e.build()
+	id := e.onlyRun()
+	res := e.result(id)
+	want := map[string]any{"anthropic_invalid": "ordering_or_shape"}
+	if !reflect.DeepEqual(res["provider_failure"], any(want)) {
+		t.Fatalf("exit %d, result provider_failure = %v\n%s", a.exit, res["provider_failure"], a.shown())
+	}
+	outcomes := eventsNamed(e.events(id), "outcome")
+	if len(outcomes) != 1 || !reflect.DeepEqual(outcomes[0]["provider_failure"], any(want)) {
+		t.Fatalf("outcome events = %v", outcomes)
+	}
+	for _, text := range []string{jsonText(res), jsonText(outcomes), a.out.String()} {
+		if strings.Contains(text, "PRIVATE-PAYLOAD-MARKER") {
+			t.Fatalf("the raw payload leaked:\n%s", text)
+		}
+	}
 }

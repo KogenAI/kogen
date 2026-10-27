@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	stdpng "image/png"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"kogen-loop/sys"
 	"kogen/project"
+	"kogen/verify"
 )
 
 func TestShapeOneShotWritesThePackageAndPrintsTheLines(t *testing.T) {
@@ -829,4 +831,56 @@ func TestShapeViewImageDeliversPixelsAndRecordsReadAndDelivery(t *testing.T) {
 	shpEq(t, "image_delivery events", len(delivered), 1)
 	shpEq(t, "delivery status", delivered[0]["status"], any("completed"))
 	shpEq(t, "delivery hash", delivered[0]["sha256"], read[0]["sha256"])
+}
+
+// A timeout whose whole-group absence cannot be proven fails the shaping run with a message
+// naming it; it is neither a timed-out probe result nor tool feedback for the model.
+func TestShapeProbeReportsTimeoutObservationFailure(t *testing.T) {
+	restore := verify.ContractProbeRun(func(*sys.Session, string, string, sys.Options) (sys.Result, error) {
+		return sys.Result{}, fmt.Errorf("%w: group query failed", sys.ErrTimeoutObservation)
+	})
+	defer restore()
+	f := newShpFx(t, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "sleep 600"})))
+	exit, err := f.shape("Add calc.is_even(n).")
+	if !errors.Is(err, sys.ErrTimeoutObservation) || exit == 0 {
+		t.Fatalf("exit %d, err %v, want a failure wrapping sys.ErrTimeoutObservation", exit, err)
+	}
+	shpContains(t, "message", err.Error(), "timeout observation failed")
+	if len(f.Prov.requests()) != 1 {
+		t.Fatalf("the failure was fed back to the model: %d requests", len(f.Prov.requests()))
+	}
+	probes := shpNamed(f.events(), "probe_result")
+	shpEq(t, "probe events", len(probes), 1)
+	shpEq(t, "probe status", probes[0]["status"], any("failed"))
+	shpEq(t, "timeout", probes[0]["timeout"], nil)
+}
+
+// shpAnthropic makes the fixture's shape role an Anthropic one, signed in with a saved key,
+// whose Messages endpoint answers every request with a stream that is not a valid message.
+func shpAnthropic(f *shpFx) shpStep {
+	f.t.Helper()
+	f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"models:\n  shape: {provider: anthropic, model: claude-sonnet-5-5, effort: high}\n")
+	f.git("add", ".kogen/project.yaml")
+	f.git("commit", "-qm", "anthropic shape role")
+	key, _ := json.Marshal(map[string]any{"provider": "anthropic", "api_key": "sk-ant-FIXTURE-KEY"})
+	if err := os.WriteFile(filepath.Join(f.Home, ".kogen", "credentials", "anthropic.json"), key, 0o600); err != nil {
+		f.t.Fatal(err)
+	}
+	return shpStep{handler: func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"PRIVATE-PAYLOAD-MARKER\"}}\n\n")
+	}}
+}
+
+func TestShapeAnthropicInvalidProviderFailureReachesTheDiagnostic(t *testing.T) {
+	f := newShpFx(t)
+	step := shpAnthropic(f)
+	f.Prov.route = func(map[string]any) *shpStep { return &step }
+	exit, err := f.shape("Add calc.is_even(n).")
+	shpWantError(t, err, "shape", "provider_failed", "", 4)
+	shpEq(t, "exit", exit, 4)
+	shpContains(t, "stdout", f.Stdout.String(), "provider/invalid_response: malformed Anthropic completion\n  provider failure: {\"anthropic_invalid\":\"ordering_or_shape\"}\n")
+	if strings.Contains(f.Stdout.String()+f.Stderr.String()+err.Error(), "PRIVATE-PAYLOAD-MARKER") {
+		t.Fatal("the raw payload leaked")
+	}
 }

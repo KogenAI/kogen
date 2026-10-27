@@ -303,7 +303,7 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 		// The engine cuts what it runs itself; the session runs the call here to learn
 		// whether the cut applied, which the engine's order does not report.
 		HandleCall: func(ctx context.Context, call tools.Call) (Handled, error) {
-			out, err := s.tools.Call(call)
+			out, err := s.tools.CallContext(ctx, call)
 			if err != nil {
 				return Handled{}, err
 			}

@@ -55,7 +55,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 
 func (f *fakeProvider) serve(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	if r.URL.Path != "/v1/responses" {
+	if r.URL.Path != "/v1/responses" && r.URL.Path != "/v1/messages" {
 		http.NotFound(w, r)
 		return
 	}

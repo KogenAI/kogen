@@ -17,11 +17,11 @@ Neither surface knows Kogen's approval, Intent, baseline, verification, review, 
   - tool result texts and the 16384-byte cut;
   - replay items;
   - request bodies, cache identity placement, retry and stream accumulation.
-  The adopted golden tests guard these compatibility bytes.
+  The adopted golden tests guard these compatibility bytes. The library-only positive `Tools.ShellTimeout` opt-in changes only its configuration-aware shell description and expired-command feedback as specified below; zero retains the original bytes.
 - **L3 No hidden fallback.** No provider, route, key or model substitution and no extra retries beyond the provider policy moved from Kogen (3 transport attempts, one unreadable-answer retry, one refresh after a 401 for sign-in routes). Refusals are reported honestly.
 - **L4 Unknown stays unknown.** Usage comes from provider-reported fields only. Missing values are `null` and the usage `state` is `partial` or `unknown`. Nothing is estimated.
 - **L5 Credentials.** The loop reads the existing store at `$HOME/.kogen/credentials/<provider>.json` (same format, 0600) with the same login/refresh behavior. It never prints, copies, proxies or exports tokens. Signing in remains the caller's job (`kogen provider login …`, or `provider.Login` for library callers).
-- **L6 Process custody.** Shell tools run in their own process groups. Cancellation, deadline or interruption terminates every group the loop started (SIGTERM, then SIGKILL after a bounded wait) before the call returns. A host binary calls `sys.MaybeSupervise(os.Args[1:])` and `sys.EnableSupervisor()` first in `main`, as Kogen does. `cmd/kogen-loop` does so too, so a killed host still takes its command groups down. A library caller that skips this keeps only the in-process termination.
+- **L6 Process custody.** Shell tools run in their own process groups. Cancellation, deadline or interruption terminates every group the loop started (SIGTERM, then SIGKILL after a bounded wait) before the call returns. A host binary calls `sys.MaybeSupervise(os.Args[1:])` and `sys.EnableSupervisor()` first in `main`, as Kogen does. `cmd/kogen-loop` does so too, so a killed host still takes its command groups down. A library caller that skips this keeps only the in-process termination. For an explicitly positive `Tools.ShellTimeout` that fires, timeout feedback additionally waits for the owned group to disappear, including descendants after an early leader exit. This extra disappearance wait does not change cancellation or deadline custody.
 
 ## 2. Go library API (`loop/v1`)
 
@@ -116,7 +116,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (Res
    1. Return `ctx.Err()` if it's set.
    2. `BeforeCall(call, input ++ outs)`.
    3. If the name is in `Terminal`, mark it terminal and don't execute it. When a batch has several terminal calls, the **last** one is `Result.Terminal`, as Kogen's builder keeps it; earlier ones stay unanswered.
-   4. Otherwise take `HandleCall` if it's set and handled; if not, `out, err := Tools.Call(call)` and use `out.Cut()`. `err` is returned as a stop and is only non-nil when a shell is interrupted.
+   4. Otherwise take `HandleCall` if it's set and handled; if not, `out, err := Tools.CallContext(ctx, call)` and use `out.Cut()`. `err` is returned unchanged as a stop for shell interruption, context cancellation/deadline during positive-timeout custody, or timeout observation failure.
    5. `AfterCall(call, out, terminal, input ++ outs)`.
    6. Append `call.Output(out)` to `outs` unless the call is terminal.
 6. If no call is terminal and `len(calls) > 0`, set `input = input ++ outs` and go to step 1.
@@ -125,6 +125,68 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (Res
 Cancellation observed after a response/call hook returns nil stops the round
 before executing a tool, starting another request or returning an ending. A hook error still
 takes precedence and is returned unchanged.
+
+### Caller-owned shell duration (Go tools only)
+
+`tools.Tools` adds `ShellTimeout time.Duration`. Nonpositive values are off;
+a positive value is passed exactly to `sys.Options.Timeout` for each shell call.
+It does not bound provider waits, a batch or the round. No task field, CLI flag,
+environment setting, capability entry or automatic default is added.
+`deadline_seconds` remains the standalone whole-round stopping deadline.
+
+`func (t *Tools) Definition(name string) (map[string]any, bool)` returns the
+package definition/unknown-name behavior unchanged except for shell with a
+positive bound. It replaces only `Commands have no time limit.` with
+`Each shell call has a caller-configured time limit of <duration>. A timed-out command's process group is stopped before a timed-out result is returned.`
+where `<duration>` is Go `time.Duration.String()`. Command-only parameters,
+required arguments and `additionalProperties` stay unchanged. Repeated generation
+is stable and does not mutate earlier definitions or package defaults.
+`tools.Definition` and `tools.Defs` remain unbounded and byte-identical.
+
+Callers explicitly build definitions from that method and pass the same Tools
+instance to the round; the engine still sends supplied definitions verbatim:
+
+```go
+t := &tools.Tools{Root: root, Session: session,
+    Enabled: []string{tools.ShellTool}, ShellTimeout: 2 * time.Second}
+shell, _ := t.Definition(tools.ShellTool)
+r := loop.Round{Tools: t, Definitions: []any{shell}}
+// Supply the round's other caller-owned fields as usual.
+```
+
+Ordinary output remains exactly `exit status: <n>\n<combined output>`.
+Only `sys.Result.TimedOut` adds `timed out after <duration>\n` before that text,
+with nil Go error and the actual sys status (not a synthetic timeout exit code).
+Partial output is retained, and ordinary cutting, function-call output pairing
+and replay apply. Timeout feedback may continue the round. Teardown uses the
+existing five-second SIGTERM-to-SIGKILL grace and observes whole-group
+disappearance before publishing timeout feedback. An observed Session interrupt
+wins as `*sys.Interrupted`, followed by parent context cancellation/deadline,
+then observation error or proven timeout. Parent Round context cancellation remains
+a stopping context error. Neither is tool feedback, and existing hook-error
+precedence remains unchanged. This option does not claim Kogen adoption or token
+savings.
+
+`sys.Options.Context` optionally cancels the fired positive-timeout custody wait,
+including joining teardown and waiting for observation. Nil preserves no-context
+callers. `Tools.RunContext` and `CallContext` forward it only for positive
+`ShellTimeout`; `Run` and `Call` remain nil-context wrappers. Both loop fallback
+execution and Session HandleCall forward their actual context. This is not overall
+execution custody: the loop still terminates its round's groups. Nonpositive
+execution and `FinishOnInterrupt` semantics are unchanged. Standalone
+`deadline_seconds` is already a whole-round context deadline, not this per-shell
+option; there is no SessionConfig timeout.
+
+Observation is in-process: Darwin uses numeric KERN_PROC_PGRP actual data length
+(including zombies), and Linux follows this rule. Linux first uses `kill(-pgid, 0)` as a monotone presence witness: success or `EPERM` means the group is present, with no readable `/proc` needed, and `pgid <= 1` is rejected before any kill. `ESRCH` alone never proves absence: Linux then enumerates `/proc` (zombies, state Z, included) and reads the group after the final `)` of each `stat`. Entries that vanish (`ENOENT`/`ESRCH`) are skipped; unreadable entries (`EPERM`/`EACCES`) and malformed `stat` are remembered, and a later membership witness wins over them. Without a witness, any remembered error or listing failure is an observation failure; only `ESRCH` plus a complete error-free scan with no member is absent. A `hidepid=1`/noaccess mount makes final confirmation fail rather than report absence; with `hidepid=2` (invisible) a hidden live member still cannot become absent because kill is a presence witness. Status as of 27 October 2026: research had reproduced the `ESRCH` defect on Linux; this correction was source-qualified on Darwin and cross-built, with Linux runtime proof pending at delivery. A cross-build does not prove lifecycle behavior. Other platforms explicitly lack native observation support.
+A failed or unsupported observation returns `sys.Result{}` with an error matching
+`errors.Is(err, sys.ErrTimeoutObservation)` (`timeout custody observation failed`),
+including positive-timeout callers with no Context. Timeout signals are dispatched
+independently and teardown is joined unless interruption/context takes precedence.
+This is never `error:` feedback or an ending. A slow observation cannot delay
+SIGTERM/SIGKILL or stop selection; ordinary successful observation can continue
+waiting for an owned zombie to be reaped. A live PID outside the group does not
+hold custody. No wall cap or retry budget is added.
 
 A multi-round conversation is the caller's: after a terminal call, the next round's input appends `tools.OutputItem(terminal.CallID(), feedback)`. After a no-call ending it appends a user message `{"role":"user","content":feedback}`. `loop.Session` (below) does this for standalone callers.
 
@@ -254,6 +316,14 @@ Typed `sys.Error{Class, Reason, Detail, Exit}`. Provider errors keep their exist
 ## 6. Versioning and compatibility
 
 - **Additive changes in v1** (new optional task field with a safe default, new event type or field, new capability) need a contract note in this file and a conformance fixture. Callers ignore unknowns.
+- Native Anthropic Messages terminal `invalid_response` attempts optionally carry
+  `provider_failure` in the attempt record and typed error. Its string-enum
+  `anthropic_invalid` category may have one of `error_type`, `stop_reason`,
+  `block_type`, or `delta_type`; unrecognized or ill-typed values are `unknown`.
+  These allowlisted values contain no provider messages or payloads. A null
+  `ttft_ms` does not prove no first token, and unknown `usage_state` does not
+  prove no processing. A false failed end-turn/tool-use marker does not identify
+  the cause. Diagnostics do not change retry or validity decisions.
 - **Breaking changes** (removed or renamed field, changed meaning, changed engine order, changed default behavior) need `kogen-loop/v2` and `loop/v2`, and consumers must migrate deliberately.
 The external reference described a Kogen-owned synchronized copy at
 `cli/third_party/kogen-loop/`, a `replace` directive, sync script and

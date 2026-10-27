@@ -301,3 +301,23 @@ func TestUsageCoverageDamagedHistoryDirectory(t *testing.T) {
 		}
 	}
 }
+
+// Provider diagnostics never change retry or validity decisions, and the usage allowlist stays
+// bounded identifiers: an Anthropic invalid-response map has no "code", so the summary's
+// provider_failure_code stays null and nothing of the map is copied.
+func TestUsageLeavesAnthropicInvalidProviderFailureCodeNull(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".kogen/local/runs/11111111")
+	os.MkdirAll(dir, 0700)
+	file := filepath.Join(dir, "result.json")
+	os.WriteFile(file, []byte(`{"build":"11111111","unknown_requests":0,"outcome":"failed","provider_failure":{"anthropic_invalid":"sse_error","error_type":"overloaded_error"}}`), 0600)
+	s := usageScan{root: root, limitations: map[string]bool{}}
+	m := s.readMeta(file)
+	if v, has := m["provider_failure_code"]; !has || v != nil {
+		t.Fatalf("provider_failure_code = %v (present %v), want null", v, has)
+	}
+	encoded, _ := json.Marshal(m)
+	if strings.Contains(string(encoded), "anthropic_invalid") || strings.Contains(string(encoded), "overloaded_error") {
+		t.Fatalf("the summary copied the map: %s", encoded)
+	}
+}

@@ -47,6 +47,10 @@ func TestToolsMatchTheElixirResults(t *testing.T) {
 					// Git quotes the C library's regular expression error, which differs.
 					wantText, got = "error: fatal: ", got[:min(len(got), len("error: fatal: "))]
 				}
+				if runtime.GOOS != "darwin" && c.Name == "search_text" && c.Arguments == `{"pattern":"\\bfunc\\b"}` {
+					// The C library's regular expressions treat \b as a word boundary on Linux only.
+					wantText = "src/main.go:3:func main() {}"
+				}
 				if got != wantText {
 					t.Errorf("result\n got: %q\nwant: %q", got, wantText)
 				}

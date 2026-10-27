@@ -178,13 +178,14 @@ var DefaultTerminal = []string{"finish"}
 //  4. input = sent ++ tools.Replay(resp.Items); calls = tools.Calls(resp.Items).
 //  5. For each call: return ctx.Err() if set; BeforeCall(call, input ++ outs); a Terminal name
 //     is marked terminal (the last one wins) and is not executed; otherwise HandleCall when it
-//     handles the call, else Tools.Call and Output.Cut; AfterCall(call, out, terminal,
+//     handles the call, else Tools.CallContext(ctx, call) and Output.Cut; AfterCall(call, out, terminal,
 //     input ++ outs); append call.Output(out) to outs unless the call is terminal.
 //  6. No terminal call and at least one call: input = input ++ outs and go to 1.
 //  7. Otherwise return the Result.
 //
 // Calls after a terminal call in the same batch still run. A hook error, a tool interrupt
-// (a shell stopped by the caller) or a cancelled context stops the round; the error is
+// (a shell stopped by the caller), timeout observation failure or a cancelled context
+// stops the round; the error is
 // returned unchanged. When ctx ends, every process group started through rd.Tools.Session
 // during the round is terminated before Run returns.
 func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (result Result, err error) {
@@ -254,7 +255,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 					if rd.Tools == nil {
 						out = tools.Output{Text: "error: unknown tool " + call.Name}
 					} else {
-						o, err := rd.Tools.Call(call)
+						o, err := rd.Tools.CallContext(ctx, call)
 						if err != nil {
 							return Result{}, err
 						}

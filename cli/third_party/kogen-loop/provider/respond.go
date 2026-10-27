@@ -401,7 +401,7 @@ func (r *run) attempts() (*Response, error) {
 			n++
 		case resInvalid:
 			if keyed {
-				return nil, r.malformed()
+				return nil, withDiagnostics(r.malformed(), res.diag)
 			}
 			if retriedInvalid {
 				return nil, providerFail("invalid_response", r.label()+" sent a response Kogen cannot read: "+res.detail)
@@ -856,7 +856,7 @@ func (r *run) record(res result, err error, start time.Time, ts string) {
 	case err != nil:
 	case res.kind == resRefused:
 		rec["provider_failure"] = res.fail.diagnostics()
-	case res.kind == resTransient && res.diag != nil:
+	case (res.kind == resTransient || res.kind == resInvalid) && res.diag != nil:
 		rec["provider_failure"] = res.diag
 	case res.kind == resUnauthorized && r.k.info.key:
 		rec["provider_failure"] = res.fail.diagnostics()
