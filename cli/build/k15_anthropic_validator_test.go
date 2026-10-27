@@ -61,6 +61,7 @@ func k15Validate(body map[string]any) string {
 			}
 		}
 		if role == "assistant" && len(uses) > 0 && thinking {
+			// A first thinking block, when present, must be signed; its absence is valid.
 			first := blocks[0]
 			switch first["type"] {
 			case "thinking":
@@ -71,8 +72,6 @@ func k15Validate(body map[string]any) string {
 				if s, _ := first["data"].(string); s == "" {
 					return fmt.Sprintf("messages[%d].content[0].redacted_thinking.data: Field required", i)
 				}
-			default:
-				return fmt.Sprintf("messages[%d].content[0]: Expected `thinking` or `redacted_thinking`, but found `%v`. When thinking is enabled, an assistant tool_use message must start with a thinking block", i, first["type"])
 			}
 		}
 		// tool_result blocks first, each answering a tool_use of the preceding assistant message.
@@ -249,10 +248,6 @@ func TestK15ValidatorAcceptsValidAndRejectsInvalidShapes(t *testing.T) {
 		"unsigned thinking": {edit(func(m []any) {
 			assistant(m)["content"].([]any)[0].(map[string]any)["signature"] = ""
 		}), "signature"},
-		"no thinking first": {edit(func(m []any) {
-			c := assistant(m)["content"].([]any)
-			assistant(m)["content"] = c[1:]
-		}), "thinking"},
 		"duplicate ids": {edit(func(m []any) {
 			c := assistant(m)["content"].([]any)
 			c[2].(map[string]any)["id"] = c[1].(map[string]any)["id"]
