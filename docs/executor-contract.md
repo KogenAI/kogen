@@ -94,7 +94,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 | `blocker` | `report_blocker` tool | the `blocker` field of the structured final result (`--json-schema`) |
 | `images` | `view_image` | harness-native, not Kogen-custodied |
 | `cancel` | context + tool process groups | process group of the `claude` process |
-| `max_rounds` | unlimited (unchanged) | default 6, configurable; exceeding it stops with `candidate/executor_round_limit`, candidate preserved |
+| `max_rounds` | unlimited (unchanged) | default 6, configurable; exceeding it stops with `candidate/executor_round_limit`, candidate preserved; three consecutive identical red passes over an unchanged tree stop it earlier, after an `executor_no_progress` event |
 
 **Routing status.** All three roles are routed. Review uses the `Reviewer` seam: a fresh session, complete source delivery, the native verdict rules and exact-tree evaluation, no exact resume (`candidate/resume_refused`). Shape and Refine run one read-only session per invocation whose structured result is the existing `submit` / `submit_refinement` payload; Kogen compares the checkout, raw index and HEAD around every round.
 
@@ -124,7 +124,7 @@ models:
 
 - `executor` defaults to `native`, which keeps the existing provider/model/effort semantics.
 - `executor: claude-code` forbids `provider`/`base_url`. Model and effort are passed to Claude Code (`--model`, and `--effort` when the installed version supports it).
-- `max_rounds` (positive integer, `claude-code` only) caps the rounds of that role's session; the default is 6 per role. Exhaustion stops `candidate/executor_round_limit` with work and evidence preserved. Any other `executor` value is a configuration error.
+- `max_rounds` (positive integer, `claude-code` only) caps the rounds of that role's session; the default is 6 per role. Exhaustion stops `candidate/executor_round_limit` with work and evidence preserved; so do three consecutive identical red passes over an unchanged candidate tree (recorded as `executor_no_progress`). Any other `executor` value is a configuration error.
 
 ## 6. Conformance
 
