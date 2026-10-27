@@ -292,7 +292,6 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 		reason string
 	}{
 		"edit a tracked file":         {func(t *testing.T, f *shpFx, root string) { f.write("calc.js", "tampered\n") }, "baseline_changed"},
-		"add an untracked file":       {func(t *testing.T, f *shpFx, root string) { f.write("features/steps/is_even_steps.js", shpSteps) }, "baseline_changed"},
 		"delete a file":               {func(t *testing.T, f *shpFx, root string) { os.Remove(filepath.Join(root, "app.txt")) }, "baseline_changed"},
 		"change a mode":               {func(t *testing.T, f *shpFx, root string) { os.Chmod(filepath.Join(root, "calc.js"), 0o755) }, "baseline_changed"},
 		"edit a tracked ignored file": {func(t *testing.T, f *shpFx, root string) { f.write("ignored-but-tracked.txt", "changed\n") }, "baseline_changed"},
@@ -330,7 +329,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 					t.Fatalf("%s was published after a checkout mutation", p)
 				}
 			}
-			if m.reason == "baseline_changed" && name != "stage a change" && name != "delete a file" && name != "add an untracked file" {
+			if m.reason == "baseline_changed" && name != "stage a change" && name != "delete a file" {
 				// The detected edit is reported, not concealed or overwritten.
 				if f.read("calc.js") == "function add(a, b) { return a + b }\n" && name == "edit a tracked file" {
 					t.Fatal("the detected edit was reverted")
@@ -343,6 +342,86 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 			noNativeRequests(t, f)
 		})
 	}
+
+	t.Run("created untracked files are removed, pre-existing ones stay, a stat refresh is equal", func(t *testing.T) {
+		f := newShpFx(t)
+		f.write("pre-existing.txt", "mine\n")
+		f.useExternalShape(6)
+		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
+			func(n int, root string) (executor.RoundResult, error) {
+				f.write("features/steps/.keep-note", "note\n")
+				f.git("status")
+				return result(shpFiles())(n, root)
+			}}}
+		if exit, err := f.shapeWith(x, "Add calc.is_even(n)."); err != nil || exit != 0 {
+			t.Fatalf("exit %d err %v", exit, err)
+		}
+		if f.exists("features/steps/.keep-note") {
+			t.Fatal("the created untracked file was not removed")
+		}
+		if f.read("pre-existing.txt") != "mine\n" {
+			t.Fatal("a pre-existing untracked file was touched")
+		}
+	})
+
+	t.Run("created files are reported once in the evidence", func(t *testing.T) {
+		f := newShpFx(t)
+		f.useExternalShape(6)
+		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
+			func(n int, root string) (executor.RoundResult, error) {
+				f.write("features/steps/.keep-note", "note\n")
+				f.write("b-note.txt", "note\n")
+				return result(shpFiles())(n, root)
+			}, result(map[string]any{"files": []any{map[string]any{"path": ".kogen/intents/is-even/acceptance.feature", "content": shpFeature}}})}}
+		if exit, err := f.shapeWith(x, "Add calc.is_even(n)."); err != nil || exit != 0 {
+			t.Fatalf("exit %d err %v", exit, err)
+		}
+		ev := shpNamed(f.events(), "shape_untracked_removed")
+		if len(ev) != 1 || fmt.Sprint(ev[0]["paths"]) != "[b-note.txt features/steps/.keep-note]" {
+			t.Fatalf("removal events %v", ev)
+		}
+	})
+
+	t.Run("a file the session untracked is not removed", func(t *testing.T) {
+		f := newShpFx(t)
+		f.useExternalShape(6)
+		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
+			func(n int, root string) (executor.RoundResult, error) {
+				f.git("rm", "-q", "--cached", "calc.js")
+				return result(shpFiles())(n, root)
+			}}}
+		_, err := f.shapeWith(x, "Add calc.is_even(n).")
+		if se, ok := sys.AsError(err); !ok || se.Reason != "baseline_changed" {
+			t.Fatalf("error %v", err)
+		}
+		if !f.exists("calc.js") {
+			t.Fatal("a file that existed before the round was removed")
+		}
+		if len(shpNamed(f.events(), "shape_untracked_removed")) != 0 {
+			t.Fatal("a pre-existing file was reported as created")
+		}
+	})
+
+	t.Run("a failed removal names the files and publishes nothing", func(t *testing.T) {
+		f := newShpFx(t)
+		f.useExternalShape(6)
+		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
+			func(n int, root string) (executor.RoundResult, error) {
+				f.write("stuck/note.txt", "note\n")
+				dir := filepath.Join(root, "stuck")
+				os.Chmod(dir, 0o500)
+				t.Cleanup(func() { os.Chmod(dir, 0o700) })
+				return result(shpFiles())(n, root)
+			}}}
+		_, err := f.shapeWith(x, "Add calc.is_even(n).")
+		se, ok := sys.AsError(err)
+		if !ok || se.Class != "candidate" || se.Reason != "shape_untracked_remove_failed" {
+			t.Fatalf("error %v", err)
+		}
+		shpContains(t, "stop", se.Render(), "stuck/note.txt")
+		shpContains(t, "stop", se.Render(), "nothing was published")
+		shapeAbsent(t, f)
+	})
 
 	t.Run("kogen's own run evidence is not a checkout edit", func(t *testing.T) {
 		f := newShpFx(t)

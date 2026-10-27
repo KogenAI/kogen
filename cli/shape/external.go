@@ -122,6 +122,29 @@ func (x *extSession) round(ctx context.Context, feedback string) (executor.Round
 	if err != nil {
 		return res, err
 	}
+	var created []string
+	for p := range after.untracked {
+		// A path the checkout had before the round, tracked or untracked, was not created by it
+		// (for example a tracked file the session removed from the index).
+		if _, existed := before.files[p]; !existed {
+			created = append(created, p)
+		}
+	}
+	sort.Strings(created)
+	var failed []string
+	for _, p := range created {
+		if err := os.Remove(filepath.Join(x.root, p)); err != nil {
+			failed = append(failed, p)
+		}
+		delete(after.files, p)
+	}
+	if len(failed) > 0 {
+		return res, sys.Fail("candidate", "shape_untracked_remove_failed",
+			"the Shape round created untracked files that could not be removed; nothing was published: "+strings.Join(failed, ", "), 1)
+	}
+	if len(created) > 0 {
+		x.record(map[string]any{"event": "shape_untracked_removed", "paths": created})
+	}
 	if err := before.changedTo(after); err != nil {
 		return res, err
 	}
@@ -209,23 +232,25 @@ func blocksText(blocks []any) string {
 type identity struct {
 	head, index string
 	files       map[string]string
+	untracked   map[string]bool // untracked, not ignored paths
 }
 
 func checkoutIdentity(repo *git.Repo, root string) (identity, error) {
-	id := identity{head: repo.Head(), files: map[string]string{}}
-	indexPath, err := repo.IndexPath()
+	id := identity{head: repo.Head(), files: map[string]string{}, untracked: map[string]bool{}}
+	listing, err := repo.OK("ls-files", "-s", "-z")
 	if err != nil {
 		return id, err
 	}
-	b, err := os.ReadFile(indexPath)
-	switch {
-	case err == nil:
-		sum := sha256.Sum256(b)
-		id.index = hex.EncodeToString(sum[:])
-	case os.IsNotExist(err):
-		id.index = "absent"
-	default:
+	sum := sha256.Sum256([]byte(listing))
+	id.index = hex.EncodeToString(sum[:])
+	others, err := repo.OK("ls-files", "-z", "--others", "--exclude-standard")
+	if err != nil {
 		return id, err
+	}
+	for _, rel := range strings.Split(others, "\x00") {
+		if rel != "" && rel != ".kogen/local" && !strings.HasPrefix(rel, ".kogen/local/") {
+			id.untracked[rel] = true
+		}
 	}
 	out, err := repo.OK("ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	if err != nil {

@@ -281,6 +281,9 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 		return nil, executor.Fail(executor.ReasonUnavailable, "Claude Code "+version+" is older than the qualified minimum "+MinVersion)
 	}
 	env := childEnv(a.opts.Env, t.Home, a.opts.Token)
+	if t.Role == executor.RoleShape {
+		env = shapeEnv(env)
+	}
 	auth, err := a.authStatus(ctx, bin, env)
 	if err != nil {
 		return nil, err

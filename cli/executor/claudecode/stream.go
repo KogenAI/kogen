@@ -152,6 +152,11 @@ func (r *roundRun) toolResults(ev map[string]any) error {
 				return executor.Fail(executor.ReasonProtocol, "cannot read the hook log: "+bound(err.Error(), 100))
 			}
 			rec, ok := recs[id]
+			if !ok && r.s.role == "shape" {
+				r.s.emit(map[string]any{"event": "executor_hook", "round": r.n, "tool_use_id": id, "tool_name": name, "decision": "deny", "hook": "configuration", "message": "write tools are not available during Shape"})
+				r.s.emit(map[string]any{"event": "executor_tool", "round": r.n, "name": name, "tool_use_id": id, "denied": true})
+				continue
+			}
 			if !ok {
 				return executor.Fail(executor.ReasonProtocol, "hook did not run for the "+name+" call "+quoteBound(id)+"; the round was stopped")
 			}

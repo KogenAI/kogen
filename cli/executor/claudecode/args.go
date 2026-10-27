@@ -149,5 +149,26 @@ func roleRoundArgs(o Options, role, schema, sessionID string, n int, model, effo
 			args[i+1] = constraintsFor(role)
 		}
 	}
+	if role == "shape" {
+		for i, a := range args {
+			if a == "--allowedTools" && i+1 < len(args) {
+				extra := []string{"--disallowedTools", "Edit,Write,MultiEdit,NotebookEdit"}
+				args = append(args[:i+2], append(extra, args[i+2:]...)...)
+				break
+			}
+		}
+	}
 	return append(args, "--json-schema", schema)
+}
+
+// shapeEnv is env with exactly one GIT_OPTIONAL_LOCKS=0, so Git does not refresh the index
+// during a Shape session.
+func shapeEnv(env []string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "GIT_OPTIONAL_LOCKS=") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, "GIT_OPTIONAL_LOCKS=0")
 }
