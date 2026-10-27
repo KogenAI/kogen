@@ -43,6 +43,7 @@ func (e *env) gitOutSafe(args ...string) string {
 }
 
 func TestABuilderReportedProtectedContradictionStopsBeforeLaterCallsOrGates(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/builder_blocker_test.exs: LOOP-7 a builder-reported protected contradiction stops before later calls or gates
 	marker := filepath.Join(t.TempDir(), "fixer-ran")
 	e := newEnv(t, func(c *project.Config) { c.Fix = []string{"touch " + marker} })
@@ -126,6 +127,7 @@ func TestABuilderReportedProtectedContradictionStopsBeforeLaterCallsOrGates(t *t
 }
 
 func TestMalformedEmptyAndUnprotectedBlockerReportsGrantNoWrites(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/builder_blocker_test.exs: LOOP-7 malformed, empty and unprotected blocker reports return feedback and grant no writes
 	e := newEnv(t)
 	f := e.prov
@@ -162,6 +164,7 @@ func TestMalformedEmptyAndUnprotectedBlockerReportsGrantNoWrites(t *testing.T) {
 }
 
 func TestAcceptingABlockerStillRequiresTheOriginalHeadAndProtectedBytes(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/builder_blocker_test.exs: LOOP-7 accepting a blocker still requires the original HEAD and protected bytes
 	for _, c := range []struct{ mutation, expected string }{
 		{"printf changed >> " + stepsFile, "baseline_changed"},
@@ -169,6 +172,7 @@ func TestAcceptingABlockerStillRequiresTheOriginalHeadAndProtectedBytes(t *testi
 		{"git update-ref -d HEAD", "head_moved"},
 	} {
 		t.Run(c.expected+" "+c.mutation, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t)
 			f := e.prov
 			f.then(f.calls("shell", map[string]any{"command": c.mutation}, "report_blocker", blockerReport(stepsFile)))

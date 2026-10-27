@@ -15,6 +15,7 @@ import (
 // `mise exec -- mix run --no-start cli/build/testdata/gen/<script>.exs` in the repository root).
 
 func TestOpeningMessageEqualsTheElixirReference(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex context/1 (the builder's opening message, LOOP-2), replayed
 	// through the reference code
 	raw, err := os.ReadFile("testdata/context-golden.json")

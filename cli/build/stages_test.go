@@ -86,6 +86,7 @@ func (e *env) lastRun() string {
 }
 
 func TestStageScratchMutationsAreRedOrderedRedStopsCommandsAndMilestoneCustodySurvivesResume(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/stages_test.exs: stage scratch mutations are red, ordered red stops commands, fresh setup and milestone custody survive Resume
 	checks := []string{
 		"if grep -qx mutate app.txt; then printf 'scratch mutation\\n' > app.txt; fi; if grep -qx red app.txt; then echo scoped-red; exit 23; fi",
@@ -227,6 +228,7 @@ func stagePhaseRefused(t *testing.T, e *env, trace string, phases ...string) (st
 }
 
 func TestResumeRefusesPhaseClaimsInconsistentWithFinalWorkReviewerOwnershipOrLanding(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/stages_test.exs: Resume refuses phase claims inconsistent with final work, reviewer ownership or landing
 	e, trace := stagedEnv(t, []string{"true"}, project.Check{Name: "whole", Run: "! grep -qx broken app.txt"})
 	f := e.prov
@@ -258,6 +260,7 @@ func TestResumeRefusesPhaseClaimsInconsistentWithFinalWorkReviewerOwnershipOrLan
 }
 
 func TestInterruptingAStageGateRetainsNoCompletedEvidenceAndResumeRerunsSetupAndCommands(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/stages_test.exs: interrupting a stage gate retains no completed evidence and Resume reruns fresh setup and commands
 	marker := filepath.Join(t.TempDir(), "stage-interrupted-marker")
 	quoted := shellQuote(marker)
@@ -291,6 +294,7 @@ func TestInterruptingAStageGateRetainsNoCompletedEvidenceAndResumeRerunsSetupAnd
 }
 
 func TestStageProgressOwnerClaimsAreCheckedAgainstTheSavedContinuation(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/stages_test.exs: stage navigation cannot claim builder work under another saved owner
 	plan := []stageDef{{ID: "foundation", Title: "Foundation", Goal: "First", Checks: []string{"first"}}, {ID: "surface", Title: "Surface", Goal: "Integrate", Checks: []string{"third"}}}
 	text := "# T\n\nSlug: fixture\n" + stagePlanText([]string{"first"})
@@ -319,6 +323,7 @@ func TestStageProgressOwnerClaimsAreCheckedAgainstTheSavedContinuation(t *testin
 }
 
 func TestAnUnstagedBuildKeepsNoStageState(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/stages_test.exs: absent plan is unchanged
 	e := newEnv(t)
 	f := e.prov
@@ -346,6 +351,7 @@ func TestAnUnstagedBuildKeepsNoStageState(t *testing.T) {
 }
 
 func TestAStagedBuildGivesTheBuilderItsNavigationAndKeepsInstructionsFrozen(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/stages_test.exs (navigation reaches the builder in the opening message and with each passed stage)
 	e, _ := stagedEnv(t, []string{"true"})
 	f := e.prov

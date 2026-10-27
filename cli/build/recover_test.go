@@ -53,6 +53,7 @@ func (e *env) recover(id, output string) *attempt {
 }
 
 func TestRecoveryArchivesRawFilteredBinaryModeSymlinkAndDeletedPathsWithoutIndexOrIgnoredChanges(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/recovery_test.exs: raw filtered bytes, binary, executable modes, symlink targets and deleted paths are archived without index or ignored-output changes
 	e, id := blocked(t, "printf 'candidate raw\n' > filtered; printf '\\000\\377' > binary; chmod +x filtered; rm locked/value; ln -s filtered link; mkdir -p ignored; printf warm > ignored/cache")
 	output := filepath.Join(physical(t, t.TempDir()), "raw archive")
@@ -143,6 +144,7 @@ func TestRecoveryArchivesRawFilteredBinaryModeSymlinkAndDeletedPathsWithoutIndex
 }
 
 func TestRecoveryOfFileDirectoryReplacementsPreservesBothLeafSetsAndCleansOnlyTheDelta(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/recovery_test.exs: file-directory replacements preserve both leaf sets and clean only the delta
 	e, id := blocked(t, "rm app.txt; mkdir app.txt; printf nested > app.txt/child; rm locked/value; rmdir locked; printf replacement > locked")
 	output := filepath.Join(physical(t, t.TempDir()), "transitions")
@@ -170,6 +172,7 @@ func TestRecoveryOfFileDirectoryReplacementsPreservesBothLeafSetsAndCleansOnlyTh
 }
 
 func TestRecoveryPublicationPrecedesACleanupWriteFailureAndTheReceiptStaysPreserved(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/recovery_test.exs: publication precedes a controlled local cleanup write failure; candidate rollback and preserved receipt remain honest
 	e, id := blocked(t, "printf candidate > app.txt; printf after > locked/value")
 	locked := filepath.Join(e.root, "locked")
@@ -294,6 +297,7 @@ func TestRecoveryRefusals(t *testing.T) {
 }
 
 func TestRecoveryRefusesABuildThatReportedNoBlocker(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/recover.ex (only a completed BUILDER-REPORTED blocker is recoverable)
 	e := newEnv(t)
 	f := e.prov
@@ -306,6 +310,7 @@ func TestRecoveryRefusesABuildThatReportedNoBlocker(t *testing.T) {
 }
 
 func TestARecoveredBlockerCannotBeResumedAndRecoversOnlyOnce(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/recover.ex (the receipt makes a second recovery impossible; resume cannot override a protected blocker)
 	e, id := blocked(t, "printf candidate > app.txt")
 	output := filepath.Join(physical(t, t.TempDir()), "archive")

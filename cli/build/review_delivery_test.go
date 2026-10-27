@@ -375,6 +375,7 @@ func TestAReviewWhosePartsAndScreenshotsCannotShareAWindowConvergesOnItsDelivere
 }
 
 func TestAReviewResetReportsEachImageAtItsNewestDeliveryOnlyForThisReview(t *testing.T) {
+	t.Parallel()
 	// Direct core repair (KOGEN-048): delivery facts follow the candidate tree, never the reset.
 	b, e, tree := windowAttempt(t)
 	b.Review = 1

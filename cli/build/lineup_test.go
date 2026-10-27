@@ -24,6 +24,7 @@ func lineupConfig(t *testing.T, models string) *project.Config {
 // state, and a native role is never described as a claim of the v2 external adapter; an
 // external review role without a route is refused, never reviewed natively.
 func TestClaudeLineupNativeCompatibility(t *testing.T) {
+	t.Parallel()
 	omitted := lineupConfig(t, "  shape: {model: s, effort: high}\n  build: {model: b, effort: medium}\n  review: {model: r, effort: high}\n")
 	explicit := lineupConfig(t, "  shape: {executor: native, model: s, effort: high}\n  build: {executor: native, model: b, effort: medium}\n  review: {executor: native, model: r, effort: high}\n")
 	a, _ := json.Marshal(omitted.Models)

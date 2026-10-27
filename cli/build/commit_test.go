@@ -35,6 +35,7 @@ func waitFor(t *testing.T, path string) {
 }
 
 func TestACommitHookThatRejectsLeavesEditsAndRestoresTheStagedIntentIndex(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/release_behavior_test.exs: GIT-5/GIT-8 a rejecting commit hook leaves edits and restores the staged Intent index
 	e := newEnv(t)
 	e.stageOtherIntent()
@@ -62,6 +63,7 @@ func TestACommitHookThatRejectsLeavesEditsAndRestoresTheStagedIntentIndex(t *tes
 }
 
 func TestAHookThatEditsTheCommitIsUndoneAndTheIndexRestored(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/release_behavior_test.exs: GIT-6/GIT-8 an editing hook is undone and the original staged Intent index is restored
 	e := newEnv(t)
 	e.stageOtherIntent()
@@ -78,6 +80,7 @@ func TestAHookThatEditsTheCommitIsUndoneAndTheIndexRestored(t *testing.T) {
 }
 
 func TestOtherIntentsStayOutOfTheCandidateAndTheCommit(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: VER-10/GIT-4 excludes new siblings in another uncommitted Intent folder
 	e := newEnv(t)
 	e.stageOtherIntent()
@@ -101,6 +104,7 @@ func TestOtherIntentsStayOutOfTheCandidateAndTheCommit(t *testing.T) {
 }
 
 func TestSigningIsHonoured(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex landed/3 (GIT-6: signed when the user's configuration signs)
 	e := newEnv(t)
 	gpg := filepath.Join(t.TempDir(), "fake-gpg")
@@ -117,6 +121,7 @@ func TestSigningIsHonoured(t *testing.T) {
 }
 
 func TestASigningFailureLeavesTheChangesUncommitted(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex commit/3 (the user's signing applies; a failing signer stops the commit)
 	e := newEnv(t)
 	gpg := filepath.Join(t.TempDir(), "failing-gpg")
@@ -134,6 +139,7 @@ func TestASigningFailureLeavesTheChangesUncommitted(t *testing.T) {
 }
 
 func TestAProviderFailureLeavesEditsAndRestoresTheIndexAndResumes(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/release_behavior_test.exs: GIT-8 a provider failure leaves edits and restores the staged Intent index
 	e := newEnv(t)
 	e.stageOtherIntent()
@@ -172,6 +178,7 @@ func TestAProviderFailureLeavesEditsAndRestoresTheIndexAndResumes(t *testing.T) 
 }
 
 func TestContextLengthExhaustionStopsTheBuild(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex stopped/2 (context_too_long becomes candidate/context_exhausted)
 	e := newEnv(t)
 	e.prov.then(failure(400, "context_length_exceeded", "too long"))
@@ -182,6 +189,7 @@ func TestContextLengthExhaustionStopsTheBuild(t *testing.T) {
 }
 
 func TestAnInterruptedStartupRestoresTheIndexAndCannotResume(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: GIT-8/CLI-7 restores the saved index and reports an interrupted startup
 	marker := filepath.Join(t.TempDir(), "setup-waiting")
 	e := newEnv(t, func(c *project.Config) { c.Setup = []string{"touch " + marker + "; sleep 600"} })
@@ -201,12 +209,14 @@ func TestAnInterruptedStartupRestoresTheIndexAndCannotResume(t *testing.T) {
 }
 
 func TestStartupStagesThatFailRestoreTheIndex(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: GIT-8 restores the saved index when startup setup/checks fails
 	for name, mutate := range map[string]func(c *project.Config){
 		"setup": func(c *project.Config) { c.Setup = []string{"echo setup-broke; exit 4"} },
 		"check": func(c *project.Config) { c.Checks = []project.Check{{Name: "broken", Run: "exit 5"}} },
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, mutate)
 			e.stageOtherIntent()
 			index := e.state()["index"]
@@ -222,6 +232,7 @@ func TestStartupStagesThatFailRestoreTheIndex(t *testing.T) {
 }
 
 func TestAHookThatChangesTheApprovedBaselineStopsTheBuild(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: AUT-2 stops a preflight hook that changes the approved baseline
 	e := newEnv(t)
 	e.hook("commit-msg", "printf changed >> "+stepsFile+"\n")
@@ -232,6 +243,7 @@ func TestAHookThatChangesTheApprovedBaselineStopsTheBuild(t *testing.T) {
 }
 
 func TestACommitInterruptedDuringPostcommitIsUndone(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: CLI-7 undoes a commit interrupted during postcommit validation
 	e := newEnv(t)
 	marker := filepath.Join(t.TempDir(), "hook-waiting")
@@ -253,6 +265,7 @@ func TestACommitInterruptedDuringPostcommitIsUndone(t *testing.T) {
 }
 
 func TestCleanVerificationOfTheCandidateFeedsBackWhatChanged(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: clean checks input mutations cannot certify the workspace; clean setup failure returns command output
 	e := newEnv(t, func(c *project.Config) {
 		c.Setup = []string{"if grep -qx candidate app.txt; then echo clean-setup-failure; exit 17; fi"}
@@ -284,6 +297,7 @@ func TestCleanVerificationOfTheCandidateFeedsBackWhatChanged(t *testing.T) {
 }
 
 func TestChecksThatChangeTheCandidateCannotCertifyAPass(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: clean checks input mutations / workspace drift during clean checks cannot certify a pass
 	e := newEnv(t, func(c *project.Config) {
 		c.Checks = []project.Check{{Name: "mutate", Run: "if grep -qx candidate app.txt; then printf 'mutated\\n' > app.txt; fi"}}
@@ -319,6 +333,7 @@ func TestChecksThatChangeTheCandidateCannotCertifyAPass(t *testing.T) {
 }
 
 func TestALargeUnicodeStartupCheckIsRecordedCutAndTheBuildContinues(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: CLI-9 records a successful large Unicode startup check and continues
 	e := newEnv(t, func(c *project.Config) {
 		c.Checks = []project.Check{{Name: "startup", Run: "yes '€' | head -n 400000 | tr -d '\\n'"}}
@@ -345,6 +360,7 @@ func TestALargeUnicodeStartupCheckIsRecordedCutAndTheBuildContinues(t *testing.T
 }
 
 func TestBuildAnthropicInvalidProviderFailureReachesResultAndOutcome(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	cfgPath := filepath.Join(e.root, ".kogen/project.yaml")
 	cfg, err := os.ReadFile(cfgPath)

@@ -25,6 +25,7 @@ import (
 // ---- the opening input ----
 
 func TestNativeOpeningInputEqualsTheOpeningMessage(t *testing.T) {
+	t.Parallel()
 	// The native conversation opens with the brief as a user message of two input_text blocks,
 	// byte for byte what the builder always opened with. The expected bytes come from the
 	// reference data (testdata/context-golden.json, written from the Elixir implementation),
@@ -112,6 +113,7 @@ func initGit(t *testing.T, dir string, env []string) {
 }
 
 func TestNativeFirstRequestCarriesTheOpeningInput(t *testing.T) {
+	t.Parallel()
 	// End to end: the first request body of a Build holds the opening blocks that the brief
 	// defines, as the first input item.
 	e := newEnv(t)
@@ -137,6 +139,7 @@ func TestNativeFirstRequestCarriesTheOpeningInput(t *testing.T) {
 // ---- the native executor as the contract states it ----
 
 func TestNativeDescriptor(t *testing.T) {
+	t.Parallel()
 	d := nativeExecutor{}.Describe()
 	if err := d.Validate(); err != nil {
 		t.Fatal(err)
@@ -296,10 +299,12 @@ func newConformanceAttempt(t *testing.T, root, home string, prov *fakeProvider, 
 }
 
 func TestNativeConformance(t *testing.T) {
+	t.Parallel()
 	conformance.Run(t, &nativeDriver{})
 }
 
 func TestNativeShellWriteToTheBaselineStopsTheRound(t *testing.T) {
+	t.Parallel()
 	// E3: prevention covers write_file only. A shell write to a protected file is not
 	// prevented; Kogen's detection after the shell call stops the round with
 	// candidate/baseline_changed (the conformance script documents the missing prevention).
@@ -327,6 +332,7 @@ func TestNativeShellWriteToTheBaselineStopsTheRound(t *testing.T) {
 }
 
 func TestNativeRoundResultCarriesTheClaimAndTheProvidersUsage(t *testing.T) {
+	t.Parallel()
 	root := conformance.NewCheckout(t)
 	home := physical(t, t.TempDir())
 	seedLogin(t, home)
@@ -373,6 +379,7 @@ func TestNativeRoundResultCarriesTheClaimAndTheProvidersUsage(t *testing.T) {
 }
 
 func TestNativeRoundMapsCancellationButKeepsTheSessionsInterrupt(t *testing.T) {
+	t.Parallel()
 	root := conformance.NewCheckout(t)
 	home := physical(t, t.TempDir())
 	seedLogin(t, home)

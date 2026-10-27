@@ -36,6 +36,7 @@ func passEvents(t *testing.T, e *env, id string) int {
 }
 
 func TestARedAnswerWithoutAToolCallAfterTheSameRedStopsWithTheCandidatePreserved(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	head := e.head()
 	e.prov.then(e.prov.calls("write_file", map[string]any{"path": "app.txt", "content": "red\n"}, "finish", map[string]any{"summary": "first"}))
@@ -60,6 +61,7 @@ func TestARedAnswerWithoutAToolCallAfterTheSameRedStopsWithTheCandidatePreserved
 }
 
 func TestARoundWithAToolCallIsProgressEvenWhenTheTreeAndTheRedAreUnchanged(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	f := e.prov
 	f.then(
@@ -77,6 +79,7 @@ func TestARoundWithAToolCallIsProgressEvenWhenTheTreeAndTheRedAreUnchanged(t *te
 }
 
 func TestARoundWithoutAToolCallContinuesWhenTheFixersChangedTheCandidate(t *testing.T) {
+	t.Parallel()
 	// Each fixer run changes an untracked candidate file, so every pass verifies a new tree.
 	e := newEnv(t, func(c *project.Config) { c.Fix = []string{"printf x >> tick.txt"} })
 	f := e.prov
@@ -95,6 +98,7 @@ func TestARoundWithoutAToolCallContinuesWhenTheFixersChangedTheCandidate(t *test
 }
 
 func TestAChangedFileModeIsProgressForARoundWithoutAToolCall(t *testing.T) {
+	t.Parallel()
 	// The fixer flips the executable bit each round: same content, different candidate tree.
 	e := newEnv(t, func(c *project.Config) {
 		c.Fix = []string{"if test -x run.sh; then chmod -x run.sh; else chmod +x run.sh; fi"}
@@ -114,6 +118,7 @@ func TestAChangedFileModeIsProgressForARoundWithoutAToolCall(t *testing.T) {
 }
 
 func TestAnIgnoredFileChangeIsNotProgressBecauseVerificationSeesOnlyTheCandidateTree(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(c *project.Config) { c.Fix = []string{"printf x >> .kogen/local/ignored-tick"} })
 	e.prov.then(e.prov.calls("write_file", map[string]any{"path": "app.txt", "content": "red\n"}, "finish", map[string]any{"summary": "first"}))
 	e.prov.then(sayings(5)...)
@@ -124,6 +129,7 @@ func TestAnIgnoredFileChangeIsNotProgressBecauseVerificationSeesOnlyTheCandidate
 }
 
 func TestARedStageGateRepeatedWithoutAToolCallStopsAtTheStage(t *testing.T) {
+	t.Parallel()
 	checks := []string{"if grep -qx red app.txt; then echo scoped-red; exit 23; fi"}
 	e, _ := stagedEnv(t, checks)
 	f := e.prov
@@ -141,6 +147,7 @@ func TestARedStageGateRepeatedWithoutAToolCallStopsAtTheStage(t *testing.T) {
 }
 
 func TestAStoppedNoProgressBuildResumesFromItsCheckpoint(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": "red\n"}, "finish", map[string]any{"summary": "first"}), says("No change."))

@@ -33,6 +33,7 @@ func clone(v any) any {
 }
 
 func TestAnAbsentPlanIsUnchangedAndAnExplicitPlanRetainsOrderedLiterals(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/stages_test.exs: absent plan is unchanged; explicit plan retains ordered literals
 	for _, text := range []string{
 		"## Foundation\nSome stages in prose.\n",
@@ -63,6 +64,7 @@ func TestAnAbsentPlanIsUnchangedAndAnExplicitPlanRetainsOrderedLiterals(t *testi
 }
 
 func TestEverySpecifiedPlanSchemaErrorNamesStages(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/stages_test.exs: all specified schema errors name stages rather than silently ignoring metadata
 	base := planValue()
 	stages := func(p map[string]any) []any { return p["stages"].([]any) }

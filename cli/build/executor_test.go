@@ -167,6 +167,7 @@ func (r countingReviewer) Review(ctx context.Context, b *Attempt, pass verify.Pa
 // ---- the Build over a fake external executor ----
 
 func TestExternalFinishClaimOnARedTreeGetsFeedbackNotACommit(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	start := e.head()
@@ -209,6 +210,7 @@ func TestExternalFinishClaimOnARedTreeGetsFeedbackNotACommit(t *testing.T) {
 }
 
 func TestExternalTaskAndRunRecords(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("    max_rounds: 3\n")
 	start := e.head()
@@ -289,6 +291,7 @@ func contains2(list []string, s string) bool {
 }
 
 func TestExternalNeedsNoProviderLoginForTheBuildRole(t *testing.T) {
+	t.Parallel()
 	// The build role uses Claude Code's own sign-in; only the native review needs a Kogen login.
 	cfg, err := project.ParseConfig("version: 1\nmodels:\n  build: {executor: claude-code, model: m, effort: e}\n", "f")
 	if err != nil {
@@ -308,6 +311,7 @@ func TestExternalNeedsNoProviderLoginForTheBuildRole(t *testing.T) {
 }
 
 func TestExternalProtectedMutationStopsWithBaselineChanged(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	start := e.head()
@@ -329,6 +333,7 @@ func TestExternalProtectedMutationStopsWithBaselineChanged(t *testing.T) {
 }
 
 func TestExternalHeadMoveStops(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	start := e.head()
@@ -353,6 +358,7 @@ func TestExternalHeadMoveStops(t *testing.T) {
 }
 
 func TestExternalRoundLimitKeepsTheCandidate(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("    max_rounds: 2\n")
 	start := e.head()
@@ -374,6 +380,7 @@ func TestExternalRoundLimitKeepsTheCandidate(t *testing.T) {
 }
 
 func TestExternalRoundLimitDefaultsToTheExecutorsOwn(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	reviews := 0
@@ -389,6 +396,7 @@ func TestExternalRoundLimitDefaultsToTheExecutorsOwn(t *testing.T) {
 }
 
 func TestExternalCheckpointRefusesResume(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("    max_rounds: 1\n")
 	f := newFakeExecutor(t, externalWritesApp("red\n", harnessUsage(1, 0, 1, 0)))
@@ -423,6 +431,7 @@ func TestExternalCheckpointRefusesResume(t *testing.T) {
 }
 
 func TestExternalWithoutAProvidedExecutorIsUnavailable(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	a := e.build()
@@ -439,6 +448,7 @@ func TestExternalWithoutAProvidedExecutorIsUnavailable(t *testing.T) {
 }
 
 func TestExternalDescriptorMustFitTheContract(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	f := newFakeExecutor(t, externalWritesApp("candidate\n", executor.Usage{}))
@@ -451,6 +461,7 @@ func TestExternalDescriptorMustFitTheContract(t *testing.T) {
 }
 
 func TestExternalStartFailureStopsTheBuild(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	f := newFakeExecutor(t, externalWritesApp("candidate\n", executor.Usage{}))
@@ -466,6 +477,7 @@ func TestExternalStartFailureStopsTheBuild(t *testing.T) {
 }
 
 func TestExternalInterruptKeepsTheInterruptExitCode(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	inRound := make(chan struct{})
@@ -490,6 +502,7 @@ func TestExternalInterruptKeepsTheInterruptExitCode(t *testing.T) {
 }
 
 func TestExternalInterruptReportedAsAnExecutorFailureStillExitsWithTheSignal(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	inRound := make(chan struct{})
@@ -508,8 +521,10 @@ func TestExternalInterruptReportedAsAnExecutorFailureStillExitsWithTheSignal(t *
 }
 
 func TestExternalUnsupportedEndingsAreProtocolFailures(t *testing.T) {
+	t.Parallel()
 	for name, ending := range map[string]executor.Ending{"blocker": executor.EndBlocker, "unknown": "completed"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t)
 			e.useExecutor("")
 			f := newFakeExecutor(t, func(n int, ctx context.Context, root string, in executor.Input) (executor.RoundResult, error) {
@@ -529,6 +544,7 @@ func TestExternalUnsupportedEndingsAreProtocolFailures(t *testing.T) {
 }
 
 func TestExternalNoCallEndingGetsFeedbackLikeAFinishClaim(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	reviews := 0
@@ -550,6 +566,7 @@ func TestExternalNoCallEndingGetsFeedbackLikeAFinishClaim(t *testing.T) {
 // ---- the native default is unchanged ----
 
 func TestNativeCheckpointAndConfigCarryNoExecutorIdentity(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
 	a := e.build()
@@ -577,6 +594,7 @@ func TestNativeCheckpointAndConfigCarryNoExecutorIdentity(t *testing.T) {
 }
 
 func TestNativeSelectionIgnoresDepsExternal(t *testing.T) {
+	t.Parallel()
 	// executor: native (written out) is the native builder, and never asks Deps.External.
 	cfg, err := project.ParseConfig("version: 1\nmodels:\n  build: {executor: native, model: gpt-6.1-sol, effort: medium}\n", "f")
 	if err != nil {
@@ -592,9 +610,11 @@ func TestNativeSelectionIgnoresDepsExternal(t *testing.T) {
 }
 
 func TestExternalFailedRoundStillDetectsCustodyChanges(t *testing.T) {
+	t.Parallel()
 	for _, mutation := range []string{"protected", "head"} {
 		for _, outcome := range []string{"error", "unknown_ending"} {
 			t.Run(mutation+"/"+outcome, func(t *testing.T) {
+				t.Parallel()
 				e := newEnv(t)
 				e.useExecutor("")
 				start := e.head()

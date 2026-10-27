@@ -42,6 +42,7 @@ func materialAttempt(t *testing.T) (*Attempt, *env, string) {
 }
 
 func TestSmallSourceRemainsInlineWithoutNewCustody(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: small source remains inline without new custody
 	b, _, tree := materialAttempt(t)
 	m := testMaterial("small source\n")
@@ -71,6 +72,7 @@ func TestSmallSourceRemainsInlineWithoutNewCustody(t *testing.T) {
 func slicesOf(items ...any) []any { return items }
 
 func TestExactUTF8SourceDeliverySurvivesResetAndDamagedCustodyRefuses(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: chatgpt and opencode-go exact UTF8 source delivery survives reset and damaged custody refuses
 	for name, role := range map[string]project.Role{
 		"chatgpt":     materialRole(),
@@ -194,6 +196,7 @@ func exactSourceDelivery(t *testing.T, role project.Role) {
 }
 
 func TestIrreducibleReviewAuthorityRefusesWithoutFilesOrIndexChanges(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: irreducible authority refuses without files or index changes
 	b, e, tree := materialAttempt(t)
 	m := testMaterial(strings.Repeat("source", 120_000))
@@ -216,6 +219,7 @@ func TestIrreducibleReviewAuthorityRefusesWithoutFilesOrIndexChanges(t *testing.
 }
 
 func TestSourceIsSplitInOrderWithoutLosingAByteOrBreakingAnEncoding(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: exact UTF8 source delivery survives reset and damaged custody refuses (the split)
 	for name, text := range map[string]string{
 		"ascii":     strings.Repeat("0123456789\n", 3000),
@@ -258,6 +262,7 @@ type materialGolden struct {
 }
 
 func TestTheMaterialEqualsTheElixirReference(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/review.ex material/2 and lib/kogen/review_material.ex prepare/7, replayed through the reference code (testdata/gen/review.exs)
 	raw, err := os.ReadFile("testdata/review/material-golden.json")
 	if err != nil {
@@ -385,6 +390,7 @@ func TestTheMaterialEqualsTheElixirReference(t *testing.T) {
 }
 
 func TestFittedInlineSourceRelocatesOnPressure(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: fitted inline source relocates on pressure (historical=false and historical=true)
 	for _, historical := range []bool{false, true} {
 		name := "bound to its tree"

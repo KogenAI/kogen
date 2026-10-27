@@ -39,6 +39,7 @@ func approve(b *Attempt, pass verify.Pass) Approved {
 }
 
 func TestTheReviewHookRunsAfterAGreenPassAndItsApprovalIsCommitted(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex verify_and_review/1 (a green pass goes to review; an approved candidate is committed)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -57,6 +58,7 @@ func TestTheReviewHookRunsAfterAGreenPassAndItsApprovalIsCommitted(t *testing.T)
 }
 
 func TestAReviewThatBlocksStopsTheBuildWithoutACommit(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/review.ex evaluate/8 (an unresolved blocker ends the Build instead of restarting the builder)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -85,6 +87,7 @@ func TestAReviewThatBlocksStopsTheBuildWithoutACommit(t *testing.T) {
 }
 
 func TestAResumeInAReviewStageContinuesWithTheReviewer(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: resuming pending reviewer verification keeps repairs with the reviewer (the Build side)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -131,6 +134,7 @@ func TestAResumeInAReviewStageContinuesWithTheReviewer(t *testing.T) {
 }
 
 func TestTheStubReviewerApprovesAndRecordsItself(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex Review.run/3 (the hook's default until the independent review is wired)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -146,6 +150,7 @@ func TestTheStubReviewerApprovesAndRecordsItself(t *testing.T) {
 }
 
 func TestVersion3CheckpointsGoThroughTheImporter(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex decode_checkpoint/1 (version 3 is the Elixir Kogen's; the importer hook reads it)
 	e := newEnv(t)
 	id, _ := e.interruptedAtRequest()

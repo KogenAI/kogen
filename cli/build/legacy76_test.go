@@ -214,10 +214,12 @@ func (e *env) legacy76Checkpoint(id string) []byte {
 }
 
 func TestEveryMain76CheckpointDecodes(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex decode_checkpoint/1 (valid_state?/2 on the Build map as Build.save/2 wrote it at main 76109e1a)
 	man := legacy76Load(t)
 	for name := range man.Cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			e, id := newLegacy76Env(t, name)
 			loaded, why := decodeCheckpoint(e.legacy76Checkpoint(id), legacyDecode)
 			if strings.HasSuffix(name, "tool_request") && strings.HasPrefix(name, "staged_") {
@@ -246,6 +248,7 @@ func TestEveryMain76CheckpointDecodes(t *testing.T) {
 }
 
 func TestMain76StagedStateIsReadWithItsEvidence(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/stages.ex valid?/1 (progress, ordered evidence, private custody and the approved contract)
 	e, id := newLegacy76Env(t, "staged_builder_second")
 	loaded, why := decodeCheckpoint(e.legacy76Checkpoint(id), legacyDecode)
@@ -274,6 +277,7 @@ func TestMain76StagedStateIsReadWithItsEvidence(t *testing.T) {
 }
 
 func TestMain76NullableUsageIsKept(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: usage counts may be nil, a missing key or a non-integer are refused
 	e, id := newLegacy76Env(t, "nullable_usage")
 	loaded, why := decodeCheckpoint(e.legacy76Checkpoint(id), legacyDecode)
@@ -289,6 +293,7 @@ func TestMain76NullableUsageIsKept(t *testing.T) {
 }
 
 func TestMain76ReviewerKeepsItsInlineSourceAndTree(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: fitted inline source relocates on pressure
 	e, id := newLegacy76Env(t, "review")
 	loaded, why := decodeCheckpoint(e.legacy76Checkpoint(id), legacyDecode)
@@ -306,6 +311,7 @@ func TestMain76ReviewerKeepsItsInlineSourceAndTree(t *testing.T) {
 }
 
 func TestMain76RecoveryIdentityOfABlockerIsRecorded(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/recovery_test.exs (the raw identity recorded with each checkpoint of a Build that reported a blocker)
 	e, id := newLegacy76Env(t, "blocker_edits")
 	loaded, why := decodeCheckpoint(e.legacy76Checkpoint(id), legacyDecode)
@@ -329,6 +335,7 @@ func TestMain76RecoveryIdentityOfABlockerIsRecorded(t *testing.T) {
 }
 
 func TestMain76BuildsResumeAndLand(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/stages_test.exs: stage scratch mutations are red, ordered red stops commands, fresh setup and milestone custody survive Resume
 	type scenario struct {
 		name   string
@@ -386,6 +393,7 @@ func TestMain76BuildsResumeAndLand(t *testing.T) {
 	}
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
+			t.Parallel()
 			e, id := newLegacy76Env(t, sc.name)
 			sc.script(e)
 			before := e.runFiles(id)
@@ -412,6 +420,7 @@ func TestMain76BuildsResumeAndLand(t *testing.T) {
 }
 
 func TestMain76StagedLandedBuildIsANoOp(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/stages_test.exs: Resume refuses phase claims inconsistent with final work, reviewer ownership or landing
 	e, id := newLegacy76Env(t, "staged_landed_final")
 	commit := e.head()
@@ -422,6 +431,7 @@ func TestMain76StagedLandedBuildIsANoOp(t *testing.T) {
 }
 
 func TestMain76StagedBoundariesAreRefused(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/stages.ex valid_phase?/2 (a request's tool boundary is no stage owner's) and test/integration/build_boundaries_test.exs (tool boundaries are uncertain)
 	for _, c := range []struct{ name, want string }{
 		{"staged_tool_second", "uncertain tool boundary; inspect effects before starting a freshly approved Build"},
@@ -430,6 +440,7 @@ func TestMain76StagedBoundariesAreRefused(t *testing.T) {
 		{"tool_request", "uncertain tool boundary; inspect effects before starting a freshly approved Build"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e, id := newLegacy76Env(t, c.name)
 			before, files, runs := e.state(), e.runFiles(id), e.runIDs()
 			r := e.resume(id)
@@ -443,6 +454,7 @@ func TestMain76StagedBoundariesAreRefused(t *testing.T) {
 }
 
 func TestMain76StagedResumeRefusesInconsistentProgressAndEvidence(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/stages_test.exs: Resume refuses phase claims, corrupted navigation and altered evidence
 	progress := func(f func(p *legacyMap)) func(*legacy76Options) {
 		return func(o *legacy76Options) {

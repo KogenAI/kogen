@@ -27,6 +27,7 @@ func (e *env) interruptedAtRequest(first ...handler) (string, *attempt) {
 }
 
 func TestAnInterruptedBuildResumesAndLandsOnceInTheSameConversation(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_context_files_test.exs: cancelled initial request freezes conversation; release_behavior_test.exs: GIT-8/CLI-7 an interrupt leaves edits and restores the staged Intent index
 	e := newEnv(t)
 	f := e.prov
@@ -213,6 +214,7 @@ func TestResumeRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t)
 			id, _ := e.interruptedAtRequest()
 			c.prep(e, id)
@@ -235,6 +237,7 @@ func TestResumeRefusals(t *testing.T) {
 		})
 	}
 	t.Run("not an id", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		for _, id := range []string{"xyz", "../../etc", "DEADBEEF", ""} {
 			r := e.resume(id)
@@ -244,6 +247,7 @@ func TestResumeRefusals(t *testing.T) {
 }
 
 func TestResumeRefusesAnUncertainToolBoundary(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex resume_locked: uncertain tool boundary (an interrupt during a shell command)
 	e := newEnv(t)
 	f := e.prov
@@ -270,6 +274,7 @@ func TestResumeRefusesAnUncertainToolBoundary(t *testing.T) {
 }
 
 func TestResumeRefusesWorkingContextHistoryCustody(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/working_context.ex validate!
 	e := newEnv(t)
 	id, _ := e.interruptedAtRequest()
@@ -287,6 +292,7 @@ func TestResumeRefusesWorkingContextHistoryCustody(t *testing.T) {
 var _ = json.Marshal
 
 func TestAResumedRunInheritsTheEvidenceOfThePreviousRun(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/local_facts.ex inherit/2 (verification and review summaries carry over a resume)
 	e := newEnv(t)
 	f := e.prov
@@ -344,6 +350,7 @@ func TestAResumedRunInheritsTheEvidenceOfThePreviousRun(t *testing.T) {
 }
 
 func TestCheckpointUsageCountsMayBeNilButNeverMalformed(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: nullable usage counts are kept; negative, text, fractional and missing counts are refused
 	e := newEnv(t)
 	id, _ := e.interruptedAtRequest()
@@ -385,6 +392,7 @@ func TestCheckpointUsageCountsMayBeNilButNeverMalformed(t *testing.T) {
 }
 
 func TestUnknownUsageStaysUnknownInTotals(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/usage.ex add/2, line/1 and total/1 (a count that is not known stays unknown)
 	known := Tokens{count(2), count(1), count(3), count(0)}
 	unknown := Tokens{nil, count(1), count(1), nil}

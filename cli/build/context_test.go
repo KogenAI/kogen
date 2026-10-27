@@ -96,6 +96,7 @@ func TestAConversationOverTheBudgetIsResetToALocalWorkingWindow(t *testing.T) {
 }
 
 func TestAnArchivedWindowThatChangedIsRefused(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/working_context.ex validate!/1 (history custody)
 	e := newEnv(t)
 	f := e.prov
@@ -127,6 +128,7 @@ func TestAnArchivedWindowThatChangedIsRefused(t *testing.T) {
 }
 
 func TestTheLocalResetEqualsTheElixirReference(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/working_context.ex prepare/6, replayed through the reference code (reduced input, archive bytes, history, observations)
 	raw, err := os.ReadFile("testdata/reset-golden.json")
 	if err != nil {
@@ -225,6 +227,7 @@ func windowAttempt(t *testing.T) (*Attempt, *env, string) {
 }
 
 func TestResetsRetainObservationsTheLatestExchangeAndPrivateExactHistoryNotStaleGreen(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/working_context_test.exs: chatgpt and opencode-go resets retain observations, complete latest exchange and private exact history, not stale green
 	for _, role := range []project.Role{
 		{Model: "fixture", Effort: "high"},
@@ -362,6 +365,7 @@ func resetRetains(t *testing.T, role project.Role) {
 }
 
 func TestIrreducibleAuthorityRefusesWithoutArchiveOrCheckoutChanges(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/working_context_test.exs: irreducible authority refuses without archive or checkout changes
 	b, e, _ := windowAttempt(t)
 	input := []any{map[string]any{"role": "user", "content": strings.Repeat("x", 600_000)}}

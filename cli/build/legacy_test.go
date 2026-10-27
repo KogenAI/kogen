@@ -274,6 +274,7 @@ var legacyGolden = []struct {
 }
 
 func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex decode_checkpoint/1 (binary_to_term of the saved Build map)
 	rows := map[string]string{}
 	var raw map[string]string
@@ -383,6 +384,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 }
 
 func TestLegacyReaderRefusesEverythingElse(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex decode_checkpoint/1 (binary_to_term with :safe refuses what it cannot trust)
 	var rows map[string]string
 	if err := json.Unmarshal([]byte(legacyGoldenRows), &rows); err != nil {
@@ -464,6 +466,7 @@ func TestLegacyReaderRefusesEverythingElse(t *testing.T) {
 }
 
 func TestLegacyFloatsAreWrittenLikeElixirs(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex (conversation items are JSON values; Elixir's JSON.encode writes floats this way)
 	for f, want := range map[float64]string{
 		1.0: "1.0", 0.1: "0.1", 1.0e21: "1.0e21", 1.5e-7: "1.5e-7", 100000.0: "1.0e5", 123456789.123: "123456789.123",
@@ -480,6 +483,7 @@ func TestLegacyFloatsAreWrittenLikeElixirs(t *testing.T) {
 }
 
 func TestLegacyTermsAreJSONValues(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex valid_input?/1 (the saved conversations are the provider's JSON)
 	m := lmap("role", "user", "n", int64(3), "f", 2.5, "ok", latom("true"), "none", latom("nil"), "kind", latom("builder"),
 		"list", []any{int64(1), "é"}, "deep", lmap(latom("a"), int64(-4)))
@@ -591,6 +595,7 @@ func legacyChanged(t testing.TB, name string, state func(m *legacyMap), envelope
 }
 
 func TestTheWriterGivesBackTheBytesTheElixirKogenSaved(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex save/2 (the state is :erlang.term_to_binary of the Build map)
 	man := legacyLoadManifest(t)
 	for name := range man.Cases {
@@ -609,6 +614,7 @@ func TestTheWriterGivesBackTheBytesTheElixirKogenSaved(t *testing.T) {
 }
 
 func TestEveryRealCheckpointDecodes(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex decode_checkpoint/1 (valid_state?/2 on the Build map as Build.save/2 wrote it)
 	man := legacyLoadManifest(t)
 	for name, c := range man.Cases {
@@ -675,6 +681,7 @@ func TestEveryRealCheckpointDecodes(t *testing.T) {
 }
 
 func TestTheContinuationsOfRealCheckpoints(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex valid_continuation?/1 and Kogen.Build.save/2 (the stages the Build saves)
 	man := legacyLoadManifest(t)
 	load := func(name string) *State {
@@ -1048,6 +1055,7 @@ func legacyLanded(t *testing.T, e *env, id string, r *attempt, before map[string
 }
 
 func TestALegacyBuilderCheckpointResumesTheSameConversationAndLandsOnce(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_context_files_test.exs: cancelled initial request freezes conversation; test/integration/build_boundaries_test.exs: resuming pending reviewer verification keeps repairs with the reviewer
 	e, id := newLegacyEnv(t, "builder")
 	f := e.prov
@@ -1110,6 +1118,7 @@ func TestALegacyBuilderCheckpointResumesTheSameConversationAndLandsOnce(t *testi
 }
 
 func TestALegacyBuilderVerifyCheckpointRunsTheFixersAndThePassThenLands(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex resume_locked: stage builder_verify (round_end/1, then Shape.output of the saved finish call)
 	e, id := newLegacyEnv(t, "builder_verify")
 	f := e.prov
@@ -1124,6 +1133,7 @@ func TestALegacyBuilderVerifyCheckpointRunsTheFixersAndThePassThenLands(t *testi
 }
 
 func TestALegacyReviewCheckpointContinuesTheSameReviewerConversation(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: resuming pending reviewer verification keeps repairs with the reviewer
 	e, id := newLegacyEnv(t, "review")
 	f := e.prov
@@ -1143,6 +1153,7 @@ func TestALegacyReviewCheckpointContinuesTheSameReviewerConversation(t *testing.
 }
 
 func TestALegacyReviewVerifyCheckpointJudgesTheSavedVerdictWithoutAskingAgain(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/review.ex resume/2: stage review_verify with an approve verdict (evaluate/8)
 	e, id := newLegacyEnv(t, "review_verify")
 	before := e.runFiles(id)
@@ -1155,6 +1166,7 @@ func TestALegacyReviewVerifyCheckpointJudgesTheSavedVerdictWithoutAskingAgain(t 
 }
 
 func TestALegacyRetryCheckpointSendsTheBlockerAndTheFreshResultsToTheSameReviewer(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: blocked #{retry_outcome} retry provider failure retains fresh evidence and the saved reviewer
 	e, id := newLegacyEnv(t, "review_retry_verify")
 	f := e.prov
@@ -1170,6 +1182,7 @@ func TestALegacyRetryCheckpointSendsTheBlockerAndTheFreshResultsToTheSameReviewe
 }
 
 func TestALegacyLandedBuildIsANoOpThatNamesTheCommit(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex resume_locked: already-landed commit provenance
 	e, id := newLegacyEnv(t, "landed")
 	before, runs := e.runFiles(id), e.runIDs()
@@ -1195,6 +1208,7 @@ func TestALegacyLandedBuildIsANoOpThatNamesTheCommit(t *testing.T) {
 }
 
 func TestLegacyResumeRefusals(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: resume refuses damaged index custody, configuration and required saved state before effects; pre-clean checkpoints cannot authorize resume
 	type refusal struct {
 		name     string
@@ -1302,6 +1316,7 @@ func TestLegacyResumeRefusals(t *testing.T) {
 }
 
 func TestLegacyResumeRefusesWorkingContextHistoryCustody(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/working_context.ex validate!
 	e, id := newLegacyEnv(t, "builder", legacyWith(func(o *legacyOptions) {
 		o.state = func(m *legacyMap) {
@@ -1339,6 +1354,7 @@ func legacyFeatureRoot(t *testing.T) string {
 }
 
 func TestLegacyDecodeRefusesWhatValidStateRefuses(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: checkpoint decoder refuses damaged, incomplete and incompatible state
 	root := legacyFeatureRoot(t)
 	atom := latom
@@ -1465,6 +1481,7 @@ func TestLegacyDecodeRefusesWhatValidStateRefuses(t *testing.T) {
 }
 
 func TestLegacyDecodeRefusesIncompleteReviewAndPassState(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: green reuse requires complete required clean evidence, not a stored Boolean
 	root := legacyFeatureRoot(t)
 	atom := latom
@@ -1564,6 +1581,7 @@ func slicesReversed(l []any) []any {
 }
 
 func TestLegacyDecodeAcceptsAndRefusesLikeTheElixirDecoder(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: checkpoint decoder refuses damaged, incomplete and incompatible state; green reuse requires complete required clean evidence, not a stored Boolean
 	for _, raw := range []string{
 		"{broken", "{}", `{"version":999}`, `{"version":1,"state":"bad"}`,

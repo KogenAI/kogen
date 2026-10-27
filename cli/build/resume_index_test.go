@@ -75,6 +75,7 @@ func (e *env) indexBytes() []byte {
 }
 
 func TestAResumeAfterAPlainGitStatusRefreshedTheIndexContinuesTheSameReview(t *testing.T) {
+	t.Parallel()
 	// Direct core repair (Studio Build 543748f1): an index stat-cache refresh is not a staging change.
 	e, id := interruptedReview(t)
 	saved := e.indexBytes()
@@ -118,6 +119,7 @@ func TestAResumeAfterAPlainGitStatusRefreshedTheIndexContinuesTheSameReview(t *t
 }
 
 func TestAResumeStillRefusesEveryChangeToWhatIsStaged(t *testing.T) {
+	t.Parallel()
 	// Direct core repair (Studio Build 543748f1): only the stat cache may differ.
 	blob := func(e *env, content string) string {
 		cmd := exec.Command("git", "hash-object", "-w", "--stdin")

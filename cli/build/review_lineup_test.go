@@ -143,7 +143,9 @@ func (e *env) commitsSince(start string) string {
 // the edits preserved, and a claim alone, an invalid or missing verdict, or a protected write
 // never commits.
 func TestClaudeLineupReviewExactTree(t *testing.T) {
+	t.Parallel()
 	t.Run("unchanged approval commits one exact tree", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.useLineup("")
 		start := e.head()
@@ -186,6 +188,7 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 	})
 
 	t.Run("a repair is verified externally and committed", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.useLineup("")
 		start := e.head()
@@ -206,6 +209,7 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 	})
 
 	t.Run("red verification returns to the same reviewer", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.useLineup("")
 		start := e.head()
@@ -234,6 +238,7 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 	})
 
 	t.Run("a blocking verdict stops with edits preserved", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.useLineup("")
 		start := e.head()
@@ -257,23 +262,23 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 
 	t.Run("a claim, an invalid verdict, a missing verdict or a protected write never commits", func(t *testing.T) {
 		cases := map[string]struct {
-			round func(n int, root string) (executor.RoundResult, error)
+			round func(t *testing.T, n int, root string) (executor.RoundResult, error)
 			want  string
 		}{
-			"claim only": {func(n int, root string) (executor.RoundResult, error) {
+			"claim only": {func(t *testing.T, n int, root string) (executor.RoundResult, error) {
 				return executor.RoundResult{Claim: "approved, trust me"}, executor.Fail(executor.ReasonProtocol, "no structured_output")
 			}, "executor/protocol"},
-			"approve with a blocker": {func(n int, root string) (executor.RoundResult, error) {
+			"approve with a blocker": {func(t *testing.T, n int, root string) (executor.RoundResult, error) {
 				return executor.RoundResult{Structured: verdictJSON("approve", blockingFinding)}, nil
 			}, "candidate/review_invalid"},
-			"unknown verdict": {func(n int, root string) (executor.RoundResult, error) {
+			"unknown verdict": {func(t *testing.T, n int, root string) (executor.RoundResult, error) {
 				return executor.RoundResult{Structured: json.RawMessage(`{"verdict":"lgtm","findings":[]}`)}, nil
 			}, "candidate/review_invalid"},
-			"protected write": {func(n int, root string) (executor.RoundResult, error) {
+			"protected write": {func(t *testing.T, n int, root string) (executor.RoundResult, error) {
 				writeFile(t, filepath.Join(root, project.FeaturePath(testSlug)), "Feature: weakened\n", 0o644)
 				return executor.RoundResult{Structured: verdictJSON("approve")}, nil
 			}, "candidate/baseline_changed"},
-			"head moved": {func(n int, root string) (executor.RoundResult, error) {
+			"head moved": {func(t *testing.T, n int, root string) (executor.RoundResult, error) {
 				c := exec.Command("git", "-c", "user.name=x", "-c", "user.email=x@example.invalid", "commit", "-q", "--allow-empty", "--no-verify", "--no-gpg-sign", "-m", "sneaky")
 				c.Dir = root
 				if out, err := c.CombinedOutput(); err != nil {
@@ -284,12 +289,13 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 		}
 		for name, tc := range cases {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				e := newEnv(t)
 				e.useLineup("")
 				start := e.head()
 				f := newLineupExec(t)
 				f.review = func(n int, root string, in executor.Input, task executor.Task) (executor.RoundResult, error) {
-					return tc.round(n, root)
+					return tc.round(t, n, root)
 				}
 				a := e.build(withLineup(f))
 				wantStop(t, a, tc.want)
@@ -309,8 +315,10 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 // after a completed round of the matching session, and missing, changed or oversized material
 // stops safely without clipping or a commit.
 func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("line of a large changed file ✓\n", 20000) // about 600 KB: far over a native window
 	t.Run("complete exact delivery", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.useLineup("")
 		f := newLineupExec(t)
@@ -366,6 +374,7 @@ func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
 			"missing": func(dir string) { os.Remove(filepath.Join(dir, "review-1-source.txt")) },
 		} {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				e := newEnv(t)
 				e.useLineup("")
 				start := e.head()
@@ -386,6 +395,7 @@ func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
 	})
 
 	t.Run("an oversized prompt stops without clipping or a commit", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.useLineup("")
 		start := e.head()
@@ -403,6 +413,7 @@ func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
 	})
 
 	t.Run("a round without a result never counts as delivery", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.useLineup("")
 		f := newLineupExec(t)
@@ -421,6 +432,7 @@ func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
 // TestClaudeLineupReviewRefusesResume: an explicit resume of an external review checkpoint is
 // candidate/resume_refused before any inference or mutation, with fresh-Build guidance.
 func TestClaudeLineupReviewRefusesResume(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useLineup("")
 	f := newLineupExec(t)
@@ -458,6 +470,7 @@ func TestClaudeLineupReviewRefusesResume(t *testing.T) {
 
 	// A resumed native-builder checkpoint with an external review role still reviews externally.
 	t.Run("native builder checkpoint", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		path := filepath.Join(e.root, ".kogen/project.yaml")
 		b, err := os.ReadFile(path)
@@ -495,12 +508,14 @@ func TestClaudeLineupReviewRefusesResume(t *testing.T) {
 // exhaustion stops candidate/executor_round_limit with the work preserved, and no other role
 // is restarted.
 func TestClaudeLineupReviewRoundLimit(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		extra string
 		max   int
 	}{{"default", "", 6}, {"one", "    max_rounds: 1\n", 1}, {"two", "    max_rounds: 2\n", 2}} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t)
 			e.useLineup(tc.extra)
 			start := e.head()

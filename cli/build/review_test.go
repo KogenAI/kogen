@@ -116,6 +116,7 @@ func sessionOfRun(t *testing.T, e *env, id string) (map[string]any, map[string]a
 }
 
 func TestTheReviewerApprovesUnchangedCodeWithoutRepairs(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/release_behavior_test.exs: REV-4/REV-5 retries one invalid review verdict and lands after approval (approval of unchanged code)
 	// ExUnit: .kogen/intents/reviewer-style-discipline: unchanged correct-code approval succeeds without an edit quota or preference blockers
 	e := newEnv(t)
@@ -191,6 +192,7 @@ func TestTheReviewerApprovesUnchangedCodeWithoutRepairs(t *testing.T) {
 }
 
 func TestAReviewerRepairIsVerifiedAndCommittedWithoutReturningToTheBuilder(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: REV-5 reviewer repairs are verified and committed without returning to the builder
 	e := newEnv(t)
 	f := e.prov
@@ -220,6 +222,7 @@ func TestAReviewerRepairIsVerifiedAndCommittedWithoutReturningToTheBuilder(t *te
 }
 
 func TestFinalVerificationFailuresReturnToTheSameReviewerContext(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: REV-5 final verification failures return to the same reviewer context
 	e := newEnv(t, func(c *project.Config) { c.Checks = []project.Check{{Name: "tidy", Run: "! grep -qx broken app.txt"}} })
 	e.approve()
@@ -268,6 +271,7 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 	// ExUnit: test/integration/release_behavior_test.exs: REV-4/REV-5 retries one invalid review verdict and lands after approval
 	bad := finding("blocking", "An approve verdict cannot contain a blocking finding.")
 	t.Run("retried once", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
@@ -305,6 +309,7 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 		}
 		for name, tc := range cases {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				e := newEnv(t)
 				f := e.prov
 				f.then(landScript(f)...)
@@ -329,6 +334,7 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 		}
 	})
 	t.Run("a reply without a verdict is invalid, twice ends the Build", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
@@ -350,6 +356,7 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 }
 
 func TestReviewerToolsAreProtectedLikeTheBuilders(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: REV-6 reviewer shell edits cannot change the approved baseline
 	e := newEnv(t)
 	f := e.prov
@@ -374,6 +381,7 @@ func TestReviewerToolsAreProtectedLikeTheBuilders(t *testing.T) {
 }
 
 func TestAnInterruptedReviewResumesInTheSameReviewerConversation(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: resuming pending reviewer verification keeps repairs with the reviewer
 	e := newEnv(t)
 	f := e.prov
@@ -428,6 +436,7 @@ func TestAnInterruptedReviewResumesInTheSameReviewerConversation(t *testing.T) {
 }
 
 func TestAnInterruptedTargetedRepairReportsPendingReviewAndChangedVerification(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: REV-5 interrupted targeted repair reports pending review and changed verification
 	aux := t.TempDir()
 	mutated := filepath.Join(aux, "check-mutated")
@@ -476,6 +485,7 @@ func TestAnInterruptedTargetedRepairReportsPendingReviewAndChangedVerification(t
 }
 
 func TestABlockedReviewStopsAndAnExplicitResumeReopensItUnderTheSameReviewer(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: REV-5 unresolved substantive findings stop rather than start another builder round
 	// ExUnit: .kogen/intents/reopen-blocked-review: explicit resume replaces terminal changes replay with fresh verification and same-reviewer explicit clearance
 	e := newEnv(t)
@@ -581,6 +591,7 @@ func (e *env) otherRun(except ...string) string {
 }
 
 func TestAReopenedReviewSeesFreshRedResultsAndStaleApprovalCannotClearIt(t *testing.T) {
+	t.Parallel()
 	// ExUnit: .kogen/intents/reopen-blocked-review: complete fresh verification is required and stale green/approval cannot override unresolved, fresh-red or setup-failed blockers
 	flag := filepath.Join(t.TempDir(), "gate-red")
 	e := newEnv(t, func(c *project.Config) {
@@ -624,6 +635,7 @@ func TestAReopenedReviewSeesFreshRedResultsAndStaleApprovalCannotClearIt(t *test
 }
 
 func TestABlockedRetryThatFailsAtTheContinuedRequestKeepsFreshEvidenceAndTheSavedReviewer(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: blocked #{retry_outcome} retry provider failure retains fresh evidence and the saved reviewer
 	for _, setupRed := range []bool{false, true} {
 		name := "green"
@@ -740,6 +752,7 @@ func readString(t *testing.T, path string) string {
 }
 
 func TestTheReviewerReadsTheFullSourceAndNewFilesAppearOnce(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: REV-2 review retains full source without replaying new files twice
 	e := newEnv(t)
 	before := "outside-diff-sentinel\n" + strings.Repeat("context\n", 20) + "old marker\n"
@@ -802,6 +815,7 @@ func readPinned(e *env, f *fakeProvider) handler {
 }
 
 func TestTheReviewAndItsResetsCarryOnlyTheFrozenCallerDiagnostic(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_context_files_test.exs: fresh independent review and its resets retain only frozen caller diagnostics, not builder reasoning
 	e := newEnv(t)
 	f := e.prov
@@ -1005,6 +1019,7 @@ func TestLargeSourceIsDeliveredAsPinnedPartsAndMustBeReadBeforeApproval(t *testi
 }
 
 func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: exact UTF8 source delivery survives reset and damaged custody refuses (delivery before approval)
 	e := newEnv(t)
 	f := e.prov
@@ -1098,6 +1113,7 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 }
 
 func TestSmallSourceIsDeliveredInline(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/review_material_test.exs: small source remains inline without new custody
 	e := newEnv(t)
 	f := e.prov
@@ -1115,6 +1131,7 @@ func TestSmallSourceIsDeliveredInline(t *testing.T) {
 }
 
 func TestTheReviewerHasItsOwnImageAccess(t *testing.T) {
+	t.Parallel()
 	// ExUnit: .kogen/intents/native-image-evidence: resume frozen Build pixels and use fresh reviewer access (the reviewer's own view_image read and delivery)
 	e := newEnv(t)
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
@@ -1153,6 +1170,7 @@ func TestTheReviewerHasItsOwnImageAccess(t *testing.T) {
 }
 
 func TestAnInterruptedVerificationOfAReviewerRepairResumesWithoutANewRequest(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: resuming pending reviewer verification keeps repairs with the reviewer
 	paused := filepath.Join(t.TempDir(), "paused")
 	e := newEnv(t, func(c *project.Config) {
@@ -1198,6 +1216,7 @@ func TestAnInterruptedVerificationOfAReviewerRepairResumesWithoutANewRequest(t *
 }
 
 func TestAReopenedReviewersResetsPreserveTheUnresolvedBlockerAndCannotAuthorizeACommit(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: reopened reviewer resets preserve the unresolved blocker and cannot authorize commit
 	e := newEnv(t)
 	f := e.prov
@@ -1250,6 +1269,7 @@ func TestAReopenedReviewersResetsPreserveTheUnresolvedBlockerAndCannotAuthorizeA
 }
 
 func TestAResumedFittedReviewPinsItsSourceWhenTheConversationOutgrowsTheWindow(t *testing.T) {
+	t.Parallel()
 	// Intent review-refine-working-room: resume a fitted inline Review with room for investigation and final repair
 	e := newEnv(t)
 	f := e.prov
@@ -1364,6 +1384,7 @@ func decodeReviewArgs(t *testing.T, text string) map[string]any {
 }
 
 func TestReviewValidateAcceptanceSet(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "app.txt"), []byte("candidate"), 0600); err != nil {
 		t.Fatal(err)

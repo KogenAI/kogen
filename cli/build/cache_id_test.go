@@ -24,6 +24,7 @@ func cacheKeys(f *fakeProvider, want func(req map[string]any) bool) []string {
 }
 
 func TestTheBuilderAndEachReviewHaveTheirOwnSavedCacheIdentity(t *testing.T) {
+	t.Parallel()
 	// Intent go-core-migration, Prompt caching: one identity per conversation, saved in its checkpoint, never shared
 	e := newEnv(t)
 	f := e.prov
@@ -67,6 +68,7 @@ func TestTheBuilderAndEachReviewHaveTheirOwnSavedCacheIdentity(t *testing.T) {
 func reviewerInstructions() string { return agent.Prompt(agent.Reviewer) }
 
 func TestAResumedBuildKeepsItsConversationsIdentity(t *testing.T) {
+	t.Parallel()
 	// Intent go-core-migration, Prompt caching: the identity is reused for every later request, including explicit resume
 	e := newEnv(t)
 	opened := make(chan struct{})
@@ -95,6 +97,7 @@ func TestAResumedBuildKeepsItsConversationsIdentity(t *testing.T) {
 }
 
 func TestAWorkingContextResetKeepsTheConversationsIdentity(t *testing.T) {
+	t.Parallel()
 	// Intent go-core-migration, Prompt caching: working-context resets keep the identity (instructions and tools stay the same)
 	e := newEnv(t)
 	f := e.prov
@@ -121,6 +124,7 @@ func TestAWorkingContextResetKeepsTheConversationsIdentity(t *testing.T) {
 }
 
 func TestACacheIdentityIsPerConversationAndCreatedOnce(t *testing.T) {
+	t.Parallel()
 	// Intent go-core-migration, Prompt caching: different conversations never share one
 	b := &Attempt{}
 	build := b.cacheID("build")
@@ -148,6 +152,7 @@ func TestACacheIdentityIsPerConversationAndCreatedOnce(t *testing.T) {
 }
 
 func TestAnAnthropicResponseKeepsUnreportedCountsUnknown(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/anthropic.ex usage/1 (input is the sum of its reported parts; reasoning is never reported)
 	role := project.Role{Provider: "anthropic", Model: "claude-sonnet-5-5", Effort: "high"}
 	in, cached, out := 12, 5, 3

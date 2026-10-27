@@ -37,6 +37,7 @@ func factsRepo(t *testing.T) (root, lock string, cfg *project.Config) {
 }
 
 func TestStartPublishesCoherentCustodyAndRepeatedReplacementsNeverTear(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/local_facts_test.exs: start publishes coherent custody and repeated replacements never tear
 	root, lock, cfg := factsRepo(t)
 	first, err := StartRun(root)
@@ -100,6 +101,7 @@ func TestStartPublishesCoherentCustodyAndRepeatedReplacementsNeverTear(t *testin
 }
 
 func TestADamagedCatalogCannotAbortCustodyPublicationAndInheritedEvidenceKeepsOriginalLocations(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/local_facts_test.exs: damaged catalog cannot abort custody publication; inherited evidence keeps original locations
 	root, _, cfg := factsRepo(t)
 	writeFile(t, filepath.Join(root, ".kogen/local/catalog.json"), "{broken", 0o644)

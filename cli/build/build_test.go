@@ -17,6 +17,7 @@ func landScript(f *fakeProvider) []handler {
 }
 
 func TestBuildLandsOneCommitWithTheIntentTrailer(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/release_behavior_test.exs: REV-4/REV-5 retries one invalid review verdict and lands after approval (builder side)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -54,6 +55,7 @@ func TestBuildLandsOneCommitWithTheIntentTrailer(t *testing.T) {
 }
 
 func TestBuildRunRecords(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/run.ex (run records, result.json, checkpoint publication)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -153,6 +155,7 @@ func TestBuildRunRecords(t *testing.T) {
 }
 
 func TestBuilderRequestCarriesTheIntentAndTools(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex context/1 and builder tool definitions (LOOP-2)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -183,6 +186,7 @@ func TestBuilderRequestCarriesTheIntentAndTools(t *testing.T) {
 }
 
 func TestRedVerificationIsFedBackToTheSameBuilderAndRepaired(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/fail_fast_verification_test.exs: failed verification returns to the builder
 	e := newEnv(t, func(c *project.Config) {
 		c.Checks = []project.Check{{Name: "count", Run: "printf 'check\\n' >> " + "/dev/null"}}
@@ -227,6 +231,7 @@ func TestRedVerificationIsFedBackToTheSameBuilderAndRepaired(t *testing.T) {
 }
 
 func TestFixersRunOncePerRoundAndChecksFailBeforeAnyChange(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/builder_blocker_test.exs: configure! (fixers and checks) / AUT-5 already failing check
 	marker := filepath.Join(t.TempDir(), "fixer-runs")
 	e := newEnv(t, func(c *project.Config) {
@@ -257,6 +262,7 @@ func TestFixersRunOncePerRoundAndChecksFailBeforeAnyChange(t *testing.T) {
 }
 
 func TestStartRefusals(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex start checks (AUT-3..5, GIT-1)
 	cases := []struct {
 		name string
@@ -272,6 +278,7 @@ func TestStartRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t)
 			c.prep(e)
 			a := e.build()
@@ -290,6 +297,7 @@ func TestStartRefusals(t *testing.T) {
 }
 
 func TestBuildWithoutLoginIsRefusedBeforeAnyRun(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/build.ex Provider.require_roles! (GPT-5)
 	e := newEnv(t)
 	s, out, _ := e.session()
@@ -307,6 +315,7 @@ func TestBuildWithoutLoginIsRefusedBeforeAnyRun(t *testing.T) {
 }
 
 func TestACommitMsgHookThatRejectsTheMessageStopsBeforeAnyModelTime(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_boundaries_test.exs: AUT-5 commit-msg hook judges the message
 	e := newEnv(t)
 	e.hook("commit-msg", "echo 'subject too long' >&2\nexit 9\n")
@@ -319,6 +328,7 @@ func TestACommitMsgHookThatRejectsTheMessageStopsBeforeAnyModelTime(t *testing.T
 }
 
 func TestTheBuildLockIsHeldAndRefusesASecondBuild(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/lock_test.exs: AUT-4 a live Build lock refuses
 	e := newEnv(t)
 	opened := make(chan struct{})

@@ -26,6 +26,7 @@ func diagnostic(text string) *Diagnostic {
 }
 
 func TestDiagnosticDataIsBoundedOriginalUTF8(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/build_context_test.exs: bounded original UTF-8 bytes and exact text
 	for _, size := range []int{1, 262_143, 262_144} {
 		if err := diagnostic(strings.Repeat("x", size)).Validate(); err != nil {
@@ -46,6 +47,7 @@ func TestDiagnosticDataIsBoundedOriginalUTF8(t *testing.T) {
 }
 
 func TestDiagnosticDataShapeAndDigestAreExact(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/build_context_test.exs: exact shape and digest independently of the source filesystem
 	good := diagnostic("valid")
 	for name, bad := range map[string]*Diagnostic{
@@ -71,6 +73,7 @@ func TestDiagnosticDataShapeAndDigestAreExact(t *testing.T) {
 }
 
 func TestBuildWithDiagnosticDataKeepsItPrivatelyAndSendsItAfterTheOpeningMessage(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_context_files_test.exs: cancelled initial request freezes conversation (context=true)
 	e := newEnv(t)
 	e.prov.then(landScript(e.prov)...)
@@ -108,6 +111,7 @@ func TestBuildWithDiagnosticDataKeepsItPrivatelyAndSendsItAfterTheOpeningMessage
 }
 
 func TestDiagnosticDataThatIsNotValidRefusesBeforeAnyEffect(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/integration/build_context_files_test.exs: nonregular FIFO and unreadable file fail before provider or custody effects
 	e := newEnv(t)
 	a := e.build(func(in *Input) { in.Context = &Diagnostic{Text: "x", SourcePath: "relative", SHA256: digestOf("x")} })
@@ -119,6 +123,7 @@ func TestDiagnosticDataThatIsNotValidRefusesBeforeAnyEffect(t *testing.T) {
 }
 
 func TestCheckpointDecoderRefusesDamagedIncompleteAndIncompatibleState(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: checkpoint decoder refuses damaged, incomplete and incompatible state
 	for _, raw := range []string{
 		"{broken", "{}", `{"version":999}`, `{"version":1,"state":"bad"}`, `{"version":4}`, `{"version":4,"state":"bad"}`,
@@ -191,6 +196,7 @@ func encodeState(t *testing.T, st *State, doc *Checkpoint) []byte {
 }
 
 func TestGreenReuseRequiresCompleteRequiredCleanEvidenceNotAStoredBoolean(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: green reuse requires complete required clean evidence, not a stored Boolean
 	st, doc, _ := validState(t)
 	if _, why := decodeCheckpoint(encodeState(t, st, doc), nil); why != "" {
@@ -274,6 +280,7 @@ func TestGreenReuseRequiresCompleteRequiredCleanEvidenceNotAStoredBoolean(t *tes
 }
 
 func TestAtomicCheckpointPublicationLeavesThePriorValidDocument(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: atomic checkpoint publication leaves prior valid document through interrupted publication
 	root := physical(t, t.TempDir())
 	run, err := StartRun(root)
@@ -310,6 +317,7 @@ func TestAtomicCheckpointPublicationLeavesThePriorValidDocument(t *testing.T) {
 }
 
 func TestTheRunLogCapPreservesUTF8AndFitsInOneMiB(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/run_test.exs: the run log cap preserves UTF-8 and fits in 1 MiB including its marker
 	for _, size := range []int{1_048_575, 1_048_576} {
 		text := strings.Repeat("x", size)
@@ -337,6 +345,7 @@ func TestTheRunLogCapPreservesUTF8AndFitsInOneMiB(t *testing.T) {
 }
 
 func TestMeasureIsTheExactUTF8SizeOfTheCompleteRequestWithInclusiveBoundaries(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/working_context_test.exs: complete rendered request has exact UTF-8 size and adjacent inclusive boundaries
 	literal := "  Δ🙂\r\n/path with spaces/診断.txt\n  "
 	a := &Attempt{deps: Deps{Client: provider.NewClient("kogen dev+1 (test)")}}
@@ -377,6 +386,7 @@ func TestMeasureIsTheExactUTF8SizeOfTheCompleteRequestWithInclusiveBoundaries(t 
 }
 
 func TestTheNewestExchangeIsTheLastCompletedBatchOfOutputs(t *testing.T) {
+	t.Parallel()
 	// ExUnit: lib/kogen/working_context.ex newest_exchange/1 (a parallel call batch is never split)
 	item := func(kind string) any { return map[string]any{"type": kind} }
 	in := []any{
