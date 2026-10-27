@@ -146,7 +146,9 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 		if err := r.save(StageReview); err != nil {
 			return Approved{}, err
 		}
-		b.facts.update(b, "reviewing", "")
+		if err := b.facts.update(b, "reviewing", ""); err != nil {
+			return Approved{}, err
+		}
 		res, err := b.runGuardedRound(ctx, sess, executor.Input{Feedback: feedback})
 		if err != nil {
 			return Approved{}, err

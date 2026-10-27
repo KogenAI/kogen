@@ -1383,3 +1383,71 @@ func TestReviewValidateAcceptanceSet(t *testing.T) {
 		})
 	}
 }
+
+// readThen reads the pinned parts in batches, then submits the verdict.
+func readThen(f *fakeProvider, verdict string, fs ...map[string]any) handler {
+	var parts []string
+	next := 0
+	return func(w http.ResponseWriter, r *http.Request) {
+		if parts == nil {
+			parts = catalogParts(reviewCatalog(f.t, f.reviewRequests()[0]))
+		}
+		if next >= len(parts) {
+			submit(f, verdict, fs...)(w, r)
+			return
+		}
+		var pairs []any
+		for _, p := range parts[next:min(next+15, len(parts))] {
+			pairs = append(pairs, "read_file", map[string]any{"path": p})
+		}
+		next += 15
+		f.calls(pairs...)(w, r)
+	}
+}
+
+func TestChangesWhilePartsAreUnreadIsSentBackToRead(t *testing.T) {
+	e := newEnv(t)
+	f := e.prov
+	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
+	f.then(submit(f, "changes", finding("blocking", "the parts were not delivered")))
+	reader := readThen(f, "approve")
+	for i := 0; i < 30; i++ {
+		f.then(reader)
+	}
+	a := e.reviewed()
+	eq(t, "exit", a.exit, 0)
+	reqs := f.reviewRequests()
+	text := requestText(reqs[1])
+	contains(t, "feedback", text, "invalid verdict:")
+	contains(t, "feedback", text, "pinned part(s) unread; read them before a verdict; incomplete delivery is not a candidate defect; use read_file on ")
+}
+
+func TestAReviewerThatNeverReadsIsStopped(t *testing.T) {
+	e := newEnv(t)
+	f := e.prov
+	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
+	for i := 0; i < 40; i++ {
+		f.then(submit(f, "changes", finding("blocking", "x")))
+	}
+	start := e.head()
+	a := e.reviewed()
+	eq(t, "exit", a.exit, 1)
+	eq(t, "head", e.head(), start)
+	// The first unread answer is the uncounted baseline; the next two, with an unread count
+	// that does not fall, are an ordinary invalid answer and then the limit.
+	eq(t, "review requests", len(f.reviewRequests()), 3)
+	eq(t, "outcome", e.result(e.onlyRun())["outcome"], any("review_invalid"))
+}
+
+func TestChangesAfterEveryPartWasReadStaysBlocked(t *testing.T) {
+	e := newEnv(t)
+	f := e.prov
+	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
+	reader := readThen(f, "changes", finding("blocking", "real defect"))
+	for i := 0; i < 30; i++ {
+		f.then(reader)
+	}
+	a := e.reviewed()
+	eq(t, "exit", a.exit, 1)
+	contains(t, "stdout", a.out.String(), "review_blocked")
+}

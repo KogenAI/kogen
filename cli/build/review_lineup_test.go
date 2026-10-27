@@ -476,10 +476,12 @@ func TestClaudeLineupReviewRefusesResume(t *testing.T) {
 			return executor.RoundResult{Structured: verdictJSON("approve")}, nil
 		}
 		p.replace(p.calls("finish", map[string]any{"summary": "done"}))
-		e.resume(id, func(in *ResumeInput) {
+		a := e.resume(id, func(in *ResumeInput) {
 			in.External = func(project.Role) (executor.Executor, error) { return x, nil }
 			in.Reviewer = nil
 		})
+		eq(t, "resume exit", a.exit, 0)
+		eq(t, "committed app.txt", e.gitOut("show", "HEAD:app.txt"), "candidate")
 		if got := len(x.starts[executor.RoleReview]); got != 1 {
 			t.Fatalf("the review role started %d times, want 1", got)
 		}

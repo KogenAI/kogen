@@ -368,6 +368,7 @@ func (r *reviewRun) evaluate(ctx context.Context, verdict reviewVerdict, tree st
 func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 	b := r.b
 	invalid := 0
+	prevUnread := -1
 	for {
 		if err := r.save(StageReview); err != nil {
 			return reviewVerdict{}, err
@@ -461,7 +462,17 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 			problems = []string{"the review ended without calling submit_review"}
 		}
 
+		exempt := false
+		if n := unreadProblemCount(problems); n > 0 {
+			exempt = prevUnread < 0 || n < prevUnread
+			prevUnread = n
+		}
 		switch {
+		case problems != nil && exempt:
+			if len(calls) == 0 {
+				input = append(input, map[string]any{"role": "user",
+					"content": "Not a valid verdict: " + strings.Join(problems, "; ") + ". Call submit_review."})
+			}
 		case problems != nil && invalid >= 1:
 			b.Run.Event(map[string]any{"event": "review", "review": b.Review, "verdict": "invalid", "problems": problems})
 			b.LastReview = &ReviewRecord{N: b.Review, Verdict: "invalid", Findings: []map[string]any{}}
@@ -554,6 +565,16 @@ func (r *reviewRun) validate(args map[string]any, input []any) (*reviewVerdict, 
 	case verdict == "approve" && blocking > 0:
 		problems = append(problems, "an approve verdict cannot have blocking findings")
 	}
+	if verdict == "changes" && !r.external {
+		unread, err := b.materialUnread(input)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(unread) > 0 {
+			problems = append(problems, fmt.Sprintf("%d pinned part(s) unread; read them before a verdict; incomplete delivery is not a candidate defect; use read_file on %s",
+				len(unread), strings.Join(unread[:min(8, len(unread))], ", ")))
+		}
+	}
 	if verdict == "approve" && !r.external {
 		unread, err := b.materialUnread(input)
 		if err != nil {
@@ -581,4 +602,16 @@ func reviewInteger(v any) (int64, bool) {
 		return 0, !strings.ContainsAny(n.String(), ".eE")
 	}
 	return 0, false
+}
+
+// unreadProblemCount is the unread count named by the unread-parts problem of a changes
+// verdict, or 0 when problems carry none.
+func unreadProblemCount(problems []string) int {
+	for _, p := range problems {
+		var n int
+		if _, err := fmt.Sscanf(p, "%d pinned part(s) unread; read them before a verdict;", &n); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
 }
