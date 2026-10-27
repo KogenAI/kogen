@@ -314,9 +314,9 @@ func TestAnthropicWireStreamAndRecord(t *testing.T) {
 }
 
 // Messages: the HTTP statuses of the specification.
-func TestAnthropicErrorsAreClassifiedByStatusWithoutEchoingText(t *testing.T) {
+func TestAnthropicErrorsAreClassifiedByStatusKeepingOnlyTheBoundedMessage(t *testing.T) {
 	typed := func(status int, typ string) handler {
-		return jsonAnswer(status, map[string]any{"error": map[string]any{"type": typ, "message": "SECRET_BODY_TEXT " + testKey}})
+		return jsonAnswer(status, map[string]any{"error": map[string]any{"type": typ, "message": "SECRET_BODY_TEXT\n" + testKey}})
 	}
 	for _, c := range []struct {
 		name   string
@@ -344,11 +344,16 @@ func TestAnthropicErrorsAreClassifiedByStatusWithoutEchoingText(t *testing.T) {
 			}
 			// KOGEN-057: a refusal of the request (400, 404) or the model also names the fix.
 			want := "provider failure: " + c.diag
+			// KOGEN-066: a 4xx refusal keeps the provider's message, one line with the key redacted;
+			// a body that is not JSON, or a redirect, has none.
+			if c.name != "not json" && c.name != "redirect" {
+				want += "|Anthropic said: SECRET_BODY_TEXT [redacted]"
+			}
 			if c.reason == "model_unavailable" || strings.Contains(c.diag, `"http_status":400`) {
 				want += "|model claude-opus-5-5 with effort high was sent to Anthropic unchanged and not retried; if Anthropic does not offer them, set another model or effort for this role in .kogen/project.yaml"
 			}
 			want += "|selection experimental: role unknown, provider anthropic, configured model claude-opus-5-5, effort high; edit .kogen/project.yaml (role selection)"
-			if strings.Join(se.Lines, "|") != want || strings.Contains(se.Render(), "SECRET") || strings.Contains(se.Render(), testKey) {
+			if strings.Join(se.Lines, "|") != want || strings.Contains(se.Render(), testKey) || ((c.name == "not json" || c.name == "redirect") && strings.Contains(se.Render(), "SECRET")) {
 				t.Fatalf("lines = %v", se.Lines)
 			}
 			rec := obs.records()[0]
@@ -367,6 +372,26 @@ func TestAnthropicErrorsAreClassifiedByStatusWithoutEchoingText(t *testing.T) {
 	e2 := newEnv(t, nil)
 	if _, err := e2.c.Respond(context.Background(), e2.s, Request{Role: claudeRole, Instructions: "p"}, nil); mustErr(t, err).Detail != "no usable Anthropic key; run kogen provider login anthropic" {
 		t.Fatal(err)
+	}
+}
+
+// KOGEN-066: a 400 refusal shows the provider's message, bounded and without the key or the request.
+func TestAnthropicRefusalShowsBoundedProviderMessage(t *testing.T) {
+	long := "messages: tool_use ids were found without tool_result blocks " + testKey + "\n\t" + strings.Repeat("é", 400)
+	e, f := keyEnv(t, "anthropic", jsonAnswer(400, map[string]any{"error": map[string]any{"type": "invalid_request_error", "message": long}}))
+	_, err := e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Instructions: "p", Input: user("PRIVATE_REQUEST_PAYLOAD")}, nil)
+	se := mustErr(t, err)
+	said := ""
+	for _, l := range se.Lines {
+		if strings.HasPrefix(l, "Anthropic said: ") {
+			said = strings.TrimPrefix(l, "Anthropic said: ")
+		}
+	}
+	if said == "" || strings.ContainsAny(said, "\n\t") || len(said) > 300+len("…") || !strings.HasPrefix(said, "messages: tool_use ids were found without tool_result blocks [redacted] é") || !strings.HasSuffix(said, "…") {
+		t.Fatalf("said = %q", said)
+	}
+	if r := se.Render(); strings.Contains(r, testKey) || strings.Contains(r, "PRIVATE_REQUEST_PAYLOAD") || !strings.Contains(r, `"type":"invalid_request_error"`) || len(f.requests()) != 1 {
+		t.Fatalf("render = %s", r)
 	}
 }
 

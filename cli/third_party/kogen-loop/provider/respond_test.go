@@ -588,3 +588,17 @@ func TestRefusalNamesEditableRoleSelection(t *testing.T) {
 		})
 	}
 }
+
+// KOGEN-066: a ChatGPT HTTP refusal's text shares the one-line, 300-byte bound of the other routes.
+func TestChatGPTRefusalMessageIsBounded(t *testing.T) {
+	long := "bad\nrequest\t" + strings.Repeat("é", 400)
+	f := newFake(t, jsonAnswer(400, map[string]any{"error": map[string]any{"type": "invalid_request_error", "message": long}}), textAnswer("never"))
+	e := newEnv(t, f)
+	e.saveCreds("chatgpt", e.chatgptCreds())
+	_, err := e.respond(Request{})
+	se := mustErr(t, err)
+	msg := strings.TrimPrefix(se.Detail, "ChatGPT refused the request: 400 ")
+	if msg == se.Detail || strings.ContainsAny(msg, "\n\t") || !strings.HasPrefix(msg, "bad request é") || len(msg) > 300+len("…") || !strings.HasSuffix(msg, "…") {
+		t.Fatalf("detail = %q", se.Detail)
+	}
+}

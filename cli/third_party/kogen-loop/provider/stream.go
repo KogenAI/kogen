@@ -517,7 +517,7 @@ func streamFailureResult(sf streamFailure, supergrok bool) result {
 }
 
 // httpFailure classifies a non-streaming HTTP error answer.
-func httpFailure(status int, body []byte, supergrok bool) result {
+func httpFailure(status int, body []byte, supergrok bool, key string) result {
 	var errObj map[string]any
 	var detail string
 	v, derr := decodeJSON(body)
@@ -537,7 +537,7 @@ func httpFailure(status int, body []byte, supergrok bool) result {
 		errObj = map[string]any{}
 		detail = firstRunes(string(body), 200)
 	}
-	f := failure{status: int64(status), code: errObj["code"], typ: errObj["type"], param: errObj["param"], message: detail, resetsAt: errObj["resets_at"]}
+	f := failure{status: int64(status), code: errObj["code"], typ: errObj["type"], param: errObj["param"], message: hostMessage(detail, key), resetsAt: errObj["resets_at"]}
 	switch {
 	case status == 401:
 		return result{kind: resUnauthorized, fail: f}

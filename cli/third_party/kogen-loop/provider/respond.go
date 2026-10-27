@@ -284,7 +284,7 @@ func (r *run) unavailable(detail string, diag map[string]any) error {
 }
 
 // refusedError is a key provider's definite refusal: the reason chosen from its status, the
-// safe diagnostics, never the upstream message.
+// safe diagnostics and the sanitised upstream message, when one was kept.
 func (r *run) refusedError(res result) error {
 	status, _ := asInt(res.fail.status)
 	err := withDiagnostics(providerFail(res.reason, r.label()+" refused HTTP "+itoa(status)+"; no route or model fallback"), res.fail.diagnostics())
@@ -551,7 +551,7 @@ func (r *run) exchangeResponses(token string) (result, error) {
 		if err := k.check(); err != nil {
 			return result{}, err
 		}
-		return httpFailure(resp.StatusCode, body, k.info.supergrok()), nil
+		return httpFailure(resp.StatusCode, body, k.info.supergrok(), token), nil
 	}
 	acc := newAccumulator()
 	buf := make([]byte, 32<<10)
@@ -725,13 +725,16 @@ func (r *run) completeMessages(stream, key string) (result, error) {
 	return res, nil
 }
 
-// messagesFailure classifies a non-200 Messages answer by status; only the status and a
-// known error type are kept, never the message.
+// messagesFailure classifies a non-200 Messages answer by status; only the status, a known
+// error type and, for a 4xx refusal other than 401 and 429, the sanitised error message are kept.
 func messagesFailure(status int, body []byte, key string) result {
 	f := failure{status: int64(status)}
 	if v, err := decodeJSON(body); err == nil {
 		if m, ok := asMap(v); ok {
 			if e, ok := asMap(m["error"]); ok {
+				if msg, ok := e["message"].(string); ok && status >= 400 && status < 500 && status != 401 && status != 429 {
+					f.message = hostMessage(msg, key)
+				}
 				if t, ok := e["type"].(string); ok && errorTypes[t] {
 					if id := safeIdentifier(t, key); id != nil {
 						f.typ = id
