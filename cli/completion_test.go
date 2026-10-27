@@ -38,7 +38,7 @@ func TestZshDynamicWiring(t *testing.T) {
 	if e != nil {
 		t.Fatalf("%s: %v", out, e)
 	}
-	for _, want := range []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "context", "fixture", "--json", "directory", "__complete build --project /selected checkout"} {
+	for _, want := range []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "claude-code", "context", "fixture", "--json", "directory", "__complete build --project /selected checkout"} {
 		if !strings.Contains(string(out), want) {
 			t.Fatalf("missing %q in %s", want, out)
 		}

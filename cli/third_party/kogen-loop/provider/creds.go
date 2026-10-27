@@ -103,6 +103,9 @@ func Status(home string) []string {
 		}
 		lines = append(lines, p.Name+": "+state)
 	}
+	if _, ok := ClaudeCodeToken(home); ok {
+		lines = append(lines, ClaudeCodeName+": token saved (not verified)")
+	}
 	return lines
 }
 

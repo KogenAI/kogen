@@ -38,7 +38,9 @@ func externalExecutor(role project.Role) (executor.Executor, error) {
 	if err != nil {
 		return nil, executor.Fail(executor.ReasonUnavailable, "cannot locate this program for the executor hooks: "+err.Error())
 	}
-	return claudecode.New(claudecode.Options{HookCommand: []string{exe, claudecode.HookSubcommand}}), nil
+	home, _ := os.UserHomeDir()
+	token, _ := provider.ClaudeCodeToken(home)
+	return claudecode.New(claudecode.Options{HookCommand: []string{exe, claudecode.HookSubcommand}, Token: token}), nil
 }
 
 // runEngine runs the Intent commands and init and returns the exit code.

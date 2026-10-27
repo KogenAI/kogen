@@ -85,7 +85,7 @@ Feature: Install and uninstall
     And stdout is:
       """
       Uninstalled kogen from {home}/.local
-      Kept your ChatGPT, SuperGrok, OpenCode Go, Anthropic and OpenAI-compatible logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock ~/.kogen/credentials/openai-compatible.json ~/.kogen/credentials/openai-compatible.lock
+      Kept your ChatGPT, SuperGrok, OpenCode Go, Anthropic, Claude Code and OpenAI-compatible logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock ~/.kogen/credentials/claude-code.json ~/.kogen/credentials/claude-code.lock ~/.kogen/credentials/openai-compatible.json ~/.kogen/credentials/openai-compatible.lock
       """
     And the file "{home}/.local/bin/kogen" does not exist
     And the folder "{home}/.local/lib/kogen" does not exist

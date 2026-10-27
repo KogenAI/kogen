@@ -30,6 +30,8 @@ type roundRun struct {
 
 	lines  int
 	result map[string]any // the result event, once seen
+
+	authFailed bool // an assistant event carried error authentication_failed
 }
 
 // line handles one stream-json line: malformed JSON, a failed gate or a broken hook protocol
@@ -60,6 +62,9 @@ func (r *roundRun) line(b []byte) error {
 			return r.gate(ev)
 		}
 	case "assistant":
+		if e, _ := ev["error"].(string); e == "authentication_failed" {
+			r.authFailed = true
+		}
 		r.toolUses(ev)
 	case "user":
 		return r.toolResults(ev)
@@ -169,13 +174,13 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 	s := r.s
 	if !r.init {
 		if exit != 0 {
-			return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "Claude Code exited with status "+strconv.Itoa(exit)+" before starting"+stderrTail(stderrPath))
+			return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "Claude Code exited with status "+strconv.Itoa(exit)+" before starting"+stderrTail(stderrPath, s.a.redact))
 		}
 		return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "Claude Code ended without any event stream")
 	}
 	if r.result == nil {
 		if exit != 0 {
-			return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "Claude Code exited with status "+strconv.Itoa(exit)+" without a result"+stderrTail(stderrPath))
+			return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "Claude Code exited with status "+strconv.Itoa(exit)+" without a result"+stderrTail(stderrPath, s.a.redact))
 		}
 		return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "the event stream ended without a result event")
 	}
@@ -189,6 +194,11 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 		return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "the result has no boolean is_error flag")
 	}
 	terminal, _ := res["terminal_reason"].(string)
+	// `claude auth status` does not check a token against the server: an expired or revoked one
+	// only shows up here, as an assistant authentication_failed error or a 401 error result.
+	if s.a.opts.Token != "" && (r.authFailed || isErr && authFailedText(res["result"])) {
+		return executor.RoundResult{}, executor.Fail(executor.ReasonAuthRefused, tokenRefusedHint)
+	}
 
 	var ending executor.Ending
 	var claim string
@@ -200,7 +210,7 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 		claim = "Claude Code stopped because it reached the turn limit of " + strconv.Itoa(s.a.opts.MaxTurns) + " turns for this round."
 	case subtype == "success" && !isErr:
 		if exit != 0 && !killed {
-			return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "Claude Code exited with status "+strconv.Itoa(exit)+" after a success result"+stderrTail(stderrPath))
+			return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "Claude Code exited with status "+strconv.Itoa(exit)+" after a success result"+stderrTail(stderrPath, s.a.redact))
 		}
 		ending = executor.EndFinish
 		text, ok := res["result"].(string)
@@ -377,7 +387,7 @@ func boundBytes(s string, n int) string {
 }
 
 // stderrTail is a short bounded excerpt of the round's stderr for an error message.
-func stderrTail(path string) string {
+func stderrTail(path string, redact func(string) string) string {
 	f, err := os.Open(path)
 	if err != nil {
 		return ""
@@ -391,9 +401,15 @@ func stderrTail(path string) string {
 	off := max(0, fi.Size()-n)
 	buf := make([]byte, fi.Size()-off)
 	k, _ := f.ReadAt(buf, off)
-	s := strings.TrimSpace(string(buf[:k]))
+	s := strings.TrimSpace(redact(string(buf[:k])))
 	if s == "" {
 		return ""
 	}
 	return "; stderr: " + strings.ReplaceAll(bound(s, n), "\n", " | ")
+}
+
+// authFailedText reports whether a result text is Claude Code's 401 authentication failure.
+func authFailedText(v any) bool {
+	t, _ := v.(string)
+	return strings.Contains(t, "Failed to authenticate") || strings.Contains(t, "API Error: 401")
 }

@@ -1,9 +1,11 @@
 package claudecode
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -452,7 +454,7 @@ func TestEnvStripping(t *testing.T) {
 func TestEnvStrippingInPreflight(t *testing.T) {
 	t.Parallel()
 	// The auth status and version probes must run without credentials too.
-	got := childEnv([]string{"ANTHROPIC_API_KEY=k", "PATH=/bin", "CLAUDECODE=1"}, "")
+	got := childEnv([]string{"ANTHROPIC_API_KEY=k", "PATH=/bin", "CLAUDECODE=1"}, "", "")
 	if !reflect.DeepEqual(got, []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"}) {
 		t.Fatalf("env %v", got)
 	}
@@ -482,7 +484,7 @@ func TestCloudCredentialsDoNotReachClaude(t *testing.T) {
 	if _, err := s.Round(context.Background(), executor.Input{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, env := range [][]string{childEnv(extra, ""), h.f.env(1)} {
+	for _, env := range [][]string{childEnv(extra, "", ""), h.f.env(1)} {
 		for _, kv := range env {
 			key, _, _ := strings.Cut(kv, "=")
 			for _, forbidden := range keys {
@@ -890,5 +892,282 @@ func TestMalformedTrailingJSONIsProtocolFailure(t *testing.T) {
 	}
 	if _, err := decodeObject([]byte("{} \t\r\n")); err != nil {
 		t.Fatalf("JSON followed only by whitespace: %v", err)
+	}
+}
+
+func TestChildEnvStoredToken(t *testing.T) {
+	t.Parallel()
+	got := childEnv([]string{"CLAUDE_CODE_OAUTH_TOKEN=inherited", "ANTHROPIC_API_KEY=k", "PATH=/bin"}, "/h", "sk-ant-oat01-SYNTHETIC-STORED")
+	want := []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "HOME=/h", "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-SYNTHETIC-STORED", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("env %v", got)
+	}
+}
+
+func TestStoredTokenAuth(t *testing.T) {
+	t.Parallel()
+	const token = "sk-ant-oat01-SYNTHETIC-UNIT"
+	accepted := map[string]string{
+		"claude.ai":   `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"max"}`,
+		"oauth_token": `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty","subscriptionType":"max"}`,
+	}
+	for name, auth := range accepted {
+		t.Run("accepts "+name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, fakeConfig{Auth: auth, Script: oneRound(finishRound)})
+			opts := h.f.options()
+			opts.Token = token
+			s, err := h.start(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			b, _ := json.Marshal(h.eventsNamed("executor_started"))
+			if strings.Contains(string(b), token) {
+				t.Fatalf("executor_started holds the token: %s", b)
+			}
+		})
+	}
+	refused := map[string]string{
+		"api key":    `{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty"}`,
+		"bedrock":    `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"bedrock"}`,
+		"vertex":     `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"vertex"}`,
+		"foundry":    `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"foundry"}`,
+		"other":      `{"loggedIn":true,"authMethod":"console","apiProvider":"firstParty"}`,
+		"logged out": `{"loggedIn":false}`,
+	}
+	for name, auth := range refused {
+		t.Run("refuses "+name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, fakeConfig{Auth: auth, Script: oneRound(finishRound)})
+			opts := h.f.options()
+			opts.Token = token
+			_, err := h.start(opts)
+			wantError(t, err, "executor/auth_refused")
+			if strings.Contains(err.Error(), token) {
+				t.Fatalf("error holds the token: %v", err)
+			}
+			if name == "logged out" && (!strings.Contains(err.Error(), "claude setup-token") || !strings.Contains(err.Error(), "kogen provider login claude-code")) {
+				t.Fatalf("no hint: %v", err)
+			}
+		})
+	}
+}
+
+func TestOAuthTokenMethodNeedsStoredToken(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, fakeConfig{Auth: `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}`, Script: oneRound(finishRound)})
+	_, err := h.start(h.f.options())
+	wantError(t, err, "executor/auth_refused")
+}
+
+func TestChildEnvScrubOnlyWithToken(t *testing.T) {
+	t.Parallel()
+	for _, kv := range childEnv([]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0", "PATH=/bin"}, "/h", "") {
+		if strings.HasPrefix(kv, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") {
+			t.Fatalf("scrub set without a token: %s", kv)
+		}
+	}
+}
+
+// tokenInitEvent is the live init event of a token round: apiKeySource "none".
+var tokenInitEvent = map[string]any{"apiKeySource": "none"}
+
+func TestTokenRoundAcceptsInit(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, fakeConfig{
+		Auth:   `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}`,
+		Init:   tokenInitEvent,
+		Script: oneRound(finishRound),
+	})
+	opts := h.f.options()
+	opts.Token = "sk-ant-oat01-SYNTHETIC-INIT"
+	s, err := h.start(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Round(context.Background(), executor.Input{}); err != nil {
+		t.Fatal(err)
+	}
+	var scrub bool
+	for _, kv := range h.f.env(1) {
+		scrub = scrub || kv == "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1"
+	}
+	if !scrub {
+		t.Fatal("round env lacks CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1")
+	}
+}
+
+// A rejected token passes `auth status` (it checks nothing server-side) and fails the round.
+func TestStoredTokenRejectedByRound(t *testing.T) {
+	t.Parallel()
+	const token = "sk-ant-oat01-SYNTHETIC-BAD"
+	h := newHarness(t, fakeConfig{
+		Auth:     `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}`,
+		AuthFail: true, Script: oneRound(finishRound),
+	})
+	opts := h.f.options()
+	opts.Token = token
+	s, err := h.start(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	_, err = s.Round(context.Background(), executor.Input{})
+	e := wantError(t, err, "executor/auth_refused")
+	if !strings.Contains(e.Detail, "claude setup-token") || !strings.Contains(e.Detail, "kogen provider login claude-code") {
+		t.Fatalf("no hint: %v", err)
+	}
+	// Without a stored token the same round is a plain failure, not a token hint.
+	h2 := newHarness(t, fakeConfig{AuthFail: true, Script: oneRound(finishRound)})
+	s2 := h2.startOK()
+	_, err = s2.Round(context.Background(), executor.Input{})
+	if e, ok := sys.AsError(err); ok && strings.Contains(e.Detail, "stored token") {
+		t.Fatalf("token hint without a token: %v", err)
+	}
+}
+
+func grepTree(t *testing.T, dir, needle string) []string {
+	t.Helper()
+	var hits []string
+	filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if b, _ := os.ReadFile(p); strings.Contains(string(b), needle) {
+				hits = append(hits, p)
+			}
+		}
+		return nil
+	})
+	return hits
+}
+
+func TestRedactTokenFromRunRecords(t *testing.T) {
+	t.Parallel()
+	const token = "sk-ant-oat01-SYNTHETIC-REDACT-ME"
+	script := oneRound(conformance.RoundScript{End: "finish", Claim: "done",
+		Actions: []conformance.Action{{Shell: `printenv CLAUDE_CODE_OAUTH_TOKEN`}}})
+	h := newHarness(t, fakeConfig{
+		Auth: `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}`, Init: tokenInitEvent,
+		Result: map[string]any{"result": "claim echoes " + token}, Script: script,
+	})
+	opts := h.f.options()
+	opts.Token = token
+	s, err := h.start(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	res, err := s.Round(context.Background(), executor.Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Claim, token) || !strings.Contains(res.Claim, redactMark) {
+		t.Fatalf("claim %q", res.Claim)
+	}
+	if hits := grepTree(t, h.task.Dir, token); len(hits) > 0 {
+		t.Fatalf("token in the run directory: %v", hits)
+	}
+	if b, _ := json.Marshal(h.events); strings.Contains(string(b), token) {
+		t.Fatalf("token in events: %s", b)
+	}
+	raw, _ := os.ReadFile(filepath.Join(h.task.Dir, "round-1.jsonl"))
+	if !strings.Contains(string(raw), redactMark) {
+		t.Fatalf("round stream was not redacted in place: %s", raw)
+	}
+}
+
+func TestRedactStderrAndErrors(t *testing.T) {
+	t.Parallel()
+	const token = "sk-ant-oat01-SYNTHETIC-STDERR-TOKEN"
+	// Round stderr (split across writes) and the failed-round message.
+	h := newHarness(t, fakeConfig{
+		Auth:        `{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}`,
+		StderrToken: true, ExitCode: 1, Script: oneRound(finishRound),
+	})
+	opts := h.f.options()
+	opts.Token = token
+	s, err := h.start(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	_, err = s.Round(context.Background(), executor.Input{})
+	e := wantError(t, err, "executor/failed")
+	if strings.Contains(e.Detail, token) || !strings.Contains(e.Detail, redactMark) {
+		t.Fatalf("detail %q", e.Detail)
+	}
+	if b, _ := json.Marshal(h.events); strings.Contains(string(b), token) {
+		t.Fatalf("token in events: %s", b)
+	}
+	if hits := grepTree(t, h.task.Dir, token); len(hits) > 0 {
+		t.Fatalf("token in the run directory: %v", hits)
+	}
+	// `auth status` stderr in the Start error.
+	h2 := newHarness(t, fakeConfig{AuthStderrToken: true, Script: oneRound(finishRound)})
+	opts = h2.f.options()
+	opts.Token = token
+	_, err = h2.start(opts)
+	if err == nil || strings.Contains(err.Error(), token[:20]) {
+		t.Fatalf("auth status error: %v", err)
+	}
+}
+
+func TestRedactWriterAcrossChunks(t *testing.T) {
+	t.Parallel()
+	const tok = "SECRETTOKEN"
+	var out strings.Builder
+	w := newRedactWriter(&out, tok, "[x]")
+	for _, c := range []string{"a SECR", "ETTO", "KEN b SECRETTOKENSECRET", "TOKEN c SEC"} {
+		w.Write([]byte(c))
+	}
+	w.Flush()
+	if got, want := out.String(), "a [x] b [x][x] c SEC"; got != want {
+		t.Fatalf("%q, want %q", got, want)
+	}
+}
+
+// The token straddling the 300-byte bound must not leak a prefix into the error.
+func TestRunRedactsBeforeBounding(t *testing.T) {
+	t.Parallel()
+	const tok = "sk-ant-oat01-SYNTHETICTOKENVALUE"
+	a := New(Options{Token: tok}).(*adapter)
+	script := "printf '%s' \"$PAD$TOK\" >&2; exit 1"
+	env := append(os.Environ(), "PAD="+strings.Repeat("x", 290), "TOK="+tok)
+	_, err := a.run(context.Background(), "/bin/sh", env, "-c", script)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if strings.Contains(err.Error(), "sk-ant") {
+		t.Fatalf("token prefix leaked: %v", err)
+	}
+}
+
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+// A failing destination must not stop the pipe being drained.
+func TestRedactCopyDrainsAfterWriteError(t *testing.T) {
+	t.Parallel()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	done := make(chan struct{})
+	go func() { defer close(done); copyRedacted(newRedactWriter(failWriter{}, "SECRETTOKEN", "[x]"), r) }()
+	go func() { w.Write(bytes.Repeat([]byte("y"), 1<<20)); w.Close() }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("pipe not drained after a write error")
+	}
+}
+
+func TestRedactNoTokenIsIdentity(t *testing.T) {
+	t.Parallel()
+	if got := New(Options{}).(*adapter).redact("a b"); got != "a b" {
+		t.Fatal(got)
 	}
 }

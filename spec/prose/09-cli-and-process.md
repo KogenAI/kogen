@@ -81,6 +81,7 @@ Commands:
   login supergrok          Sign in with a SuperGrok subscription
   login opencode-go        Save your OpenCode Go workspace key from stdin
   login anthropic          Save your Anthropic API key privately from stdin
+  login claude-code        Save your Claude Code token (claude setup-token) privately from stdin
   login openai-compatible  Save an optional key for an OpenAI-compatible host from stdin
   list                     Show which providers Kogen is signed in to
 

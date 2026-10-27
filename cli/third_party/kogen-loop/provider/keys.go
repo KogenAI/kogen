@@ -178,3 +178,63 @@ func (k *call) saveKey(key string) error {
 	defer lock.Release()
 	return writePrivate(k.home, k.info, credentials{"provider": k.info.Name, "api_key": key}, k.interrupted)
 }
+
+// ClaudeCodeName is the name `kogen provider login` accepts for the Claude Code executor's
+// stored subscription token (made with `claude setup-token`). It is not a model provider.
+const ClaudeCodeName = "claude-code"
+
+var claudeCodeInfo = Info{Name: ClaudeCodeName, Label: "Claude Code", key: true}
+
+// ClaudeCodeToken is the saved Claude Code token; ok is false when none is saved or the
+// file holds no usable token.
+func ClaudeCodeToken(home string) (string, bool) {
+	key, ok := readCredentials(home, claudeCodeInfo).apiKey(claudeCodeInfo)
+	if !ok || !validToken(key) {
+		return "", false
+	}
+	return key, true
+}
+
+func validToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// loginToken saves the token read from the input privately (`kogen provider login
+// claude-code`): nothing is verified and no request is made. Refusals never carry the input.
+func (k *call) loginToken(in Input) error {
+	fail := func(detail string) error { return providerFail("login_failed", detail+"; saved login unchanged") }
+	value, ok, err := in.secret(k.ctx)
+	if err != nil {
+		if ie := k.interrupted(); ie != nil {
+			return ie
+		}
+		return err
+	}
+	if !ok {
+		return fail("Claude Code token input interrupted")
+	}
+	token := strings.TrimFunc(value, unicode.IsSpace)
+	if token == "" {
+		return fail("no Claude Code token supplied (the input was empty)")
+	}
+	if !validToken(token) {
+		return fail("invalid Claude Code token input: the token must be one line of letters, digits, dot, underscore and hyphen only")
+	}
+	if err := k.saveKey(token); err != nil {
+		var stop *sys.Interrupted
+		if errors.As(err, &stop) {
+			return err
+		}
+		return fail("could not save the Claude Code token")
+	}
+	k.s.Puts(ClaudeCodeName + ": token saved (not verified)")
+	return nil
+}

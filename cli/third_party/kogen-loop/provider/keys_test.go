@@ -326,3 +326,14 @@ func TestLoginRefusesNonLoopbackSeamForKeyProvidersToo(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeCodeTokenValidation(t *testing.T) {
+	for _, in := range []string{"", "abc def", "abc\ndef", "ab\x01c", `a"b`, `a\b`, "a\u2028b"} {
+		if validToken(in) {
+			t.Errorf("%q accepted", in)
+		}
+	}
+	if !validToken("sk-ant-oat01-SYN_TH.etic-0123") {
+		t.Error("plain token refused")
+	}
+}

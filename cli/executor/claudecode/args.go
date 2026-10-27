@@ -65,14 +65,18 @@ var stripEnv = []string{
 	"CLAUDE_PID", "CLAUDE_EFFORT", "CLAUDE_CODE_EXECPATH",
 	// The effort override outranks --effort; Kogen passes the configured effort explicitly.
 	"CLAUDE_CODE_EFFORT_LEVEL",
+	// Set by Kogen only together with a stored token.
+	"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB",
 }
 
 // setEnv is set in the child: no background work keeps `-p` open, no auto-memory writes under
 // the user's ~/.claude.
 var setEnv = []string{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"}
 
-// childEnv is base minus the strip list, plus setEnv, and HOME when home is not empty.
-func childEnv(base []string, home string) []string {
+// childEnv is base minus the strip list, plus setEnv, HOME when home is not empty and
+// CLAUDE_CODE_OAUTH_TOKEN (with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1) when a stored token is given
+// (the strip list always applies first).
+func childEnv(base []string, home, token string) []string {
 	drop := map[string]bool{"HOME": home != ""}
 	for _, k := range stripEnv {
 		drop[k] = true
@@ -90,6 +94,11 @@ func childEnv(base []string, home string) []string {
 	out = append(out, setEnv...)
 	if home != "" {
 		out = append(out, "HOME="+home)
+	}
+	if token != "" {
+		out = append(out, "CLAUDE_CODE_OAUTH_TOKEN="+token)
+		// Claude Code must not hand the token on to the processes it runs (Bash tool, hooks).
+		out = append(out, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1")
 	}
 	return out
 }

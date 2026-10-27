@@ -19,6 +19,10 @@ import (
 )
 
 // maxLineBytes bounds one stream-json line.
+// groupDrain bounds how long a pipe is read after the process group is terminated: a process
+// that left the group may still hold the write end.
+const groupDrain = 2 * time.Second
+
 const maxLineBytes = 32 << 20
 
 // claimBytes bounds the result text kept as the round's claim.
@@ -127,6 +131,26 @@ func (s *session) runRound(ctx context.Context, n int, prompt string) (executor.
 		return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "cannot write the round stderr: "+err.Error())
 	}
 	defer errf.Close()
+	// With a stored token stderr goes through a streaming replacer, so the token is never on disk.
+	var errw *redactWriter
+	var errRead *os.File
+	var errCopied chan struct{}
+	var stderr io.Writer = errf
+	if tok := s.a.opts.Token; tok != "" {
+		er, ew, perr := os.Pipe()
+		if perr != nil {
+			return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "cannot create a pipe: "+perr.Error())
+		}
+		errRead, stderr = er, ew
+		errw = newRedactWriter(errf, tok, redactMark)
+		errCopied = make(chan struct{})
+		defer er.Close()
+		defer ew.Close()
+		go func() {
+			defer close(errCopied)
+			copyRedacted(errw, er)
+		}()
+	}
 
 	args := roleRoundArgs(s.a.opts, s.role, s.schema, s.sessionID, n, s.task.Model, s.task.Effort, s.settingsPath, s.a.opts.MaxTurns)
 	cmd := exec.Command(s.bin, args...)
@@ -144,7 +168,7 @@ func (s *session) runRound(ctx context.Context, n int, prompt string) (executor.
 		pw.Close()
 		return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "cannot create a pipe: "+err.Error())
 	}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = sr, pw, errf
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = sr, pw, stderr
 	if err := cmd.Start(); err != nil {
 		pw.Close()
 		sr.Close()
@@ -153,6 +177,9 @@ func (s *session) runRound(ctx context.Context, n int, prompt string) (executor.
 	}
 	pw.Close()
 	sr.Close()
+	if errw != nil {
+		stderr.(*os.File).Close() // the child holds the only write end now
+	}
 	// The writer runs on its own goroutine so a full pipe can never block reading stdout. Round
 	// closes sw and waits for it before returning, so it cannot outlive the round.
 	writeErr := make(chan error, 1)
@@ -240,8 +267,11 @@ loop:
 			if m.err != nil && m.err != io.EOF {
 				return fail(executor.Fail(executor.ReasonProtocol, "cannot read the event stream: "+bound(m.err.Error(), 100)))
 			}
-			raw.Write(append(append([]byte{}, m.line...), '\n'))
-			if err := rr.line(m.line); err != nil {
+			// Whole lines are redacted before they are persisted or parsed, so the token is
+			// caught however the pipe chunked it and never reaches events or the claim.
+			line := []byte(s.a.redact(string(m.line)))
+			raw.Write(append(append([]byte{}, line...), '\n'))
+			if err := rr.line(line); err != nil {
 				return fail(err)
 			}
 			if rr.result != nil && drain == nil {
@@ -253,7 +283,7 @@ loop:
 			// pipe open), then drain what was written.
 			exitedCh = nil
 			terminateGroup(pgid, exited, s.a.opts.KillGrace)
-			drain = time.After(2 * time.Second)
+			drain = time.After(groupDrain)
 		case <-drain:
 			lingering = exitedCh != nil
 			break loop
@@ -291,6 +321,15 @@ loop:
 		exit = ee.ExitCode()
 	} else if waitErr != nil {
 		exit = -1
+	}
+	if errw != nil {
+		select { // the copy ends when every holder of the write end is gone
+		case <-errCopied:
+		case <-time.After(groupDrain):
+			errRead.Close()
+			<-errCopied
+		}
+		errw.Flush()
 	}
 	return rr.finish(exit, killed, errPath)
 }

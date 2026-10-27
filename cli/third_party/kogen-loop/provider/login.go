@@ -29,6 +29,9 @@ const RedirectWait = 300 * time.Second
 // *sys.Error provider/login_failed (provider/login for Anthropic), exit 4.
 func (c *Client) Login(ctx context.Context, s *sys.Session, name string, redirect RedirectFunc) error {
 	info, ok := Lookup(name)
+	if name == ClaudeCodeName {
+		info, ok = claudeCodeInfo, true
+	}
 	if !ok || name == "" {
 		return sys.Fail("provider", "login_failed", "unknown provider "+name, 4)
 	}
@@ -41,6 +44,9 @@ func (c *Client) Login(ctx context.Context, s *sys.Session, name string, redirec
 		in := StdinInput()
 		if c.Input != nil {
 			in = *c.Input
+		}
+		if info.Name == ClaudeCodeName {
+			return k.loginToken(in)
 		}
 		return k.loginKey(in)
 	}

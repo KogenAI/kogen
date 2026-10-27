@@ -40,6 +40,9 @@ type Options struct {
 	// Env is the base environment of the child (default os.Environ()); the strip list is
 	// applied on top.
 	Env []string
+	// Token is the stored Claude Code subscription token (`claude setup-token`), set as
+	// CLAUDE_CODE_OAUTH_TOKEN after the strip list; empty means none is stored.
+	Token string
 	// KillGrace is the wait between SIGTERM and SIGKILL of the process group (default 5s).
 	KillGrace time.Duration
 	// SettingSources is passed to --setting-sources. The default "" isolates the run from the
@@ -158,10 +161,21 @@ func (a *adapter) claudeVersion(ctx context.Context) (string, error) {
 	return v, nil
 }
 
+// redactMark replaces the stored token wherever Kogen would persist or print it.
+const redactMark = "[redacted]"
+
+// redact removes the stored token from s.
+func (a *adapter) redact(s string) string {
+	if a.opts.Token == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, a.opts.Token, redactMark)
+}
+
 // run runs a no-model-call claude subcommand with the stripped environment and a bounded output.
 func (a *adapter) run(ctx context.Context, bin string, env []string, args ...string) ([]byte, error) {
 	if env == nil {
-		env = childEnv(a.opts.Env, "")
+		env = childEnv(a.opts.Env, "", "")
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -182,7 +196,7 @@ func (a *adapter) run(ctx context.Context, bin string, env []string, args ...str
 		if ctx.Err() != nil {
 			return buf.Bytes(), classify(ctx)
 		}
-		return buf.Bytes(), executor.Fail(executor.ReasonUnavailable, "`claude "+strings.Join(args, " ")+"` failed: "+bound(strings.TrimSpace(errBuf.String()), 300))
+		return buf.Bytes(), executor.Fail(executor.ReasonUnavailable, "`claude "+strings.Join(args, " ")+"` failed: "+bound(a.redact(strings.TrimSpace(errBuf.String())), 300))
 	}
 	return buf.Bytes(), nil
 }
@@ -266,7 +280,7 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	if !versionAtLeast(version, MinVersion) {
 		return nil, executor.Fail(executor.ReasonUnavailable, "Claude Code "+version+" is older than the qualified minimum "+MinVersion)
 	}
-	env := childEnv(a.opts.Env, t.Home)
+	env := childEnv(a.opts.Env, t.Home, a.opts.Token)
 	auth, err := a.authStatus(ctx, bin, env)
 	if err != nil {
 		return nil, err
@@ -337,6 +351,12 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	return s, nil
 }
 
+// tokenRefusedHint is the auth_refused detail when Claude Code does not accept the stored token.
+const tokenRefusedHint = "Claude Code did not accept the stored token; run `claude setup-token` and `kogen provider login claude-code`"
+
+// tokenAuthMethod is the auth method Claude Code reports for a CLAUDE_CODE_OAUTH_TOKEN sign-in.
+const tokenAuthMethod = "oauth_token"
+
 // authStatus runs `claude auth status --json` with the stripped env and requires the
 // subscription sign-in on Anthropic's own API.
 func (a *adapter) authStatus(ctx context.Context, bin string, env []string) (authInfo, error) {
@@ -352,9 +372,11 @@ func (a *adapter) authStatus(ctx context.Context, bin string, env []string) (aut
 		return info, executor.Fail(executor.ReasonAuthRefused, "`claude auth status --json` did not answer with JSON")
 	}
 	switch {
+	case !info.LoggedIn && a.opts.Token != "":
+		return info, executor.Fail(executor.ReasonAuthRefused, tokenRefusedHint)
 	case !info.LoggedIn:
 		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code is not signed in; run `claude auth login` with your subscription")
-	case info.AuthMethod != "claude.ai":
+	case info.AuthMethod != "claude.ai" && !(a.opts.Token != "" && info.AuthMethod == tokenAuthMethod):
 		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code's sign-in route is "+quoteBound(info.AuthMethod)+", not the claude.ai subscription")
 	case info.APIProvider != "firstParty":
 		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code's API provider is "+quoteBound(info.APIProvider)+", not Anthropic's own (firstParty)")

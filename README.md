@@ -52,6 +52,8 @@ publishes the offline profile/limits/settings catalog and row-level evidence. Se
 separate historical evidence scopes, current wire policy and experimental remainder
 of KOGEN-057; recommended defaults and saved logins do not establish qualification.
 
+The Claude Code executor can use a long-lived subscription token instead of an interactive `claude auth login`: make one with `claude setup-token`, then save it with `kogen provider login claude-code` (stdin or echo-suppressed terminal; `kogen provider list` shows `claude-code: token saved (not verified)`). It is kept privately in `~/.kogen/credentials/claude-code.json`, passed to Claude Code as `CLAUDE_CODE_OAUTH_TOKEN` only from that file, takes precedence over a stored `claude auth login`, and an inherited environment token is still ignored. Remove it with `rm -f ~/.kogen/credentials/claude-code.json ~/.kogen/credentials/claude-code.lock`. See [the Claude Code executor](docs/configuration.md).
+
 Claude uses separate API billing, not a consumer Claude/Max subscription. Save a key
 privately with `kogen provider login anthropic` (stdin or echo-suppressed terminal).
 `~/.kogen/credentials/anthropic.json` is private; offline status is

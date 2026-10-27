@@ -60,6 +60,22 @@ type fakeConfig struct {
 	LingerSeconds float64 `json:"linger_seconds"`
 	// ExitBeforeStdin exits with ExitCode without reading the prompt or emitting any event.
 	ExitBeforeStdin bool `json:"exit_before_stdin"`
+	// AuthFail fails the round like Claude Code does for an invalid CLAUDE_CODE_OAUTH_TOKEN: an
+	// assistant event with error authentication_failed, then an is_error success result with a 401.
+	AuthFail bool `json:"auth_fail"`
+	// StderrToken echoes $CLAUDE_CODE_OAUTH_TOKEN to stderr in two writes (split mid-token) and
+	// exits 1.
+	StderrToken bool `json:"stderr_token"`
+	// AuthStderrToken does the same in `auth status`.
+	AuthStderrToken bool `json:"auth_stderr_token"`
+}
+
+func echoTokenToStderr() {
+	tok := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")
+	h := len(tok) / 2
+	fmt.Fprint(os.Stderr, strings.Repeat("x", 280)+"debug: token="+tok[:h])
+	time.Sleep(100 * time.Millisecond)
+	fmt.Fprintln(os.Stderr, tok[h:]+" end")
 }
 
 const goodAuth = `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"max","email":"person@example.invalid","orgId":"org-secret-id","orgName":"Secret Org","configDirectory":"/x"}`
@@ -84,6 +100,10 @@ func fakeClaude(cfgPath string, args []string) int {
 		return 0
 	}
 	if len(args) >= 2 && args[0] == "auth" && args[1] == "status" {
+		if cfg.AuthStderrToken {
+			echoTokenToStderr()
+			return 1
+		}
 		a := cfg.Auth
 		if a == "" {
 			a = goodAuth
@@ -156,6 +176,18 @@ func fakeClaude(cfgPath string, args []string) int {
 	if rs.Malformed {
 		fmt.Println("this is not json {")
 		return 0
+	}
+	if cfg.StderrToken {
+		echoTokenToStderr()
+		return 1
+	}
+	if cfg.AuthFail {
+		out(map[string]any{"type": "assistant", "session_id": sessionID, "error": "authentication_failed", "message": map[string]any{
+			"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "Failed to authenticate. API Error: 401 OAuth access token is invalid."}},
+		}})
+		out(map[string]any{"type": "result", "subtype": "success", "is_error": true, "num_turns": 1, "session_id": sessionID,
+			"result": "Failed to authenticate. API Error: 401 OAuth access token is invalid."})
+		return 1
 	}
 	if cfg.NoResult {
 		return cfg.ExitCode

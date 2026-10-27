@@ -625,7 +625,7 @@ _kogen() {
     completion) compadd zsh; return ;;
     provider)
       if (( CURRENT == 3 )); then compadd login list
-      elif [[ $words[3] == login ]]; then compadd chatgpt supergrok opencode-go anthropic openai-compatible; fi
+      elif [[ $words[3] == login ]]; then compadd chatgpt supergrok opencode-go anthropic claude-code openai-compatible; fi
       return ;;
     intent)
       op=$words[3]

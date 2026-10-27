@@ -46,8 +46,8 @@ const REFUSALS = {
   incomplete: { exit: 4, lines: ['provider/login_failed: the SuperGrok device authorization response is incomplete'], device: 1, polls: 0 },
   rejected: { exit: 4, lines: ['provider/login_failed: the SuperGrok device authorization request failed (403 invalid_client)'], device: 1, polls: 0 },
   cancel: { exit: 130, lines: [], device: 1, cancel: true },
-  unknown_grok: { exit: 2, lines: ["kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic, openai-compatible)"], device: 0, polls: 0 },
-  unknown_xai: { exit: 2, lines: ["kogen provider login: unknown provider 'xai' (supported: chatgpt, supergrok, opencode-go, anthropic, openai-compatible)"], device: 0, polls: 0 },
+  unknown_grok: { exit: 2, lines: ["kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)"], device: 0, polls: 0 },
+  unknown_xai: { exit: 2, lines: ["kogen provider login: unknown provider 'xai' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)"], device: 0, polls: 0 },
 };
 const LIMITS = {
   s401_twice: { exit: 4, lines: ['provider/login: the SuperGrok sign-in was rejected; run kogen provider login supergrok'], responses: 2, refreshes: 1 },
