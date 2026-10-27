@@ -29,14 +29,14 @@ models:
   shape:
     provider: chatgpt
     model: gpt-6.1-sol
-    effort: high
+    effort: low
   build:
     provider: chatgpt
-    model: gpt-6.1-sol
-    effort: medium
+    model: gpt-6.1-terra
+    effort: high
   review:
     provider: chatgpt
-    model: gpt-6.1-sol
-    effort: high
+    model: gpt-6.1-terra
+    effort: medium
 shape_workers:
   enabled: false
