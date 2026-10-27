@@ -103,6 +103,7 @@ func (r attemptRequester) Request(ctx context.Context, q loop.Request) (*provide
 // fixers, verification and review are the Build's (drive).
 func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.RoundResult, error) {
 	b := n.b
+	b.watch.tools = 0
 	var input []any
 	if in.Feedback == "" && n.pending != nil {
 		input, n.pending = n.pending, nil
@@ -166,6 +167,7 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 			return loop.Handled{Handled: true, Output: tools.Output{Text: text}}, nil
 		},
 		AfterCall: func(ctx context.Context, call tools.Call, out tools.Output, terminal bool, input []any) error {
+			b.watch.tools++
 			if !terminal {
 				if event := tools.ReadEvent(call, out, "build"); event != nil {
 					b.Run.Event(event)

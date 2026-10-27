@@ -241,6 +241,9 @@ func (b *Attempt) stageGate(ctx context.Context) (string, bool, error) {
 	} else {
 		b.s.Progress("kogen: stage " + stage.ID + " gate failed")
 	}
+	if err := b.stalled(stage.ID, pass); err != nil {
+		return "", false, err
+	}
 	if !pass.Green {
 		b.Repairs++
 		if err := b.Track(); err != nil {
@@ -297,6 +300,9 @@ func (b *Attempt) verifyStage(ctx context.Context, stage stageDef) (verify.Pass,
 func (b *Attempt) verifyAndReview(ctx context.Context) (string, bool, error) {
 	pass, err := b.Verify(ctx)
 	if err != nil {
+		return "", false, err
+	}
+	if err := b.stalled("", pass); err != nil {
 		return "", false, err
 	}
 	if !pass.Green {

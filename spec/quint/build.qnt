@@ -7,7 +7,7 @@
 // cannot yield a cleanPassVersion; checkpoint version 2 preserves this provenance.
 // There is no time or token limit. A Build ends in exactly one of these ways (chapter 04):
 // commit (landed), baseline_changed, head_moved, hook_changed_commit, commit_failed,
-// context_exhausted, review_invalid, review_blocked, build_blocked, provider, interrupted.
+// context_exhausted, review_invalid, review_blocked, build_blocked, no_progress, provider, interrupted.
 module build {
   type Phase = Loop | Verifying | RetryVerifying | Reviewing | RepairingReview | FinalVerifying | Committing | Done | Failed | Interrupted
 
@@ -271,7 +271,7 @@ module build {
   // failing checks continue with their current repair owner; unresolved review blockers stop.
   val FailureReasons = terminal(phase) implies Set(
     "commit", "baseline_changed", "head_moved", "hook_changed_commit", "commit_failed",
-    "context_exhausted", "context_budget_exceeded", "review_invalid", "review_blocked", "build_blocked", "provider", "interrupted").contains(reason)
+    "context_exhausted", "context_budget_exceeded", "review_invalid", "review_blocked", "build_blocked", "no_progress", "provider", "interrupted").contains(reason)
   val Safety = CommitOnlyWhenEligible and AtMostOneCommit and ReviewNeverOverridesChecks
     and BaselineChangeNeverCommits and FailureReasons
 
