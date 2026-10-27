@@ -61,7 +61,7 @@ func TestClaudeLineupRoleProtocol(t *testing.T) {
 				t.Fatalf("%s: %v", role, err)
 			}
 			c, ok := d.For(role)
-			if !ok || c.Resume != executor.ResumeNone || !c.Continuation || c.Usage != executor.UsageHarness || c.Images || c.Probe || c.Workers || c.Blocker {
+			if !ok || c.Resume != executor.ResumeNone || !c.Continuation || c.Usage != executor.UsageHarness || c.Images || c.Probe || c.Workers || c.Blocker != (role == executor.RoleBuild) {
 				t.Fatalf("%s capabilities %+v", role, c)
 			}
 			if want := role != executor.RoleBuild; c.Structured != want {
@@ -185,16 +185,67 @@ func TestClaudeLineupRoleProtocol(t *testing.T) {
 		}
 	})
 
-	t.Run("build keeps its claim and no schema", func(t *testing.T) {
+	t.Run("build keeps its claim, asks for the build schema and may report a blocker", func(t *testing.T) {
 		h := roleHarness(t, executor.RoleBuild, fakeConfig{Script: oneRound(finishRound)})
 		res, err := h.startOK().Round(context.Background(), executor.Input{})
-		if err != nil || res.Claim != "done" || len(res.Structured) != 0 || hasArg(h.f.argv(1), "--json-schema") {
+		if err != nil || res.Ending != executor.EndFinish || res.Claim != "done" || len(res.Structured) != 0 || res.Blocker != nil ||
+			argAfter(h.f.argv(1), "--json-schema") != BuildSchema {
 			t.Fatalf("%v %+v %v", err, res, h.f.argv(1))
 		}
 		if argAfter(h.f.argv(1), "--append-system-prompt") != Constraints {
 			t.Fatal("Build constraints changed")
 		}
+		for name, c := range map[string]struct {
+			structured any
+			want       *executor.BlockerClaim
+			ending     executor.Ending
+		}{
+			"null":       {map[string]any{"blocker": nil}, nil, executor.EndFinish},
+			"summary":    {map[string]any{"summary": "x"}, nil, executor.EndFinish},
+			"valid":      {map[string]any{"blocker": map[string]any{"paths": []any{"a"}, "reason": "r", "evidence": "e"}}, &executor.BlockerClaim{Paths: []string{"a"}, Reason: "r", Evidence: "e"}, executor.EndBlocker},
+			"extra key":  {map[string]any{"blocker": map[string]any{"paths": []any{"a"}, "reason": "r", "evidence": "e", "x": 1}}, &executor.BlockerClaim{}, executor.EndBlocker},
+			"missing":    {map[string]any{"blocker": map[string]any{"paths": []any{"a"}, "reason": "r"}}, &executor.BlockerClaim{}, executor.EndBlocker},
+			"wrong type": {map[string]any{"blocker": map[string]any{"paths": "a", "reason": "r", "evidence": "e"}}, &executor.BlockerClaim{}, executor.EndBlocker},
+		} {
+			raw, _ := json.Marshal(c.structured)
+			r := finishRound
+			r.Structured = raw
+			h := roleHarness(t, executor.RoleBuild, fakeConfig{Script: oneRound(r)})
+			res, err := h.startOK().Round(context.Background(), executor.Input{})
+			if err != nil || res.Ending != c.ending || res.Claim != "done" || !reflect.DeepEqual(res.Blocker, c.want) {
+				t.Fatalf("%s: %v %+v", name, err, res)
+			}
+		}
 	})
+
+	t.Run("shape and review never end with a blocker", func(t *testing.T) {
+		for _, role := range []string{executor.RoleShape, executor.RoleReview} {
+			h := roleHarness(t, role, fakeConfig{Script: oneRound(structuredRound(`{"blocker":{"paths":["a"],"reason":"r","evidence":"e"}}`))})
+			res, err := h.startOK().Round(context.Background(), executor.Input{})
+			if err != nil || res.Ending != executor.EndFinish || res.Blocker != nil {
+				t.Fatalf("%s: %v %+v", role, err, res)
+			}
+		}
+	})
+}
+
+func TestBuildConstraintsCarryTheBlockerWords(t *testing.T) {
+	t.Parallel()
+	for _, w := range []string{
+		"blocker field of your structured final result",
+		"exact protected paths, a concrete reason and observed command/step/error evidence",
+		"Do not change production semantics solely to accommodate a demonstrated bad fixture.",
+		"stops as BUILDER-REPORTED build_blocked with candidate/index/approval preserved; it is not independently proven and grants no protected edits, automatic refinement or approval",
+		"Plain blocked text does not stop the Build.",
+		"Do not edit the protected paths named in the task",
+	} {
+		if !strings.Contains(Constraints, w) {
+			t.Fatalf("missing %q", w)
+		}
+	}
+	if strings.Contains(ShapeConstraints+ReviewConstraints, "blocker") {
+		t.Fatal("shape/review constraints changed")
+	}
 }
 
 // TestClaudeLineupRoleCustody: every role gets its own fresh session, the same stripping, auth,

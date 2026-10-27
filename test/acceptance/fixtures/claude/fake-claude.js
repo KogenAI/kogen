@@ -75,12 +75,13 @@ function readPrompt() {
 let n, recordToolCall, sessionId, round, cwd, settings, role, roleN;
 
 // The role this invocation serves: Shape and Review ask for schema-constrained output
-// (--json-schema); the schema's properties tell them apart. Build has no schema.
+// (--json-schema); the schema's properties tell them apart. Build's schema has the optional blocker.
 function roleOf() {
   const schema = flag('--json-schema');
   if (!schema) return 'build';
   try {
-    return JSON.parse(schema).properties && JSON.parse(schema).properties.verdict ? 'review' : 'shape';
+    const props = JSON.parse(schema).properties || {};
+    return props.verdict ? 'review' : props.blocker ? 'build' : 'shape';
   } catch { return 'shape'; }
 }
 

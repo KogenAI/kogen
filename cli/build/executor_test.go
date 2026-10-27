@@ -651,3 +651,57 @@ func TestExternalFailedRoundStillDetectsCustodyChanges(t *testing.T) {
 		}
 	}
 }
+
+func TestExternalBlockerFromADeclaringExecutorGoesThroughTheNativePath(t *testing.T) {
+	t.Parallel()
+	declare := func(f *fakeExecutor) *fakeExecutor {
+		f.desc.Capabilities.Blocker = true
+		return f
+	}
+	t.Run("valid claim stops as native", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t)
+		e.useExecutor("")
+		f := declare(newFakeExecutor(t, func(n int, ctx context.Context, root string, in executor.Input) (executor.RoundResult, error) {
+			return executor.RoundResult{Ending: executor.EndBlocker, Claim: "x",
+				Blocker: &executor.BlockerClaim{Paths: []string{project.ConfigPath}, Reason: "r", Evidence: "e"}}, nil
+		}))
+		a := e.build(withExecutor(f, nil))
+		if a.exit != 1 {
+			t.Fatalf("exit %d\n%s", a.exit, a.shown())
+		}
+		contains(t, "stdout", a.out.String(), "candidate/build_blocked")
+		contains(t, "stdout", a.out.String(), "BUILDER-REPORTED")
+		_, state := e.checkpoint(e.onlyRun())
+		blocker, _ := state["blocker"].(map[string]any)
+		if blocker == nil || blocker["classification"] != "BUILDER-REPORTED" || blocker["reason"] != "r" {
+			t.Fatalf("blocker %v", state["blocker"])
+		}
+		eq(t, "rounds", len(f.seen()), 1)
+	})
+	t.Run("invalid claims are refused with the native feedback", func(t *testing.T) {
+		t.Parallel()
+		for name, claim := range map[string]*executor.BlockerClaim{
+			"unprotected": {Paths: []string{"app.txt"}, Reason: "r", Evidence: "e"},
+			"empty":       {},
+		} {
+			e := newEnv(t)
+			e.useExecutor("")
+			f := declare(newFakeExecutor(t, func(n int, ctx context.Context, root string, in executor.Input) (executor.RoundResult, error) {
+				if n == 1 {
+					writeFile(t, filepath.Join(root, "app.txt"), "red\n", 0o644)
+					return executor.RoundResult{Ending: executor.EndBlocker, Claim: "x", Blocker: claim}, nil
+				}
+				return externalWritesApp("candidate\n", executor.Usage{})(n, ctx, root, in)
+			}))
+			a := e.build(withExecutor(f, nil))
+			if a.exit != 0 {
+				t.Fatalf("%s: exit %d\n%s", name, a.exit, a.shown())
+			}
+			seen := f.seen()
+			if len(seen) != 2 || !strings.HasPrefix(seen[1].Feedback, invalidBlockerMessage) {
+				t.Fatalf("%s: feedback %+v", name, seen)
+			}
+		}
+	})
+}

@@ -94,7 +94,7 @@ func (a *adapter) Describe() executor.Descriptor {
 			Continuation: true,
 			Usage:        executor.UsageHarness,
 			Prevention:   []string{executor.PreventPreToolWrite},
-			Blocker:      false,
+			Blocker:      true,
 			Images:       false,
 			MaxRounds:    6,
 		},
@@ -123,7 +123,7 @@ func roleCapabilities() map[string]executor.RoleCapabilities {
 	}
 	build := executor.RoleCapabilities{
 		Resume: executor.ResumeNone, Continuation: true, Usage: executor.UsageHarness,
-		Prevention: []string{executor.PreventPreToolWrite}, MaxRounds: 6,
+		Prevention: []string{executor.PreventPreToolWrite}, Blocker: true, MaxRounds: 6,
 		Limitations: append([]string{}, common...),
 	}
 	return map[string]executor.RoleCapabilities{executor.RoleShape: shape, executor.RoleBuild: build, executor.RoleReview: review}
@@ -285,7 +285,7 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	if !executor.IsRole(t.Role) {
 		return nil, executor.Fail(executor.ReasonUnavailable, "Claude Code does not serve the "+quoteBound(t.Role)+" role")
 	}
-	schema := ""
+	schema := BuildSchema
 	if t.Role != executor.RoleBuild {
 		var obj map[string]any
 		if json.Unmarshal(t.Schema, &obj) != nil || obj == nil {

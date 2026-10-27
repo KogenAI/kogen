@@ -95,7 +95,7 @@ func TestDescribe(t *testing.T) {
 	}
 	want := executor.Capabilities{
 		Roles: []string{"build"}, Resume: executor.ResumeNone, Continuation: true, Usage: executor.UsageHarness,
-		Prevention: []string{executor.PreventPreToolWrite}, Blocker: false, Images: false, MaxRounds: 6,
+		Prevention: []string{executor.PreventPreToolWrite}, Blocker: true, Images: false, MaxRounds: 6,
 	}
 	if d.Name != executor.ClaudeCode || d.Contract != executor.Contract || !reflect.DeepEqual(d.Capabilities, want) {
 		t.Fatalf("descriptor %+v", d)
@@ -285,8 +285,8 @@ func TestArgvRounds(t *testing.T) {
 			"--no-chrome", "--max-turns", "150",
 		}
 	}
-	round1 := append(common("--session-id"), "--append-system-prompt", Constraints)
-	round2 := common("--resume")
+	round1 := append(common("--session-id"), "--append-system-prompt", Constraints, "--json-schema", BuildSchema)
+	round2 := append(common("--resume"), "--json-schema", BuildSchema)
 	if got := h.f.argv(1); !reflect.DeepEqual(got, round1) {
 		t.Fatalf("round 1 argv\n got %q\nwant %q", got, round1)
 	}

@@ -13,7 +13,14 @@ const Constraints = "You are implementing one requested feature in this Git chec
 	"Kogen will independently run the configured checks, an independent review and the single commit.\n" +
 	"Do not commit, push, switch branches, stash or rewrite Git state.\n" +
 	"Do not edit the protected paths named in the task: edits to them are refused, and any change to them is detected and stops the Build.\n" +
+	"If observed evidence demonstrates that current protected files contradict the approved behavior or contain a fixture defect, report a blocker in the blocker field of your structured final result, with their exact protected paths, a concrete reason and observed command/step/error evidence. " +
+	"Do not change production semantics solely to accommodate a demonstrated bad fixture. " +
+	"A valid report stops as BUILDER-REPORTED build_blocked with candidate/index/approval preserved; it is not independently proven and grants no protected edits, automatic refinement or approval. " +
+	"Plain blocked text does not stop the Build.\n" +
 	"When you believe the work is complete, stop and summarize what you changed."
+
+// BuildSchema is the --json-schema of the Build role: an optional summary and an optional blocker.
+const BuildSchema = `{"type":"object","properties":{"summary":{"type":"string"},"blocker":{"type":"object","properties":{"paths":{"type":"array","items":{"type":"string"}},"reason":{"type":"string"},"evidence":{"type":"string"}},"required":["paths","reason","evidence"],"additionalProperties":false}},"additionalProperties":false}`
 
 // ShapeConstraints and ReviewConstraints frame the other two roles the same way: the entire
 // framing besides the task itself, round 1's preface and the --append-system-prompt text.
@@ -134,14 +141,14 @@ func roundArgs(o Options, sessionID string, n int, model, effort, settingsPath s
 	return args
 }
 
-// roleRoundArgs is roundArgs for a role. Build is exactly roundArgs. Shape and Review frame the
+// roleRoundArgs is roundArgs for a role. Every role requests schema-constrained output; Shape and Review frame the
 // task with their own constraints and request schema-constrained output (--json-schema) on every
 // invocation, the first with --session-id (never --resume, --continue or --fork-session) and
 // later feedback rounds of the same role session with --resume.
 func roleRoundArgs(o Options, role, schema, sessionID string, n int, model, effort, settingsPath string, maxTurns int) []string {
 	args := roundArgs(o, sessionID, n, model, effort, settingsPath, maxTurns)
 	if role == "" || role == "build" {
-		return args
+		return append(args, "--json-schema", schema)
 	}
 	for i, a := range args {
 		if a == "--append-system-prompt" && i+1 < len(args) {

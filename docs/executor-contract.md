@@ -91,7 +91,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 | `usage` | `provider` (exact provider-reported fields) | `harness` (Claude Code's reported usage; cost is Claude Code's API-equivalent estimate, **not a bill**) |
 | `prevention` | `write_tool_refusal` | `pretool_hook_write_edit` (Write/Edit/MultiEdit/NotebookEdit; Bash is **not** prevented) |
 | `detection` | Kogen: baseline after each shell call + after round | Kogen: baseline + HEAD after each round; optional PostToolUse Bash observation hook |
-| `blocker` | `report_blocker` tool | not supported in v1 |
+| `blocker` | `report_blocker` tool | the `blocker` field of the structured final result (`--json-schema`) |
 | `images` | `view_image` | harness-native, not Kogen-custodied |
 | `cancel` | context + tool process groups | process group of the `claude` process |
 | `max_rounds` | unlimited (unchanged) | default 6, configurable; exceeding it stops with `candidate/executor_round_limit`, candidate preserved |
@@ -108,7 +108,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 - `executor/deadline`
 - `executor/interrupted`: maps to the existing interruption exit codes.
 - `candidate/executor_round_limit`
-- `candidate/build_blocked`: native builder-reported only.
+- `candidate/build_blocked`: builder-reported only (native `report_blocker`, or the structured `blocker` of an executor whose build role declares `blocker`; same validation and BUILDER-REPORTED label).
 - The existing `candidate/*` custody stops (`baseline_changed`, `head_moved`, …) apply unchanged after any round.
 
 ## 5. Configuration

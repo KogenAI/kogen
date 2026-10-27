@@ -208,6 +208,7 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 	var ending executor.Ending
 	var claim string
 	var structured json.RawMessage
+	var blocker *executor.BlockerClaim
 	turns := countOf(res["num_turns"])
 	switch {
 	case subtype == "error_max_turns":
@@ -224,6 +225,12 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 				return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "the success result has no result text")
 			}
 			claim = boundBytes(text, claimBytes)
+			if obj, isObj := res["structured_output"].(map[string]any); isObj {
+				if raw, has := obj["blocker"]; has && raw != nil {
+					ending = executor.EndBlocker
+					blocker = decodeBlocker(raw)
+				}
+			}
 		} else {
 			// The submission is the final result's structured_output object, never the text.
 			obj, isObj := res["structured_output"].(map[string]any)
@@ -259,7 +266,7 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 		s.model = r.model
 	}
 	h := s.Handle()
-	out := executor.RoundResult{Ending: ending, Claim: claim, Structured: structured, Usage: usage, Handle: h}
+	out := executor.RoundResult{Ending: ending, Claim: claim, Structured: structured, Blocker: blocker, Usage: usage, Handle: h}
 	s.emit(map[string]any{
 		"event": "executor_round_ended", "role": s.role, "round": r.n, "ending": string(ending),
 		"usage": usageEvent(usage), "num_turns": turns, "permission_denials": denials,
@@ -417,4 +424,29 @@ func stderrTail(path string, redact func(string) string) string {
 func authFailedText(v any) bool {
 	t, _ := v.(string)
 	return strings.Contains(t, "Failed to authenticate") || strings.Contains(t, "API Error: 401")
+}
+
+// decodeBlocker types a Build blocker object. Anything but exactly the three typed fields
+// (paths, reason, evidence) is an empty claim, which Kogen refuses.
+func decodeBlocker(v any) *executor.BlockerClaim {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return &executor.BlockerClaim{}
+	}
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(raw, &keys) != nil || len(keys) != 3 {
+		return &executor.BlockerClaim{}
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var c executor.BlockerClaim
+	if dec.Decode(&c) != nil {
+		return &executor.BlockerClaim{}
+	}
+	for _, k := range []string{"paths", "reason", "evidence"} {
+		if _, ok := keys[k]; !ok {
+			return &executor.BlockerClaim{}
+		}
+	}
+	return &c
 }

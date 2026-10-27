@@ -191,8 +191,26 @@ func (b *Attempt) afterExternalRound(res executor.RoundResult, rounds int) error
 		"claim": res.Claim, "usage": res.Usage, "session_id": res.Handle.SessionID,
 	})
 	if res.Ending == executor.EndBlocker {
-		// A builder-reported blocker is a native capability; an executor cannot claim one.
-		return executor.Fail(executor.ReasonProtocol, "executor "+b.ext.desc.Name+" reported a protected-contract blocker, which it does not support")
+		if rc, _ := b.ext.desc.For(executor.RoleBuild); !rc.Blocker {
+			return executor.Fail(executor.ReasonProtocol, "executor "+b.ext.desc.Name+" reported a protected-contract blocker, which it does not support")
+		}
+		var claim executor.BlockerClaim
+		if res.Blocker != nil {
+			claim = *res.Blocker
+		}
+		paths := make([]any, 0, len(claim.Paths))
+		for _, p := range claim.Paths {
+			paths = append(paths, p)
+		}
+		args := map[string]any{"paths": paths, "reason": claim.Reason, "evidence": claim.Evidence}
+		if validBlocker(args, b.Baseline) {
+			// Checkpointed like the native stop, so recovery works on it unchanged.
+			if err := b.Save(Continuation{Stage: StageBuilderVerify}); err != nil {
+				return err
+			}
+			return b.stopBlocked(args, func() {})
+		}
+		b.blockerNote = invalidBlockerMessage
 	}
 	// The round's boundary: resume of an external executor's checkpoint is refused.
 	return b.Save(Continuation{Stage: StageBuilderVerify})

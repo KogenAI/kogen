@@ -103,6 +103,7 @@ func (b *Attempt) drive(ctx context.Context, sess executor.Session, in executor.
 		if err != nil {
 			return err
 		}
+		b.blockerNote = ""
 		if b.ext != nil {
 			rounds++
 			if err := b.afterExternalRound(res, rounds); err != nil {
@@ -112,6 +113,9 @@ func (b *Attempt) drive(ctx context.Context, sess executor.Session, in executor.
 		feedback, landed, err := b.roundEnd(ctx)
 		if err != nil || landed {
 			return err
+		}
+		if b.blockerNote != "" {
+			feedback = b.blockerNote + "\n\n" + feedback
 		}
 		if b.ext != nil && b.ext.maxRounds > 0 && rounds >= b.ext.maxRounds {
 			return executor.RoundLimit(b.ext.maxRounds)
@@ -135,14 +139,28 @@ func (b *Attempt) afterRound(input []any, finish map[string]any, feedback string
 // original; anything else is feedback and grants nothing.
 func (b *Attempt) reportBlocker(args map[string]any, call tools.Call) (string, error) {
 	if !validBlocker(args, b.Baseline) {
-		return "invalid blocker: supply exactly nonempty unique current protected paths, reason and observed evidence strings; " +
-			"no write permission is granted; continue ordinary implementation repairs", nil
+		return invalidBlockerMessage, nil
 	}
+	return "", b.stopBlocked(args, func() {
+		b.Run.Event(map[string]any{
+			"event": "tool_call", "call_id": call.CallID(), "name": "report_blocker",
+			"arguments": provider.Fingerprint(call.Arguments), "result": "BUILDER-REPORTED build_blocked",
+		})
+	})
+}
+
+const invalidBlockerMessage = "invalid blocker: supply exactly nonempty unique current protected paths, reason and observed evidence strings; " +
+	"no write permission is granted; continue ordinary implementation repairs"
+
+// stopBlocked is the part of a valid blocker report shared by the native tool and external
+// executors: the guards, the record, the events and the build_blocked stop. It always returns
+// an error. recorded runs once the blocker is tracked, before the builder_blocker event.
+func (b *Attempt) stopBlocked(args map[string]any, recorded func()) error {
 	if err := b.BaselineIntact(); err != nil {
-		return "", err
+		return err
 	}
 	if err := b.headIntact(); err != nil {
-		return "", err
+		return err
 	}
 	blocker := map[string]any{}
 	for k, v := range args {
@@ -151,12 +169,9 @@ func (b *Attempt) reportBlocker(args map[string]any, call tools.Call) (string, e
 	blocker["classification"] = "BUILDER-REPORTED"
 	b.Blocker = blocker
 	if err := b.Track(); err != nil {
-		return "", err
+		return err
 	}
-	b.Run.Event(map[string]any{
-		"event": "tool_call", "call_id": call.CallID(), "name": "report_blocker",
-		"arguments": provider.Fingerprint(call.Arguments), "result": "BUILDER-REPORTED build_blocked",
-	})
+	recorded()
 	b.Run.Event(map[string]any{"event": "builder_blocker", "blocker": blocker})
 	var paths []string
 	for _, p := range args["paths"].([]any) {
@@ -169,7 +184,7 @@ func (b *Attempt) reportBlocker(args map[string]any, call tools.Call) (string, e
 		"reason: " + tools.Cut(args["reason"].(string)),
 		"evidence: " + tools.Cut(args["evidence"].(string)),
 	}
-	return "", e
+	return e
 }
 
 func validBlocker(args map[string]any, baseline []string) bool {
