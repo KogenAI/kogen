@@ -80,6 +80,9 @@ func (b *Attempt) commit(ctx context.Context, ap Approved) (feedback string, lan
 	if x := b.Executor; x != nil && x.Name != executor.Native {
 		b.s.Puts("  executor: " + x.Name + " (" + x.Usage.line() + ")")
 	}
+	if x := b.ReviewExecutor; x != nil {
+		b.s.Puts("  review executor: " + x.Name + " (" + x.Usage.line() + ")")
+	}
 	return "", true, nil
 }
 

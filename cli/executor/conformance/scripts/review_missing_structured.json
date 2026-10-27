@@ -1,0 +1,1 @@
+{"name":"review_missing_structured","only":"claude-code","role":"review","needs":[],"rounds":[{"actions":[],"end":"finish","claim":"approved, trust me","usage":{"input":50,"cached":0,"output":5}}],"expect":{"rounds":[],"error":"executor/protocol","protected":"unchanged"}}

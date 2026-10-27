@@ -259,6 +259,11 @@ func fakeClaude(cfgPath string, args []string) int {
 		res["subtype"], res["is_error"], res["terminal_reason"] = "error_max_turns", true, "max_turns"
 		exit = 1
 	}
+	if len(rs.Structured) > 0 {
+		var v any
+		json.Unmarshal(rs.Structured, &v)
+		res["structured_output"] = v
+	}
 	if rs.Usage != nil {
 		res["usage"] = map[string]any{
 			"input_tokens": rs.Usage.Input - rs.Usage.Cached, "cache_read_input_tokens": rs.Usage.Cached,

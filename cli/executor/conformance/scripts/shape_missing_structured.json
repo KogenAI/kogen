@@ -1,0 +1,1 @@
+{"name":"shape_missing_structured","only":"claude-code","role":"shape","needs":[],"rounds":[{"actions":[],"end":"finish","claim":"files done","usage":{"input":50,"cached":0,"output":5}}],"expect":{"rounds":[],"error":"executor/protocol","protected":"unchanged"}}

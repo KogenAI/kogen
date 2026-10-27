@@ -1,0 +1,30 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            },
+            {
+              "fetch": "https://example.invalid/doc"
+            }
+          ],
+          "structured_intent": {
+            "name": "is-even"
+          }
+        },
+        {
+          "actions": [],
+          "structured_intent": {
+            "name": "is-even",
+            "only": [
+              "/acceptance.feature"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            }
+          ],
+          "structured_intent": {
+            "name": "is-even"
+          }
+        },
+        {
+          "actions": [],
+          "structured_intent": {
+            "name": "is-even",
+            "only": [
+              "/acceptance.feature"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "auth": {
+    "loggedIn": true,
+    "authMethod": "api_key",
+    "apiProvider": "firstParty"
+  }
+}

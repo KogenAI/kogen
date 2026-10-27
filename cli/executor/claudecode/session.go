@@ -35,6 +35,8 @@ type session struct {
 	version      string
 	settingsPath string
 	pol          policy
+	role         string // shape | build | review
+	schema       string // JSON schema of the structured submission (shape, review)
 
 	mu       sync.Mutex // one round at a time
 	round    int
@@ -48,7 +50,7 @@ type session struct {
 
 // Handle identifies the session: Claude Code has no exact resume (Resume: none).
 func (s *session) Handle() executor.Handle {
-	return executor.Handle{Executor: executor.ClaudeCode, Version: "claude-code " + s.version, SessionID: s.sessionID, Resume: executor.ResumeNone}
+	return executor.Handle{Role: s.role, Executor: executor.ClaudeCode, Version: "claude-code " + s.version, SessionID: s.sessionID, Resume: executor.ResumeNone}
 }
 
 // Close stops a running round's process group, if any. Between rounds there is no process.
@@ -80,14 +82,14 @@ func (s *session) Round(ctx context.Context, in executor.Input) (executor.RoundR
 	}
 	if len(prompt) > maxPromptBytes {
 		s.failed = true
-		return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "the task text is "+strconv.Itoa(len(prompt))+" bytes, over the "+strconv.Itoa(maxPromptBytes)+"-byte sanity limit for a Claude Code prompt")
+		return executor.RoundResult{}, sys.Fail("candidate", "context_budget_exceeded", "the "+s.role+" task text is "+strconv.Itoa(len(prompt))+" bytes, over the "+strconv.Itoa(maxPromptBytes)+"-byte limit for a Claude Code prompt; it was not clipped or sent", 1)
 	}
 	if !s.task.Deadline.IsZero() {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, s.task.Deadline)
 		defer cancel()
 	}
-	s.emit(map[string]any{"event": "executor_round_started", "round": n, "session_id": s.sessionID, "resume": n > 1})
+	s.emit(map[string]any{"event": "executor_round_started", "role": s.role, "round": n, "session_id": s.sessionID, "resume": n > 1})
 	res, err := s.runRound(ctx, n, prompt)
 	if err != nil {
 		s.failed = true
@@ -95,7 +97,7 @@ func (s *session) Round(ctx context.Context, in executor.Input) (executor.RoundR
 		if e, ok := sys.AsError(err); ok {
 			reason, detail = e.Reason, e.Detail
 		}
-		s.emit(map[string]any{"event": "executor_round_failed", "round": n, "reason": reason, "detail": bound(detail, 400)})
+		s.emit(map[string]any{"event": "executor_round_failed", "role": s.role, "round": n, "reason": reason, "detail": bound(detail, 400)})
 		return executor.RoundResult{}, err
 	}
 	return res, nil
@@ -104,7 +106,7 @@ func (s *session) Round(ctx context.Context, in executor.Input) (executor.RoundR
 // prompt is round 1's preface and task, or a later round's feedback.
 func (s *session) prompt(n int, in executor.Input) string {
 	if n == 1 {
-		return Constraints + "\n\n" + s.task.Brief.Stable + "\n\n" + s.task.Brief.Dynamic
+		return constraintsFor(s.role) + "\n\n" + s.task.Brief.Stable + "\n\n" + s.task.Brief.Dynamic
 	}
 	return feedbackPreface + "\n\n" + in.Feedback
 }
@@ -126,7 +128,7 @@ func (s *session) runRound(ctx context.Context, n int, prompt string) (executor.
 	}
 	defer errf.Close()
 
-	args := roundArgs(s.a.opts, s.sessionID, n, s.task.Model, s.task.Effort, s.settingsPath, s.a.opts.MaxTurns)
+	args := roleRoundArgs(s.a.opts, s.role, s.schema, s.sessionID, n, s.task.Model, s.task.Effort, s.settingsPath, s.a.opts.MaxTurns)
 	cmd := exec.Command(s.bin, args...)
 	cmd.Dir = s.root
 	cmd.Env = s.env

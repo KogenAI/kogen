@@ -172,6 +172,13 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	if b.Blocker != nil {
 		return refuse(id, "protected-contract blocker requires correction and fresh approval", "")
 	}
+	// An external independent review has no exact resume either, and its reviewer conversation
+	// is never revived (nor is a builder's used as one): refuse before any inference or change.
+	if rv := b.Config.Models["review"]; rv.External() && slices.Contains([]string{StageReview, StageReviewVerify, StageReviewRetry}, b.Continuation.Stage) {
+		return refuse(id, "an independent review by executor "+rv.Executor+" cannot be resumed (resume capability: none); "+
+			"inspect the preserved candidate and evidence read-only and preserve them manually, then start a fresh Build from a Build-clean checkout "+
+			"under the still-current exact approval (ordinary Refine and new approval if the authority must change)", "")
+	}
 	// An external executor's Build has resume capability none: refuse before any new run,
 	// facts or checkpoint exists, like every other refusal here.
 	if x := b.Executor; x != nil && x.Name != executor.Native {
@@ -198,6 +205,12 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	}
 	if !sameConfig(cfg, b.Config) || !slices.Equal(baseline, b.Baseline) {
 		return refuse(id, "baseline/configuration changed", "")
+	}
+	// An external review role is served by its own executor on resume too, never natively.
+	if reviewer, err := selectReviewer(in.Deps, b.Config.Models["review"]); err != nil {
+		return err
+	} else if reviewer != nil {
+		b.deps.Reviewer = reviewer
 	}
 	if intent, err := project.ReadIntent(root, b.Slug, nil); err != nil || intent.Text != b.IntentText {
 		return refuse(id, "saved Intent differs from exact approved contract", "")

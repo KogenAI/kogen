@@ -1,0 +1,21 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            },
+            {
+              "bash": "echo staged > lineup-staged.txt && git add lineup-staged.txt && rm lineup-staged.txt"
+            }
+          ],
+          "structured_intent": {
+            "name": "is-even"
+          }
+        }
+      ]
+    }
+  }
+}

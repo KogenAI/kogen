@@ -1,6 +1,6 @@
-# Kogen executor contract v1
+# Kogen executor contract v2
 
-Status: **frozen for implementation, 26 October 2026** (kogen/kogen-loop extraction). Contract id: `kogen.executor/v1`. Owner: the extraction orchestrator, until accepted at the integration boundary. Code: `cli/executor` (types, the conformance harness and scripts). Changes to this file and `cli/executor/executor.go` go together.
+Status: **frozen for implementation, 26 October 2026** (kogen/kogen-loop extraction). Contract id: `kogen.executor/v2` (v2 of 27 October 2026 adds the shape and review roles; v1 described Build claims only and is no longer accepted). Owner: the extraction orchestrator, until accepted at the integration boundary. Code: `cli/executor` (types, the conformance harness and scripts). Changes to this file and `cli/executor/executor.go` go together.
 
 An **executor** produces a candidate for one Build role in the user's checkout. Kogen keeps everything that makes a delivery trustworthy:
 - the approved Intent and protected baseline;
@@ -9,7 +9,7 @@ An **executor** produces a candidate for one Build role in the user's checkout. 
 - the single verified commit;
 - checkpoints and recovery.
 
-v1 executors serve the **build** role only. Shape, Refine and Review stay native.
+v2 executors may serve the **shape** (including Refine), **build** and **review** roles, each configured independently and each with its own capabilities, session and evidence. An omitted role or `executor: native` is Kogen's own native role; the native Build adapter does not claim the native Shape or Review paths. No role chooses another role's executor, shares a session with it or falls back to the native path when the selected executor fails.
 
 | Executor | Where | What runs the model |
 |---|---|---|
@@ -46,7 +46,7 @@ v1 executors serve the **build** role only. Shape, Refine and Review stay native
 ## 2. Go API (`cli/executor`)
 
 ```go
-const Contract = "kogen.executor/v1"
+const Contract = "kogen.executor/v2"
 
 type Executor interface {
     Describe() Descriptor
@@ -76,7 +76,13 @@ Events go to `Sink` as run-log maps with an `event` key of the form `executor_*`
 
 ## 3. Capabilities
 
-| field | native | claude-code (v1) |
+`Descriptor.Capabilities` is the Build claim (as in v1). `Descriptor.RoleCapabilities` lists the capabilities of each served role separately (`For(role)`, `ValidateRole(role)`): a Build claim is never evidence for Shape or Review. Per role it reports `resume`, `continuation`, `usage`, `prevention`, `blocker`, `images`, `probe`, `workers`, `structured`, `max_rounds` and explicit `limitations`.
+
+Claude Code (all three roles) supports same-session continuation only within a running role invocation, harness usage and its existing process custody. It does **not** support exact persistent resume, Kogen-custodied typed images, Kogen scratch `probe`, native working-window replay or Shape workers; a Claude Code shaper with enabled workers is refused before inference. Claude's own Bash, research, images and subagents are not relabelled as those Kogen capabilities, and research through them is harness-observed only, never a Kogen documentation record.
+
+Shape and Review (`structured`: true) receive `Task.Schema` and request schema-constrained output (`--json-schema`). The submission is the **final successful result's `structured_output` object** (`RoundResult.Structured`), complete and unclipped; text, intermediate tool input or a missing/malformed object is `executor/protocol`, never completion. The Shape schema carries the existing `submit` payload and the Review schema the existing `submit_review` payload, revalidated by Kogen's semantic validators. Every role starts a fresh session (`--session-id`, never `--resume`, `--continue` or `--fork-session`); only that role's later feedback rounds `--resume` it. A prompt over the inclusive 16 MiB bound stops `candidate/context_budget_exceeded` before it is sent. Shape is read-only (the PreToolUse hook denies every write; Kogen detects checkout, index and HEAD changes independently); Review keeps the Build protected-path prevention and detection.
+
+| field | native | claude-code (build; see the per-role paragraph above) |
 |---|---|---|
 | `roles` | `build` | `build` |
 | `resume` | `exact` (Kogen checkpoint at every tool boundary) | `none` (resume refused) |
@@ -88,6 +94,8 @@ Events go to `Sink` as run-log maps with an `event` key of the form `executor_*`
 | `images` | `view_image` | harness-native, not Kogen-custodied |
 | `cancel` | context + tool process groups | process group of the `claude` process |
 | `max_rounds` | unlimited (unchanged) | default 6, configurable; exceeding it stops with `candidate/executor_round_limit`, candidate preserved |
+
+**Routing status.** All three roles are routed. Review uses the `Reviewer` seam: a fresh session, complete source delivery, the native verdict rules and exact-tree evaluation, no exact resume (`candidate/resume_refused`). Shape and Refine run one read-only session per invocation whose structured result is the existing `submit` / `submit_refinement` payload; Kogen compares the checkout, raw index and HEAD around every round.
 
 ## 4. Errors
 
@@ -104,16 +112,18 @@ Events go to `Sink` as run-log maps with an `event` key of the form `executor_*`
 
 ## 5. Configuration
 
-`.kogen/project.yaml`, build role only:
+`.kogen/project.yaml`, on each of `models.shape`, `models.build` and `models.review` independently:
 
 ```yaml
 models:
+  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: high}
   build: {executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 6}
+  review: {executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 2}
 ```
 
 - `executor` defaults to `native`, which keeps the existing provider/model/effort semantics.
 - `executor: claude-code` forbids `provider`/`base_url`. Model and effort are passed to Claude Code (`--model`, and `--effort` when the installed version supports it).
-- `executor` on shape or review is a configuration error in v1.
+- `max_rounds` (positive integer, `claude-code` only) caps the rounds of that role's session; the default is 6 per role. Exhaustion stops `candidate/executor_round_limit` with work and evidence preserved. Any other `executor` value is a configuration error.
 
 ## 6. Conformance
 

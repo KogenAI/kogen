@@ -1,0 +1,43 @@
+{
+  "roles": {
+    "build": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "write": {
+                "path": "calc.py",
+                "content_from": "calc-correct.py"
+              }
+            },
+            {
+              "write": {
+                "path": "tests/test_calc.py",
+                "content_from": "test-calc-correct.py"
+              }
+            },
+            {
+              "bash": "yes 'oversized line' | head -c 17000000 > big.txt"
+            }
+          ],
+          "claim": "BUILDER-CLAIM-MARKER-7f3a implemented is_even."
+        }
+      ]
+    },
+    "review": {
+      "rounds": [
+        {
+          "structured": {
+            "verdict": "approve",
+            "findings": []
+          },
+          "actions": [
+            {
+              "read": "calc.py"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

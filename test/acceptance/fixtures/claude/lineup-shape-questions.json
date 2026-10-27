@@ -1,0 +1,50 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            }
+          ],
+          "structured": {
+            "questions": [
+              {
+                "question": "What should is_even do with a non-integer?",
+                "options": [
+                  {
+                    "label": "raise TypeError",
+                    "recommended": true
+                  },
+                  {
+                    "label": "return False"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            }
+          ],
+          "structured_intent": {
+            "name": "is-even"
+          }
+        },
+        {
+          "actions": [],
+          "structured_intent": {
+            "name": "is-even",
+            "only": [
+              "/acceptance.feature"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

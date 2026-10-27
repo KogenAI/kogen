@@ -51,6 +51,45 @@ func selectExecutor(d Deps, role project.Role) (*externalBuild, error) {
 	return &externalBuild{exec: ex, desc: desc, maxRounds: max}, nil
 }
 
+// selectReviewer is the reviewer the review role selects. The native role keeps the native
+// reviewer (nil). An external role is served through the Deps.Reviewer seam when one is given,
+// otherwise by the executor Deps.External provides for it; a program that cannot provide one
+// stops with executor/unavailable before any run exists, and never reviews natively instead.
+func selectReviewer(d Deps, role project.Role) (Reviewer, error) {
+	if !role.External() {
+		return nil, nil
+	}
+	if d.Reviewer != nil {
+		return d.Reviewer, nil
+	}
+	if d.External == nil {
+		return nil, executor.Fail(executor.ReasonUnavailable, "executor "+role.Executor+" is not available in this program; Kogen does not review with the native reviewer instead")
+	}
+	ex, err := d.External(role)
+	if err != nil {
+		return nil, err
+	}
+	if ex == nil {
+		return nil, executor.Fail(executor.ReasonUnavailable, "executor "+role.Executor+" is not available in this program; Kogen does not review with the native reviewer instead")
+	}
+	desc := ex.Describe()
+	if err := desc.ValidateRole(executor.RoleReview); err != nil {
+		return nil, err
+	}
+	if desc.Name != role.Executor {
+		return nil, executor.Fail(executor.ReasonUnavailable, "executor "+role.Executor+" was configured, but the program provided "+desc.Name)
+	}
+	caps, _ := desc.For(executor.RoleReview)
+	max := role.MaxRounds
+	if max == 0 {
+		max = caps.MaxRounds
+	}
+	if max == 0 {
+		max = project.DefaultExternalRounds
+	}
+	return reviewExternal{exec: ex, desc: desc, maxRounds: max}, nil
+}
+
 // task is the Build's task for an executor: the brief and the constraints Kogen keeps (the
 // protected baseline, the excluded paths), never Kogen's own builder prompt.
 func (b *Attempt) task(brief executor.Brief) (executor.Task, error) {
@@ -110,6 +149,11 @@ func (b *Attempt) runRound(ctx context.Context, sess executor.Session, in execut
 	if b.ext == nil {
 		return sess.Round(ctx, in)
 	}
+	return b.runGuardedRound(ctx, sess, in)
+}
+
+// runGuardedRound runs one external round of any role with Kogen's independent custody checks.
+func (b *Attempt) runGuardedRound(ctx context.Context, sess executor.Session, in executor.Input) (executor.RoundResult, error) {
 	rctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	stop := context.AfterFunc(b.s.Context(), func() { cancel(b.s.Err()) })

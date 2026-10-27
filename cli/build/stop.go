@@ -44,6 +44,9 @@ func (b *Attempt) result(outcome string, extra map[string]any) map[string]any {
 	if b.Executor != nil {
 		m["executor"] = b.Executor
 	}
+	if b.ReviewExecutor != nil {
+		m["review_executor"] = b.ReviewExecutor
+	}
 	if b.StageProgress != nil {
 		m["stage_progress"] = b.StageProgress.value()
 	}

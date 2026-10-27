@@ -59,10 +59,10 @@ func runEngine(job engineJob) int {
 		code, err = shape.Init(s.Context(), s, shape.InitInput{Client: client, Tools: tools})
 	case "shape":
 		code, err = shape.Shape(s.Context(), s, shape.ShapeInput{Project: job.project, Slug: inv.slug,
-			Request: job.request, RequestPath: job.requestPath, Tools: tools, InstallRoot: job.root, Client: client})
+			Request: job.request, RequestPath: job.requestPath, Tools: tools, InstallRoot: job.root, Client: client, External: externalExecutor})
 	case "refine":
 		code, err = shape.Refine(s.Context(), s, shape.RefineInput{Project: job.project, Slug: inv.slug, Hash: inv.hash,
-			Request: job.request, RequestPath: job.requestPath, Tools: tools, InstallRoot: job.root, Client: client})
+			Request: job.request, RequestPath: job.requestPath, Tools: tools, InstallRoot: job.root, Client: client, External: externalExecutor})
 	case "approve":
 		code, err = shape.Approve(s.Context(), s, shape.ApproveInput{Project: job.project, Slug: inv.slug,
 			Hash: inv.hash, By: inv.by, Tools: tools})

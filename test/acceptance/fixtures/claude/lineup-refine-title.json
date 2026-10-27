@@ -1,0 +1,26 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            }
+          ],
+          "structured_intent": {
+            "name": "is-even",
+            "only": [
+              "/intent.md"
+            ],
+            "replace": {
+              "path": "/intent.md",
+              "old": "# Add an is-even helper",
+              "new": "# Clarify the is-even helper"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

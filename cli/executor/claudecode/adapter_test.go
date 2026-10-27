@@ -341,7 +341,7 @@ func TestPromptOverSanityBound(t *testing.T) {
 	h.task.Brief.Stable = strings.Repeat("x", maxPromptBytes)
 	s := h.startOK()
 	_, err := s.Round(context.Background(), executor.Input{})
-	wantError(t, err, "executor/failed")
+	wantError(t, err, "candidate/context_budget_exceeded")
 }
 
 // A brief far over any argv element limit reaches Claude Code byte-identical over stdin, in

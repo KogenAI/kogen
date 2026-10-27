@@ -33,6 +33,7 @@ type refOpts struct {
 	approved bool // the draft carries a current approval
 	source   bool // the draft carries a source receipt
 	red      bool // the original's dry run fails its scenarios
+	external int  // >0: the shape role is claude-code with this max_rounds (lineup tests)
 }
 
 type refFx struct {
@@ -47,6 +48,9 @@ type refFx struct {
 func newRefFx(t *testing.T, o refOpts, steps ...shpStep) *refFx {
 	t.Helper()
 	f := &refFx{shpFx: newShpFx(t, steps...)}
+	if o.external > 0 {
+		f.useExternalShape(o.external)
+	}
 	status, code := "PASSED", 0
 	if o.red {
 		status, code = "FAILED", 1

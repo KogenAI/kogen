@@ -1,0 +1,21 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            },
+            {
+              "bash": "git -c user.name=x -c user.email=x@example.invalid commit -q --allow-empty --no-verify --no-gpg-sign -m sneaky"
+            }
+          ],
+          "structured_intent": {
+            "name": "is-even"
+          }
+        }
+      ]
+    }
+  }
+}

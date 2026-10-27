@@ -22,6 +22,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/agent"
+	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
 	"kogen/verify"
@@ -39,6 +40,8 @@ type ShapeInput struct {
 	InstallRoot string
 	// Client talks to the provider; nil is a new provider.Client.
 	Client *provider.Client
+	// External provides the executor of a shape role with `executor: claude-code`; nil: none.
+	External External
 }
 
 func (in ShapeInput) tools() verify.Tools {
@@ -91,6 +94,16 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 	if err := verify.RequireTools(s, tools, root, cfg, false); err != nil {
 		return 0, err
 	}
+	if err := requireShapeRoute(cfg); err != nil {
+		return 0, err
+	}
+	var ext executor.Executor
+	extMax := 0
+	if cfg.Models["shape"].External() {
+		if ext, extMax, err = selectExternal(in.External, cfg.Models["shape"]); err != nil {
+			return 0, err
+		}
+	}
 	if err := provider.RequireLogin(s.Getenv("HOME"), ShapeRoles(cfg)); err != nil {
 		return 0, err
 	}
@@ -141,7 +154,7 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 	if client == nil {
 		client = provider.NewClient("")
 	}
-	sh := &shaping{s: s, in: in, repo: repo, root: root, slug: slug, cfg: cfg, role: cfg.Models["shape"], ev: ev,
+	sh := &shaping{s: s, in: in, repo: repo, root: root, slug: slug, cfg: cfg, role: cfg.Models["shape"], ev: ev, ext: ext, extMax: extMax,
 		rd: rd, client: client, stateDir: stateDir, originals: map[string]original{}, proposed: map[string]string{}}
 	return sh.shape(ctx, st)
 }
@@ -421,6 +434,9 @@ type shaping struct {
 	rd       *verify.Readiness
 	client   *provider.Client
 	stateDir string
+	// ext is the executor of an external shape role (nil: the native shaper).
+	ext    executor.Executor
+	extMax int
 
 	started       time.Time
 	toolDefs      []any
@@ -505,14 +521,28 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	sh.cacheID = startConversation(sh.ev, "shape")
 	sh.rd.BeforeRecord = func() error { return sh.window.validate(sh.root) }
 
-	res, usage, err := sh.converse(ctx, input)
-	if err != nil {
-		if e, ok := sys.AsError(err); ok && e.Class == "provider" {
-			return 0, sh.providerFailed(e)
+	var res outcome
+	var usageLine string
+	if sh.ext != nil {
+		var x *extSession
+		res, x, err = sh.converseExternal(ctx, blocks)
+		if x != nil {
+			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds, time.Since(t0).Milliseconds())
 		}
-		return 0, err
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		var usage provider.Usage
+		res, usage, err = sh.converse(ctx, input)
+		if err != nil {
+			if e, ok := sys.AsError(err); ok && e.Class == "provider" {
+				return 0, sh.providerFailed(e)
+			}
+			return 0, err
+		}
+		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, usage.Line(), time.Since(t0).Milliseconds())
 	}
-	usageLine := fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, usage.Line(), time.Since(t0).Milliseconds())
 
 	switch res.kind {
 	case outInvalid:
@@ -720,6 +750,68 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 			input = append(input, map[string]any{"role": "user", "content": "End by calling submit with either questions or files."})
 			invalid++
 		}
+	}
+}
+
+// converseExternal is the external shaper's conversation: one fresh read-only session; each
+// final structured result is the existing `submit` payload, routed through the same submission
+// rules, and Kogen's actual feedback returns to the same session. Three invalid submissions in
+// a row end it like the native shaper.
+func (sh *shaping) converseExternal(ctx context.Context, blocks []any) (outcome, *extSession, error) {
+	stable := ShaperInstructions() + "\n\n" + externalNote + "\n\n" + blocksText(blocks)
+	x, err := startExternal(ctx, sh.ext, sh.extMax, sh.repo, sh.root, sh.s.Getenv("HOME"),
+		filepath.Join(sh.ev.Dir, "executor-shape"), sh.slug, sh.role, stable, "", schemaOf(agent.SubmitTool), sh.ev.Record,
+		func(e map[string]any) {
+			if inspectedBy(e) {
+				sh.inspected = true
+			}
+		})
+	if err != nil {
+		return outcome{}, nil, err
+	}
+	defer x.close()
+	defer func() { sh.ev.Record(x.summary()) }()
+	feedback, invalid := "", 0
+	for {
+		sh.s.Progress(fmt.Sprintf("kogen: shaping (external round %d, %d s)", x.rounds+1, sh.elapsed()))
+		res, err := x.round(ctx, feedback)
+		if err != nil {
+			return outcome{}, x, err
+		}
+		if res.Ending != executor.EndFinish {
+			return outcome{}, x, executor.Fail(executor.ReasonProtocol, "the shaper ended its round without a submission")
+		}
+		args, err := submissionArgs(res.Structured)
+		if err != nil {
+			return outcome{}, x, err
+		}
+		text, out, err := sh.submit(ctx, args)
+		if err != nil {
+			return outcome{}, x, err
+		}
+		switch out.kind {
+		case outInvalid:
+			invalid++
+			if invalid >= 3 {
+				return out, x, nil
+			}
+		case outObservations:
+		case outBlocked, outQuestions, outReady:
+			return out, x, nil
+		}
+		revision, err := CurrentRevision(sh.repo)
+		if err != nil {
+			return outcome{}, x, err
+		}
+		manifest, err := sh.writeManifest(revision)
+		if err != nil {
+			return outcome{}, x, err
+		}
+		enc, err := project.EncodeJSON(manifest)
+		if err != nil {
+			return outcome{}, x, err
+		}
+		feedback = text + "\n\nCumulative proposal manifest: " + string(enc)
 	}
 }
 

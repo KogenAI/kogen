@@ -72,7 +72,17 @@ function readPrompt() {
   });
 }
 
-let n, recordToolCall, sessionId, round, cwd, settings;
+let n, recordToolCall, sessionId, round, cwd, settings, role, roleN;
+
+// The role this invocation serves: Shape and Review ask for schema-constrained output
+// (--json-schema); the schema's properties tell them apart. Build has no schema.
+function roleOf() {
+  const schema = flag('--json-schema');
+  if (!schema) return 'build';
+  try {
+    return JSON.parse(schema).properties && JSON.parse(schema).properties.verdict ? 'review' : 'shape';
+  } catch { return 'shape'; }
+}
 
 // Records what the round received and answers with the init event, from the prompt on.
 function begin(prompt) {
@@ -87,8 +97,18 @@ function begin(prompt) {
   recordToolCall = (id, name, input) => fs.appendFileSync(path.join(state, 'tool-calls.jsonl'), `${JSON.stringify({ round: n, id, name, file_path: input.file_path || null })}\n`);
 
   sessionId = flag('--session-id') || flag('--resume');
-  const rounds = script.rounds && script.rounds.length ? script.rounds : [{ actions: [] }];
-  round = rounds[Math.min(n - 1, rounds.length - 1)];
+  // Per-role records (a script with `roles` scripts each role's invocations separately; a script
+  // with plain `rounds` is the Build-only script it always was).
+  role = roleOf();
+  const roleCalls = path.join(state, `calls-${role}`);
+  roleN = fs.existsSync(roleCalls) ? Number(fs.readFileSync(roleCalls, 'utf8').trim()) + 1 : 1;
+  fs.writeFileSync(roleCalls, String(roleN));
+  fs.writeFileSync(path.join(state, `prompt-${role}-${roleN}.txt`), prompt);
+  fs.writeFileSync(path.join(state, `argv-${role}-${roleN}.json`), JSON.stringify(positional === null ? args : ['-p', '<prompt>', ...args.slice(2)]));
+  fs.appendFileSync(path.join(state, 'sessions.jsonl'), `${JSON.stringify({ role, n: roleN, start: flag('--session-id') || null, resume: flag('--resume') || null })}\n`);
+  const scripted = script.roles ? ((script.roles[role] || {}).rounds || []) : (role === 'build' ? script.rounds : []);
+  const rounds = scripted && scripted.length ? scripted : [{ actions: [] }];
+  round = rounds[Math.min((script.roles ? roleN : n) - 1, rounds.length - 1)];
   cwd = fs.realpathSync(process.cwd());
 
   out({
@@ -160,7 +180,17 @@ async function main() {
   }
   (round.actions || []).forEach((action, index) => {
     const id = `toolu_${n}_${index}`;
-    if (action.write) {
+    if (action.read) {
+      const target = path.join(cwd, action.read);
+      toolUse(id, 'Read', { file_path: target });
+      let text = '';
+      try { text = fs.readFileSync(target, 'utf8'); } catch (error) { text = String(error.message); }
+      toolResult(id, text, false, 'accept');
+    } else if (action.fetch) {
+      // The harness's own research: observed by the harness only.
+      toolUse(id, 'WebFetch', { url: action.fetch });
+      toolResult(id, `fetched ${action.fetch}`, false, 'accept');
+    } else if (action.write) {
       const target = path.join(cwd, action.write.path);
       fileTool(id, 'Write', { file_path: target, content: contentOf(action.write) }, () => {
         fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -195,6 +225,19 @@ async function main() {
     result: round.claim || 'Done.', stop_reason: 'end_turn', terminal_reason: 'completed', session_id: sessionId,
     total_cost_usd: Number(cost.toFixed(6)), usage, permission_denials: denials,
   };
+  // Schema-constrained roles report their submission as the final result's structured_output.
+  if (role !== 'build') {
+    if (round.structured_intent) {
+      const { intentFiles } = require('../../support/fake-servers');
+      const spec = round.structured_intent;
+      let files = intentFiles(spec.name || 'is-even', spec.options || {});
+      if (spec.only) files = files.filter(file => spec.only.some(suffix => file.path.endsWith(suffix)));
+      if (spec.replace) files = files.map(file => (file.path.endsWith(spec.replace.path) ? { ...file, content: file.content.replace(spec.replace.old, spec.replace.new) } : file));
+      result.structured_output = spec.key ? { [spec.key]: files } : { files };
+    } else if (Object.prototype.hasOwnProperty.call(round, 'structured')) {
+      result.structured_output = round.structured;
+    }
+  }
   let exit = 0;
   if (round.end === 'max_turns') {
     Object.assign(result, { subtype: 'error_max_turns', is_error: true, terminal_reason: 'max_turns' });

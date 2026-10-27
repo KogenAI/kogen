@@ -20,6 +20,7 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 - **Live projects.** In the `@live` outline, "example" is the example app in `examples/` of the repository, copied into the run folder with a fixed baseline commit; "kogen" is the candidate Kogen source (REL-3); "external" is a real project kept outside the repository, run with its own settings file (`@external`, REL-2).
 - **Waiting.** "has sent the feedback of verification pass <n>" waits until the builder request carrying that pass's feedback has reached the fake server.
 - **Fake claude.** "a fake claude with script <name> is on PATH" puts an executable named `claude` first on the `PATH` of every command of the scenario. It is a Node script replaying a JSON script from `test/acceptance/fixtures/claude/` (fixture rows below); it is not a model. It answers `claude --version` with `2.1.306 (Claude Code)` and `claude auth status --json` with a claude.ai subscription sign-in on `firstParty` (a script may override either). For `-p` it reads the prompt from stdin (where Kogen sends it) and replays stream-json shaped like Claude Code's recorded output (`system/init`, assistant `tool_use`, user `tool_result`, `result` with usage and `total_cost_usd`). For every Write, Edit, MultiEdit or NotebookEdit tool call it first runs the PreToolUse hook command that Kogen configured in the `--settings` file, exactly like Claude Code, feeding it the hook JSON on stdin; a denial (exit 2, or the deny JSON on stdout) makes the tool call fail without touching the file. Bash actions run `/bin/sh -c` in the checkout without any hook prevention. The fake records, outside the project, the argv of every round with the prompt elided (the prompt is kept separately for "received a prompt containing"), the names (never values) of `ANTHROPIC_*` and `CLAUDE_*` variables in its environment, and each tool call it emitted. "fake claude round <n>" is the n-th `-p` invocation; "resumed the session it started in round 1" means its `--resume` value equals round 1's `--session-id`. No real `claude`, account or network is used.
+- **Fake claude roles.** A script with `roles` (`shape`, `build`, `review`, each with `rounds`) scripts every role's invocations separately; the role is read from the `--json-schema` the adapter passes. A round may carry `structured` (the final result's `structured_output`), `structured_intent` (the `is-even` package of the fake ChatGPT server as a submission) and the actions `read` and `fetch` (harness-observed research). "Role invocations" are the `claude -p` processes of that role, one per round.
 - **Tags.** `@live` scenarios are the real-use script, not the deterministic suite.
 
 ## Project fixtures
@@ -310,6 +311,16 @@ One JavaScript regular expression per line.
 ^the fake claude emitted no tool call$
 ^the run log records (\d+) executor rounds?$
 ^the run log shows an executor hook decision "([^"]*)" for the "([^"]*)" tool$
+^fake claude role "([^"]*)" ran (\d+) invocations?$
+^fake claude role "([^"]*)" invocation (\d+) received the argument "([^"]*)"$
+^fake claude role "([^"]*)" invocation (\d+) did not receive any of the arguments "([^"]*)"$
+^fake claude role "([^"]*)" invocation (\d+) received a prompt containing "([^"]*)"$
+^fake claude role "([^"]*)" invocation (\d+) received a prompt not containing "([^"]*)"$
+^fake claude role "([^"]*)" invocation (\d+) resumed the session of its invocation (\d+)$
+^fake claude role "([^"]*)" invocation (\d+) started a session of its own$
+^the fake claude roles used (\d+) distinct sessions$
+^the review material evidence records delivery of the complete source$
+^no Kogen documentation record exists for the shape run$
 ```
 
 Verification vocabulary: a green pass means completed fresh setup, acceptance, model and configured checks on exact disposable candidate inputs, with stable scratch inputs and workspace. It never means successful workspace-only commands.

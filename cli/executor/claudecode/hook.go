@@ -26,6 +26,9 @@ type policy struct {
 	Log string `json:"log"`
 	// Nonce is per run; sentinel records carry it so a stale log cannot satisfy liveness.
 	Nonce string `json:"nonce"`
+	// ReadOnly denies every file-writing tool call (the Shape role may inspect the checkout
+	// but never change it).
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 
 // sentinel is one hook log record: proof the hook ran for a tool call, written BEFORE the hook
@@ -158,6 +161,9 @@ func decide(pol policy, cwd, raw string) (allow bool, reason, resolved string) {
 	}
 	lexical = filepath.Clean(lexical)
 	resolved = resolveReal(lexical)
+	if pol.ReadOnly {
+		return false, "this role is read-only: it may not change the checkout", resolved
+	}
 	targets := []string{lexical, resolved}
 	if !within(root, resolved) {
 		return false, "the path is outside the checkout", resolved

@@ -192,6 +192,7 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 
 	var ending executor.Ending
 	var claim string
+	var structured json.RawMessage
 	turns := countOf(res["num_turns"])
 	switch {
 	case subtype == "error_max_turns":
@@ -203,10 +204,24 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 		}
 		ending = executor.EndFinish
 		text, ok := res["result"].(string)
-		if !ok {
-			return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "the success result has no result text")
+		if s.role == executor.RoleBuild {
+			if !ok {
+				return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "the success result has no result text")
+			}
+			claim = boundBytes(text, claimBytes)
+		} else {
+			// The submission is the final result's structured_output object, never the text.
+			obj, isObj := res["structured_output"].(map[string]any)
+			if !isObj || obj == nil {
+				return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "the final success result of the "+s.role+" role has no structured_output object")
+			}
+			raw, merr := json.Marshal(obj)
+			if merr != nil {
+				return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "the structured_output of the "+s.role+" role is not encodable: "+bound(merr.Error(), 100))
+			}
+			structured = raw
+			claim = boundBytes(text, claimBytes)
 		}
-		claim = boundBytes(text, claimBytes)
 	default:
 		d := "Claude Code reported an error result: subtype " + quoteBound(subtype)
 		if terminal != "" {
@@ -229,9 +244,9 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 		s.model = r.model
 	}
 	h := s.Handle()
-	out := executor.RoundResult{Ending: ending, Claim: claim, Usage: usage, Handle: h}
+	out := executor.RoundResult{Ending: ending, Claim: claim, Structured: structured, Usage: usage, Handle: h}
 	s.emit(map[string]any{
-		"event": "executor_round_ended", "round": r.n, "ending": string(ending),
+		"event": "executor_round_ended", "role": s.role, "round": r.n, "ending": string(ending),
 		"usage": usageEvent(usage), "num_turns": turns, "permission_denials": denials,
 		"session_id": s.sessionID, "model": r.model, "claude_code_version": r.ccVersion,
 		"terminal_reason": terminal,

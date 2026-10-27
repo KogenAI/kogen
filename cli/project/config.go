@@ -25,9 +25,10 @@ const ConfigPath = ".kogen/project.yaml"
 // BaseURL is set only for the openai-compatible provider (the host's /v1 base); it is
 // omitted from JSON when empty so existing checkpoints keep their bytes.
 //
-// Executor and MaxRounds belong to the build role only (docs/executor-contract.md): Executor
-// is "" for the native builder (also when the file says `executor: native`) or "claude-code";
-// MaxRounds is claude-code's round cap, 0 when the file sets none. Both are omitted from JSON
+// Executor and MaxRounds may be set on each of the shape, build and review roles
+// (docs/executor-contract.md): Executor is "" for the native role (also when the file says
+// `executor: native`) or "claude-code"; MaxRounds is claude-code's round cap for that role,
+// 0 when the file sets none (the default, DefaultExternalRounds, applies). Both are omitted from JSON
 // when empty for the same reason.
 type Role struct {
 	Provider, Model, Effort string
@@ -36,7 +37,10 @@ type Role struct {
 	MaxRounds               int    `json:",omitempty"`
 }
 
-// Executor names a build role may select (the native one is the empty Executor).
+// DefaultExternalRounds is the round cap of an external role that sets no max_rounds.
+const DefaultExternalRounds = 6
+
+// Executor names a role may select (the native one is the empty Executor).
 const (
 	ExecutorNative     = "native"
 	ExecutorClaudeCode = "claude-code"
@@ -332,8 +336,8 @@ func (v *validator) models(node *yamlNode) map[string]Role {
 var maxRoundsRe = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
 
 // executorKeys separates the `executor` and `max_rounds` keys of a models role from the rest
-// of its mapping (docs/executor-contract.md section 5). They are valid for the build role
-// only; max_rounds only with executor claude-code. ok is false when the role must be skipped
+// of its mapping (docs/executor-contract.md section 5). They are valid for the shape, build
+// and review roles independently; max_rounds only with executor claude-code. ok is false when the role must be skipped
 // (a problem was reported). rest is the mapping without the two keys.
 func (v *validator) executorKeys(p yamlPair) (rest *yamlNode, exec string, rounds int, ok bool) {
 	rest = p.node
@@ -356,14 +360,6 @@ func (v *validator) executorKeys(p yamlPair) (rest *yamlNode, exec string, round
 		return rest, "", 0, true
 	}
 	path := "models." + p.key
-	if p.key != "build" {
-		for _, pr := range []*yamlPair{execPair, roundsPair} {
-			if pr != nil {
-				v.add(pr.line, path+"."+pr.key+": executor is supported for the build role only")
-			}
-		}
-		return nil, "", 0, false
-	}
 	copied := *p.node
 	copied.pairs = kept
 	rest = &copied

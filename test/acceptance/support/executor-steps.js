@@ -57,8 +57,105 @@ function runLogEvents(latestRunDir) {
   return fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
 }
 
+// ---- the per-role records of a fake claude that scripts roles (lineup scenarios) ----
+
+function roleCalls(world, role) {
+  const file = path.join(stateDir(world), `calls-${role}`);
+  return fs.existsSync(file) ? Number(fs.readFileSync(file, 'utf8').trim()) : 0;
+}
+
+function roleArgv(world, role, n) {
+  const file = path.join(stateDir(world), `argv-${role}-${n}.json`);
+  assert.ok(fs.existsSync(file), `the fake claude has no ${role} invocation ${n}`);
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function rolePrompt(world, role, n) {
+  const file = path.join(stateDir(world), `prompt-${role}-${n}.txt`);
+  assert.ok(fs.existsSync(file), `the fake claude has no ${role} invocation ${n}`);
+  return fs.readFileSync(file, 'utf8');
+}
+
+function sessions(world) {
+  const file = path.join(stateDir(world), 'sessions.jsonl');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+}
+
+// The session a role invocation belongs to: the one it started, or the one it resumed.
+function sessionOf(world, role, n) {
+  const record = sessions(world).find(entry => entry.role === role && entry.n === n);
+  assert.ok(record, `no ${role} invocation ${n} was recorded`);
+  return record.start || record.resume;
+}
+
+function lineupSteps(world, label, args, latestRunDir) {
+  if (label.startsWith('fake claude role ') && label.includes(' ran ')) {
+    assert.equal(roleCalls(world, args[0]), Number(args[1]), `${args[0]} invocations`);
+    return true;
+  }
+  if (label.startsWith('fake claude role ') && label.includes(' did not receive any of the arguments ')) {
+    const argv = roleArgv(world, args[0], Number(args[1]));
+    for (const name of args[2].split(',')) assert.ok(!argv.includes(name), `${args[0]} invocation ${args[1]} received ${name}`);
+    return true;
+  }
+  if (label.startsWith('fake claude role ') && label.includes(' received the argument ')) {
+    assert.ok(roleArgv(world, args[0], Number(args[1])).includes(args[2]), `${args[0]} invocation ${args[1]} did not receive ${args[2]}`);
+    return true;
+  }
+  if (label.startsWith('fake claude role ') && label.includes(' received a prompt not containing ')) {
+    assert.ok(!rolePrompt(world, args[0], Number(args[1])).includes(args[2]), `${args[0]} invocation ${args[1]} prompt contains ${args[2]}`);
+    return true;
+  }
+  if (label.startsWith('fake claude role ') && label.includes(' received a prompt containing ')) {
+    assert.ok(rolePrompt(world, args[0], Number(args[1])).includes(args[2]), `${args[0]} invocation ${args[1]} prompt lacks ${args[2]}`);
+    return true;
+  }
+  if (label.startsWith('fake claude role ') && label.includes(' resumed the session of its invocation ')) {
+    const resumed = roleArgv(world, args[0], Number(args[1]));
+    assert.equal(flagValue(resumed, '--resume'), sessionOf(world, args[0], Number(args[2])));
+    assert.ok(!resumed.includes('--session-id'), 'a resumed invocation started another session');
+    return true;
+  }
+  if (label.startsWith('fake claude role ') && label.includes(' started a session of its own')) {
+    const record = sessions(world).find(entry => entry.role === args[0] && entry.n === Number(args[1]));
+    assert.ok(record && record.start, 'the invocation did not start a session');
+    assert.ok(!record.resume, 'the invocation resumed a session');
+    for (const other of sessions(world)) {
+      if (!(other.role === record.role && other.n === record.n) && other.start) assert.notEqual(other.start, record.start, 'the session is shared with another invocation');
+    }
+    return true;
+  }
+  if (label.startsWith('the fake claude roles used ')) {
+    const started = new Set(sessions(world).map(entry => entry.start).filter(Boolean));
+    assert.equal(started.size, Number(args[0]));
+    return true;
+  }
+  if (label === 'the review material evidence records delivery of the complete source') {
+    const dir = path.join(latestRunDir(), 'executor-review');
+    const evidence = JSON.parse(fs.readFileSync(path.join(dir, 'review-1-material.json'), 'utf8'));
+    const source = fs.readFileSync(path.join(dir, 'review-1-source.txt'), 'utf8');
+    const authority = fs.readFileSync(path.join(dir, 'review-1-authority.txt'), 'utf8');
+    assert.equal(evidence.delivered, true);
+    assert.ok(evidence.delivered_round >= 1 && evidence.session_id);
+    assert.equal(evidence.source.bytes, Buffer.byteLength(source));
+    const prompt = rolePrompt(world, 'review', 1);
+    assert.ok(prompt.includes(authority) && prompt.includes(source), 'the review prompt lacks the complete retained material');
+    assert.ok(evidence.parts.some(part => part.path === 'calc.py'), 'the parts do not name calc.py');
+    return true;
+  }
+  if (label === 'no Kogen documentation record exists for the shape run') {
+    const dir = path.join(world.project, '.kogen/local/shaping/is-even');
+    const events = fs.readFileSync(path.join(dir, 'events.ndjson'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+    assert.ok(events.some(event => event.event === 'executor_summary'), 'no executor summary was recorded');
+    assert.ok(!events.some(event => /documentation/.test(event.event)), 'a Kogen documentation record exists');
+    return true;
+  }
+  return false;
+}
+
 // Returns true when the label was an executor step.
 async function executorSteps(world, label, args, latestRunDir) {
+  if (lineupSteps(world, label, args, latestRunDir)) return true;
   if (label.startsWith('a fake claude with script ')) {
     installFakeClaude(world, args[0]);
     return true;

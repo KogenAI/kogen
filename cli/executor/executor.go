@@ -1,11 +1,12 @@
-// Package executor is Kogen's executor contract v1 (docs/executor-contract.md): what a Build
-// role backend (the native kogen-loop adapter, the Claude Code adapter) must provide, and
-// what it can never decide. A round result is a claim; approval, protected-baseline
+// Package executor is Kogen's executor contract v2 (docs/executor-contract.md): what a role
+// backend (the native kogen-loop Build adapter, the Claude Code adapter for Shape, Build and
+// Review) must provide, and what it can never decide. A round result is a claim; approval, protected-baseline
 // detection, verification, review and the commit stay with Kogen.
 package executor
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 )
 
 // Contract is the contract id every executor's Descriptor must carry.
-const Contract = "kogen.executor/v1"
+const Contract = "kogen.executor/v2"
 
 // Executor names.
 const (
@@ -21,8 +22,16 @@ const (
 	ClaudeCode = "claude-code"
 )
 
-// Roles an executor may serve. v1: build only.
-const RoleBuild = "build"
+// Roles an executor may serve. Shape includes Refine. v2 describes each role's capabilities
+// separately: a Build claim is not evidence for Shape or Review.
+const (
+	RoleShape  = "shape"
+	RoleBuild  = "build"
+	RoleReview = "review"
+)
+
+// IsRole reports whether name is a role of this contract.
+func IsRole(name string) bool { return name == RoleShape || name == RoleBuild || name == RoleReview }
 
 // Resume capabilities.
 const (
@@ -63,12 +72,49 @@ type Capabilities struct {
 	MaxRounds int `json:"max_rounds"`
 }
 
-// Descriptor identifies an executor and its exact version.
+// RoleCapabilities are what an executor provides for one role. Missing means unsupported.
+// Limitations names explicitly what the role does not provide in this delivery.
+type RoleCapabilities struct {
+	Resume       string   `json:"resume"`
+	Continuation bool     `json:"continuation"`
+	Usage        string   `json:"usage"`
+	Prevention   []string `json:"prevention"`
+	Blocker      bool     `json:"blocker"`
+	Images       bool     `json:"images"`
+	Probe        bool     `json:"probe"`   // Kogen scratch probe
+	Workers      bool     `json:"workers"` // Shape workers
+	// Structured: the role's submission is the final result's structured_output object.
+	Structured  bool     `json:"structured"`
+	MaxRounds   int      `json:"max_rounds"`
+	Limitations []string `json:"limitations,omitempty"`
+}
+
+// Descriptor identifies an executor and its exact version. Capabilities is the Build claim
+// (kept as in v1); RoleCapabilities lists every role the executor serves, individually.
 type Descriptor struct {
-	Name         string       `json:"name"`
-	Contract     string       `json:"contract"`
-	Version      string       `json:"version"`
-	Capabilities Capabilities `json:"capabilities"`
+	Name             string                      `json:"name"`
+	Contract         string                      `json:"contract"`
+	Version          string                      `json:"version"`
+	Capabilities     Capabilities                `json:"capabilities"`
+	RoleCapabilities map[string]RoleCapabilities `json:"role_capabilities,omitempty"`
+}
+
+// For reports the capabilities of one role. A role absent from RoleCapabilities is served
+// only if it is the Build role listed by the aggregate Capabilities.
+func (d Descriptor) For(role string) (RoleCapabilities, bool) {
+	if rc, ok := d.RoleCapabilities[role]; ok {
+		return rc, true
+	}
+	if role == RoleBuild {
+		for _, r := range d.Capabilities.Roles {
+			if r == RoleBuild {
+				c := d.Capabilities
+				return RoleCapabilities{Resume: c.Resume, Continuation: c.Continuation, Usage: c.Usage,
+					Prevention: c.Prevention, Blocker: c.Blocker, Images: c.Images, MaxRounds: c.MaxRounds}, true
+			}
+		}
+	}
+	return RoleCapabilities{}, false
 }
 
 // Brief is the task as Kogen renders it: the stable authority (source provenance, Intent,
@@ -93,6 +139,9 @@ type Task struct {
 	RunID     string    `json:"run_id"`
 	Deadline  time.Time `json:"deadline"` // zero: none
 	MaxRounds int       `json:"max_rounds"`
+	// Schema is the JSON Schema of the structured submission (Shape and Review): the
+	// executor requests schema-constrained output and returns the final result's object.
+	Schema json.RawMessage `json:"schema,omitempty"`
 	// Home is the user's HOME for locating the harness's own sign-in; it is never read for
 	// secrets by Kogen.
 	Home string `json:"home"`
@@ -138,6 +187,7 @@ type Usage struct {
 
 // Handle identifies a session for the run log and checkpoint.
 type Handle struct {
+	Role      string `json:"role,omitempty"`
 	Executor  string `json:"executor"`
 	Version   string `json:"version"`
 	SessionID string `json:"session_id"`
@@ -146,11 +196,14 @@ type Handle struct {
 
 // RoundResult is one round's outcome as claimed by the executor.
 type RoundResult struct {
-	Ending  Ending        `json:"ending"`
-	Claim   string        `json:"claim"` // untrusted model text, bounded by the adapter
-	Blocker *BlockerClaim `json:"blocker,omitempty"`
-	Usage   Usage         `json:"usage"`
-	Handle  Handle        `json:"handle"`
+	Ending Ending `json:"ending"`
+	Claim  string `json:"claim"` // untrusted model text, bounded by the adapter
+	// Structured is the final successful result's structured_output object (Shape and Review),
+	// complete and unclipped; empty for Build. It is a submission, never authority.
+	Structured json.RawMessage `json:"structured,omitempty"`
+	Blocker    *BlockerClaim   `json:"blocker,omitempty"`
+	Usage      Usage           `json:"usage"`
+	Handle     Handle          `json:"handle"`
 }
 
 // Sink receives run-log events (maps with an "event" key, executor_* names).
@@ -191,15 +244,16 @@ func RoundLimit(rounds int) *sys.Error {
 		"the executor used its "+strconv.Itoa(rounds)+" rounds without a verified, reviewed candidate; the candidate is left in place", 1)
 }
 
-// Validate checks a descriptor against this contract.
-func (d Descriptor) Validate() error {
+// Validate checks a descriptor against this contract for the Build role.
+func (d Descriptor) Validate() error { return d.ValidateRole(RoleBuild) }
+
+// ValidateRole checks a descriptor against this contract for one role.
+func (d Descriptor) ValidateRole(role string) error {
 	if d.Contract != Contract {
 		return Fail(ReasonUnavailable, "executor "+d.Name+" implements "+d.Contract+", not "+Contract)
 	}
-	for _, r := range d.Capabilities.Roles {
-		if r == RoleBuild {
-			return nil
-		}
+	if _, ok := d.For(role); !ok {
+		return Fail(ReasonUnavailable, "executor "+d.Name+" does not serve the "+role+" role")
 	}
-	return Fail(ReasonUnavailable, "executor "+d.Name+" does not serve the build role")
+	return nil
 }

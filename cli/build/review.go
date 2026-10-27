@@ -103,6 +103,9 @@ type reviewRun struct {
 	pass  verify.Pass
 	sess  reviewSession
 	tools []any
+	// external: the reviewer is an external executor; its source is delivered as complete
+	// Kogen-owned prompt data (review_external.go), not as pinned parts it must read.
+	external bool
 }
 
 func reviewTools() []any {
@@ -551,7 +554,7 @@ func (r *reviewRun) validate(args map[string]any, input []any) (*reviewVerdict, 
 	case verdict == "approve" && blocking > 0:
 		problems = append(problems, "an approve verdict cannot have blocking findings")
 	}
-	if verdict == "approve" {
+	if verdict == "approve" && !r.external {
 		unread, err := b.materialUnread(input)
 		if err != nil {
 			return nil, nil, err

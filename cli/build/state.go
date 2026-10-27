@@ -206,6 +206,9 @@ type State struct {
 	// reported (docs/executor-contract.md); nil for the native builder, so a native checkpoint
 	// keeps its bytes. A checkpoint that has it is never resumed.
 	Executor *ExecutorState `json:"executor,omitempty"`
+	// ReviewExecutor is the same for an independent review by an external executor: its own
+	// session, rounds and usage, separate from the builder's. Nil for the native reviewer.
+	ReviewExecutor *ExecutorState `json:"review_executor,omitempty"`
 }
 
 // ExecutorState is an external executor's identity and its running totals in a Build:

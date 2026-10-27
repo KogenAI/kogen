@@ -15,6 +15,30 @@ const Constraints = "You are implementing one requested feature in this Git chec
 	"Do not edit the protected paths named in the task: edits to them are refused, and any change to them is detected and stops the Build.\n" +
 	"When you believe the work is complete, stop and summarize what you changed."
 
+// ShapeConstraints and ReviewConstraints frame the other two roles the same way: the entire
+// framing besides the task itself, round 1's preface and the --append-system-prompt text.
+const ShapeConstraints = "You are shaping one requested feature in this Git checkout, the current directory: you inspect it and propose the Intent files.\n" +
+	"Kogen validates, checks and publishes your proposal; you cannot approve it, build it or commit it.\n" +
+	"This checkout is read-only for you. Do not edit, create or delete any file, do not touch the Git index, and do not commit, push, switch branches, stash or rewrite Git state, including the files you propose: submit them instead.\n" +
+	"Finish with the structured submission the schema requires, as your final result."
+
+const ReviewConstraints = "You are the independent reviewer of one candidate in this Git checkout, the current directory. " +
+	"Kogen will independently run the configured checks and the single commit.\n" +
+	"You may repair concrete defects within the approved Intent. Do not commit, push, switch branches, stash or rewrite Git state.\n" +
+	"Do not edit the protected paths named in the task: edits to them are refused, and any change to them is detected and stops the Build.\n" +
+	"Finish with the structured review verdict the schema requires, as your final result."
+
+// constraintsFor is the framing of a role.
+func constraintsFor(role string) string {
+	switch role {
+	case "shape":
+		return ShapeConstraints
+	case "review":
+		return ReviewConstraints
+	}
+	return Constraints
+}
+
 // feedbackPreface precedes Kogen's verification feedback in rounds after the first.
 const feedbackPreface = "Kogen's independent verification of your previous round:"
 
@@ -100,4 +124,21 @@ func roundArgs(o Options, sessionID string, n int, model, effort, settingsPath s
 		args = append(args, "--append-system-prompt", Constraints)
 	}
 	return args
+}
+
+// roleRoundArgs is roundArgs for a role. Build is exactly roundArgs. Shape and Review frame the
+// task with their own constraints and request schema-constrained output (--json-schema) on every
+// invocation, the first with --session-id (never --resume, --continue or --fork-session) and
+// later feedback rounds of the same role session with --resume.
+func roleRoundArgs(o Options, role, schema, sessionID string, n int, model, effort, settingsPath string, maxTurns int) []string {
+	args := roundArgs(o, sessionID, n, model, effort, settingsPath, maxTurns)
+	if role == "" || role == "build" {
+		return args
+	}
+	for i, a := range args {
+		if a == "--append-system-prompt" && i+1 < len(args) {
+			args[i+1] = constraintsFor(role)
+		}
+	}
+	return append(args, "--json-schema", schema)
 }

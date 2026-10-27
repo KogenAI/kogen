@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -42,6 +43,9 @@ type Script struct {
 	Name string `json:"name"`
 	// Only restricts the script to one executor ("" = all).
 	Only string `json:"only"`
+	// Role is the role the script performs ("" = build). Shape and Review scripts end with a
+	// structured submission.
+	Role string `json:"role"`
 	// Needs lists prevention mechanisms the script's prevention assertion depends on; the
 	// assertion is skipped (not the script) when the executor declares none of them.
 	Needs  []string      `json:"needs"`
@@ -61,6 +65,9 @@ type RoundScript struct {
 	Claim string `json:"claim"`
 	// Usage is reported usage; nil means the backend reports none.
 	Usage *ScriptUsage `json:"usage"`
+	// Structured is the final result's structured_output (claude-code Shape and Review only).
+	// Absent: the backend reports none.
+	Structured json.RawMessage `json:"structured,omitempty"`
 	// HarnessError makes the backend report an error result (claude-code only).
 	HarnessError bool `json:"harness_error"`
 	// Malformed makes the backend emit a malformed/unterminated stream (claude-code only).
@@ -115,7 +122,20 @@ type Expect struct {
 type ExpectRound struct {
 	Ending     executor.Ending `json:"ending"`
 	UsageState string          `json:"usage_state"`
+	// Structured is the exact (semantically compared) structured submission expected.
+	Structured json.RawMessage `json:"structured,omitempty"`
 }
+
+// RoleOf is the role a script performs.
+func (s Script) RoleOf() string {
+	if s.Role == "" {
+		return executor.RoleBuild
+	}
+	return s.Role
+}
+
+// SchemaFor is the schema every non-build conformance script submits against.
+const SchemaFor = `{"type":"object","additionalProperties":true}`
 
 // Driver makes one executor's backend perform scripts.
 type Driver interface {
@@ -180,13 +200,16 @@ func runScript(t *testing.T, d Driver, s Script) {
 	root := NewCheckout(t)
 	ex, task := d.Prepare(t, root, s)
 	desc := ex.Describe()
-	if err := desc.Validate(); err != nil {
+	if err := desc.ValidateRole(s.RoleOf()); err != nil {
 		t.Fatalf("descriptor: %v", err)
 	}
 	if desc.Name != d.Name() {
 		t.Fatalf("descriptor name %q, driver %q", desc.Name, d.Name())
 	}
-	task.Role, task.Root = executor.RoleBuild, root
+	task.Role, task.Root = s.RoleOf(), root
+	if task.Role != executor.RoleBuild {
+		task.Schema = json.RawMessage(SchemaFor)
+	}
 	task.Protected = []string{ProtectedPath}
 	if s.DeadlineSeconds > 0 {
 		task.Deadline = time.Now().Add(time.Duration(s.DeadlineSeconds * float64(time.Second)))
@@ -233,6 +256,14 @@ func runScript(t *testing.T, d Driver, s Script) {
 		}
 		if got.Usage.State == executor.UsageUnknown && (got.Usage.Input != nil || got.Usage.Output != nil) {
 			t.Errorf("round %d: unknown usage carries numbers", i+1)
+		}
+		if len(want.Structured) > 0 {
+			var a, b any
+			if json.Unmarshal(want.Structured, &a) != nil || json.Unmarshal(got.Structured, &b) != nil || !reflect.DeepEqual(a, b) {
+				t.Errorf("round %d structured %s, want %s", i+1, got.Structured, want.Structured)
+			}
+		} else if len(got.Structured) > 0 && s.RoleOf() == executor.RoleBuild {
+			t.Errorf("round %d: a build round carries a structured submission", i+1)
 		}
 		if got.Handle.Executor != desc.Name {
 			t.Errorf("round %d handle executor %q, want %q", i+1, got.Handle.Executor, desc.Name)

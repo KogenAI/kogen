@@ -545,9 +545,10 @@ func TestBuildExecutorConfigurationErrors(t *testing.T) {
 		{"max_rounds text", "build: {executor: claude-code, model: m, effort: e, max_rounds: six}", "line 3: models.build.max_rounds must be a positive integer"},
 		{"max_rounds quoted", `build: {executor: claude-code, model: m, effort: e, max_rounds: "6"}`, "line 3: models.build.max_rounds must be a positive integer"},
 		{"max_rounds leading zero", "build: {executor: claude-code, model: m, effort: e, max_rounds: 06}", "line 3: models.build.max_rounds must be a positive integer"},
-		{"executor on shape", "shape: {executor: claude-code, model: m, effort: e}", "line 3: models.shape.executor: executor is supported for the build role only"},
-		{"native executor on review", "review: {executor: native, model: m, effort: e}", "line 3: models.review.executor: executor is supported for the build role only"},
-		{"max_rounds on review", "review: {model: m, effort: e, max_rounds: 3}", "line 3: models.review.max_rounds: executor is supported for the build role only"},
+		{"shape max_rounds needs claude-code", "shape: {model: m, effort: e, max_rounds: 3}", "line 3: models.shape.max_rounds is only for executor claude-code"},
+		{"review max_rounds needs claude-code", "review: {model: m, effort: e, max_rounds: 3}", "line 3: models.review.max_rounds is only for executor claude-code"},
+		{"review unknown executor", "review: {executor: codex, model: m, effort: e}", "line 3: models.review.executor must be native or claude-code"},
+		{"shape claude-code forbids provider", "shape: {executor: claude-code, provider: anthropic, model: m, effort: e}", "line 3: models.shape.provider is not allowed with executor claude-code"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			se := configError(t, head+tt.text+"\n", "f")
@@ -555,6 +556,69 @@ func TestBuildExecutorConfigurationErrors(t *testing.T) {
 				t.Fatalf("%+v", se)
 			}
 		})
+	}
+}
+
+// TestClaudeLineupRoleConfiguration: shape, build and review select native or claude-code
+// independently, with model and effort passed through and a per-role round cap.
+func TestClaudeLineupRoleConfiguration(t *testing.T) {
+	ext := func(rounds int) Role {
+		return Role{Model: "claude-opus-5-5", Effort: "xhigh", Executor: "claude-code", MaxRounds: rounds}
+	}
+	roles := []string{"shape", "build", "review"}
+	// Every subset of roles may be external; the others keep their native configuration.
+	for mask := 0; mask < 8; mask++ {
+		var text strings.Builder
+		text.WriteString("version: 1\nmodels:\n")
+		want := DefaultModels()
+		for i, r := range roles {
+			switch {
+			case mask&(1<<i) != 0:
+				text.WriteString("  " + r + ": {executor: claude-code, model: claude-opus-5-5, effort: xhigh}\n")
+				want[r] = ext(0)
+			case i == 1:
+				text.WriteString("  " + r + ": {executor: native, model: gpt-6.1-sol, effort: medium}\n")
+				want[r] = Role{Model: "gpt-6.1-sol", Effort: "medium"}
+			}
+		}
+		cfg := mustParse(t, text.String())
+		for _, r := range roles {
+			if cfg.Models[r] != want[r] {
+				t.Fatalf("mask %d: %s = %+v, want %+v", mask, r, cfg.Models[r], want[r])
+			}
+			if cfg.Models[r].External() != (want[r].Executor == "claude-code") {
+				t.Fatalf("mask %d: %s External() wrong", mask, r)
+			}
+		}
+	}
+	// A round cap is per role: 1 and 2 are accepted on the external roles, the default is 0 here
+	// (DefaultExternalRounds applies) and the cap stays invalid without claude-code.
+	cfg := mustParse(t, "version: 1\nmodels:\n  shape: {executor: claude-code, model: a, effort: b, max_rounds: 1}\n  review: {executor: claude-code, model: c, effort: d, max_rounds: 2}\n")
+	if cfg.Models["shape"].MaxRounds != 1 || cfg.Models["review"].MaxRounds != 2 || cfg.Models["build"].MaxRounds != 0 {
+		t.Fatalf("rounds %+v", cfg.Models)
+	}
+	if DefaultExternalRounds != 6 {
+		t.Fatalf("default rounds %d", DefaultExternalRounds)
+	}
+	for _, r := range roles {
+		se := configError(t, "version: 1\nmodels:\n  "+r+": {model: m, effort: e, max_rounds: 3}\n", "f")
+		if !slices.Equal(se.Lines, []string{"line 3: models." + r + ".max_rounds is only for executor claude-code"}) {
+			t.Fatalf("%s: %+v", r, se)
+		}
+		se = configError(t, "version: 1\nmodels:\n  "+r+": {executor: claude-code, base_url: 'http://x/v1', model: m, effort: e}\n", "f")
+		if !slices.Equal(se.Lines, []string{"line 3: models." + r + ".base_url is not allowed with executor claude-code"}) {
+			t.Fatalf("%s: %+v", r, se)
+		}
+		se = configError(t, "version: 1\nmodels:\n  "+r+": {executor: claude-code, model: m, effort: ' '}\n", "f")
+		if !slices.Equal(se.Lines, []string{"line 3: models." + r + " with executor claude-code must be {model, effort} non-blank strings"}) {
+			t.Fatalf("%s: %+v", r, se)
+		}
+	}
+	// Explicit native normalizes to omission: identical role bytes.
+	a := mustParse(t, "version: 1\nmodels:\n  review: {executor: native, model: m, effort: e}\n").Models["review"]
+	b := mustParse(t, "version: 1\nmodels:\n  review: {model: m, effort: e}\n").Models["review"]
+	if a != b {
+		t.Fatalf("explicit native %+v differs from omission %+v", a, b)
 	}
 }
 

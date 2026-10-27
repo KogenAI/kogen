@@ -1,0 +1,18 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            }
+          ],
+          "structured": {
+            "files": "nope"
+          }
+        }
+      ]
+    }
+  }
+}

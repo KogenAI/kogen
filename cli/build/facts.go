@@ -212,6 +212,18 @@ func (f *localFacts) update(b *Attempt, phase, outcome string) error {
 	if b.StageProgress != nil {
 		r["stage_progress"] = b.StageProgress.value()
 	}
+	// External roles only: each role's own identity, rounds and harness-reported usage. Native
+	// records carry no executor fields.
+	if b.Executor != nil || b.ReviewExecutor != nil {
+		roles := map[string]any{}
+		if b.Executor != nil {
+			roles["build"] = b.Executor
+		}
+		if b.ReviewExecutor != nil {
+			roles["review"] = b.ReviewExecutor
+		}
+		r["executors"] = roles
+	}
 	if phase == "" {
 		phase, _ = r["phase"].(string)
 	}

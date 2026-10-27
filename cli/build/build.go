@@ -191,7 +191,10 @@ func buildRoles(cfg *project.Config) []provider.Role {
 	if role := cfg.Models["build"]; !role.External() {
 		roles = append(roles, providerRole(role))
 	}
-	return append(roles, providerRole(cfg.Models["review"]))
+	if role := cfg.Models["review"]; !role.External() {
+		roles = append(roles, providerRole(role))
+	}
+	return roles
 }
 
 func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg *project.Config, start string, out **Attempt) error {
@@ -237,6 +240,13 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 	ext, err := selectExecutor(in.Deps, cfg.Models["build"])
 	if err != nil {
 		return err
+	}
+	reviewer, err := selectReviewer(in.Deps, cfg.Models["review"])
+	if err != nil {
+		return err
+	}
+	if reviewer != nil {
+		in.Deps.Reviewer = reviewer
 	}
 	if err := provider.RequireLogin(s.Getenv("HOME"), buildRoles(cfg)); err != nil {
 		return err

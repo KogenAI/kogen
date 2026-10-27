@@ -1,0 +1,18 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            }
+          ],
+          "structured": {
+            "constraint": "This correction needs a new step file; refinement changes existing files only."
+          }
+        }
+      ]
+    }
+  }
+}

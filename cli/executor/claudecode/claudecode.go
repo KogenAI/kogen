@@ -81,9 +81,10 @@ func (a *adapter) Describe() executor.Descriptor {
 		v = out
 	}
 	return executor.Descriptor{
-		Name:     executor.ClaudeCode,
-		Contract: executor.Contract,
-		Version:  "claude-code " + v,
+		Name:             executor.ClaudeCode,
+		Contract:         executor.Contract,
+		Version:          "claude-code " + v,
+		RoleCapabilities: roleCapabilities(),
 		Capabilities: executor.Capabilities{
 			Roles:        []string{executor.RoleBuild},
 			Resume:       executor.ResumeNone,
@@ -95,6 +96,34 @@ func (a *adapter) Describe() executor.Descriptor {
 			MaxRounds:    6,
 		},
 	}
+}
+
+// roleCapabilities are the per-role capabilities of Claude Code as Kogen's source delivery
+// provides them. Limitations are reported, never hidden: Claude's own Bash, research, images
+// and subagents are not Kogen's scratch probe, documentation records, typed images or workers.
+func roleCapabilities() map[string]executor.RoleCapabilities {
+	common := []string{
+		"no exact persistent resume: same-session continuation only within a running role invocation",
+		"no Kogen-custodied typed images",
+		"no Kogen scratch probe",
+		"no native working-window replay",
+	}
+	shape := executor.RoleCapabilities{
+		Resume: executor.ResumeNone, Continuation: true, Usage: executor.UsageHarness,
+		Prevention: []string{executor.PreventPreToolWrite}, Structured: true, MaxRounds: 6,
+		Limitations: append(append([]string{}, common...), "no Shape workers", "research by Claude tools is harness-observed only, not a Kogen documentation record"),
+	}
+	review := executor.RoleCapabilities{
+		Resume: executor.ResumeNone, Continuation: true, Usage: executor.UsageHarness,
+		Prevention: []string{executor.PreventPreToolWrite}, Structured: true, MaxRounds: 6,
+		Limitations: append([]string{}, common...),
+	}
+	build := executor.RoleCapabilities{
+		Resume: executor.ResumeNone, Continuation: true, Usage: executor.UsageHarness,
+		Prevention: []string{executor.PreventPreToolWrite}, MaxRounds: 6,
+		Limitations: append([]string{}, common...),
+	}
+	return map[string]executor.RoleCapabilities{executor.RoleShape: shape, executor.RoleBuild: build, executor.RoleReview: review}
 }
 
 // binary resolves the executable.
@@ -201,6 +230,20 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	if emit == nil {
 		emit = func(map[string]any) {}
 	}
+	if t.Role == "" {
+		t.Role = executor.RoleBuild
+	}
+	if !executor.IsRole(t.Role) {
+		return nil, executor.Fail(executor.ReasonUnavailable, "Claude Code does not serve the "+quoteBound(t.Role)+" role")
+	}
+	schema := ""
+	if t.Role != executor.RoleBuild {
+		var obj map[string]any
+		if json.Unmarshal(t.Schema, &obj) != nil || obj == nil {
+			return nil, executor.Fail(executor.ReasonUnavailable, "the "+t.Role+" role needs a JSON object schema for its structured submission")
+		}
+		schema = string(t.Schema)
+	}
 	if len(a.opts.HookCommand) == 0 || a.opts.HookCommand[0] == "" {
 		return nil, executor.Fail(executor.ReasonUnavailable, "the Claude Code adapter has no hook command, so protected-path prevention cannot be installed")
 	}
@@ -255,7 +298,7 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	if err != nil {
 		return nil, executor.Fail(executor.ReasonFailed, "no randomness for the session id: "+err.Error())
 	}
-	pol := policy{Root: root, Protected: cleanProtected(root, t.Protected), Log: filepath.Join(dir, "hook-log.jsonl"), Nonce: nonce}
+	pol := policy{Root: root, Protected: cleanProtected(root, t.Protected), Log: filepath.Join(dir, "hook-log.jsonl"), Nonce: nonce, ReadOnly: t.Role == executor.RoleShape}
 	policyPath := filepath.Join(dir, "hook-policy.json")
 	settingsPath := filepath.Join(dir, "claude-settings.json")
 	if err := writePrivate(policyPath, mustJSON(pol)); err != nil {
@@ -271,6 +314,7 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	s := &session{
 		a: a, task: t, emit: emit, bin: bin, env: env, root: root, dir: dir,
 		sessionID: sessionID, version: version, settingsPath: settingsPath, pol: pol,
+		role: t.Role, schema: schema,
 	}
 	emit(map[string]any{
 		"event":               "executor_started",
@@ -280,6 +324,7 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 		"claude_code_version": version,
 		"session_id":          sessionID,
 		"run_id":              t.RunID,
+		"role":                t.Role,
 		"model":               t.Model,
 		"effort":              t.Effort,
 		"setting_sources":     a.opts.SettingSources,

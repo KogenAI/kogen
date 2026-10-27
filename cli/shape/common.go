@@ -15,6 +15,7 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
+	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
 )
@@ -49,10 +50,22 @@ func ProviderRole(r project.Role) provider.Role {
 	return provider.Role{Provider: r.Provider, Model: r.Model, Effort: r.Effort, BaseURL: r.BaseURL}
 }
 
+// requireShapeRoute refuses enabled workers with a Claude Code shaper before any inference.
+func requireShapeRoute(cfg *project.Config) error {
+	role := cfg.Models["shape"]
+	if role.External() && cfg.ShapeWorkers.Enabled {
+		return executor.Fail(executor.ReasonUnavailable, "shape workers are not supported with executor "+role.Executor+" (a Claude Code shaper has no Kogen workers); disable shape_workers or use the native shaper")
+	}
+	return nil
+}
+
 // ShapeRoles are the roles shaping may use: `models.shape`, and with shape workers enabled
 // the read, probe and draft roles.
 func ShapeRoles(cfg *project.Config) []provider.Role {
-	roles := []provider.Role{ProviderRole(cfg.Models["shape"])}
+	var roles []provider.Role
+	if !cfg.Models["shape"].External() { // an external shaper uses its own sign-in
+		roles = append(roles, ProviderRole(cfg.Models["shape"]))
+	}
 	if cfg.ShapeWorkers.Enabled {
 		for _, name := range []string{"read", "probe", "draft"} {
 			roles = append(roles, ProviderRole(cfg.ShapeWorkers.Roles[name]))

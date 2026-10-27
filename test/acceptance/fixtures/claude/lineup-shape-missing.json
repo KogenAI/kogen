@@ -1,0 +1,16 @@
+{
+  "roles": {
+    "shape": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "read": "README.md"
+            }
+          ],
+          "claim": "files are ready"
+        }
+      ]
+    }
+  }
+}

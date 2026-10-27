@@ -21,6 +21,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/agent"
+	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
 	"kogen/verify"
@@ -39,6 +40,8 @@ type RefineInput struct {
 	InstallRoot string
 	// Client talks to the provider; nil is a new provider.Client.
 	Client *provider.Client
+	// External provides the executor of a shape role with `executor: claude-code`; nil: none.
+	External External
 }
 
 func (in RefineInput) tools() verify.Tools {
@@ -120,6 +123,10 @@ type refine struct {
 
 	window  *window
 	cacheID string // this conversation's cache identity
+
+	// ext is the executor of an external shape role (nil: the native shaper).
+	ext    executor.Executor
+	extMax int
 }
 
 func refineLocked(ctx context.Context, s *sys.Session, in RefineInput, repo *git.Repo) (int, error) {
@@ -199,7 +206,17 @@ func refineLocked(ctx context.Context, s *sys.Session, in RefineInput, repo *git
 		return 0, err
 	}
 	tools := in.tools()
-	if err := provider.RequireLogin(s.Getenv("HOME"), []provider.Role{ProviderRole(cfg.Models["shape"])}); err != nil {
+	if err := requireShapeRoute(cfg); err != nil {
+		return 0, err
+	}
+	var ext executor.Executor
+	extMax := 0
+	if shaper := cfg.Models["shape"]; shaper.External() {
+		var err error
+		if ext, extMax, err = selectExternal(in.External, shaper); err != nil {
+			return 0, err
+		}
+	} else if err := provider.RequireLogin(s.Getenv("HOME"), []provider.Role{ProviderRole(shaper)}); err != nil {
 		return 0, err
 	}
 	if err := verify.RequireTools(s, tools, root, cfg, false); err != nil {
@@ -250,6 +267,7 @@ func refineLocked(ctx context.Context, s *sys.Session, in RefineInput, repo *git
 		head: head, tree: tree, approval: approval, approved: approved, indexPath: indexPath, index: index,
 		evidence: evidence, ev: ev, scratch: scratch, scratchR: repo.At(scratch),
 		intent: original, originals: originals, proposed: map[string]string{}, allowed: allowed,
+		ext: ext, extMax: extMax,
 	}
 	if r.client == nil {
 		r.client = provider.NewClient("")
@@ -313,7 +331,14 @@ func (r *refine) run(ctx context.Context) (exit int, err error) {
 	defs := agent.AsAny(agent.Defs(tools.ReadFileTool, tools.ListFilesTool, tools.SearchTextTool, agent.ProbeTool, tools.DocumentationTool, agent.SubmitRefinementTool))
 	r.window = newRefineWindow(r.evidence, input)
 	r.cacheID = startConversation(r.ev, "refine")
-	changes, ready, usage, err := r.converse(ctx, role, defs, input)
+	var changes map[string]string
+	var ready *verify.Ready
+	var usage provider.Usage
+	if r.ext != nil {
+		changes, ready, err = r.converseExternal(ctx, role, blocks)
+	} else {
+		changes, ready, usage, err = r.converse(ctx, role, defs, input)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -783,6 +808,59 @@ type refineOutcome struct {
 	diagnostic string // why the submission was invalid
 	files      map[string]string
 	ready      *verify.Ready
+}
+
+// converseExternal is the external refiner: one fresh read-only session whose final structured
+// results are `submit_refinement` payloads through the same cumulative rules; Kogen's actual
+// feedback returns to the same session. Nothing is published here.
+func (r *refine) converseExternal(ctx context.Context, role project.Role, blocks []any) (map[string]string, *verify.Ready, error) {
+	stable := refineInstructions() + "\n\n" + externalNote + "\n\n" + blocksText(blocks)
+	x, err := startExternal(ctx, r.ext, r.extMax, r.repo, r.root, r.s.Getenv("HOME"),
+		filepath.Join(r.evidence, "executor-refine"), r.slug, role, stable, "", schemaOf(agent.SubmitRefinementTool), r.ev.Record, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer x.close()
+	defer func() { r.ev.Record(x.summary()) }()
+	feedback, invalid := "", 0
+	for {
+		if err := interrupted(ctx, r.s); err != nil {
+			return nil, nil, err
+		}
+		if err := r.freeze(); err != nil {
+			return nil, nil, err
+		}
+		r.s.Progress("kogen: refining " + r.slug + " " + role.Model + "/" + role.Effort + " (external round " + fmt.Sprint(x.rounds+1) + ")")
+		res, err := x.round(ctx, feedback)
+		if err != nil {
+			return nil, nil, err
+		}
+		if res.Ending != executor.EndFinish {
+			return nil, nil, executor.Fail(executor.ReasonProtocol, "the refiner ended its round without a submission")
+		}
+		args, err := submissionArgs(res.Structured)
+		if err != nil {
+			return nil, nil, err
+		}
+		text, out, err := r.submit(ctx, args)
+		if err != nil {
+			return nil, nil, err
+		}
+		switch out.kind {
+		case refineReady:
+			return out.files, out.ready, nil
+		case refineConstrained:
+			return nil, nil, refineConstraint(out.reason)
+		case refineInvalid:
+			invalid++
+			if invalid >= 3 {
+				e := sys.Fail("shape", "refinement_invalid", "no valid ready correction after 3 submissions; the original draft is preserved", 1)
+				e.Lines = strings.Split(out.diagnostic, "\n")
+				return nil, nil, e
+			}
+		}
+		feedback = text
+	}
 }
 
 // converse runs the conversation until a ready complete candidate, an unsupported
