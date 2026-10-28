@@ -1,0 +1,93 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: sh packaging/release.sh --version "$GITHUB_REF_NAME" --output "$RUNNER_TEMP/release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+
+  install-check:
+    if: github.event_name == 'push'
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: linux-x86_64, runner: ubuntu-24.04}
+          - {target: linux-arm64, runner: ubuntu-24.04-arm}
+          - {target: darwin-arm64, runner: macos-14}
+          - {target: darwin-x86_64, runner: macos-13}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: install and check
+        run: |
+          set -e
+          prefix=$(mktemp -d)
+          sh release/install-kogen.sh --from release --version "$GITHUB_REF_NAME" --prefix "$prefix"
+          export PATH="$prefix/bin:$PATH"
+          second=$(kogen --version | cut -d' ' -f2)
+          test "$second" = "$GITHUB_REF_NAME"
+          kogen help >/dev/null
+
+  pr-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: build and install check
+        run: |
+          set -e
+          v=v0.0.0-pr
+          sh packaging/release.sh --version "$v" --output "$RUNNER_TEMP/release"
+          prefix=$(mktemp -d)
+          sh "$RUNNER_TEMP/release/install-kogen.sh" --from "$RUNNER_TEMP/release" --version "$v" --prefix "$prefix"
+          export PATH="$prefix/bin:$PATH"
+          second=$(kogen --version | cut -d' ' -f2)
+          test "$second" = "$v"
+          kogen help >/dev/null
+
+  draft-release:
+    if: github.event_name == 'push'
+    needs: install-check
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" \
+            release/kogen-"$GITHUB_REF_NAME"-*.tar.gz release/SHA256SUMS release/install-kogen.sh
