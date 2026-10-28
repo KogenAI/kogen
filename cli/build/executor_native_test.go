@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -386,6 +387,7 @@ func TestNativeRoundMapsCancellationButKeepsTheSessionsInterrupt(t *testing.T) {
 	prov := newFakeProvider(t)
 	prov.then(respondWith([]map[string]any{prov.call("shell", map[string]any{"command": "sleep 30"}), prov.call("finish", map[string]any{"summary": "x"})}, nil))
 	b := newConformanceAttempt(t, root, home, prov, true)
+	b.Config.ShellTimeout = time.Second
 	sess, _ := nativeExecutor{b: b}.Start(context.Background(), executor.Task{Brief: executor.Brief{Stable: "s", Dynamic: "d"}}, nil)
 	// The caller interrupts the Session: the round returns the interrupt, exit code intact.
 	go func() {
@@ -399,5 +401,44 @@ func TestNativeRoundMapsCancellationButKeepsTheSessionsInterrupt(t *testing.T) {
 	var in *sys.Interrupted
 	if !errors.As(err, &in) || in.Signal != "SIGTERM" {
 		t.Fatalf("error %v", err)
+	}
+}
+
+func TestNativeBoundedShellContextCancellationStops(t *testing.T) {
+	root := conformance.NewCheckout(t)
+	home := physical(t, t.TempDir())
+	seedLogin(t, home)
+	prov := newFakeProvider(t)
+	marker := filepath.Join(t.TempDir(), "started")
+	prov.then(respondWith([]map[string]any{prov.call("shell", map[string]any{"command": "echo started > '" + marker + "'; sleep 30"})}, nil))
+	b := newConformanceAttempt(t, root, home, prov, true)
+	b.Config.ShellTimeout = 10 * time.Second
+	sess, _ := nativeExecutor{b: b}.Start(context.Background(), executor.Task{Brief: executor.Brief{Stable: "s", Dynamic: "d"}}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := sess.Round(ctx, executor.Input{}); done <- err }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("shell did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	err := <-done
+	if err == nil {
+		t.Fatal("cancellation returned success")
+	}
+	for _, req := range prov.requests() {
+		for _, v := range requestInput(req) {
+			if m, ok := v.(map[string]any); ok && m["type"] == "function_call_output" && strings.Contains(fmt.Sprint(m["output"]), "timed out after") {
+				t.Fatal("cancellation returned timeout feedback")
+			}
+		}
 	}
 }

@@ -116,13 +116,12 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 		defer cancel()
 	}
 	role := b.Config.Models["build"]
+	tl := &tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: builderTools, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout}
 	rd := loop.Round{
 		Owner: "build", Role: providerRole(role), Instructions: agent.Prompt(agent.Builder),
-		Definitions: agent.AsAny(agent.Defs(builderDefs...)),
-		Tools: &tools.Tools{
-			Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: builderTools, Protected: b.Baseline, Excluded: b.Excluded,
-		},
-		Terminal: []string{agent.FinishTool},
+		Definitions: shellDefinitions(tl, builderDefs),
+		Tools:       tl,
+		Terminal:    []string{agent.FinishTool},
 	}
 	var base []any // the round's input after replay, as the stage validation sees it
 	var usages []api.Usage
@@ -278,4 +277,15 @@ func finalText(resp *provider.Response) string {
 		}
 	}
 	return text
+}
+
+// shellDefinitions keeps all other definitions unchanged while using the executing tool's policy.
+func shellDefinitions(t *tools.Tools, names []string) []any {
+	defs := agent.Defs(names...)
+	for i, name := range names {
+		if name == "shell" {
+			defs[i], _ = t.Definition(name)
+		}
+	}
+	return agent.AsAny(defs)
 }

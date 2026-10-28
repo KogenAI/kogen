@@ -1,6 +1,9 @@
 package build
 
 import (
+	"bytes"
+	"encoding/json"
+	"kogen/agent"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -347,5 +350,38 @@ func TestTheBuildLockIsHeldAndRefusesASecondBuild(t *testing.T) {
 	eq(t, "interrupted exit", first.exit, 130)
 	if _, err := os.Stat(filepath.Join(e.root, ".kogen/local/build.lock")); !os.IsNotExist(err) {
 		t.Fatal("the lock is not released")
+	}
+}
+
+func TestDefaultShellRequestAndReplayCompatibility(t *testing.T) {
+	e := newEnv(t)
+	call := e.prov.call("shell", map[string]any{"command": "printf exact"})
+	e.prov.then(sse(call))
+	e.prov.then(landScript(e.prov)...)
+	a := e.build()
+	if a.exit != 0 {
+		t.Fatal(a.shown())
+	}
+	reqs := e.prov.requests()
+	defs, _ := reqs[0]["tools"].([]any)
+	expected := agent.AsAny(agent.Defs(builderDefs...))
+	got, _ := json.Marshal(defs)
+	want, _ := json.Marshal(expected)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("default definitions changed: %s != %s", got, want)
+	}
+	found := false
+	for _, req := range reqs {
+		for _, v := range requestInput(req) {
+			if m, ok := v.(map[string]any); ok && m["type"] == "function_call_output" && m["call_id"] == call["call_id"] {
+				found = true
+				if m["output"] != "exit status: 0\nexact" {
+					t.Fatalf("replay output %v", m["output"])
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing paired replay")
 	}
 }

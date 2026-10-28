@@ -1,7 +1,7 @@
 Feature: Building
   The builder uses shell, read_file, view_image, write_file, finish and
   report_blocker, until verification is green and the review approves. No time or
-  token limit.
+  token limit; native shell calls are unbounded unless explicitly opted in.
 
   Background:
     Given a clean Kogen home
@@ -73,6 +73,23 @@ Feature: Building
     And the tool result for "shell cat a.txt missing.txt" contains "hello"
     And the tool result for "shell cat a.txt missing.txt" contains "No such file or directory"
     And the tool result for "bogus_tool" starts with "error: unknown tool"
+
+  @LOOP-5 @LOOP-11
+  Scenario: Default shell calls remain unbounded
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 2"
+    When the caller runs "kogen intent build is-even"
+    Then the tool result for "shell sleep 2" contains "exit status: 0"
+    And the exit code is 0
+
+  @LOOP-5 @LOOP-11
+  Scenario: Caller opts in to native shell bounds
+    Given the project config sets "tool_shell_timeout_seconds" to "1"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 3"
+    When the caller runs "kogen intent build is-even"
+    Then the tool result for "shell sleep 3" contains "timed out after 1s"
+    And the exit code is 0
 
   @LOOP-5
   Scenario: A command that asks for input fails at once instead of waiting

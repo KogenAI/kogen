@@ -56,6 +56,18 @@ module run_control {
     setAll(status, lock, running, signal, false, survivors, committed, exitCode, refusal),
   }
 
+  // An opted-in shell may expire. Feedback follows teardown, and only while running.
+  // This abstracts the owned group together with any previously recorded groups.
+  action timeoutCommand = all {
+    status == Running, active,
+    nondet opted = Set(true, false).oneOf()
+    opted,
+    setAll(status, lock, running, signal, false, 0, committed, exitCode, "timeout"),
+  }
+
+  run timeoutContinuesTest = setAll(Running, LiveHolder, 1, NoSignal, true, 1, false, -1, "")
+    .then(timeoutCommand).expect(status == Running and not(active) and groupAlive == 0 and refusal == "timeout")
+
   // LOOP-5: the builder stops a background process with a later command.
   action builderKillsBackground = all {
     status == Running,
@@ -110,7 +122,7 @@ module run_control {
   run explicitResumeTest = setAll(Ended, Free, 0, SigInt, false, 0, false, 130, "")
     .then(resume).expect(status == Running and lock == LiveHolder and running == 1)
 
-  action step = any { resume, start, runCommand, commandEnds, builderKillsBackground, interrupt, finish, terminate, stopDone }
+  action step = any { resume, start, runCommand, commandEnds, timeoutCommand, builderKillsBackground, interrupt, finish, terminate, stopDone }
 
   // ---- Invariants ----
   // LOOP-5 / CLI-7: when a Build ends, normally or interrupted, no recorded process group has a live process.

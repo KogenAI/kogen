@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"kogen-loop/sys"
 )
@@ -77,6 +78,7 @@ type ReviewMaterial struct{ Mode string }
 
 // Config is a validated `.kogen/project.yaml` (SET-8).
 type Config struct {
+	ShellTimeout       time.Duration
 	Setup, Fix         []string
 	Checks             []Check
 	Acceptance         *Acceptance // nil when neither run nor steps_dir is set
@@ -193,6 +195,14 @@ func validateConfig(node *yamlNode) (*Config, []problem) {
 		case "version":
 			if !(p.node.kind == kindScalar && !p.node.null && !p.node.quoted && p.node.text == "1") {
 				v.add(p.line, "version must be 1")
+			}
+		case "tool_shell_timeout_seconds":
+			n := p.node
+			seconds, err := strconv.ParseInt(n.text, 10, 64)
+			if n.kind != kindScalar || n.null || n.quoted || err != nil || seconds <= 0 || seconds > int64((1<<63-1)/time.Second) {
+				v.add(p.line, "tool_shell_timeout_seconds must be a positive representable integer")
+			} else {
+				c.ShellTimeout = time.Duration(seconds) * time.Second
 			}
 		case "commands":
 			v.commands(p.node, c)

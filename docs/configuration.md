@@ -557,3 +557,13 @@ models:
 - *Verification* is Kogen's exact-tree verification, review and commit. Neither the hook nor a worktree or permission mode counts as process isolation.
 
 **Resume.** A Build run by Claude Code cannot be resumed (its resume capability is none): `kogen intent resume` refuses its checkpoint with `candidate/resume_refused`. Inspect the preserved candidate, or start a fresh Build. The native builder's resume is unchanged, and so are its checkpoints.
+
+## Native shell time bound
+
+`tool_shell_timeout_seconds: 1` is an opt-in positive whole-second per-invocation
+limit for native Build and independent Review shell calls. The default, when absent,
+is unbounded. Timeout feedback follows owned process-group teardown; interruption
+and cancellation stop the run instead. Shape and Refine probe calls, including
+Shape worker probes, retain their five-minute behavior. Configured setup, fix,
+check and acceptance commands are unaffected. This key does not apply to the
+external `claude-code` executor.

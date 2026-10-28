@@ -99,17 +99,21 @@ type reviewIndependent struct{}
 
 // reviewRun is one independent review in progress: the pass under review and the session.
 type reviewRun struct {
-	b     *Attempt
-	pass  verify.Pass
-	sess  reviewSession
-	tools []any
+	b           *Attempt
+	pass        verify.Pass
+	sess        reviewSession
+	tools       []any
+	nativeTools *tools.Tools
 	// external: the reviewer is an external executor; its source is delivered as complete
 	// Kogen-owned prompt data (review_external.go), not as pinned parts it must read.
 	external bool
 }
 
-func reviewTools() []any {
-	return agent.AsAny(agent.Defs(slices.Concat(reviewToolNames, []string{agent.SubmitReviewTool})...))
+func (b *Attempt) reviewNativeTools() *tools.Tools {
+	return &tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout}
+}
+func reviewTools(t *tools.Tools) []any {
+	return shellDefinitions(t, slices.Concat(reviewToolNames, []string{agent.SubmitReviewTool}))
 }
 
 // Review starts the review of a green pass (REV-1): a new review number, the material and
@@ -133,7 +137,8 @@ func (reviewIndependent) Review(ctx context.Context, b *Attempt, pass verify.Pas
 		diagnostic = append(slices.Clone(diagnostic), map[string]any{"role": "user",
 			"content": "Staged plan context for this independent review." + nav})
 	}
-	tools := reviewTools()
+	nativeTools := b.reviewNativeTools()
+	tools := reviewTools(nativeTools)
 	m, err := b.materialOf(pass)
 	if err != nil {
 		return Approved{}, err
@@ -142,7 +147,7 @@ func (reviewIndependent) Review(ctx context.Context, b *Attempt, pass verify.Pas
 	if err != nil {
 		return Approved{}, err
 	}
-	r := &reviewRun{b: b, pass: pass, tools: tools, sess: reviewSession{Role: role, Input: input, Usage: zeroTokens()}}
+	r := &reviewRun{b: b, pass: pass, tools: tools, nativeTools: nativeTools, sess: reviewSession{Role: role, Input: input, Usage: zeroTokens()}}
 	return r.loop(ctx, nil, "")
 }
 
@@ -155,11 +160,12 @@ func (reviewIndependent) Resume(ctx context.Context, b *Attempt) (Approved, erro
 	if err != nil || c.Pass == nil {
 		return Approved{}, resumeRefused("the saved review state cannot be read")
 	}
-	tools := reviewTools()
+	nativeTools := b.reviewNativeTools()
+	tools := reviewTools(nativeTools)
 	if len(sess.Tools) > 0 {
 		tools = sess.Tools
 	}
-	r := &reviewRun{b: b, pass: *c.Pass, sess: sess, tools: tools}
+	r := &reviewRun{b: b, pass: *c.Pass, sess: sess, tools: tools, nativeTools: nativeTools}
 	verdicts := c.Stage != StageReview
 	if verdicts && (sess.Verdict == nil || sess.Tree == "") {
 		return Approved{}, resumeRefused("the saved review state has no verdict")
@@ -396,8 +402,9 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 		}
 		input := slices.Concat(active, tools.Replay(resp.Items))
 		calls := tools.Calls(resp.Items)
-		tl := &tools.Tools{
-			Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded,
+		tl := r.nativeTools
+		if tl == nil {
+			tl = b.reviewNativeTools()
 		}
 
 		var outs []any
