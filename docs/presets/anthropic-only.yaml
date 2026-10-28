@@ -1,0 +1,17 @@
+# Starting template only: replace empty commands with your real checks and acceptance.
+# Not verified project checks; never overwrite an existing approved configuration blindly.
+version: 1
+commands:
+  setup: []
+  fix: []
+  checks: []
+  acceptance:
+    run: null
+    steps_dir: null
+protect: []
+models:
+  shape: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
+  build: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
+  review: {provider: anthropic, model: claude-opus-5-5, effort: medium}
+shape_workers:
+  enabled: false

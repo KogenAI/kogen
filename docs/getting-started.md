@@ -30,7 +30,7 @@ It prints one line per check, with the exact fix under each `fail`:
 - `models`: every role (shape, build, review) has a stored login for its provider. Fix: `kogen provider login <provider>` (step 3).
 - `commands`: the project's checks and the acceptance runner pass on your unchanged tree. If a check fails there, fix the project or remove that check from `commands.checks` in `.kogen/project.yaml`; Kogen cannot build on a tree that is already red.
 
-Run from your home directory, doctor reports two lines that only mean you are in the wrong place:
+Run from your home directory, doctor shows what a wrong place looks like: outside a repository there is no Git and no configuration, so `git` and `config` fail; `models` fails only when you are not logged in; and `commands` is skipped because the configuration is not valid:
 
 ```sh
 cd ~
@@ -38,10 +38,14 @@ kogen doctor
 ```
 
 ```output doctor-outside-repo
+ok install - <version>; node, cucumber and quint run
 fail git - <directory> is not inside a Git repository
   fix: run this inside your project's repository (cd <repo>), or git init to start a new one
 fail config - .kogen/project.yaml is missing
   fix: in your project, run kogen init
+fail models - shape: chatgpt has no stored login; build: chatgpt has no stored login; review: chatgpt has no stored login
+  fix: kogen provider login chatgpt
+skip commands - skipped: the configuration is not valid
 ```
 
 The `git` fix is `run this inside your project's repository (cd <repo>), or git init to start a new one`: change into the repository, or start a new one with `git init`. The `config` fix is `in your project, run kogen init`: the configuration belongs to a project, so do this inside it.
@@ -72,6 +76,8 @@ kogen provider login chatgpt        # ChatGPT subscription, through your browser
 kogen provider login claude-code    # Claude Code token from claude setup-token
 kogen provider login anthropic      # Anthropic API key
 ```
+
+The automatic discovery of `kogen init` needs a ChatGPT login. With only another provider, such as an Anthropic key, use the configuration-first path in step 4 ("Without ChatGPT").
 
 Others are `supergrok`, `opencode-go` and `openai-compatible`. List what is saved (no network access):
 
@@ -122,6 +128,58 @@ ok config - .kogen/project.yaml is valid
 ok models - shape, build, review ready
 ok commands - app status=<status> in <duration>; acceptance runner reachable
 ```
+
+### Without ChatGPT
+
+Log in to your provider, for example Anthropic (or the provider you use), then write the configuration yourself instead of letting `init` discover it:
+
+```sh
+kogen provider login anthropic
+mkdir -p .kogen
+```
+
+Create `.kogen/project.yaml` with the complete example below, a Go module project. Adapt its setup, checks and acceptance to your project's real ones. The same model lines are in `docs/presets/anthropic-only.yaml` in the Kogen repository for reference.
+
+```yaml
+version: 1
+commands:
+  setup:
+    - 'go mod download'
+  fix: []
+  checks:
+    - {name: test, run: 'go test ./...'}
+  acceptance:
+    run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
+    steps_dir: 'features/steps'
+protect: []
+models:
+  shape: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
+  build: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
+  review: {provider: anthropic, model: claude-opus-5-5, effort: medium}
+shape_workers:
+  enabled: false
+```
+
+Leave `.kogen/project.yaml` uncommitted. `kogen init` then takes its leftover-configuration path and commits it as `Add Kogen configuration` together with the `.gitignore` entry for `.kogen/local/`. (If it were already committed, init would only report that Kogen is already initialized and would not add that entry.) Then run init and doctor:
+
+```sh
+kogen init
+kogen doctor
+```
+
+```text without-chatgpt-init
+Initialized Kogen in <repo>
+Commit: <commit> Add Kogen configuration
+```
+
+```text without-chatgpt-doctor
+ok git - repository <repo>
+ok config - .kogen/project.yaml is valid
+ok models - shape, build, review ready
+...
+```
+
+`kogen doctor` runs the setup, checks and acceptance runner too, so its `commands` line needs `go` installed and the project's own tests green.
 
 ## 5. Shape
 

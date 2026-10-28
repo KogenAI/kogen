@@ -263,6 +263,7 @@ conservation window); there is no account-credit toggle.
 
 Complete version-1 starting templates (not verified project checks):
 - [OpenCode Go only](presets/opencode-go-only.yaml): Kimi/high for all roles.
+- [Anthropic only](presets/anthropic-only.yaml): Sonnet 5.5/medium for shape and build, Opus 5.5/medium for review.
 - [SuperGrok only](presets/supergrok-only.yaml): Grok high/medium/high.
 - [Three subscriptions](presets/three-subscriptions.yaml): ChatGPT GPT-6.1-sol/high,
   Go Kimi/high, SuperGrok Grok/high.
