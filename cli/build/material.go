@@ -978,19 +978,25 @@ func (b *Attempt) reviewDelivery(input, kept []any, tree string) (map[string]any
 			image["read_candidate"], image["current"], image["in_window"] = e.Meta["read_candidate"], e.Meta["read_candidate"] == tree, window[k]
 		}
 	}
+	note := "Native delivery facts, not findings, judgments, approval or proof. Pinned parts delivered " +
+		"by complete read_file outputs stay counted for the approval check across working-window resets; " +
+		"a pinned part is frozen evidence of its tree, so reading it again returns the same text. Pixels of " +
+		"images not in_window are archived, not in this window: use view_image again to inspect them. " +
+		"Parts or images of a tree other than candidate_tree are not current. "
+	if b.onDemand() {
+		note += "The manifest/catalog lists parts and files; retrieve by part id or by path and line range. " +
+			"Read only the parts you need; no part is required before a verdict. Nothing is appended automatically."
+	} else {
+		note += "Kogen also appends unread pinned parts as native source data messages; they count once a completed response follows them. " +
+			"Read unread pinned parts in batches of about 10 read_file calls per response, not one per response; " +
+			"use a smaller batch only after a native not-delivered notice shows a batch did not fit. " +
+			"A not-delivered read is not counted and must be read again."
+	}
 	return map[string]any{
 		"review": b.Review,
 		"source": source,
 		"images": images,
-		"note": "Native delivery facts, not findings, judgments, approval or proof. Pinned parts delivered " +
-			"by complete read_file outputs stay counted for the approval check across working-window resets; " +
-			"a pinned part is frozen evidence of its tree, so reading it again returns the same text. Pixels of " +
-			"images not in_window are archived, not in this window: use view_image again to inspect them. " +
-			"Parts or images of a tree other than candidate_tree are not current. " +
-			"Kogen also appends unread pinned parts as native source data messages; they count once a completed response follows them. " +
-			"Read unread pinned parts in batches of about 10 read_file calls per response, not one per response; " +
-			"use a smaller batch only after a native not-delivered notice shows a batch did not fit. " +
-			"A not-delivered read is not counted and must be read again.",
+		"note":   note,
 	}, nil
 }
 
