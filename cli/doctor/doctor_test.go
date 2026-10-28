@@ -168,3 +168,15 @@ func TestCommandsChecksAndAcceptanceRunner(t *testing.T) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
+
+func TestOutsideRepositoryAndMissingConfigFixes(t *testing.T) {
+	s := &sys.Session{Env: os.Environ()}
+	_, c := checkGit(s, Input{Project: t.TempDir()})
+	if c.Status != "fail" || c.Fix != "run this inside your project's repository (cd <repo>), or git init to start a new one" {
+		t.Fatalf("%+v", c)
+	}
+	dir := gitRepo(t)
+	if c, _, _ := checkConfig(nil, Input{Project: dir}); c.Status != "fail" || c.Fix != "in your project, run kogen init" {
+		t.Fatalf("%+v", c)
+	}
+}

@@ -143,7 +143,7 @@ func checkInstall(s *sys.Session, in Input) Check {
 func checkGit(s *sys.Session, in Input) (*git.Repo, Check) {
 	repo, err := git.OpenReadOnly(in.Project, s.Env)
 	if err != nil {
-		return nil, fail("git", in.Project+" is not inside a Git repository", "git init")
+		return nil, fail("git", in.Project+" is not inside a Git repository", "run this inside your project's repository (cd <repo>), or git init to start a new one")
 	}
 	if !repo.CanCommit() {
 		return repo, fail("git", "no Git user.name and user.email", gitIdentityFix)
@@ -158,7 +158,7 @@ func checkConfig(repo *git.Repo, in Input) (Check, *project.Config, bool) {
 	}
 	text, err := os.ReadFile(filepath.Join(root, project.ConfigPath))
 	if err != nil {
-		return fail("config", project.ConfigPath+" is missing", "kogen init"), project.ReadableConfig(""), false
+		return fail("config", project.ConfigPath+" is missing", "in your project, run kogen init"), project.ReadableConfig(""), false
 	}
 	cfg, err := project.ParseConfig(string(text), filepath.Join(root, project.ConfigPath))
 	if err == nil {
