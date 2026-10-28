@@ -452,6 +452,10 @@ type shaping struct {
 	docs      []map[string]any // documentation tool results of this conversation
 	window    *window
 	cacheID   string // this conversation's cache identity
+
+	auditResult *auditResult   // the request audit; nil when disabled
+	auditUsage  provider.Usage // the native audit call's tokens
+	auditRounds int            // the external audit session's rounds
 }
 
 func (sh *shaping) elapsed() int64 { return time.Since(sh.started).Milliseconds() / 1000 }
@@ -516,6 +520,14 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if sh.cfg.ShapeAudit.Enabled {
+		if err := sh.audit(ctx, st.Request); err != nil {
+			return 0, err
+		}
+		if m, ok := blocks[1].(map[string]any); ok {
+			m["text"] = textOf(m["text"]) + sh.auditResult.block()
+		}
+	}
 	input := []any{map[string]any{"role": "user", "content": blocks}}
 	sh.window = newShapeWindow(sh.root, sh.slug, input)
 	sh.cacheID = startConversation(sh.ev, "shape")
@@ -527,7 +539,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 		var x *extSession
 		res, x, err = sh.converseExternal(ctx, blocks)
 		if x != nil {
-			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds, time.Since(t0).Milliseconds())
+			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds+sh.auditRounds, time.Since(t0).Milliseconds())
 		}
 		if err != nil {
 			return 0, err
@@ -541,7 +553,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 			}
 			return 0, err
 		}
-		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, usage.Line(), time.Since(t0).Milliseconds())
+		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, sh.auditUsage.Add(usage).Line(), time.Since(t0).Milliseconds())
 	}
 
 	switch res.kind {
@@ -978,6 +990,9 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 		return "invalid submission:\n" + strings.Join(problems, "\n") +
 				"\nNo proposals from this submission were retained; earlier proposals are unchanged.",
 			outcome{kind: outInvalid, problems: problems}, nil
+	}
+	if lines := sh.auditGate(sub); lines != nil {
+		return strings.Join(lines, "\n"), outcome{kind: outInvalid, problems: lines}, nil
 	}
 	switch {
 	case sub.questions != nil:

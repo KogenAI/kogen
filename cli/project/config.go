@@ -64,6 +64,9 @@ type Workers struct {
 	Roles   map[string]Role
 }
 
+// Audit is `shape_audit`: whether Shape audits the request before its conversation.
+type Audit struct{ Enabled bool }
+
 // Config is a validated `.kogen/project.yaml` (SET-8).
 type Config struct {
 	Setup, Fix   []string
@@ -72,6 +75,7 @@ type Config struct {
 	Protect      []string
 	Models       map[string]Role // "shape", "build", "review"; defaults where the file says nothing
 	ShapeWorkers Workers
+	ShapeAudit   Audit
 }
 
 // ModelRoles lists the model roles in the order the template writes them.
@@ -186,6 +190,8 @@ func validateConfig(node *yamlNode) (*Config, []problem) {
 			c.Protect = v.strings(p.node, "protect")
 		case "shape_workers":
 			c.ShapeWorkers = v.workers(p.node)
+		case "shape_audit":
+			c.ShapeAudit = v.audit(p.node)
 		case "models":
 			c.Models = v.models(p.node)
 		default:
@@ -459,6 +465,27 @@ func modelEffort(node *yamlNode, nonBlank bool) (model, effort string, ok bool) 
 		return "", "", false
 	}
 	return m, e, true
+}
+
+func (v *validator) audit(node *yamlNode) Audit {
+	var a Audit
+	if node.kind != kindMap {
+		v.add(node.line, "shape_audit must be a mapping")
+		return a
+	}
+	for _, p := range node.pairs {
+		if p.key != "enabled" {
+			v.add(p.line, "unknown key "+p.key)
+			continue
+		}
+		n := p.node
+		if n.kind == kindScalar && !n.null && !n.quoted && (n.text == "true" || n.text == "false") {
+			a.Enabled = n.text == "true"
+		} else {
+			v.add(p.line, "shape_audit.enabled must be a Boolean")
+		}
+	}
+	return a
 }
 
 func (v *validator) workers(node *yamlNode) Workers {

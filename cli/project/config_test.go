@@ -276,6 +276,9 @@ func TestParseConfigMoreRules(t *testing.T) {
 		{"models missing effort", "version: 1\nmodels:\n  build: {model: m}\n", []string{"line 3: models.build must be {model, effort}"}},
 		{"models extra key", "version: 1\nmodels:\n  build: {model: m, effort: e, extra: 1}\n", []string{"line 3: models.build must be {model, effort}"}},
 		{"models number model", "version: 1\nmodels:\n  build: {model: 1, effort: high}\n", []string{"line 3: models.build must be {model, effort}"}},
+		{"audit scalar", "version: 1\nshape_audit: x\n", []string{"line 2: shape_audit must be a mapping"}},
+		{"audit unknown key", "version: 1\nshape_audit:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
+		{"audit enabled not boolean", "version: 1\nshape_audit:\n  enabled: 'true'\n", []string{"line 3: shape_audit.enabled must be a Boolean"}},
 		{"workers scalar", "version: 1\nshape_workers: x\n", []string{"line 2: shape_workers must be a mapping"}},
 		{"workers unknown key", "version: 1\nshape_workers:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
 		{"workers enabled not boolean", "version: 1\nshape_workers:\n  enabled: 'true'\n", []string{"line 3: shape_workers.enabled must be a Boolean"}},
@@ -292,6 +295,15 @@ func TestParseConfigMoreRules(t *testing.T) {
 				t.Errorf("lines %q, want %q", se.Lines, c.lines)
 			}
 		})
+	}
+}
+
+func TestParseConfigAudit(t *testing.T) {
+	if mustParse(t, "version: 1\n").ShapeAudit.Enabled {
+		t.Error("shape_audit defaults on")
+	}
+	if !mustParse(t, "version: 1\nshape_audit:\n  enabled: true\n").ShapeAudit.Enabled {
+		t.Error("shape_audit.enabled: true is off")
 	}
 }
 

@@ -41,6 +41,12 @@ A terminal `response.completed` with omitted output or `output: []` supplies fin
 
 Successful readiness with ordinary baseline failures returns their actual bounded observations to the same shaping/refinement conversation. The model repairs demonstrated fixture defects. After inspecting legitimate missing-feature red, submit the smallest eligible owned artifact with its exact current candidate whole body, including previously proposed corrections. The files array must be nonempty; if only one eligible large artifact exists, submit its entire body. Omitted well-formed proposals remain retained: do not retransmit large unchanged prose/helpers or restore original disk bytes for acknowledgment. Publication and acknowledgment still concern the exact complete package. Exact unchanged full-baseline/HEAD acknowledgment reuses the check. Approval cards show the same checked diagnostics and exit status, including cache hits. Acknowledgment cannot guarantee every later fixture is sound.
 
+### Optional request audit
+
+`shape_audit: {enabled: true}` (default off; `enabled` must be a Boolean, other keys are refused) adds, once per `kogen intent shape` that reaches the model conversation, one fresh read-only call on the shape route that sees only the request text. It lists examples, rules and their cells and reports defects: `conflict` (two statements, different results for one input), `precedence` (no stated winner) and `undefined` (a missing name). The answer is recorded as one `request_audit` event, given to the shaper as lower-authority data, and its tokens or round count join the usage line. An answer that is not a valid `submit_audit` payload stops Shape with `shape/audit_invalid`.
+
+With defects, every questions or files submission is checked by exact substrings before anything is written: a defect is covered by a `## Decisions` line holding its `exposing_input` and not both its results, or by a question holding both quotes. Otherwise the submission is invalid with `Request audit: N defects are not decided or asked; decide each with its exposing input or ask with both quotes:` and one line per uncovered defect. Blocked reports are not gated. With the key absent Shape is unchanged.
+
 ### Optional native Shape workers
 
 Workers are an opt-in trial, not an initialization default. No worker is enabled

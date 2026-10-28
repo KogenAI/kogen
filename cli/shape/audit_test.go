@@ -1,0 +1,83 @@
+package shape
+
+import (
+	"strings"
+	"testing"
+
+	"kogen/executor"
+)
+
+func TestUncoveredDefects(t *testing.T) {
+	defect := map[string]any{"kind": "conflict", "quote_a": "QA text", "quote_b": "QB text", "exposing_input": "f(0)", "result_a": "True", "result_b": "False"}
+	undefined := map[string]any{"kind": "undefined", "quote_a": "makes a gadget", "quote_b": "Widget", "exposing_input": "any", "result_a": "", "result_b": ""}
+	intent := func(lines ...string) string {
+		return "# T\n\n## Decisions\n" + strings.Join(lines, "\n") + "\n\n## Tests\n- f(0) returns True and False\n"
+	}
+	ask := func(text string) []map[string]any { return []map[string]any{{"question": text}} }
+	cases := []struct {
+		name      string
+		defect    map[string]any
+		intent    string
+		questions []map[string]any
+		covered   bool
+	}{
+		{"decision with one result", defect, intent("- f(0) returns True. (source: request)"), nil, true},
+		{"decision with both results", defect, intent("- f(0) returns True or False."), nil, false},
+		{"decision without the input", defect, intent("- Other."), nil, false},
+		{"input outside Decisions", defect, "## Decisions\n- x\n\n## Tests\n- f(0) returns True\n", nil, false},
+		{"question with both quotes", defect, "", ask("QA text but QB text?"), true},
+		{"question with one quote", defect, "", ask("QA text?"), false},
+		{"undefined asked with the name", undefined, "", ask("makes a gadget: what is Widget?"), true},
+		{"undefined asked without the name", undefined, "", ask("makes a gadget?"), false},
+	}
+	for _, c := range cases {
+		got := uncoveredDefects([]map[string]any{c.defect}, c.intent, c.questions)
+		if (len(got) == 0) != c.covered {
+			t.Errorf("%s: uncovered %v", c.name, got)
+		}
+	}
+}
+
+func TestAuditGateFeedback(t *testing.T) {
+	sh := &shaping{slug: "s", proposed: map[string]string{}, auditResult: &auditResult{defects: []map[string]any{
+		{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)", "result_a": "T", "result_b": "F"}}}}
+	got := sh.auditGate(submission{questions: []map[string]any{{"question": "x"}}})
+	want := []string{"Request audit: 1 defects are not decided or asked; decide each with its exposing input or ask with both quotes:", "quote_a: QA | quote_b: QB | exposing_input: f(0)"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("feedback %q", got)
+	}
+	if sh.auditGate(submission{blocked: true}) != nil {
+		t.Error("a blocked report was gated")
+	}
+}
+
+// TestExternalShapeAudit: an external shaper runs the audit as one fresh session with the audit
+// schema, records the event, and applies the same gate to its first submission.
+func TestExternalShapeAudit(t *testing.T) {
+	f := newShpFx(t)
+	f.useExternalShape(6)
+	f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"shape_audit:\n  enabled: true\n")
+	f.git("add", ".kogen/project.yaml")
+	f.git("commit", "-qm", "audit")
+	audit := map[string]any{
+		"examples": []any{map[string]any{"quote": "QA"}}, "rules": []any{map[string]any{"quote": "QB"}},
+		"cells":   []any{map[string]any{"example": 0, "rule": 0, "result": "conflicts"}},
+		"defects": []any{map[string]any{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "is_even(0)", "result_a": "True", "result_b": "False"}},
+	}
+	x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){result(audit), result(shpFiles())}}
+	f.shapeWith(x, "Add calc.is_even(n). QA QB")
+	if len(x.starts) != 2 {
+		t.Fatalf("%d sessions", len(x.starts))
+	}
+	shpContains(t, "audit schema", string(x.starts[0].Schema), "exposing_input")
+	shpContains(t, "audit task", x.starts[0].Brief.Stable, "Add calc.is_even(n). QA QB")
+	if strings.Contains(x.starts[0].Brief.Stable, "# Calc") {
+		t.Error("the audit saw repository context")
+	}
+	shpContains(t, "feedback", x.inputs[2].Feedback, "Request audit: 1 defects are not decided or asked; decide each with its exposing input or ask with both quotes:\nquote_a: QA | quote_b: QB | exposing_input: is_even(0)")
+	if n := len(shpNamed(f.events(), "request_audit")); n != 1 {
+		t.Fatalf("%d request_audit events", n)
+	}
+	shapeAbsent(t, f)
+	noNativeRequests(t, f)
+}
