@@ -30,6 +30,8 @@ The Go tool layer offers an opt-in per-call `tools.Tools.ShellTimeout` (nonposit
 
 Process groups: `sys.Options.KillGroupOnExit` (opt-in) sweeps a command's group after it ends; `RefuseForeignKill` refuses `pkill`/`killall` and kills of pids this run did not create (the `shell` tool enables it). Neither reaches processes that left the group (`setsid`, daemons), and the filter is a text filter, not a sandbox; see the [contract](docs/contract/loop-v1.md).
 
+Optional loop safety stops (Go library): `loop.Round.MaxRounds` (0 is unlimited) stops a run that would continue with `*loop.RoundLimitError`, and `loop.Hooks.Progress` (nil disables) returns a per-round fingerprint; `loop.NoProgressRounds` (3) identical consecutive fingerprints stop it with `*loop.NoProgressError`. There is no default for `MaxRounds` and none for the progress hook; see the [contract](docs/contract/loop-v1.md#round-limit-and-no-progress-stop-go-library).
+
 ## Test
 
 Tests use recorded/fake providers and private test credentials, not paid model calls:

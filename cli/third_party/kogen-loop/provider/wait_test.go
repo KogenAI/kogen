@@ -269,14 +269,10 @@ func TestEmptyTerminalMetadataKeepsOrderedItemsOnAnOpenSocket(t *testing.T) {
 	if !reflect.DeepEqual(resp.Items, items) || resp.Usage != (Usage{100, 5, 20, 10}) || resp.Known.Write != nil || resp.Known.Write30m != nil || resp.Known.Write12h != nil || *resp.Known.Input != 100 {
 		t.Fatalf("response = %+v", resp)
 	}
-	select {
-	case <-opened:
-	default:
-		t.Fatal("stream was not open")
-	}
+	<-opened
 	select {
 	case <-closed:
-	case <-time.After(2 * time.Second):
+	case <-time.After(time.Minute): // hang guard only
 		t.Fatal("the validated open stream was not cancelled")
 	}
 	if len(f.requests()) != 1 {

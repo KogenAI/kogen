@@ -144,9 +144,9 @@ func openEvents(opened, closed chan struct{}, evs ...any) handler {
 		close(opened)
 		select {
 		case <-r.Context().Done():
-		case <-time.After(5 * time.Second):
+			close(closed)
+		case <-time.After(5 * time.Second): // fallback frees the handler; never signals closed
 		}
-		close(closed)
 	}
 }
 

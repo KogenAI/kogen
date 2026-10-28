@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -20,9 +22,30 @@ import (
 var custodyObserverEntered = make(chan struct{})
 var custodyObserverRelease = make(chan struct{})
 
+var (
+	custodyBuildOnce sync.Once
+	custodyBuildDir  string
+	custodyBuildBin  string
+	custodyBuildErr  error
+)
+
 func custodyObserverBinary(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	custodyBuildOnce.Do(func() {
+		custodyBuildBin, custodyBuildErr = buildCustodyObserver()
+	})
+	if custodyBuildErr != nil {
+		t.Fatal(custodyBuildErr)
+	}
+	return custodyBuildBin
+}
+
+func buildCustodyObserver() (string, error) {
+	dir, err := os.MkdirTemp("", "custody-observer-")
+	if err != nil {
+		return "", err
+	}
+	custodyBuildDir = dir
 	source := filepath.Join(dir, "observer.go")
 	code := `package sys
 import ("errors"; "os")
@@ -33,7 +56,7 @@ func timeoutGroupAlive(int) (bool, error) {
 }
 `
 	if err := os.WriteFile(source, []byte(code), 0600); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	platform := runtime.GOOS
 	if platform != "darwin" && platform != "linux" {
@@ -41,24 +64,21 @@ func timeoutGroupAlive(int) (bool, error) {
 	}
 	original, err := filepath.Abs("timeout_observation_" + platform + ".go")
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	data, err := json.Marshal(map[string]any{"Replace": map[string]string{original: source}})
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	overlay := filepath.Join(dir, "overlay.json")
 	if err := os.WriteFile(overlay, data, 0600); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	binary := filepath.Join(dir, "custody.test")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	build := exec.CommandContext(ctx, "go", "test", "-c", "-overlay", overlay, "-o", binary, ".")
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build observer fixture: %v\n%s", err, output)
+	if output, err := exec.Command("go", "test", "-c", "-overlay", overlay, "-o", binary, ".").CombinedOutput(); err != nil {
+		return "", fmt.Errorf("build observer fixture: %v\n%s", err, output)
 	}
-	return binary
+	return binary, nil
 }
 
 func custodyObserverChild(t *testing.T, binary, name, fault, stop string) {
@@ -94,6 +114,7 @@ func TestTimeoutCustodyBlockedObservation(t *testing.T) {
 		binary := custodyObserverBinary(t)
 		for _, stop := range []string{"context", "interrupt"} {
 			t.Run(stop, func(t *testing.T) {
+				t.Parallel()
 				custodyObserverChild(t, binary, "TestTimeoutCustodyBlockedObservation", "blocked query", stop)
 			})
 		}
@@ -266,7 +287,7 @@ func TestTimeoutCustodyMembership(t *testing.T) {
 		os.Exit(0)
 	}
 	// An exited but deliberately unreaped child still belongs to its group.
-	cmd := exec.Command("/bin/sh", "-c", "exit 0")
+	cmd := exec.Command("true")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)

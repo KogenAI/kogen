@@ -3,6 +3,11 @@
 // ends the round with a terminal tool call or with an answer that has no tool call. A round
 // ending is the model's claim, never proof that the work is done.
 //
+// Round.MaxRounds (0: no limit, no default) stops a run that would continue after that many
+// requests with *RoundLimitError. Hooks.Progress (nil: disabled, no default) returns a
+// fingerprint after each continuing round; NoProgressRounds identical ones stop the run with
+// *NoProgressError, checked before the round limit.
+//
 // Run is the engine. Callers attach custody, checkpoints, events and policy with Hooks and
 // intercept calls with Hooks.HandleCall; Session is the standalone multi-round conversation.
 package loop
@@ -138,6 +143,33 @@ type Hooks struct {
 	BeforeCall    func(ctx context.Context, call tools.Call, input []any) error
 	HandleCall    func(ctx context.Context, call tools.Call) (Handled, error)
 	AfterCall     func(ctx context.Context, call tools.Call, out tools.Output, terminal bool, input []any) error
+	// Progress is called after each round that did not end (after its calls) with the 1-based
+	// round number and returns a progress fingerprint. nil disables the no-progress stop;
+	// there is no default. An error stops the run and is returned unchanged.
+	Progress func(ctx context.Context, round int) (string, error)
+}
+
+// NoProgressRounds is the number of consecutive identical Progress fingerprints that stop a
+// run with NoProgressError. It is a constant, not a setting.
+const NoProgressRounds = 3
+
+// RoundLimitError is returned by Run when Round.MaxRounds requests were sent and the round
+// would have continued. Rounds is the number of rounds run.
+type RoundLimitError struct{ Rounds int }
+
+func (e *RoundLimitError) Error() string {
+	return fmt.Sprintf("loop: round limit reached after %d rounds", e.Rounds)
+}
+
+// NoProgressError is returned by Run when NoProgressRounds consecutive rounds returned an
+// identical Progress fingerprint. Rounds holds those round numbers.
+type NoProgressError struct {
+	Rounds      []int
+	Fingerprint string
+}
+
+func (e *NoProgressError) Error() string {
+	return fmt.Sprintf("loop: no progress in rounds %v (fingerprint %q)", e.Rounds, e.Fingerprint)
 }
 
 // Round describes one round.
@@ -148,6 +180,7 @@ type Round struct {
 	Definitions  []any        // tool definitions sent to the model
 	Tools        *tools.Tools // executes non-handled calls (enabled set, protected/excluded paths)
 	Terminal     []string     // names that end the round without execution; default ["finish"]
+	MaxRounds    int          // stop with RoundLimitError after this many requests when the round would continue; 0 is no limit (no default)
 }
 
 // Ending is how a round ended. Both endings are model claims.
@@ -200,6 +233,8 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 		defer custody(ctx, rd.Tools.Session)()
 	}
 	requests := 0
+	var streak []int
+	var fingerprint string
 	for {
 		if h.BeforeRequest != nil {
 			if err := h.BeforeRequest(ctx, input); err != nil {
@@ -286,6 +321,24 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 		}
 		if last == nil && len(calls) > 0 {
 			input = slices.Concat(input, outs)
+			stop := Result{Input: input, Response: resp, Requests: requests}
+			if h.Progress != nil {
+				fp, err := h.Progress(ctx, requests)
+				if err != nil {
+					return Result{}, err
+				}
+				if len(streak) > 0 && fp == fingerprint {
+					streak = append(streak, requests)
+				} else {
+					streak, fingerprint = []int{requests}, fp
+				}
+				if len(streak) >= NoProgressRounds {
+					return stop, &NoProgressError{Rounds: streak, Fingerprint: fp}
+				}
+			}
+			if rd.MaxRounds > 0 && requests >= rd.MaxRounds {
+				return stop, &RoundLimitError{Rounds: requests}
+			}
 			continue
 		}
 		res := Result{Ending: EndNoCall, Terminal: last, Input: slices.Concat(input, outs), Response: resp, Requests: requests}

@@ -22,7 +22,11 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	EnableSupervisor()
-	os.Exit(m.Run())
+	code := m.Run()
+	if custodyBuildDir != "" {
+		os.RemoveAll(custodyBuildDir)
+	}
+	os.Exit(code)
 }
 
 func session(t *testing.T) *Session {
