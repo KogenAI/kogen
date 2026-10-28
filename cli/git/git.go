@@ -351,6 +351,18 @@ func (r *Repo) Identity() string {
 	return m[1]
 }
 
+// CanCommit is true when Git produces both an author and a committer identity from
+// config or the environment, never by guessing from the host.
+func (r *Repo) CanCommit() bool {
+	for _, v := range []string{"GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"} {
+		res, err := r.exec(r.Dir, nil, nil, nil, "-c", "user.useConfigOnly=true", "var", v)
+		if err != nil || res.Status != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // RequireIdentity is Identity, or environment/git_identity_missing (exit 3).
 func (r *Repo) RequireIdentity() (string, error) {
 	if who := r.Identity(); who != "" {

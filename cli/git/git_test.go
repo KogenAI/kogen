@@ -338,3 +338,27 @@ func TestChangedPathsStagedRenameIntoAnIntentFolderReportsBothPaths(t *testing.T
 	got := must(f.ChangedPaths())
 	sameSet(t, "paths", got, []string{".kogen/intents/staged/original-readme.md", "README.md"})
 }
+
+func TestCanCommit(t *testing.T) {
+	f := newFixture(t)
+	if !f.CanCommit() {
+		t.Fatal("configured identity refused")
+	}
+	author := []string{"GIT_AUTHOR_NAME=A", "GIT_AUTHOR_EMAIL=a@example.invalid"}
+	committer := []string{"GIT_COMMITTER_NAME=C", "GIT_COMMITTER_EMAIL=c@example.invalid"}
+	bare := func(extra ...string) *Repo {
+		root := t.TempDir()
+		env := testEnv(extra...)
+		run(t, root, env, "init", "-q")
+		return New(root, env)
+	}
+	if bare().CanCommit() {
+		t.Fatal("unconfigured identity accepted")
+	}
+	if bare(author...).CanCommit() {
+		t.Fatal("author-only environment accepted")
+	}
+	if !bare(append(author, committer...)...).CanCommit() {
+		t.Fatal("environment identity refused")
+	}
+}

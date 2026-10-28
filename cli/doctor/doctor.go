@@ -145,11 +145,10 @@ func checkGit(s *sys.Session, in Input) (*git.Repo, Check) {
 	if err != nil {
 		return nil, fail("git", in.Project+" is not inside a Git repository", "git init")
 	}
-	if who := repo.Identity(); who == "" {
+	if !repo.CanCommit() {
 		return repo, fail("git", "no Git user.name and user.email", gitIdentityFix)
-	} else {
-		return repo, ok("git", "repository "+repo.Dir+"; identity "+who)
 	}
+	return repo, ok("git", "repository "+repo.Dir)
 }
 
 func checkConfig(repo *git.Repo, in Input) (Check, *project.Config, bool) {
