@@ -11,6 +11,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/executor"
+	"kogen/internal/research"
 	"kogen/project"
 )
 
@@ -175,7 +176,7 @@ func (sh *shaping) decisionCheck(ctx context.Context, intent string) ([]string, 
 		}, cacheID)
 		call := sh.ev.BeginCall("shape", "", revision.Map(), "decision check", sh.role).Sized(sh.client, req)
 		t0 := time.Now()
-		resp, err := sh.client.Respond(ctx, sh.s, req, call)
+		resp, err := research.Respond(ctx, sh.client, sh.s, req, call)
 		call.End(resp, err)
 		if err != nil {
 			if e, ok := sys.AsError(err); ok && e.Class == "provider" {

@@ -19,6 +19,7 @@ import (
 	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/git"
+	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -354,7 +355,7 @@ func materialOpening(authority, source string, diagnostic []any) []any {
 // force pins even a source that fits.
 func (b *Attempt) materialPrepare(tree string, m materialSet, role project.Role, instructions string, defs, diagnostic []any, force bool) ([]any, error) {
 	measure := func(items []any) (tools.Measurement, error) {
-		return tools.Measure(b.bodyOf(role, instructions, items, defs, "review"), providerRole(role))
+		return research.Measure(b.bodyOf(role, instructions, items, defs, "review"), providerRole(role))
 	}
 	full := materialOpening(m.Authority, m.Source, diagnostic)
 	fit, err := measure(full)
@@ -451,7 +452,7 @@ func (b *Attempt) materialPrepare(tree string, m materialSet, role project.Role,
 		return nil, sys.Fail("candidate", "context_budget_exceeded", fmt.Sprintf(
 			"review: mandatory authority/catalog %d bytes exceeds ceiling %d, output reserve %d tokens; checkpoint %s/checkpoint.json. "+
 				"Inspect custody; ordinary Refine and new exact approval are required if scope must change.",
-			bound.RenderedBytes, tools.InputBudgetBytes, reservedOutputTokens, b.Run.Dir), 1)
+			bound.RenderedBytes, research.InputBudget(), reservedOutputTokens, b.Run.Dir), 1)
 	}
 
 	if err := materialPrivateDir(filepath.Dir(dir)); err != nil {
@@ -886,7 +887,7 @@ func (b *Attempt) prefillSource(role project.Role, instructions string, defs, in
 		if err != nil {
 			return false, err
 		}
-		m, err := tools.Measure(b.bodyOf(role, instructions, candidate, defs, "review"), providerRole(role))
+		m, err := research.Measure(b.bodyOf(role, instructions, candidate, defs, "review"), providerRole(role))
 		if err != nil {
 			return false, err
 		}

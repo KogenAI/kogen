@@ -37,6 +37,10 @@ type Client struct {
 	// Version is Kogen's version line (`kogen dev+12345678 (test)`); its second word names
 	// Kogen in SuperGrok's user-agent.
 	Version string
+	// ResponseBudget lowers the absolute budget of one logical Respond call. Zero keeps
+	// the package ResponseBudget (30 minutes); a nonzero value must be in [1s, 30m].
+	// Request.Budget can only shorten it further.
+	ResponseBudget time.Duration
 
 	httpOnce sync.Once
 	defHTTP  *http.Client
@@ -102,6 +106,7 @@ type call struct {
 	info     Info
 	home     string
 	deadline time.Time // zero: no budget
+	expiry   string    // the duration text of the expiry detail; empty: the default 30 minutes
 	baseURL  string    // the role's base_url (openai-compatible only)
 }
 
@@ -158,7 +163,11 @@ func (k *call) interrupted() error {
 }
 
 func (k *call) expired() error {
-	return providerFail("unavailable", k.info.Label+" response wait exceeded 30 minutes")
+	text := k.expiry
+	if text == "" {
+		text = "30 minutes"
+	}
+	return providerFail("unavailable", k.info.Label+" response wait exceeded "+text)
 }
 
 // check is Kogen's `remaining` without the time: an interrupt or an expired budget stops the call.

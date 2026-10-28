@@ -14,6 +14,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/agent"
+	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -110,7 +111,7 @@ type reviewRun struct {
 }
 
 func (b *Attempt) reviewNativeTools() *tools.Tools {
-	return &tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout}
+	return research.ApplyTools(&tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout})
 }
 func reviewTools(t *tools.Tools) []any {
 	return shellDefinitions(t, slices.Concat(reviewToolNames, []string{agent.SubmitReviewTool}))
@@ -434,7 +435,7 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 				}
 				if probs != nil {
 					problems = probs
-					outs = append(outs, call.Output(tools.Cut("invalid verdict:\n"+strings.Join(probs, "\n"))))
+					outs = append(outs, call.Output(research.CutText("invalid verdict:\n"+strings.Join(probs, "\n"))))
 				} else {
 					verdict = v
 					outs = append(outs, call.Output("accepted"))
@@ -444,7 +445,7 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 				if err != nil {
 					return reviewVerdict{}, err
 				}
-				result := out.Cut()
+				result := research.Cut(out)
 				if event := tools.ReadEvent(call, result, "review"); event != nil {
 					b.Run.Event(event)
 				}

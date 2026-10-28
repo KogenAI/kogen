@@ -13,6 +13,7 @@ import (
 	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/executor"
+	"kogen/internal/research"
 	"kogen/project"
 )
 
@@ -116,7 +117,7 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 		defer cancel()
 	}
 	role := b.Config.Models["build"]
-	tl := &tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: builderTools, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout}
+	tl := research.ApplyTools(&tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: builderTools, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout})
 	rd := loop.Round{
 		Owner: "build", Role: providerRole(role), Instructions: agent.Prompt(agent.Builder),
 		MaxRounds:   b.deps.NativeRoundLimits["build"],

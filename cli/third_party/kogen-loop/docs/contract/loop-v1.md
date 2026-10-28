@@ -116,7 +116,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (Res
    1. Return `ctx.Err()` if it's set.
    2. `BeforeCall(call, input ++ outs)`.
    3. If the name is in `Terminal`, mark it terminal and don't execute it. When a batch has several terminal calls, the **last** one is `Result.Terminal`, as Kogen's builder keeps it; earlier ones stay unanswered.
-   4. Otherwise take `HandleCall` if it's set and handled; if not, `out, err := Tools.CallContext(ctx, call)` and use `out.Cut()`. `err` is returned unchanged as a stop for shell interruption, context cancellation/deadline during positive-timeout custody, or timeout observation failure.
+   4. Otherwise take `HandleCall` if it's set and handled; if not, `out, err := Tools.CallContext(ctx, call)` and use `Tools.Cut(out)` (configured budgets; `out.Cut()` when `Tools` is nil). Intercepted `HandleCall` output stays host-owned and is not cut. `err` is returned unchanged as a stop for shell interruption, context cancellation/deadline during positive-timeout custody, or timeout observation failure.
    5. `AfterCall(call, out, terminal, input ++ outs)`.
    6. Append `call.Output(out)` to `outs` unless the call is terminal.
 6. If no call is terminal and `len(calls) > 0`, set `input = input ++ outs` and go to step 1.
@@ -134,6 +134,42 @@ Both stops are optional and caller-enabled; neither has a default (no default `M
 - `Hooks.Progress func(ctx, round int) (string, error)`: nil disables the no-progress stop. It is called after each round that did not end, with the 1-based round number, and returns a progress fingerprint. An error stops the run and is returned unchanged.
 - `const NoProgressRounds = 3`: when that many consecutive rounds return an identical fingerprint, `Run` returns `*NoProgressError{Rounds, Fingerprint}` (e.g. `[1 2 3]`) with the Result populated as above. A differing fingerprint resets the count.
 - Order after a continuing round: Progress hook, no-progress check, round-limit check; no-progress wins when both trigger.
+
+### Input window budget (Go library)
+
+`InputBudgetBytes int` on `loop.FailOverBudget` and `loop.Direct` is a library-only lower-only option: no task JSON field, CLI flag or `SessionConfig` option exists. Zero keeps today's inclusive 524288-byte ceiling. A nonzero value must be in [65536, 524288]; negatives and out-of-range values return `loop/invalid_task` (exit 2) naming `InputBudgetBytes` and the range, before anything is sent. `FailOverBudget.Prepare` and `Direct`'s default-policy route validate it.
+
+- The complete rendered request (instructions, tools, cache placement, parallel-call control) is measured inclusively, as today. The effective ceiling is the minimum of the configured-or-default budget and the role/family bound; the output reserve, unchanged input on success, `loop/context_budget_exceeded` refusal and message format (with the effective ceiling) are unchanged. Refusals send nothing and nothing is clipped. Caller instructions/tools larger than the budget are refused, not clipped.
+- A non-nil `Direct.Policy` entirely owns policy: `Direct.InputBudgetBytes`, even invalid, is ignored there.
+- The provider's own hard ceiling is unchanged.
+
+### Client response budget (Go library)
+
+`provider.Client.ResponseBudget time.Duration` is a library-only lower-only option: no CLI flag, task field or provider protocol change exists. The unit is a Go `time.Duration`. Zero keeps the package constant `provider.ResponseBudget` (30 minutes), with unchanged wire bytes, diagnostics and retry behavior. A nonzero value must be in the inclusive range 1 second through 30 minutes; `Respond` refuses anything else before credentials, network traffic or backoff with `*sys.Error` (class `provider`, reason `refused`, exit 4, detail `response budget must be zero or between 1s and 30m0s`).
+
+- Precedence: the effective logical-call budget is the client value (30 minutes for zero), shortened by an existing positive `Request.Budget` when that is smaller. `Request.Budget` keeps its semantics (subsecond values allowed, values above the ceiling clamped; the 1-second minimum applies to the client option only) and can neither raise the client ceiling nor bypass invalid client validation.
+- The budget stays absolute: it covers credential waits, refresh, transport, stream reads, retry backoff and retries; bytes and heartbeats never renew it. No retry is added.
+- Expiry uses the existing path: `provider/unavailable`, exit 4, provider-labelled. With `ResponseBudget` zero the detail is exactly `response wait exceeded 30 minutes` (also when `Request.Budget` shortens the wait). With a nonzero value the detail is `response wait exceeded ` plus the effective budget as `time.Duration.String()`, including a smaller `Request.Budget`: for example `response wait exceeded 10m0s`, `30m0s` for an explicit 30 minutes, `2s`.
+
+### Disabling parallel tool calls (Go library)
+
+`DisableParallelToolCalls bool` on `loop.Round`, `loop.Request` and `provider.Request` is a library-only research option: no task JSON field or CLI flag exists. `Run` copies it from `Round` into every `Request`; `Direct` transmits it and `FailOverBudget` measures the same configured body.
+
+- Default: false (including omission) sends today's exact request bytes on every route; the provider's own parallel-call behavior is preserved.
+- True on the Responses wire (ChatGPT, SuperGrok) renders `parallel_tool_calls: false`, also with no tools. True on the Messages wire (Anthropic) renders `tool_choice.disable_parallel_tool_use: true` beside the existing choice `type`; with no tools no `tool_choice` is created.
+- Support follows the effective wire after profile resolution, not the provider name. A Chat Completions route (OpenCode Go, OpenAI-compatible) refuses true before any transport with a provider `unsupported_capability` error naming parallel tool calls and the route.
+- A provider rejection is returned as an honest error; the request is not silently retried without the control.
+- Batch semantics are unchanged: every call returned in a batch is still executed, including calls after a terminal call. The option asks the provider to generate fewer parallel calls; it does not truncate a batch. Replay, usage, cache placement, retries and credentials are unchanged.
+
+### Authority cache breakpoint (Go library, Messages wire)
+
+`AuthorityBoundary *int` on `provider.Request` is a library-only research option: no task JSON field, CLI flag or loop option exists. It enables an experiment (review cached-input share and cost); it measures nothing and claims no benefit.
+
+- Default: nil (off) sends today's exact request bytes on every route. Other routes (Responses, Chat Completions) ignore the option even when set.
+- Non-nil is a zero-based content block index in the first user message; a string content is block 0. On the Messages wire the block gets one extra `cache_control` marker, on the selected last stable authority block rather than the dynamic evidence after it. Ordinary text blocks keep their boundaries; raw `anthropic_message` blocks retain theirs. The caller's input is never modified.
+- TTL policy is that of the existing breakpoints: implicit five minutes, no explicit `ttl`. This adds no TTL feature.
+- Distinct final `cache_control` locations across tools, system and messages (including retained raw markers) are counted. A target that is already the newest-message marker or already marked is not counted twice. More than four is refused with `cache breakpoint limit exceeded`; markers are never silently dropped.
+- Preflight errors, before any HTTP request: a negative or out-of-range index, no user message or a non-text target return a provider `invalid_request` error containing `invalid authority boundary`. The validation applies only when enabled.
 
 ### Process-group sweep and foreign-kill refusal (Go library)
 
@@ -383,3 +419,19 @@ Kogen-side synchronization and pin updates remain outside this component's scope
 - `requires` refusal;
 - transcript resume and mismatch refusal;
 - usage `unknown` preserved as `null`.
+
+## Tool result cut budgets (Go tools only)
+
+`tools.Tools.ResultBound` and `ResultHead` (library only, no CLI/task setting) set the engine's result cut. Zero independently defaults to 16384 and 4096. `tools.New(options Tools) (*Tools, error)` and `(*Tools).Validate()` refuse a negative field, a resolved bound below 128, a resolved head at or above the bound, and fewer than 64 bytes remaining after the head for the marker and tail; the error names the option. `loop.Run` validates `Round.Tools` before executing any tool and returns the error. `(*Tools).Cut(Output) Output` keeps a UTF-8-safe head and tail around an `\n[... N bytes omitted ...]\n` marker counting the bytes actually absent, total at most the bound; fitting text is verbatim, cutting is idempotent, typed Output passes unchanged. Package `Cut(string)` and `Output.Cut()` are the exact default wrappers. `Run`/`Call` return raw results; the engine applies the cut where it delivers a result it executed. Standalone sessions, replay, definitions and typed images are unchanged.
+
+## Documentation byte bounds (Go tools only)
+
+`tools.Documentation.ResultBound` and `BodyBound` (Go `int`, bytes; library only, no CLI/task setting) bound the documentation tool. `ResultBound` is the most bytes of encoded JSON (not runes or body length) one `Lookup` returns; zero resolves to 16384. `BodyBound` is the most bytes read from one response body, a prefix read with no oversize error; zero resolves to 8388608. Zero resolves independently. `Documentation.Validate() error` refuses a negative field, either resolved bound below the minimum 1024, and a resolved result bound greater than the resolved body bound (equality is valid); the error names the option. `Tools.Validate`, and so `tools.New` (which returns nil plus the error), validates the nested `Documentation`. Direct struct use and the zero value stay compatible and keep the default bytes; a configured caller must validate before `Lookup`. Fitting keeps the existing order (body halves, sources drop last-first, the untrusted marker stays). With a nonzero `ResultBound`, if that is exhausted, long query, URL and operation text is trimmed UTF-8-safely to fit; default output is unchanged. `Timeout` (20 s default) is unchanged. A `Documentation.ResultBound` above the engine's `Tools.ResultBound` is still cut by the engine's result cut.
+
+## Ranged documentation reads (Go tools only)
+
+A documentation `fetch` accepts optional `offset` (integer) and `find` (string). `offset` is a byte index into the decoded body (after `BodyBound` and UTF-8 repair); an interior UTF-8 position moves back to its rune start, a negative offset is zero and one past the end is the end. An empty `find` is absent. `find` is case-insensitive: among matches at or after the normalized offset the first Markdown ATX heading line wins, otherwise the first text match; the body starts at that line's beginning (never before the offset). Original byte coordinates are kept. No match is the ordinary status `not_found` with an empty body, a short `error` note, the correct `body_total`, the source URL, `untrusted` true and no `next_offset`.
+
+Every fetch outcome reports `body_total`, the decoded body bytes (zero when no body was retrieved). A ranged fetch (`offset` or `find` given) also reports `body_offset`, the source byte where `body` starts. `next_offset`, present only when source remains after fitting, is the first unconsumed source byte (`body_offset` plus the source bytes emitted); the synthetic untrusted marker consumes no source bytes. Pass it as `offset` for the next call; each call is one independent fetch, nothing is cached and no limit, timeout or retry changes.
+
+Exception: a plain fetch (no `offset`, no `find`) returns exactly the body bytes it always did and adds only `body_total` and, when truncated, `next_offset`; it never reports `body_offset`. Search output is unchanged.

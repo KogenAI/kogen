@@ -1,0 +1,2662 @@
+{
+ "cuts": [
+  "sha256:f3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2:16384",
+  "sha256:40f690150f08c2ac47ff11904a36463eda51eac011eeb5537a7230e71b4eea5b:16381",
+  "sha256:ca27a50522224e742ecbf997f6ef888dfbe7f36a10b2a1fee388c292f8604c68:16384"
+ ],
+ "requests": [
+  {
+   "body": {
+    "include": [
+     "reasoning.encrypted_content"
+    ],
+    "input": [
+     {
+      "content": "Authority: the approved Intent and its protected files.",
+      "role": "user"
+     },
+     {
+      "content": "Cumulative proposal manifest: []",
+      "role": "user"
+     },
+     {
+      "arguments": "{\"path\":\"file-0.txt\"}",
+      "call_id": "call-0",
+      "name": "read_file",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call-0",
+      "output": "sha256:f3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2:16384",
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{\"path\":\"file-1.txt\"}",
+      "call_id": "call-1",
+      "name": "read_file",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call-1",
+      "output": "sha256:40f690150f08c2ac47ff11904a36463eda51eac011eeb5537a7230e71b4eea5b:16381",
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{\"path\":\"file-2.txt\"}",
+      "call_id": "call-2",
+      "name": "read_file",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call-2",
+      "output": "sha256:ca27a50522224e742ecbf997f6ef888dfbe7f36a10b2a1fee388c292f8604c68:16384",
+      "type": "function_call_output"
+     },
+     {
+      "content": "Continue.",
+      "role": "user"
+     }
+    ],
+    "instructions": "Policy of the fixture.",
+    "model": "gpt-6.1-sol",
+    "prompt_cache_key": "knob-fixture-cache",
+    "reasoning": {
+     "effort": "high"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+     {
+      "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+      "name": "shell",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "command": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+      "name": "view_image",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+      "name": "read_file",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "end_line": {
+         "type": "integer"
+        },
+        "path": {
+         "type": "string"
+        },
+        "start_line": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "path"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Write the whole content of a file of the repository (created with its folders if needed).",
+      "name": "write_file",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "content": {
+         "type": "string"
+        },
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
+      "name": "report_blocker",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "evidence": {
+         "type": "string"
+        },
+        "paths": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "reason": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "paths",
+        "reason",
+        "evidence"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Say the implementation is complete. Kogen then runs the fixers and every check, and a reviewer reviews the code; failures come back to you.",
+      "name": "finish",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "summary": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "summary"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+      "name": "list_files",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+      "name": "search_text",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "pattern": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "pattern"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
+      "name": "probe",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "command": {
+         "type": "string"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     "\u003cdocumentation tool definition\u003e",
+     {
+      "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
+      "name": "submit",
+      "parameters": {
+       "properties": {
+        "blocked": {
+         "properties": {
+          "paths": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          },
+          "reason": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "paths",
+          "reason"
+         ],
+         "type": "object"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "minItems": 1,
+         "type": "array"
+        },
+        "questions": {
+         "items": {
+          "properties": {
+           "kind": {
+            "description": "Optional. Omit or product for a UI/UX or product question. handoff for a mandatory authentication or security handoff. Any other explicit kind is rejected.",
+            "type": "string"
+           },
+           "options": {
+            "items": {
+             "properties": {
+              "label": {
+               "type": "string"
+              },
+              "recommended": {
+               "type": "boolean"
+              }
+             },
+             "required": [
+              "label"
+             ],
+             "type": "object"
+            },
+            "type": "array"
+           },
+           "question": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "question"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Submit the review: verdict approve or changes, with findings.",
+      "name": "submit_review",
+      "parameters": {
+       "properties": {
+        "findings": {
+         "items": {
+          "properties": {
+           "line": {
+            "type": "integer"
+           },
+           "message": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           },
+           "severity": {
+            "enum": [
+             "blocking",
+             "note"
+            ],
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "line",
+           "severity",
+           "message"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "verdict": {
+         "enum": [
+          "approve",
+          "changes"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "verdict",
+        "findings"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:4710c47630f8ceac429b6ba0fc52e01f9091bd0d33616e40961a2d5e5666d835:827",
+      "name": "submit_refinement",
+      "parameters": {
+       "properties": {
+        "constraint": {
+         "type": "string"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "minItems": 1,
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "The project's setup commands, fixers, checks and protected verification configuration; dependency-only manifests and lockfiles are ineligible.",
+      "name": "submit_configuration",
+      "parameters": {
+       "properties": {
+        "checks": {
+         "items": {
+          "properties": {
+           "name": {
+            "type": "string"
+           },
+           "run": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "name",
+           "run"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "fix": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "protect": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "setup": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "setup",
+        "fix",
+        "checks",
+        "protect"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:71685d0aef4ca50eb6275f8118e28e2266255c5026fafe1abf98f7f6d3e73f96:414",
+      "name": "shape_batch",
+      "parameters": {
+       "properties": {
+        "brief": {
+         "type": "object"
+        },
+        "jobs": {
+         "type": "array"
+        }
+       },
+       "required": [
+        "brief",
+        "jobs"
+       ],
+       "type": "object"
+      },
+      "type": "function"
+     },
+     {
+      "description": "Terminate with nonempty evidence and files [{path,content}]; read/probe files empty, draft only owns.",
+      "name": "worker_result",
+      "parameters": {
+       "properties": {
+        "evidence": {
+         "type": "string"
+        },
+        "files": {
+         "type": "array"
+        }
+       },
+       "required": [
+        "evidence",
+        "files"
+       ],
+       "type": "object"
+      },
+      "type": "function"
+     }
+    ]
+   },
+   "provider": "chatgpt"
+  },
+  {
+   "body": {
+    "include": [
+     "reasoning.encrypted_content"
+    ],
+    "input": [
+     {
+      "content": "Authority: the approved Intent and its protected files.",
+      "role": "user"
+     },
+     {
+      "content": "Cumulative proposal manifest: []",
+      "role": "user"
+     },
+     {
+      "arguments": "{\"path\":\"file-0.txt\"}",
+      "call_id": "call-0",
+      "name": "read_file",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call-0",
+      "output": "sha256:f3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2:16384",
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{\"path\":\"file-1.txt\"}",
+      "call_id": "call-1",
+      "name": "read_file",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call-1",
+      "output": "sha256:40f690150f08c2ac47ff11904a36463eda51eac011eeb5537a7230e71b4eea5b:16381",
+      "type": "function_call_output"
+     },
+     {
+      "arguments": "{\"path\":\"file-2.txt\"}",
+      "call_id": "call-2",
+      "name": "read_file",
+      "type": "function_call"
+     },
+     {
+      "call_id": "call-2",
+      "output": "sha256:ca27a50522224e742ecbf997f6ef888dfbe7f36a10b2a1fee388c292f8604c68:16384",
+      "type": "function_call_output"
+     },
+     {
+      "content": "Continue.",
+      "role": "user"
+     }
+    ],
+    "instructions": "Policy of the fixture.",
+    "model": "grok-4.7",
+    "prompt_cache_key": "knob-fixture-cache",
+    "reasoning": {
+     "effort": "high"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+     {
+      "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+      "name": "shell",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "command": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+      "name": "view_image",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+      "name": "read_file",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "end_line": {
+         "type": "integer"
+        },
+        "path": {
+         "type": "string"
+        },
+        "start_line": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "path"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Write the whole content of a file of the repository (created with its folders if needed).",
+      "name": "write_file",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "content": {
+         "type": "string"
+        },
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
+      "name": "report_blocker",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "evidence": {
+         "type": "string"
+        },
+        "paths": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "reason": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "paths",
+        "reason",
+        "evidence"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Say the implementation is complete. Kogen then runs the fixers and every check, and a reviewer reviews the code; failures come back to you.",
+      "name": "finish",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "summary": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "summary"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+      "name": "list_files",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+      "name": "search_text",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "pattern": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "pattern"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
+      "name": "probe",
+      "parameters": {
+       "additionalProperties": false,
+       "properties": {
+        "command": {
+         "type": "string"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     "\u003cdocumentation tool definition\u003e",
+     {
+      "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
+      "name": "submit",
+      "parameters": {
+       "properties": {
+        "blocked": {
+         "properties": {
+          "paths": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          },
+          "reason": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "paths",
+          "reason"
+         ],
+         "type": "object"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "minItems": 1,
+         "type": "array"
+        },
+        "questions": {
+         "items": {
+          "properties": {
+           "kind": {
+            "description": "Optional. Omit or product for a UI/UX or product question. handoff for a mandatory authentication or security handoff. Any other explicit kind is rejected.",
+            "type": "string"
+           },
+           "options": {
+            "items": {
+             "properties": {
+              "label": {
+               "type": "string"
+              },
+              "recommended": {
+               "type": "boolean"
+              }
+             },
+             "required": [
+              "label"
+             ],
+             "type": "object"
+            },
+            "type": "array"
+           },
+           "question": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "question"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "Submit the review: verdict approve or changes, with findings.",
+      "name": "submit_review",
+      "parameters": {
+       "properties": {
+        "findings": {
+         "items": {
+          "properties": {
+           "line": {
+            "type": "integer"
+           },
+           "message": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           },
+           "severity": {
+            "enum": [
+             "blocking",
+             "note"
+            ],
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "line",
+           "severity",
+           "message"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "verdict": {
+         "enum": [
+          "approve",
+          "changes"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "verdict",
+        "findings"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:4710c47630f8ceac429b6ba0fc52e01f9091bd0d33616e40961a2d5e5666d835:827",
+      "name": "submit_refinement",
+      "parameters": {
+       "properties": {
+        "constraint": {
+         "type": "string"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "minItems": 1,
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "The project's setup commands, fixers, checks and protected verification configuration; dependency-only manifests and lockfiles are ineligible.",
+      "name": "submit_configuration",
+      "parameters": {
+       "properties": {
+        "checks": {
+         "items": {
+          "properties": {
+           "name": {
+            "type": "string"
+           },
+           "run": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "name",
+           "run"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "fix": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "protect": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "setup": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "setup",
+        "fix",
+        "checks",
+        "protect"
+       ],
+       "type": "object"
+      },
+      "strict": false,
+      "type": "function"
+     },
+     {
+      "description": "sha256:71685d0aef4ca50eb6275f8118e28e2266255c5026fafe1abf98f7f6d3e73f96:414",
+      "name": "shape_batch",
+      "parameters": {
+       "properties": {
+        "brief": {
+         "type": "object"
+        },
+        "jobs": {
+         "type": "array"
+        }
+       },
+       "required": [
+        "brief",
+        "jobs"
+       ],
+       "type": "object"
+      },
+      "type": "function"
+     },
+     {
+      "description": "Terminate with nonempty evidence and files [{path,content}]; read/probe files empty, draft only owns.",
+      "name": "worker_result",
+      "parameters": {
+       "properties": {
+        "evidence": {
+         "type": "string"
+        },
+        "files": {
+         "type": "array"
+        }
+       },
+       "required": [
+        "evidence",
+        "files"
+       ],
+       "type": "object"
+      },
+      "type": "function"
+     }
+    ]
+   },
+   "provider": "supergrok"
+  },
+  {
+   "body": {
+    "messages": [
+     {
+      "content": "Policy of the fixture.",
+      "role": "system"
+     },
+     {
+      "content": "Authority: the approved Intent and its protected files.",
+      "role": "user"
+     },
+     {
+      "content": "Cumulative proposal manifest: []",
+      "role": "user"
+     },
+     {
+      "content": "sha256:f3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2:16384",
+      "role": "tool",
+      "tool_call_id": "call-0"
+     },
+     {
+      "content": "sha256:40f690150f08c2ac47ff11904a36463eda51eac011eeb5537a7230e71b4eea5b:16381",
+      "role": "tool",
+      "tool_call_id": "call-1"
+     },
+     {
+      "content": "sha256:ca27a50522224e742ecbf997f6ef888dfbe7f36a10b2a1fee388c292f8604c68:16384",
+      "role": "tool",
+      "tool_call_id": "call-2"
+     },
+     {
+      "content": "Continue.",
+      "role": "user"
+     }
+    ],
+    "model": "kimi-k3",
+    "reasoning_effort": "high",
+    "store": false,
+    "stream": false,
+    "tool_choice": "auto",
+    "tools": [
+     {
+      "function": {
+       "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+       "name": "shell",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "command": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "command"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+       "name": "view_image",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+       "name": "read_file",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "end_line": {
+          "type": "integer"
+         },
+         "path": {
+          "type": "string"
+         },
+         "start_line": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "path"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Write the whole content of a file of the repository (created with its folders if needed).",
+       "name": "write_file",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "content": {
+          "type": "string"
+         },
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path",
+         "content"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
+       "name": "report_blocker",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "evidence": {
+          "type": "string"
+         },
+         "paths": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "reason": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "paths",
+         "reason",
+         "evidence"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Say the implementation is complete. Kogen then runs the fixers and every check, and a reviewer reviews the code; failures come back to you.",
+       "name": "finish",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "summary": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "summary"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+       "name": "list_files",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+       "name": "search_text",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "path": {
+          "type": "string"
+         },
+         "pattern": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "pattern"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
+       "name": "probe",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "command": {
+          "type": "string"
+         },
+         "files": {
+          "items": {
+           "properties": {
+            "content": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "content"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "command"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": "\u003cdocumentation tool definition\u003e",
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
+       "name": "submit",
+       "parameters": {
+        "properties": {
+         "blocked": {
+          "properties": {
+           "paths": {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           "reason": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "paths",
+           "reason"
+          ],
+          "type": "object"
+         },
+         "files": {
+          "items": {
+           "properties": {
+            "content": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "content"
+           ],
+           "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+         },
+         "questions": {
+          "items": {
+           "properties": {
+            "kind": {
+             "description": "Optional. Omit or product for a UI/UX or product question. handoff for a mandatory authentication or security handoff. Any other explicit kind is rejected.",
+             "type": "string"
+            },
+            "options": {
+             "items": {
+              "properties": {
+               "label": {
+                "type": "string"
+               },
+               "recommended": {
+                "type": "boolean"
+               }
+              },
+              "required": [
+               "label"
+              ],
+              "type": "object"
+             },
+             "type": "array"
+            },
+            "question": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "question"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         }
+        },
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Submit the review: verdict approve or changes, with findings.",
+       "name": "submit_review",
+       "parameters": {
+        "properties": {
+         "findings": {
+          "items": {
+           "properties": {
+            "line": {
+             "type": "integer"
+            },
+            "message": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            },
+            "severity": {
+             "enum": [
+              "blocking",
+              "note"
+             ],
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "line",
+            "severity",
+            "message"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "verdict": {
+          "enum": [
+           "approve",
+           "changes"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "verdict",
+         "findings"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:4710c47630f8ceac429b6ba0fc52e01f9091bd0d33616e40961a2d5e5666d835:827",
+       "name": "submit_refinement",
+       "parameters": {
+        "properties": {
+         "constraint": {
+          "type": "string"
+         },
+         "files": {
+          "items": {
+           "properties": {
+            "content": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "content"
+           ],
+           "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+         }
+        },
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "The project's setup commands, fixers, checks and protected verification configuration; dependency-only manifests and lockfiles are ineligible.",
+       "name": "submit_configuration",
+       "parameters": {
+        "properties": {
+         "checks": {
+          "items": {
+           "properties": {
+            "name": {
+             "type": "string"
+            },
+            "run": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "name",
+            "run"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "fix": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "protect": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "setup": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "setup",
+         "fix",
+         "checks",
+         "protect"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:71685d0aef4ca50eb6275f8118e28e2266255c5026fafe1abf98f7f6d3e73f96:414",
+       "name": "shape_batch",
+       "parameters": {
+        "properties": {
+         "brief": {
+          "type": "object"
+         },
+         "jobs": {
+          "type": "array"
+         }
+        },
+        "required": [
+         "brief",
+         "jobs"
+        ],
+        "type": "object"
+       }
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Terminate with nonempty evidence and files [{path,content}]; read/probe files empty, draft only owns.",
+       "name": "worker_result",
+       "parameters": {
+        "properties": {
+         "evidence": {
+          "type": "string"
+         },
+         "files": {
+          "type": "array"
+         }
+        },
+        "required": [
+         "evidence",
+         "files"
+        ],
+        "type": "object"
+       }
+      },
+      "type": "function"
+     }
+    ]
+   },
+   "provider": "opencode-go"
+  },
+  {
+   "body": {
+    "max_tokens": 128000,
+    "messages": [
+     {
+      "content": "Authority: the approved Intent and its protected files.",
+      "role": "user"
+     },
+     {
+      "content": "Cumulative proposal manifest: []",
+      "role": "user"
+     },
+     {
+      "content": [
+       {
+        "content": "sha256:f3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2:16384",
+        "tool_use_id": "call-0",
+        "type": "tool_result"
+       },
+       {
+        "content": "sha256:40f690150f08c2ac47ff11904a36463eda51eac011eeb5537a7230e71b4eea5b:16381",
+        "tool_use_id": "call-1",
+        "type": "tool_result"
+       },
+       {
+        "content": "sha256:ca27a50522224e742ecbf997f6ef888dfbe7f36a10b2a1fee388c292f8604c68:16384",
+        "tool_use_id": "call-2",
+        "type": "tool_result"
+       }
+      ],
+      "role": "user"
+     },
+     {
+      "content": [
+       {
+        "cache_control": {
+         "type": "ephemeral"
+        },
+        "text": "Continue.",
+        "type": "text"
+       }
+      ],
+      "role": "user"
+     }
+    ],
+    "model": "claude-opus-5-5",
+    "output_config": {
+     "effort": "high"
+    },
+    "stream": true,
+    "system": [
+     {
+      "cache_control": {
+       "type": "ephemeral"
+      },
+      "text": "Policy of the fixture.",
+      "type": "text"
+     }
+    ],
+    "thinking": {
+     "type": "adaptive"
+    },
+    "tool_choice": {
+     "type": "auto"
+    },
+    "tools": [
+     {
+      "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "command": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "type": "object"
+      },
+      "name": "shell"
+     },
+     {
+      "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ],
+       "type": "object"
+      },
+      "name": "view_image"
+     },
+     {
+      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "end_line": {
+         "type": "integer"
+        },
+        "path": {
+         "type": "string"
+        },
+        "start_line": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "path"
+       ],
+       "type": "object"
+      },
+      "name": "read_file"
+     },
+     {
+      "description": "Write the whole content of a file of the repository (created with its folders if needed).",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "content": {
+         "type": "string"
+        },
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ],
+       "type": "object"
+      },
+      "name": "write_file"
+     },
+     {
+      "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "evidence": {
+         "type": "string"
+        },
+        "paths": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "reason": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "paths",
+        "reason",
+        "evidence"
+       ],
+       "type": "object"
+      },
+      "name": "report_blocker"
+     },
+     {
+      "description": "Say the implementation is complete. Kogen then runs the fixers and every check, and a reviewer reviews the code; failures come back to you.",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "summary": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "summary"
+       ],
+       "type": "object"
+      },
+      "name": "finish"
+     },
+     {
+      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [],
+       "type": "object"
+      },
+      "name": "list_files"
+     },
+     {
+      "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "pattern": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "pattern"
+       ],
+       "type": "object"
+      },
+      "name": "search_text"
+     },
+     {
+      "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
+      "input_schema": {
+       "additionalProperties": false,
+       "properties": {
+        "command": {
+         "type": "string"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "type": "object"
+      },
+      "name": "probe"
+     },
+     "\u003cdocumentation tool definition\u003e",
+     {
+      "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
+      "input_schema": {
+       "properties": {
+        "blocked": {
+         "properties": {
+          "paths": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          },
+          "reason": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "paths",
+          "reason"
+         ],
+         "type": "object"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "minItems": 1,
+         "type": "array"
+        },
+        "questions": {
+         "items": {
+          "properties": {
+           "kind": {
+            "description": "Optional. Omit or product for a UI/UX or product question. handoff for a mandatory authentication or security handoff. Any other explicit kind is rejected.",
+            "type": "string"
+           },
+           "options": {
+            "items": {
+             "properties": {
+              "label": {
+               "type": "string"
+              },
+              "recommended": {
+               "type": "boolean"
+              }
+             },
+             "required": [
+              "label"
+             ],
+             "type": "object"
+            },
+            "type": "array"
+           },
+           "question": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "question"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "name": "submit"
+     },
+     {
+      "description": "Submit the review: verdict approve or changes, with findings.",
+      "input_schema": {
+       "properties": {
+        "findings": {
+         "items": {
+          "properties": {
+           "line": {
+            "type": "integer"
+           },
+           "message": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           },
+           "severity": {
+            "enum": [
+             "blocking",
+             "note"
+            ],
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "line",
+           "severity",
+           "message"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "verdict": {
+         "enum": [
+          "approve",
+          "changes"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "verdict",
+        "findings"
+       ],
+       "type": "object"
+      },
+      "name": "submit_review"
+     },
+     {
+      "description": "sha256:4710c47630f8ceac429b6ba0fc52e01f9091bd0d33616e40961a2d5e5666d835:827",
+      "input_schema": {
+       "properties": {
+        "constraint": {
+         "type": "string"
+        },
+        "files": {
+         "items": {
+          "properties": {
+           "content": {
+            "type": "string"
+           },
+           "path": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "path",
+           "content"
+          ],
+          "type": "object"
+         },
+         "minItems": 1,
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "name": "submit_refinement"
+     },
+     {
+      "description": "The project's setup commands, fixers, checks and protected verification configuration; dependency-only manifests and lockfiles are ineligible.",
+      "input_schema": {
+       "properties": {
+        "checks": {
+         "items": {
+          "properties": {
+           "name": {
+            "type": "string"
+           },
+           "run": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "name",
+           "run"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "fix": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "protect": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "setup": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "setup",
+        "fix",
+        "checks",
+        "protect"
+       ],
+       "type": "object"
+      },
+      "name": "submit_configuration"
+     },
+     {
+      "description": "sha256:71685d0aef4ca50eb6275f8118e28e2266255c5026fafe1abf98f7f6d3e73f96:414",
+      "input_schema": {
+       "properties": {
+        "brief": {
+         "type": "object"
+        },
+        "jobs": {
+         "type": "array"
+        }
+       },
+       "required": [
+        "brief",
+        "jobs"
+       ],
+       "type": "object"
+      },
+      "name": "shape_batch"
+     },
+     {
+      "cache_control": {
+       "type": "ephemeral"
+      },
+      "description": "Terminate with nonempty evidence and files [{path,content}]; read/probe files empty, draft only owns.",
+      "input_schema": {
+       "properties": {
+        "evidence": {
+         "type": "string"
+        },
+        "files": {
+         "type": "array"
+        }
+       },
+       "required": [
+        "evidence",
+        "files"
+       ],
+       "type": "object"
+      },
+      "name": "worker_result"
+     }
+    ]
+   },
+   "provider": "anthropic"
+  },
+  {
+   "body": {
+    "messages": [
+     {
+      "content": "Policy of the fixture.",
+      "role": "system"
+     },
+     {
+      "content": "Authority: the approved Intent and its protected files.",
+      "role": "user"
+     },
+     {
+      "content": "Cumulative proposal manifest: []",
+      "role": "user"
+     },
+     {
+      "content": "sha256:f3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2:16384",
+      "role": "tool",
+      "tool_call_id": "call-0"
+     },
+     {
+      "content": "sha256:40f690150f08c2ac47ff11904a36463eda51eac011eeb5537a7230e71b4eea5b:16381",
+      "role": "tool",
+      "tool_call_id": "call-1"
+     },
+     {
+      "content": "sha256:ca27a50522224e742ecbf997f6ef888dfbe7f36a10b2a1fee388c292f8604c68:16384",
+      "role": "tool",
+      "tool_call_id": "call-2"
+     },
+     {
+      "content": "Continue.",
+      "role": "user"
+     }
+    ],
+    "model": "local-model",
+    "reasoning_effort": "medium",
+    "store": false,
+    "stream": false,
+    "tool_choice": "auto",
+    "tools": [
+     {
+      "function": {
+       "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+       "name": "shell",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "command": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "command"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+       "name": "view_image",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+       "name": "read_file",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "end_line": {
+          "type": "integer"
+         },
+         "path": {
+          "type": "string"
+         },
+         "start_line": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "path"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Write the whole content of a file of the repository (created with its folders if needed).",
+       "name": "write_file",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "content": {
+          "type": "string"
+         },
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path",
+         "content"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
+       "name": "report_blocker",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "evidence": {
+          "type": "string"
+         },
+         "paths": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "reason": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "paths",
+         "reason",
+         "evidence"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Say the implementation is complete. Kogen then runs the fixers and every check, and a reviewer reviews the code; failures come back to you.",
+       "name": "finish",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "summary": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "summary"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+       "name": "list_files",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+       "name": "search_text",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "path": {
+          "type": "string"
+         },
+         "pattern": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "pattern"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
+       "name": "probe",
+       "parameters": {
+        "additionalProperties": false,
+        "properties": {
+         "command": {
+          "type": "string"
+         },
+         "files": {
+          "items": {
+           "properties": {
+            "content": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "content"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "command"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": "\u003cdocumentation tool definition\u003e",
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
+       "name": "submit",
+       "parameters": {
+        "properties": {
+         "blocked": {
+          "properties": {
+           "paths": {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           "reason": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "paths",
+           "reason"
+          ],
+          "type": "object"
+         },
+         "files": {
+          "items": {
+           "properties": {
+            "content": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "content"
+           ],
+           "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+         },
+         "questions": {
+          "items": {
+           "properties": {
+            "kind": {
+             "description": "Optional. Omit or product for a UI/UX or product question. handoff for a mandatory authentication or security handoff. Any other explicit kind is rejected.",
+             "type": "string"
+            },
+            "options": {
+             "items": {
+              "properties": {
+               "label": {
+                "type": "string"
+               },
+               "recommended": {
+                "type": "boolean"
+               }
+              },
+              "required": [
+               "label"
+              ],
+              "type": "object"
+             },
+             "type": "array"
+            },
+            "question": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "question"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         }
+        },
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Submit the review: verdict approve or changes, with findings.",
+       "name": "submit_review",
+       "parameters": {
+        "properties": {
+         "findings": {
+          "items": {
+           "properties": {
+            "line": {
+             "type": "integer"
+            },
+            "message": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            },
+            "severity": {
+             "enum": [
+              "blocking",
+              "note"
+             ],
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "line",
+            "severity",
+            "message"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "verdict": {
+          "enum": [
+           "approve",
+           "changes"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "verdict",
+         "findings"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:4710c47630f8ceac429b6ba0fc52e01f9091bd0d33616e40961a2d5e5666d835:827",
+       "name": "submit_refinement",
+       "parameters": {
+        "properties": {
+         "constraint": {
+          "type": "string"
+         },
+         "files": {
+          "items": {
+           "properties": {
+            "content": {
+             "type": "string"
+            },
+            "path": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "path",
+            "content"
+           ],
+           "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+         }
+        },
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "The project's setup commands, fixers, checks and protected verification configuration; dependency-only manifests and lockfiles are ineligible.",
+       "name": "submit_configuration",
+       "parameters": {
+        "properties": {
+         "checks": {
+          "items": {
+           "properties": {
+            "name": {
+             "type": "string"
+            },
+            "run": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "name",
+            "run"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "fix": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "protect": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "setup": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "setup",
+         "fix",
+         "checks",
+         "protect"
+        ],
+        "type": "object"
+       },
+       "strict": false
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "sha256:71685d0aef4ca50eb6275f8118e28e2266255c5026fafe1abf98f7f6d3e73f96:414",
+       "name": "shape_batch",
+       "parameters": {
+        "properties": {
+         "brief": {
+          "type": "object"
+         },
+         "jobs": {
+          "type": "array"
+         }
+        },
+        "required": [
+         "brief",
+         "jobs"
+        ],
+        "type": "object"
+       }
+      },
+      "type": "function"
+     },
+     {
+      "function": {
+       "description": "Terminate with nonempty evidence and files [{path,content}]; read/probe files empty, draft only owns.",
+       "name": "worker_result",
+       "parameters": {
+        "properties": {
+         "evidence": {
+          "type": "string"
+         },
+         "files": {
+          "type": "array"
+         }
+        },
+        "required": [
+         "evidence",
+         "files"
+        ],
+        "type": "object"
+       }
+      },
+      "type": "function"
+     }
+    ]
+   },
+   "provider": "openai-compatible"
+  }
+ ]
+}

@@ -16,6 +16,7 @@ import (
 	"kogen-loop/sys"
 	"kogen/executor"
 	"kogen/git"
+	"kogen/internal/research"
 	"kogen/project"
 )
 
@@ -30,6 +31,10 @@ func refuse(id, reason, kind string) *sys.Error {
 }
 
 func resumeRun(ctx context.Context, s *sys.Session, in ResumeInput, out **Attempt) error {
+	if err := research.Validate(ctx, s); err != nil {
+		return err
+	}
+	research.ApplyClient(in.Deps.Client)
 	repo, err := git.Open(in.Project, s.Env)
 	if err != nil {
 		return err

@@ -20,6 +20,15 @@ type Request struct {
 	Role         Role
 	Instructions string
 	Input, Tools []any
+	// DisableParallelToolCalls asks the provider not to generate parallel tool calls: Responses
+	// parallel_tool_calls false, Messages tool_choice.disable_parallel_tool_use true. Chat
+	// Completions routes refuse it. False sends today's exact bytes.
+	DisableParallelToolCalls bool
+	// AuthorityBoundary, when non-nil, is the zero-based content block index in the first
+	// user message that ends the stable authority; the Messages wire puts one extra
+	// cache breakpoint there (at most four in all). Nil sends today's exact bytes; other
+	// routes ignore it.
+	AuthorityBoundary *int
 	// Budget caps the logical call's absolute wait; zero or more than ResponseBudget means
 	// ResponseBudget.
 	Budget time.Duration
@@ -169,8 +178,8 @@ func (c *Client) Body(req Request) map[string]any {
 
 // Respond sends one request and returns the validated answer. Provider failures are
 // *sys.Error (class provider, exit 4, reason context_too_long when the conversation no
-// longer fits); an interrupt is *sys.Interrupted. One logical call has a fixed 30-minute
-// budget shared by credentials, refresh, retries and backoff (GPT-8).
+// longer fits); an interrupt is *sys.Interrupted. One logical call has a 30-minute
+// budget (lowerable by Client.ResponseBudget and Request.Budget) shared by credentials, refresh, retries and backoff (GPT-8).
 func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs Observer) (*Response, error) {
 	info, ok := Lookup(req.Role.Provider)
 	if !ok {
@@ -180,6 +189,12 @@ func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs O
 		return nil, err
 	}
 	budget := ResponseBudget
+	if c.ResponseBudget != 0 {
+		if c.ResponseBudget < time.Second || c.ResponseBudget > ResponseBudget {
+			return nil, sys.Fail("provider", "refused", "response budget must be zero or between 1s and 30m0s", 4)
+		}
+		budget = c.ResponseBudget
+	}
 	if req.Budget > 0 && req.Budget < budget {
 		budget = req.Budget
 	}
@@ -188,6 +203,9 @@ func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs O
 	}
 	k := c.newCall(ctx, s, info, budget)
 	defer k.cancel()
+	if c.ResponseBudget != 0 {
+		k.expiry = budget.String()
+	}
 	k.baseURL = strings.TrimRight(req.Role.BaseURL, "/")
 	cache := c.cacheFor(req)
 	key, st := cache.resolve(req)

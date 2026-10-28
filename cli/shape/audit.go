@@ -13,6 +13,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/executor"
+	"kogen/internal/research"
 	"kogen/project"
 )
 
@@ -179,7 +180,7 @@ func (sh *shaping) audit(ctx context.Context, request string) error {
 		}, cacheID)
 		call := sh.ev.BeginCall("shape", "", revision.Map(), "request audit", sh.role).Sized(sh.client, req)
 		t0 := time.Now()
-		resp, err := sh.client.Respond(ctx, sh.s, req, call)
+		resp, err := research.Respond(ctx, sh.client, sh.s, req, call)
 		call.End(resp, err)
 		if err != nil {
 			if e, ok := sys.AsError(err); ok && e.Class == "provider" {

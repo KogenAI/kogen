@@ -16,6 +16,7 @@ import (
 	"kogen-loop/tools"
 	"kogen/executor"
 	"kogen/git"
+	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -121,6 +122,10 @@ func conclude(s *sys.Session, pb **Attempt, err error) (int, error) {
 }
 
 func buildRun(ctx context.Context, s *sys.Session, in Input, out **Attempt) error {
+	if err := research.Validate(ctx, s); err != nil {
+		return err
+	}
+	research.ApplyClient(in.Deps.Client)
 	if in.Context != nil {
 		if err := in.Context.Validate(); err != nil {
 			return err
@@ -552,16 +557,16 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 	if b.RootRun != nil {
 		parent = *b.RootRun
 	}
-	req := provider.Request{
+	req := research.Request(provider.Request{
 		Role: providerRole(sp.Role), Instructions: sp.Instructions, Input: input, Tools: sp.Tools, CacheID: b.cacheID(sp.Owner), Cache: b.cache,
 		Context: map[string]any{
 			"phase": sp.Owner, "role": sp.Owner, "run_id": b.Run.ID, "slug": b.Slug, "lineage": parent,
 			"pass": b.Pass, "repair": b.Repairs,
 		},
-	}
+	})
 	requestBytes := b.requestBytes(req)
 	resp, err := tools.Deliver(input, sp.Owner, b.Run.Event, func() (*provider.Response, error) {
-		return b.deps.Client.Respond(ctx, b.s, req, attempts{b.Run})
+		return research.Respond(ctx, b.deps.Client, b.s, req, attempts{b.Run})
 	})
 	if err != nil {
 		return nil, nil, err

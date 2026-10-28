@@ -22,6 +22,7 @@ import (
 	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/git"
+	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -84,6 +85,10 @@ func initExit(err error) int {
 }
 
 func initRun(ctx context.Context, s *sys.Session, in InitInput) error {
+	if err := research.Validate(ctx, s); err != nil {
+		return err
+	}
+	research.ApplyClient(in.Client)
 	repo, err := git.Open(s.Cwd, s.Env)
 	if err != nil {
 		return err
@@ -396,7 +401,7 @@ func initConverse(ctx context.Context, s *sys.Session, in InitInput, role provid
 	// The setup conversation has no records of its own; its cache identity lives as long as it.
 	cacheID := newCacheID()
 	for attempt := 1; ; attempt++ {
-		resp, err := in.Client.Respond(ctx, s, conversationRequest(provider.Request{
+		resp, err := research.Respond(ctx, in.Client, s, conversationRequest(provider.Request{
 			Role: role, Instructions: agent.Prompt(agent.Init), Input: input, Tools: defs,
 		}, cacheID), nil)
 		if err != nil {

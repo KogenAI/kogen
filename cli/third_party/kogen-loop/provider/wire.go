@@ -29,6 +29,9 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 			info.wire = wireResponses
 		}
 	}
+	if req.DisableParallelToolCalls && info.wire == wireChat {
+		return rendered{}, providerFail("unsupported_capability", "parallel tool calls cannot be disabled on "+info.Label+" (Chat Completions route "+info.Name+"); leave DisableParallelToolCalls false")
+	}
 	switch info.wire {
 	case wireChat:
 		return renderChat(info, req, id, input)
@@ -56,6 +59,9 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		if p := ResolveProfile(req.Role); p != nil {
 			body["tool_choice"] = p.Settings.Tools
 		}
+	}
+	if req.DisableParallelToolCalls {
+		body["parallel_tool_calls"] = false
 	}
 	r := rendered{body: body, mode: "implicit"}
 	switch {

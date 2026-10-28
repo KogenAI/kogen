@@ -95,11 +95,13 @@ func Definition(name string) (map[string]any, bool) {
 			map[string]any{"pattern": str(), "path": str()}, "pattern"), true
 	case DocumentationTool:
 		return fun(name,
-			"Shape documentation lookup discovers sources and retrieves current authoritative documentation.",
+			"Shape documentation lookup discovers sources and retrieves current authoritative documentation. A fetch may pass offset, a byte index into the page body, and find, text that starts the body at its first matching heading or line; the result reports body_total and next_offset for reading the rest.",
 			map[string]any{
 				"operation": map[string]any{"type": "string", "enum": []any{"search", "fetch"}},
 				"query":     str(),
 				"url":       str(),
+				"offset":    map[string]any{"type": "integer"},
+				"find":      str(),
 				"base": map[string]any{
 					"type":        "string",
 					"description": "Optional origin. When present, every request in this call uses that origin and no other host.",

@@ -30,6 +30,9 @@ type Request struct {
 	Instructions string
 	Input        []any // Responses-style input items
 	Tools        []any // model-facing tool definitions, sent verbatim
+	// DisableParallelToolCalls asks the provider not to generate parallel tool calls; a batch
+	// that is returned is still executed in full.
+	DisableParallelToolCalls bool
 }
 
 // Requester sends one request. It returns the response and the input actually sent (a
@@ -57,10 +60,22 @@ type FailOverBudget struct {
 	Client  *provider.Client
 	Cache   *provider.Cache
 	CacheID string
+
+	// InputBudgetBytes lowers the input ceiling. Zero keeps the default (524288); otherwise it
+	// must be in [MinInputBudgetBytes, tools.InputBudgetBytes]. It never raises the role's bound.
+	InputBudgetBytes int
 }
+
+// MinInputBudgetBytes is the smallest nonzero FailOverBudget.InputBudgetBytes.
+const MinInputBudgetBytes = 65536
 
 // Prepare returns r.Input unchanged when the request fits.
 func (p FailOverBudget) Prepare(ctx context.Context, r Request) ([]any, error) {
+	if b := p.InputBudgetBytes; b != 0 && (b < MinInputBudgetBytes || b > tools.InputBudgetBytes) {
+		return nil, sys.Fail(api.ErrClassLoop, api.ErrInvalidTask, fmt.Sprintf(
+			"InputBudgetBytes %d is invalid: must be 0 (default) or in [%d, %d]",
+			b, MinInputBudgetBytes, tools.InputBudgetBytes), 2)
+	}
 	if _, ok := provider.Lookup(r.Role.Provider); !ok {
 		// Respond refuses an unknown provider with its own error; there is nothing to measure.
 		return r.Input, nil
@@ -71,16 +86,20 @@ func (p FailOverBudget) Prepare(ctx context.Context, r Request) ([]any, error) {
 	}
 	body := client.Body(provider.Request{
 		Role: r.Role, Instructions: r.Instructions, Input: r.Input, Tools: r.Tools,
-		CacheID: p.CacheID, Cache: p.Cache,
+		CacheID: p.CacheID, Cache: p.Cache, DisableParallelToolCalls: r.DisableParallelToolCalls,
 	})
 	m, err := tools.Measure(body, r.Role)
 	if err != nil {
 		return nil, err
 	}
-	if !m.Fits {
+	limit := m.InputBudgetBytes
+	if p.InputBudgetBytes != 0 && p.InputBudgetBytes < limit {
+		limit = p.InputBudgetBytes
+	}
+	if m.RenderedBytes > limit {
 		return nil, sys.Fail(api.ErrClassLoop, api.ErrContextBudget, fmt.Sprintf(
 			"%s: complete next request %d bytes exceeds %d; reserve %d tokens. Nothing was sent and nothing was clipped.",
-			ownerLabel(r.Owner), m.RenderedBytes, m.InputBudgetBytes, m.OutputReserveTokens), 1)
+			ownerLabel(r.Owner), m.RenderedBytes, limit, m.OutputReserveTokens), 1)
 	}
 	return r.Input, nil
 }
@@ -101,6 +120,10 @@ type Direct struct {
 	Observer provider.Observer // nil: none
 	CacheID  string            // one cache identity per conversation (kept across rounds)
 	Cache    *provider.Cache
+
+	// InputBudgetBytes is passed to the default FailOverBudget only; a non-nil Policy owns
+	// policy and this field (even invalid) is ignored.
+	InputBudgetBytes int
 }
 
 // Request applies the policy, then sends the request with provider.Client.Respond. It
@@ -108,7 +131,8 @@ type Direct struct {
 func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []any, error) {
 	policy := d.Policy
 	if policy == nil {
-		policy = FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID}
+		policy = FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID,
+			InputBudgetBytes: d.InputBudgetBytes}
 	}
 	sent, err := policy.Prepare(ctx, r)
 	if err != nil {
@@ -120,7 +144,7 @@ func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []
 	}
 	resp, err := client.Respond(ctx, d.Session, provider.Request{
 		Role: r.Role, Instructions: r.Instructions, Input: sent, Tools: r.Tools,
-		CacheID: d.CacheID, Cache: d.Cache,
+		CacheID: d.CacheID, Cache: d.Cache, DisableParallelToolCalls: r.DisableParallelToolCalls,
 	}, d.Observer)
 	if err != nil {
 		return nil, nil, err
@@ -174,13 +198,14 @@ func (e *NoProgressError) Error() string {
 
 // Round describes one round.
 type Round struct {
-	Owner        string
-	Role         provider.Role
-	Instructions string
-	Definitions  []any        // tool definitions sent to the model
-	Tools        *tools.Tools // executes non-handled calls (enabled set, protected/excluded paths)
-	Terminal     []string     // names that end the round without execution; default ["finish"]
-	MaxRounds    int          // stop with RoundLimitError after this many requests when the round would continue; 0 is no limit (no default)
+	Owner                    string
+	Role                     provider.Role
+	Instructions             string
+	Definitions              []any        // tool definitions sent to the model
+	Tools                    *tools.Tools // executes non-handled calls (enabled set, protected/excluded paths)
+	Terminal                 []string     // names that end the round without execution; default ["finish"]
+	DisableParallelToolCalls bool         // ask the provider for one tool call per response; unsupported routes refuse
+	MaxRounds                int          // stop with RoundLimitError after this many requests when the round would continue; 0 is no limit (no default)
 }
 
 // Ending is how a round ended. Both endings are model claims.
@@ -225,6 +250,11 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if rd.Tools != nil {
+		if err := rd.Tools.Validate(); err != nil {
+			return Result{}, err
+		}
+	}
 	terminal := rd.Terminal
 	if len(terminal) == 0 {
 		terminal = DefaultTerminal
@@ -244,6 +274,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 		requests++
 		resp, sent, err := rq.Request(ctx, Request{
 			Owner: rd.Owner, Role: rd.Role, Instructions: rd.Instructions, Input: input, Tools: rd.Definitions,
+			DisableParallelToolCalls: rd.DisableParallelToolCalls,
 		})
 		if err != nil {
 			return Result{}, err
@@ -296,7 +327,11 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 						}
 						out = o
 					}
-					out = out.Cut()
+					if rd.Tools != nil {
+						out = rd.Tools.Cut(out)
+					} else {
+						out = out.Cut()
+					}
 				}
 			}
 			// A tool can return after custody has terminated its process group.

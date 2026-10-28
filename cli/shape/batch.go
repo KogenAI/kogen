@@ -14,6 +14,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/agent"
+	"kogen/internal/research"
 	"kogen/project"
 )
 
@@ -379,7 +380,7 @@ func (sh *shaping) launch(ctx context.Context, i int, st *jobState, done chan wo
 	st.running = true
 	st.calls++
 	go func() {
-		resp, err := sh.client.Respond(ctx, sh.s, req, call)
+		resp, err := research.Respond(ctx, sh.client, sh.s, req, call)
 		call.End(resp, err)
 		done <- workerDone{i, resp, err}
 	}()

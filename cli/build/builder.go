@@ -11,6 +11,7 @@ import (
 	"kogen-loop/tools"
 	"kogen/agent"
 	"kogen/executor"
+	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -128,7 +129,7 @@ func (b *Attempt) drive(ctx context.Context, sess executor.Session, in executor.
 // finish call, or is a user message when the builder ended without one.
 func (b *Attempt) afterRound(input []any, finish map[string]any, feedback string) []any {
 	if finish != nil {
-		return append(slices.Clone(input), tools.OutputItem(finish["call_id"], tools.Cut(feedback)))
+		return append(slices.Clone(input), tools.OutputItem(finish["call_id"], research.CutText(feedback)))
 	}
 	return append(slices.Clone(input), map[string]any{"role": "user", "content": feedback})
 }
