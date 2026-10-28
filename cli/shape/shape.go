@@ -456,6 +456,11 @@ type shaping struct {
 	auditResult *auditResult   // the request audit; nil when disabled
 	auditUsage  provider.Usage // the native audit call's tokens
 	auditRounds int            // the external audit session's rounds
+
+	request        string         // the request text of this shaping
+	decisionChecks int            // decision check calls made
+	decisionUsage  provider.Usage // the native decision checks' tokens
+	decisionRounds int            // the external decision check sessions' rounds
 }
 
 func (sh *shaping) elapsed() int64 { return time.Since(sh.started).Milliseconds() / 1000 }
@@ -520,6 +525,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	sh.request = st.Request
 	if sh.cfg.ShapeAudit.Enabled {
 		if err := sh.audit(ctx, st.Request); err != nil {
 			return 0, err
@@ -539,7 +545,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 		var x *extSession
 		res, x, err = sh.converseExternal(ctx, blocks)
 		if x != nil {
-			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds+sh.auditRounds, time.Since(t0).Milliseconds())
+			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds+sh.auditRounds+sh.decisionRounds, time.Since(t0).Milliseconds())
 		}
 		if err != nil {
 			return 0, err
@@ -553,7 +559,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 			}
 			return 0, err
 		}
-		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, sh.auditUsage.Add(usage).Line(), time.Since(t0).Milliseconds())
+		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, sh.auditUsage.Add(sh.decisionUsage).Add(usage).Line(), time.Since(t0).Milliseconds())
 	}
 
 	switch res.kind {
@@ -1071,6 +1077,19 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 	}
 	if err := sh.fixAttempt(ctx, files); err != nil {
 		return "", outcome{}, err
+	}
+	if sh.cfg.ShapeDecisionCheck.Enabled {
+		text, err := os.ReadFile(filepath.Join(sh.root, project.IntentMDPath(sh.slug)))
+		if err != nil {
+			return "", outcome{}, err
+		}
+		lines, err := sh.decisionCheck(ctx, string(text))
+		if err != nil {
+			return "", outcome{}, err
+		}
+		if lines != nil {
+			return strings.Join(lines, "\n"), outcome{kind: outInvalid, problems: lines[1:]}, nil
+		}
 	}
 	sh.progress("kogen: checking step code")
 	feedback, err := sh.stepSelfcheck(ctx)

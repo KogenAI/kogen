@@ -279,6 +279,9 @@ func TestParseConfigMoreRules(t *testing.T) {
 		{"audit scalar", "version: 1\nshape_audit: x\n", []string{"line 2: shape_audit must be a mapping"}},
 		{"audit unknown key", "version: 1\nshape_audit:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
 		{"audit enabled not boolean", "version: 1\nshape_audit:\n  enabled: 'true'\n", []string{"line 3: shape_audit.enabled must be a Boolean"}},
+		{"decision check scalar", "version: 1\nshape_decision_check: x\n", []string{"line 2: shape_decision_check must be a mapping"}},
+		{"decision check unknown key", "version: 1\nshape_decision_check:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
+		{"decision check enabled not boolean", "version: 1\nshape_decision_check:\n  enabled: 'true'\n", []string{"line 3: shape_decision_check.enabled must be a Boolean"}},
 		{"workers scalar", "version: 1\nshape_workers: x\n", []string{"line 2: shape_workers must be a mapping"}},
 		{"workers unknown key", "version: 1\nshape_workers:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
 		{"workers enabled not boolean", "version: 1\nshape_workers:\n  enabled: 'true'\n", []string{"line 3: shape_workers.enabled must be a Boolean"}},
@@ -304,6 +307,15 @@ func TestParseConfigAudit(t *testing.T) {
 	}
 	if !mustParse(t, "version: 1\nshape_audit:\n  enabled: true\n").ShapeAudit.Enabled {
 		t.Error("shape_audit.enabled: true is off")
+	}
+}
+
+func TestParseConfigDecisionCheck(t *testing.T) {
+	if mustParse(t, "version: 1\n").ShapeDecisionCheck.Enabled {
+		t.Error("shape_decision_check defaults on")
+	}
+	if !mustParse(t, "version: 1\nshape_decision_check:\n  enabled: true\n").ShapeDecisionCheck.Enabled {
+		t.Error("shape_decision_check.enabled: true is off")
 	}
 }
 

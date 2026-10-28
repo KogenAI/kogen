@@ -67,15 +67,20 @@ type Workers struct {
 // Audit is `shape_audit`: whether Shape audits the request before its conversation.
 type Audit struct{ Enabled bool }
 
+// DecisionCheck is `shape_decision_check`: whether Shape checks each candidate's stated
+// Decisions against the request.
+type DecisionCheck struct{ Enabled bool }
+
 // Config is a validated `.kogen/project.yaml` (SET-8).
 type Config struct {
-	Setup, Fix   []string
-	Checks       []Check
-	Acceptance   *Acceptance // nil when neither run nor steps_dir is set
-	Protect      []string
-	Models       map[string]Role // "shape", "build", "review"; defaults where the file says nothing
-	ShapeWorkers Workers
-	ShapeAudit   Audit
+	Setup, Fix         []string
+	Checks             []Check
+	Acceptance         *Acceptance // nil when neither run nor steps_dir is set
+	Protect            []string
+	Models             map[string]Role // "shape", "build", "review"; defaults where the file says nothing
+	ShapeWorkers       Workers
+	ShapeAudit         Audit
+	ShapeDecisionCheck DecisionCheck
 }
 
 // ModelRoles lists the model roles in the order the template writes them.
@@ -192,6 +197,8 @@ func validateConfig(node *yamlNode) (*Config, []problem) {
 			c.ShapeWorkers = v.workers(p.node)
 		case "shape_audit":
 			c.ShapeAudit = v.audit(p.node)
+		case "shape_decision_check":
+			c.ShapeDecisionCheck = DecisionCheck(v.enabledOnly(p.node, "shape_decision_check"))
 		case "models":
 			c.Models = v.models(p.node)
 		default:
@@ -468,9 +475,14 @@ func modelEffort(node *yamlNode, nonBlank bool) (model, effort string, ok bool) 
 }
 
 func (v *validator) audit(node *yamlNode) Audit {
+	return Audit(v.enabledOnly(node, "shape_audit"))
+}
+
+// enabledOnly reads a mapping whose only key is the Boolean `enabled`.
+func (v *validator) enabledOnly(node *yamlNode, name string) Audit {
 	var a Audit
 	if node.kind != kindMap {
-		v.add(node.line, "shape_audit must be a mapping")
+		v.add(node.line, name+" must be a mapping")
 		return a
 	}
 	for _, p := range node.pairs {
@@ -482,7 +494,7 @@ func (v *validator) audit(node *yamlNode) Audit {
 		if n.kind == kindScalar && !n.null && !n.quoted && (n.text == "true" || n.text == "false") {
 			a.Enabled = n.text == "true"
 		} else {
-			v.add(p.line, "shape_audit.enabled must be a Boolean")
+			v.add(p.line, name+".enabled must be a Boolean")
 		}
 	}
 	return a

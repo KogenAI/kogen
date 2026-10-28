@@ -732,14 +732,14 @@ func TestApproveCardPrintsTheStagedPlanOfTheIntent(t *testing.T) {
 	s.Stdout = &out
 	ready := &verify.Ready{Intent: &project.Intent{Title: "Staged", Text: "# Staged\n\n" + plan}, AcceptanceExit: 0,
 		SHA256: strings.Repeat("b", 64), Head: strings.Repeat("c", 40)}
-	approveCard(s, "demo", strings.Repeat("a", 64), "Me", ready, []string{"x.md"})
+	approveCard(s, "demo", strings.Repeat("a", 64), "Me", ready, []string{"x.md"}, nil)
 	want := "Staged plan\n  1. Foundation (foundation): First runnable section\n    - make first\n    - make second\n  2. Surface (surface): Integrate\n    - make third\nFiles\n"
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("card:\n%s", out.String())
 	}
 	var plain strings.Builder
 	s.Stdout = &plain
-	approveCard(s, "demo", strings.Repeat("a", 64), "Me", &verify.Ready{Intent: &project.Intent{Title: "Plain", Text: "# Plain\n"}}, []string{"x.md"})
+	approveCard(s, "demo", strings.Repeat("a", 64), "Me", &verify.Ready{Intent: &project.Intent{Title: "Plain", Text: "# Plain\n"}}, []string{"x.md"}, nil)
 	if strings.Contains(plain.String(), "Staged plan") {
 		t.Fatalf("an Intent without a plan prints none:\n%s", plain.String())
 	}
@@ -760,7 +760,7 @@ func TestApproveCardGroupsOutlineRows(t *testing.T) {
 	s.Stdout = &out
 	ready := &verify.Ready{Intent: &project.Intent{Title: "An intent"}, Scenarios: scenarios, AcceptanceExit: 1,
 		SHA256: strings.Repeat("b", 64), Head: strings.Repeat("c", 40)}
-	approveCard(s, "demo", strings.Repeat("a", 64), "Me", ready, []string{"x.md", "y.feature"})
+	approveCard(s, "demo", strings.Repeat("a", 64), "Me", ready, []string{"x.md", "y.feature"}, nil)
 	want := "Intent: demo — An intent\nSHA-256: " + strings.Repeat("a", 64) + "\nApprover: Me\n\nAcceptance\n" +
 		"  - Even numbers (2 examples) (fails now)\n  - Single (passes now)\n  - Odd (1 examples) (passes now)\n" +
 		"\nReadiness observations\nChecked baseline: " + strings.Repeat("b", 64) + "\nHEAD: " + strings.Repeat("c", 40) +
