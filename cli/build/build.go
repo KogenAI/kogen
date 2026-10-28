@@ -553,6 +553,7 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 			"pass": b.Pass, "repair": b.Repairs,
 		},
 	}
+	requestBytes := b.requestBytes(req)
 	resp, err := tools.Deliver(input, sp.Owner, b.Run.Event, func() (*provider.Response, error) {
 		return b.deps.Client.Respond(ctx, b.s, req, attempts{b.Run})
 	})
@@ -569,10 +570,16 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 		return nil, nil, err
 	}
 	b.s.Progress(fmt.Sprintf("kogen: %s response %s wall_ms=%d", sp.Owner, got.Line(), wall))
-	b.Run.Event(map[string]any{
+	event := map[string]any{
 		"event": "request", "operation_id": resp.OperationID, "role": sp.Owner, "model": sp.Role.Model,
-		"effort": sp.Role.Effort, "usage": got, "wall_ms": wall,
-	})
+		"effort": sp.Role.Effort, "usage": requestUsageOf(got, resp), "wall_ms": wall, "request_bytes": requestBytes,
+	}
+	if sp.Owner == "review" {
+		event["review_round"] = b.Review
+	} else {
+		event["build_round"] = b.Round
+	}
+	b.Run.Event(event)
 	return resp, input, nil
 }
 

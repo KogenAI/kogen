@@ -933,7 +933,7 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 			return nil, nil, usage, err
 		}
 		req.Input = input
-		call := r.ev.BeginCall("shape", "", map[string]any{"head": r.head, "tree": r.tree}, "targeted refinement", role)
+		call := r.ev.BeginCall("shape", "", map[string]any{"head": r.head, "tree": r.tree}, "targeted refinement", role).Sized(r.client, req)
 		resp, err := r.client.Respond(ctx, r.s, req, call)
 		call.End(resp, err)
 		if err != nil {
@@ -985,12 +985,14 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 		case refineReady:
 			return result.files, result.ready, usage, nil
 		case refineObservations:
+			r.ev.NextAttempt()
 			continue
 		case refineConstrained:
 			return nil, nil, usage, refineConstraint(result.reason)
 		}
 		if result.kind == refineInvalid || len(calls) == 0 {
 			invalid++
+			r.ev.NextAttempt()
 		}
 		if invalid >= 3 {
 			e := sys.Fail("shape", "refinement_invalid",

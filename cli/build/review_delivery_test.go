@@ -292,6 +292,13 @@ func TestAReviewWhosePartsAndScreenshotsCannotShareAWindowConvergesOnItsDelivere
 	for _, ev := range eventsNamed(e.events(id), "review_tool_call") {
 		if ev["name"] == "read_file" {
 			reads++
+			src, _ := ev["source"].(map[string]any)
+			if src["kind"] != "review_source_part" || src["part_id"] == nil || len(src) != 2 {
+				t.Fatalf("part read source %v", ev["source"])
+			}
+			if h, _ := ev["content_sha256"].(string); len(h) != 64 {
+				t.Fatalf("part read content_sha256 %v", ev["content_sha256"])
+			}
 		}
 	}
 	// Each pinned part reached the reviewer once: natively in a request the provider answered

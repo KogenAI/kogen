@@ -1,10 +1,12 @@
 package shape
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -37,7 +39,18 @@ type Evidence struct {
 	intervals   map[string][][2]int64
 	eventOffset int64
 	counts      map[string]int
+	attempt     int
 }
+
+// NextAttempt starts the next shaper submission attempt: the requests that follow a refused
+// or fed-back submission belong to it.
+func (e *Evidence) NextAttempt() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.attempt = e.currentAttempt() + 1
+}
+
+func (e *Evidence) currentAttempt() int { return max(e.attempt, 1) }
 
 var _ verify.Evidence = (*Evidence)(nil)
 
@@ -254,8 +267,25 @@ func (e *Evidence) BeginCall(role, job string, revision any, scope string, cfg p
 		"event": "provider_call", "role": role, "job": jobValue, "revision": revision, "scope": scope,
 		"configured_model": cfg.Model, "effective_model": nil,
 		"configured_effort": cfg.Effort, "effective_effort": nil,
-		"started_ms": t,
+		"started_ms": t, "shape_attempt": e.attemptNow(),
 	}}
+}
+
+func (e *Evidence) attemptNow() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.currentAttempt()
+}
+
+// Sized records the byte length of the serialized request body the call sends.
+func (c *Call) Sized(client *provider.Client, req provider.Request) *Call {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(client.Body(req)); err == nil {
+		c.base["request_bytes"] = buf.Len() - 1
+	}
+	return c
 }
 
 // Attempt records one transport attempt (provider.Observer).
@@ -275,6 +305,8 @@ func (c *Call) Attempt(rec map[string]any) {
 	for k, v := range c.base {
 		event[k] = v
 	}
+	usage = maps.Clone(usage)
+	usage["cache_write"] = usage["write"]
 	event["started_ms"], event["status"], event["usage"], event["wall_ms"] = started, status, usage, wall
 	event["provider"], event["error"] = rec, rec["error"]
 	c.ev.Record(event)
@@ -302,6 +334,10 @@ func (c *Call) End(resp *provider.Response, err error) {
 	default:
 		event["status"], event["usage"], event["error"] = "failed", Unknown(), errorMessage(err)
 	}
+	usage, _ := event["usage"].(map[string]any)
+	usage = maps.Clone(usage)
+	usage["cache_write"] = usage["write"]
+	event["usage"] = usage
 	c.ev.Record(event)
 	c.ev.Interval("model", c.t, ended)
 }

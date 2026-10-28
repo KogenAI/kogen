@@ -325,7 +325,8 @@ func (w *window) prepare(p windowPrep, input []any) ([]any, error) {
 		"event": "working_context_reset", "owner": w.owner, "generation": len(history),
 		"before_bytes": before.RenderedBytes, "after_bytes": after.RenderedBytes,
 		"input_budget_bytes": tools.InputBudgetBytes, "output_reserve_tokens": tools.OutputReserveTokens,
-		"archive": archive.value(),
+		"archive": archive.value(), "input_tokens_before": before.RenderedBytes,
+		"input_tokens_after": after.RenderedBytes, "carried_items": len(reduced),
 	})
 	p.progress(fmt.Sprintf("kogen: %s local working-window reset %d -> %d bytes; custody %s", w.title(), before.RenderedBytes, after.RenderedBytes, archive.Path))
 	return reduced, nil

@@ -441,10 +441,14 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 				if event := tools.ReadEvent(call, result, "review"); event != nil {
 					b.Run.Event(event)
 				}
-				b.Run.Event(map[string]any{
+				event := map[string]any{
 					"event": "review_tool_call", "name": call.Name,
 					"arguments": provider.Fingerprint(call.Arguments), "result": provider.Fingerprint(result.Value()),
-				})
+				}
+				for k, v := range b.toolRecordFields(call, result, b.reviewPartID) {
+					event[k] = v
+				}
+				b.Run.Event(event)
 				done := &Completed{Call: call.Item, Result: result.Value()}
 				if err := b.Save(Continuation{Stage: StageTool, Owner: "review", Input: slices.Concat(input, outs), Completed: done}); err != nil {
 					return reviewVerdict{}, err

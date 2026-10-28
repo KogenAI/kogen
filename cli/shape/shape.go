@@ -692,7 +692,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 			return outcome{}, usage, err
 		}
 		req.Input = input
-		call := sh.ev.BeginCall("shape", "", revision.Map(), "main shaping", sh.role)
+		call := sh.ev.BeginCall("shape", "", revision.Map(), "main shaping", sh.role).Sized(sh.client, req)
 		resp, err := tools.Deliver(input, "shape", sh.ev.Record, func() (*provider.Response, error) {
 			r, err := sh.client.Respond(ctx, sh.s, req, call)
 			call.End(r, err)
@@ -763,13 +763,16 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 			return result, usage, nil
 		case result.kind == outInvalid:
 			invalid++
+			sh.ev.NextAttempt()
 		case result.kind == outObservations:
+			sh.ev.NextAttempt()
 		case result.kind == outBlocked, result.kind == outQuestions, result.kind == outReady:
 			return result, usage, nil
 		case len(calls) == 0:
 			if invalid+1 >= 3 {
 				return outcome{kind: outInvalid, problems: []string{"the shaper ended without calling submit"}}, usage, nil
 			}
+			sh.ev.NextAttempt()
 			input = append(input, map[string]any{"role": "user", "content": "End by calling submit with either questions or files."})
 			invalid++
 		}

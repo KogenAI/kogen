@@ -406,6 +406,10 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 	}
 	state.History, state.Observations = window.history, window.observations
 	b.WorkingContext[owner] = state
+	b.Run.Event(map[string]any{
+		"event": "window_reset", "owner": owner, "input_tokens_before": measured.RenderedBytes,
+		"input_tokens_after": next.RenderedBytes, "carried_items": len(window.reduced),
+	})
 	b.s.Progress(fmt.Sprintf("kogen: %s local reset %d -> %d bytes; ceiling %d; reserve %d; history %s%s",
 		owner, measured.RenderedBytes, next.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, path, suffix))
 	return window.reduced, nil

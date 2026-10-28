@@ -375,7 +375,7 @@ func (sh *shaping) launch(ctx context.Context, i int, st *jobState, done chan wo
 		Role: ProviderRole(role), Instructions: workerInstructions, Input: slices.Clone(st.input), Tools: agent.AsAny(defs),
 		Single: true, Scope: j.id, Context: map[string]any{"phase": "shape", "role": j.role, "slug": sh.slug},
 	}, st.cacheID)
-	call := sh.ev.BeginCall(j.role, j.id, revision.Map(), j.scope, role)
+	call := sh.ev.BeginCall(j.role, j.id, revision.Map(), j.scope, role).Sized(sh.client, req)
 	st.running = true
 	st.calls++
 	go func() {

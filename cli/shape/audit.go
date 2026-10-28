@@ -177,7 +177,7 @@ func (sh *shaping) audit(ctx context.Context, request string) error {
 			Input: []any{map[string]any{"role": "user", "content": request}}, Tools: []any{auditToolDef()},
 			Scope: sh.ev.Dir, Context: map[string]any{"phase": "shape", "role": "shape", "slug": sh.slug},
 		}, cacheID)
-		call := sh.ev.BeginCall("shape", "", revision.Map(), "request audit", sh.role)
+		call := sh.ev.BeginCall("shape", "", revision.Map(), "request audit", sh.role).Sized(sh.client, req)
 		t0 := time.Now()
 		resp, err := sh.client.Respond(ctx, sh.s, req, call)
 		call.End(resp, err)

@@ -177,10 +177,16 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 			if !terminal {
 				resultLog = provider.Fingerprint(out.Value())
 			}
-			b.Run.Event(map[string]any{
+			event := map[string]any{
 				"event": "tool_call", "call_id": call.CallID(), "name": call.Name,
 				"arguments": provider.Fingerprint(call.Arguments), "result": resultLog,
-			})
+			}
+			if !terminal {
+				for k, v := range b.toolRecordFields(call, out, func(string) (int, bool) { return 0, false }) {
+					event[k] = v
+				}
+			}
+			b.Run.Event(event)
 			done := &Completed{Call: call.Item, Result: "finish"}
 			if !terminal {
 				done.Result = out.Value()

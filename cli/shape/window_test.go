@@ -225,6 +225,11 @@ func TestTheResetEventMeasuresTheRequestOfTheNewWindow(t *testing.T) {
 		event["input_budget_bytes"] != float64(524288) || event["output_reserve_tokens"] != float64(131072) {
 		t.Fatalf("event %v, request %d bytes", event, actual.RenderedBytes)
 	}
+	before, _ := event["input_tokens_before"].(float64)
+	if event["input_tokens_after"] != float64(actual.RenderedBytes) || before != event["before_bytes"] || before <= float64(actual.RenderedBytes) ||
+		event["carried_items"] != float64(len(reduced)) {
+		t.Fatalf("reset measurements %v", event)
+	}
 }
 
 func TestUnsafeAncestorCustodyRefusesBeforeWritingAnUnsentArchive(t *testing.T) {
