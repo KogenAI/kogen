@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -296,8 +298,14 @@ func uncoveredDefects(defects []map[string]any, intent string, questions []map[s
 
 // auditGate is the coverage problems of a submission of questions or files; nil when covered.
 func (sh *shaping) auditGate(sub submission) []string {
+	lines, _ := sh.auditUncovered(sub)
+	return lines
+}
+
+// auditUncovered is the strict feedback and the uncovered defects of a submission.
+func (sh *shaping) auditUncovered(sub submission) ([]string, []map[string]any) {
 	if sub.blocked || sh.auditResult == nil || len(sh.auditResult.defects) == 0 {
-		return nil
+		return nil, nil
 	}
 	intent := sh.proposed[project.IntentMDPath(sh.slug)]
 	for _, f := range sub.files {
@@ -307,11 +315,57 @@ func (sh *shaping) auditGate(sub submission) []string {
 	}
 	uncovered := uncoveredDefects(sh.auditResult.defects, intent, sub.questions)
 	if len(uncovered) == 0 {
-		return nil
+		return nil, nil
 	}
 	lines := []string{fmt.Sprintf("Request audit: %d defects are not decided or asked; decide each with its exposing input or ask with both quotes:", len(uncovered))}
 	for _, d := range uncovered {
 		lines = append(lines, fmt.Sprintf("quote_a: %s | quote_b: %s | exposing_input: %s", d["quote_a"], d["quote_b"], d["exposing_input"]))
+		lines = append(lines, defectTemplates(d)...)
 	}
-	return lines
+	return lines, uncovered
+}
+
+// defectTemplates are the ready lines that cover a defect when pasted unchanged.
+func defectTemplates(d map[string]any) []string {
+	qa, qb, in := d["quote_a"], d["quote_b"], d["exposing_input"]
+	var out []string
+	if d["kind"] == "undefined" {
+		out = append(out, fmt.Sprintf("- Decision: %s: <definition> (because …) (source: request)", qb))
+	} else {
+		var results []string
+		for _, k := range []string{"result_a", "result_b"} {
+			if r, _ := d[k].(string); r != "" {
+				results = append(results, r)
+			}
+		}
+		if len(results) == 0 {
+			results = []string{"<result>"}
+		}
+		for _, r := range results {
+			out = append(out, fmt.Sprintf("- Decision: for %s the result is %s (because …) (source: request)", in, r))
+		}
+	}
+	return append(out, fmt.Sprintf("- Question: \"%s\" versus \"%s\": which applies?", qa, qb))
+}
+
+// unresolvedLines are the card lines of the uncovered defects of the last request_audit event.
+func unresolvedLines(root, slug string) []string {
+	b, err := os.ReadFile(filepath.Join(root, ".kogen/local/shaping", slug, "events.ndjson"))
+	if err != nil {
+		return nil
+	}
+	var last []any
+	for _, line := range strings.Split(string(b), "\n") {
+		var e map[string]any
+		if json.Unmarshal([]byte(line), &e) != nil || e["event"] != "request_audit" {
+			continue
+		}
+		last, _ = e["uncovered"].([]any)
+	}
+	var out []string
+	for _, it := range last {
+		d, _ := it.(map[string]any)
+		out = append(out, fmt.Sprintf("  - quote_a: %v | quote_b: %v | exposing_input: %v", d["quote_a"], d["quote_b"], d["exposing_input"]))
+	}
+	return out
 }

@@ -911,3 +911,30 @@ func TestApproveRollbackPreservesExternalReceiptAndMarkerEditsDuringPublication(
 		})
 	}
 }
+
+// TestApproveCardUnresolvedConflicts: the last request_audit event's uncovered defects are
+// listed between the assumptions and Files; a later event without them shows nothing.
+func TestApproveCardUnresolvedConflicts(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".kogen/local/shaping/demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ev := filepath.Join(dir, "events.ndjson")
+	d := `{"quote_a":"QA","quote_b":"QB","exposing_input":"f(0)"}`
+	os.WriteFile(ev, []byte(`{"event":"request_audit","defects":[`+d+`],"uncovered":[`+d+`]}`+"\n"), 0o644)
+	lines := unresolvedLines(root, "demo")
+	s := sys.NewWith(nil, "")
+	var out strings.Builder
+	s.Stdout = &out
+	ready := &verify.Ready{Intent: &project.Intent{Title: "T", Text: "# T\n"}}
+	approveCard(s, "demo", strings.Repeat("a", 64), "Me", ready, []string{"x.md"}, []string{"a1"}, lines...)
+	want := "Assumptions to confirm\n  - a1\nUnresolved request conflicts\n  - quote_a: QA | quote_b: QB | exposing_input: f(0)\nFiles\n"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("card:\n%s", out.String())
+	}
+	os.WriteFile(ev, []byte(`{"event":"request_audit","defects":[`+d+`],"uncovered":[`+d+`]}`+"\n"+`{"event":"request_audit","defects":[]}`+"\n"), 0o644)
+	if l := unresolvedLines(root, "demo"); len(l) != 0 {
+		t.Fatalf("later event still shows %q", l)
+	}
+}

@@ -453,9 +453,11 @@ type shaping struct {
 	window    *window
 	cacheID   string // this conversation's cache identity
 
-	auditResult *auditResult   // the request audit; nil when disabled
-	auditUsage  provider.Usage // the native audit call's tokens
-	auditRounds int            // the external audit session's rounds
+	priorInvalid  int              // invalid submissions before the current attempt
+	lastUncovered []map[string]any // defects a last-attempt files submission left uncovered
+	auditResult   *auditResult     // the request audit; nil when disabled
+	auditUsage    provider.Usage   // the native audit call's tokens
+	auditRounds   int              // the external audit session's rounds
 
 	request        string         // the request text of this shaping
 	decisionChecks int            // decision check calls made
@@ -727,6 +729,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 				sh.batchUsed = true
 				outputs = append(outputs, toolOutput(c, string(text)))
 			case c.Name == agent.SubmitTool:
+				sh.priorInvalid = invalid
 				text, r, err := sh.submit(ctx, c.Args())
 				if err != nil {
 					return outcome{}, usage, err
@@ -803,6 +806,7 @@ func (sh *shaping) converseExternal(ctx context.Context, blocks []any) (outcome,
 		if err != nil {
 			return outcome{}, x, err
 		}
+		sh.priorInvalid = invalid
 		text, out, err := sh.submit(ctx, args)
 		if err != nil {
 			return outcome{}, x, err
@@ -997,8 +1001,13 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 				"\nNo proposals from this submission were retained; earlier proposals are unchanged.",
 			outcome{kind: outInvalid, problems: problems}, nil
 	}
-	if lines := sh.auditGate(sub); lines != nil {
+	lines, uncovered := sh.auditUncovered(sub)
+	lastAttempt := sh.priorInvalid >= 2
+	if lines != nil && !lastAttempt {
 		return strings.Join(lines, "\n"), outcome{kind: outInvalid, problems: lines}, nil
+	}
+	if lines != nil && sub.files != nil {
+		sh.lastUncovered = uncovered
 	}
 	switch {
 	case sub.questions != nil:
@@ -1012,7 +1021,21 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 				"\nNo proposals from this submission were retained; earlier proposals are unchanged.",
 			outcome{kind: outInvalid, problems: problems}, nil
 	}
-	return sh.acceptFiles(ctx, sub.files)
+	text, out, err := sh.acceptFiles(ctx, sub.files)
+	if err == nil && out.kind == outReady && len(sh.lastUncovered) > 0 {
+		defects := make([]any, len(sh.lastUncovered))
+		for i, d := range sh.lastUncovered {
+			defects[i] = d
+		}
+		all := make([]any, len(sh.auditResult.defects))
+		for i, d := range sh.auditResult.defects {
+			all[i] = d
+		}
+		sh.ev.Record(map[string]any{"event": "request_audit", "examples": sh.auditResult.examples, "rules": sh.auditResult.rules,
+			"cells": sh.auditResult.cells, "defects": all, "uncovered": defects})
+	}
+	sh.lastUncovered = nil
+	return text, out, err
 }
 
 // acceptFiles merges a submission's files into the accumulated proposals and checks the

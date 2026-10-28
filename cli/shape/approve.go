@@ -171,7 +171,7 @@ func approveLocked(ctx context.Context, s *sys.Session, in ApproveInput, repo *g
 			return 0, err
 		}
 		s.Puts(card)
-		approveCard(s, slug, sha, approver, ready, baseline, assumptionLines(cfg, ready.Intent.Text))
+		approveCard(s, slug, sha, approver, ready, baseline, assumptionLines(cfg, ready.Intent.Text), unresolvedLines(root, slug)...)
 		return 5, nil
 	}
 
@@ -400,7 +400,7 @@ func approveQuestionsPending(root, slug string) error {
 
 // approveCard prints the review card (AUT-1): each Scenario Outline once with its number of
 // examples and `fails now` if any row fails, each ordinary Scenario once.
-func approveCard(s *sys.Session, slug, sha, approver string, ready *verify.Ready, baseline []string, assumptions []string) {
+func approveCard(s *sys.Session, slug, sha, approver string, ready *verify.Ready, baseline []string, assumptions []string, unresolved ...string) {
 	s.Puts("Intent: " + slug + " — " + ready.Intent.Title)
 	s.Puts("SHA-256: " + sha)
 	s.Puts("Approver: " + approver)
@@ -445,6 +445,12 @@ func approveCard(s *sys.Session, slug, sha, approver string, ready *verify.Ready
 		s.Puts("Assumptions to confirm")
 		for _, a := range assumptions {
 			s.Puts("  - " + a)
+		}
+	}
+	if len(unresolved) > 0 {
+		s.Puts("Unresolved request conflicts")
+		for _, u := range unresolved {
+			s.Puts(u)
 		}
 	}
 	s.Puts("Files")

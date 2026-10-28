@@ -51,7 +51,10 @@ func TestAuditGateFeedback(t *testing.T) {
 	sh := &shaping{slug: "s", proposed: map[string]string{}, auditResult: &auditResult{defects: []map[string]any{
 		{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)", "result_a": "T", "result_b": "F"}}}}
 	got := sh.auditGate(submission{questions: []map[string]any{{"question": "x"}}})
-	want := []string{"Request audit: 1 defects are not decided or asked; decide each with its exposing input or ask with both quotes:", "quote_a: QA | quote_b: QB | exposing_input: f(0)"}
+	want := []string{"Request audit: 1 defects are not decided or asked; decide each with its exposing input or ask with both quotes:", "quote_a: QA | quote_b: QB | exposing_input: f(0)",
+		"- Decision: for f(0) the result is T (because …) (source: request)",
+		"- Decision: for f(0) the result is F (because …) (source: request)",
+		"- Question: \"QA\" versus \"QB\": which applies?"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("feedback %q", got)
 	}
@@ -84,9 +87,51 @@ func TestExternalShapeAudit(t *testing.T) {
 		t.Error("the audit saw repository context")
 	}
 	shpContains(t, "feedback", x.inputs[2].Feedback, "Request audit: 1 defects are not decided or asked; decide each with its exposing input or ask with both quotes:\nquote_a: QA | quote_b: QB | exposing_input: is_even(0)")
-	if n := len(shpNamed(f.events(), "request_audit")); n != 1 {
-		t.Fatalf("%d request_audit events", n)
+	// Attempts one and two are refused with the template; the third is the last attempt and is
+	// published, recording the uncovered defect in a second request_audit event.
+	shpContains(t, "template", x.inputs[2].Feedback, "- Decision: for is_even(0) the result is True (because …) (source: request)")
+	evs := shpNamed(f.events(), "request_audit")
+	if len(evs) != 2 {
+		t.Fatalf("%d request_audit events", len(evs))
 	}
-	shapeAbsent(t, f)
+	if _, ok := evs[0]["uncovered"]; ok {
+		t.Error("first event has uncovered")
+	}
+	if u, _ := evs[1]["uncovered"].([]any); len(u) != 1 {
+		t.Fatalf("uncovered %v", evs[1]["uncovered"])
+	}
+	if !f.exists(".kogen/intents/is-even") {
+		t.Error("the last attempt was not published")
+	}
+	if lines := unresolvedLines(f.Root, "is-even"); len(lines) != 1 || lines[0] != "  - quote_a: QA | quote_b: QB | exposing_input: is_even(0)" {
+		t.Errorf("card lines %q", lines)
+	}
 	noNativeRequests(t, f)
+}
+
+// TestDefectTemplates: each pasted template line covers its defect; empty results and undefined.
+func TestDefectTemplates(t *testing.T) {
+	cases := []map[string]any{
+		{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)", "result_a": "T", "result_b": "F"},
+		{"kind": "precedence", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(1)", "result_a": "", "result_b": "F"},
+		{"kind": "precedence", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(2)", "result_a": "", "result_b": ""},
+		{"kind": "undefined", "quote_a": "QA", "quote_b": "widget", "exposing_input": "f(3)", "result_a": "", "result_b": ""},
+	}
+	counts := []int{3, 2, 2, 2}
+	for i, d := range cases {
+		lines := defectTemplates(d)
+		if len(lines) != counts[i] {
+			t.Fatalf("case %d: %q", i, lines)
+		}
+		for _, l := range lines[:len(lines)-1] {
+			intent := "## Decisions\n" + l + "\n"
+			if len(uncoveredDefects([]map[string]any{d}, intent, nil)) != 0 {
+				t.Errorf("case %d: %q does not cover", i, l)
+			}
+		}
+		q := []map[string]any{{"question": strings.TrimPrefix(lines[len(lines)-1], "- Question: ")}}
+		if len(uncoveredDefects([]map[string]any{d}, "", q)) != 0 {
+			t.Errorf("case %d: question does not cover", i)
+		}
+	}
 }
