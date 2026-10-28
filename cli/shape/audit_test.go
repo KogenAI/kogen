@@ -38,6 +38,10 @@ func TestUncoveredDefects(t *testing.T) {
 		{"undefined marker not a word", undefined, intent("- Widget isolated."), nil, false},
 		{"empty result does not disqualify", map[string]any{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)", "result_a": "True", "result_b": ""}, intent("- f(0) returns True."), nil, true},
 		{"undefined asked without the name", undefined, "", ask("makes a gadget?"), false},
+		{"input across a line break", map[string]any{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)\r\nwith  two", "result_a": "True", "result_b": "False"}, intent("- f(0) with two returns True."), nil, true},
+		{"input with another word", map[string]any{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)\nwith three", "result_a": "True", "result_b": "False"}, intent("- f(0) with two returns True."), nil, false},
+		{"question quotes across line breaks", defect, "", ask("QA\ttext but QB\ntext?"), true},
+		{"question quote with another case", defect, "", ask("qa text but QB text?"), false},
 	}
 	for _, c := range cases {
 		got := uncoveredDefects([]map[string]any{c.defect}, c.intent, c.questions)

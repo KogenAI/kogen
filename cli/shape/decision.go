@@ -111,9 +111,9 @@ func decisionOutcome(items []decisionItem, request, intent string) (map[string]a
 	var problems []string
 	for i := range items {
 		it := &items[i]
-		supported := strings.Contains(intent, it.statement)
+		supported := containsNormalized(intent, it.statement)
 		for _, q := range it.quotes {
-			supported = supported && strings.Contains(request, q)
+			supported = supported && containsNormalized(request, q)
 		}
 		if !supported {
 			it.verdict = "unsupported"
@@ -255,4 +255,16 @@ func markAssumptions(items []decisionItem, intent string) (marked string, statem
 		marked = strings.Replace(marked, line, head+" (assumption: "+w+")"+" "+strings.TrimSpace(tag), 1)
 	}
 	return marked, statements, true
+}
+
+// normalizeWhitespace turns every run of space, tab, CR and LF into one space and trims.
+func normalizeWhitespace(s string) string {
+	return strings.Join(strings.FieldsFunc(s, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\r' || r == '\n'
+	}), " ")
+}
+
+// containsNormalized is substring matching after normalizeWhitespace on both sides.
+func containsNormalized(haystack, needle string) bool {
+	return strings.Contains(normalizeWhitespace(haystack), normalizeWhitespace(needle))
 }

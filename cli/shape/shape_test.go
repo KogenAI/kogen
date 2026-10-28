@@ -930,3 +930,54 @@ func TestShapeRecordsEachRefusedSubmissionWithItsGate(t *testing.T) {
 		})
 	}
 }
+
+func TestShortenTitle(t *testing.T) {
+	for in, want := range map[string]string{
+		"Add an is-even check for integers and also reject, every string": "Add an is-even check for integers and also reject",
+		"Add an is-even check for integers and also reject every string":  "Add an is-even check for integers and also reject",
+		"Add an is-even check for integers and also rejection of strings": "Add an is-even check for integers and also",
+	} {
+		if got := shortenTitle(in); got != want {
+			t.Errorf("shortenTitle(%q) = %q", in, got)
+		}
+	}
+}
+
+// shpTitled is shpFiles with another title and, when extra is set, the given Decisions line instead.
+func shpTitled(title, decision string) map[string]any {
+	files := shpFiles()
+	intent := strings.Replace(shpIntentMD, "# Add an is-even check\n", "# "+title+"\n", 1)
+	if decision != "" {
+		intent = strings.Replace(intent, "- Non-integers raise TypeError. (source: request)\n", decision+"\n", 1)
+	}
+	files["files"].([]any)[0] = map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": intent}
+	return files
+}
+
+func TestShapeShortensATooLongTitleOnlyOnTheLastAttempt(t *testing.T) {
+	const long = "Add an is-even check for integers and also reject every string"
+	const short = "Add an is-even check for integers and also reject"
+	t.Run("last attempt", func(t *testing.T) {
+		f := newShpFx(t, shpSubmit("c1", shpTitled(long, "")), shpSubmit("c2", shpTitled(long, "")), shpSubmit("c3", shpTitled(long, "")))
+		f.setReport("PASSED", 0)
+		if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
+			t.Fatalf("exit %d, err %v\n%s", exit, err, f.Stdout)
+		}
+		shpContains(t, "feedback 1", shpOutputs(f.Prov.requests()[1])["c1"], titleTooLong)
+		shpEq(t, "title", strings.SplitN(f.read(".kogen/intents/is-even/intent.md"), "\n", 2)[0], "# "+short)
+		events := shpNamed(f.events(), "title_shortened")
+		shpEq(t, "events", len(events), 1)
+		shpEq(t, "original", events[0]["original"], any(long))
+		shpEq(t, "title", events[0]["title"], any(short))
+		shpEq(t, "refused", strings.Join(shpRefused(f), " "), "1:intent 2:intent")
+	})
+	t.Run("another problem remains", func(t *testing.T) {
+		unsourced := shpTitled(long, "- Non-integers raise TypeError.")
+		f := newShpFx(t, shpSubmit("c1", unsourced), shpSubmit("c2", unsourced), shpSubmit("c3", unsourced))
+		f.setReport("PASSED", 0)
+		_, err := f.shape("Add calc.is_even(n).")
+		shpWantError(t, err, "shape", "invalid_output", "", 1)
+		shpEq(t, "events", len(shpNamed(f.events(), "title_shortened")), 0)
+		shpEq(t, "refused", strings.Join(shpRefused(f), " "), "1:intent 2:intent 3:intent")
+	})
+}

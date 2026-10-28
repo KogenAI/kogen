@@ -279,13 +279,13 @@ func uncoveredDefects(defects []map[string]any, intent string, questions []map[s
 				if definesName(l, qb) {
 					covered = true
 				}
-			} else if strings.Contains(l, in) && !(ra != "" && rb != "" && strings.Contains(l, ra) && strings.Contains(l, rb)) {
+			} else if containsNormalized(l, in) && !(ra != "" && rb != "" && containsNormalized(l, ra) && containsNormalized(l, rb)) {
 				covered = true
 			}
 		}
 		for _, q := range questions {
 			text := textOf(q["question"])
-			if strings.Contains(text, qa) && strings.Contains(text, qb) {
+			if containsNormalized(text, qa) && containsNormalized(text, qb) {
 				covered = true
 			}
 		}

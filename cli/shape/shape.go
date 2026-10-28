@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"kogen-loop/provider"
 	"kogen-loop/sys"
@@ -1092,6 +1093,26 @@ func (sh *shaping) acceptFiles(ctx context.Context, submitted []proposedFile) (s
 		}
 	}
 	intent, _, err := project.CheckIntent(sh.root, sh.slug, sh.overlay())
+	if err != nil && sh.priorInvalid >= 2 {
+		if e, ok := sys.AsError(err); ok && e.Reason == "lint" && len(e.Lines) == 1 && e.Lines[0] == titleTooLong {
+			p := project.IntentMDPath(sh.slug)
+			before := sh.proposed[p]
+			if first, rest, found := strings.Cut(before, "\n"); strings.HasPrefix(first, "# ") {
+				original := strings.TrimPrefix(first, "# ")
+				short := shortenTitle(original)
+				sh.proposed[p] = "# " + short
+				if found {
+					sh.proposed[p] += "\n" + rest
+				}
+				if intent2, _, err2 := project.CheckIntent(sh.root, sh.slug, sh.overlay()); err2 == nil {
+					intent, err = intent2, nil
+					sh.ev.Record(map[string]any{"event": "title_shortened", "original": original, "title": short})
+				} else {
+					sh.proposed[p] = before
+				}
+			}
+		}
+	}
 	if err != nil {
 		e, ok := sys.AsError(err)
 		if !ok {
@@ -1543,4 +1564,25 @@ func (sh *shaping) printReady(added []string, usageLine string) int {
 	sh.s.Puts(usageLine)
 	sh.s.Puts("Next: kogen intent approve " + sh.slug)
 	return 0
+}
+
+const titleTooLong = "title: the title must be at most 50 characters"
+
+// shortenTitle cuts a title after the last whole word that fits in 50 characters and
+// removes trailing punctuation and spaces.
+func shortenTitle(title string) string {
+	r := []rune(title)
+	if len(r) > 50 {
+		cut := 50
+		if r[50] != ' ' {
+			for cut > 0 && r[cut-1] != ' ' {
+				cut--
+			}
+			if cut == 0 {
+				cut = 50
+			}
+		}
+		r = r[:cut]
+	}
+	return strings.TrimRightFunc(string(r), func(c rune) bool { return unicode.IsSpace(c) || unicode.IsPunct(c) })
 }
