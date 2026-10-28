@@ -8,10 +8,25 @@ set -eu
 src=$(cd "$(dirname "$0")/.." && pwd)
 cd "$src"
 
-os=$(uname -s | tr '[:upper:]' '[:lower:]'); arch=$(uname -m)
-case "$os-$arch" in
-  darwin-arm64|linux-x86_64) target="$os-$arch" ;;
-  *) echo "package: unsupported platform $os-$arch"; exit 1 ;;
+target=""; want_version=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --target) [ $# -ge 2 ] || { echo "package: --target needs a value"; exit 2; }; target=$2; shift 2 ;;
+    --version) [ $# -ge 2 ] || { echo "package: --version needs a value"; exit 2; }; want_version=$2; shift 2 ;;
+    *) echo "package: unexpected argument '$1'"; exit 2 ;;
+  esac
+done
+if [ -z "$target" ]; then
+  os=$(uname -s | tr '[:upper:]' '[:lower:]'); arch=$(uname -m)
+  case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64|amd64) arch=x86_64 ;; esac
+  target="$os-$arch"
+fi
+case "$target" in
+  darwin-arm64) goos=darwin; goarch=arm64 ;;
+  darwin-x86_64) goos=darwin; goarch=amd64 ;;
+  linux-x86_64) goos=linux; goarch=amd64 ;;
+  linux-arm64) goos=linux; goarch=arm64 ;;
+  *) echo "package: unknown target $target"; exit 2 ;;
 esac
 
 # CLI-10: the commit the release is built from, or a hash of uncommitted source. The source files
@@ -34,6 +49,16 @@ else
   json=$(printf '{"version":"%s","commit":null,"date":"%s","uncommitted":true}' "$version" "$date")
 fi
 
+if [ -n "$want_version" ]; then
+  version=$want_version
+  line="kogen $version ($date)"
+  if [ -n "${commit:-}" ]; then
+    json=$(printf '{"version":"%s","commit":"%s","date":"%s","uncommitted":false}' "$version" "$commit" "$date")
+  else
+    json=$(printf '{"version":"%s","commit":null,"date":"%s","uncommitted":true}' "$version" "$date")
+  fi
+fi
+
 name="kogen-$version-$target"
 work="$src/dist/$name"
 rm -rf "$work" "$work.tar.gz"
@@ -41,7 +66,7 @@ mkdir -p "$work/bin" "$work/lib"
 
 printf '%s\n' "$line" > "$work/lib/VERSION"
 printf '%s\n' "$json" > "$work/lib/VERSION.json"
-(cd cli && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o "$work/bin/kogen" .)
+(cd cli && CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -trimpath -buildvcs=false -o "$work/bin/kogen" .)
 mkdir -p "$work/lib/quint"
 cp packaging/quint/package.json packaging/quint/package-lock.json "$work/lib/quint/"
 (cd "$work/lib/quint" && npm ci --ignore-scripts --no-audit --no-fund --silent >&2)

@@ -11,9 +11,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+arch=$(uname -m)
+case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64|amd64) arch=x86_64 ;; esac
+platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$arch"
 case "$platform" in
-  darwin-arm64|linux-x86_64) ;;
+  darwin-arm64|darwin-x86_64|linux-x86_64|linux-arm64) ;;
   *) echo "install: unsupported platform $platform"; exit 1 ;;
 esac
 target=$(cat "$here/TARGET")
@@ -33,7 +35,7 @@ node=$(command -v node 2>/dev/null || true)
 if [ -n "$node" ] && [ "$("$node" -p 'process.versions.node.split(".")[0] >= 22' 2>/dev/null || true)" = "true" ]; then
   node=$("$node" -p process.execPath)
 else
-  case "$platform" in darwin-arm64) dist=darwin-arm64 ;; linux-x86_64) dist=linux-x64 ;; esac
+  case "$platform" in darwin-arm64) dist=darwin-arm64 ;; darwin-x86_64) dist=darwin-x64 ;; linux-x86_64) dist=linux-x64 ;; linux-arm64) dist=linux-arm64 ;; esac
   lts=$(curl -fsSL https://nodejs.org/dist/index.tab | awk -F'\t' 'NR > 1 && $10 != "-" && !v { v = $1 } END { print v }')
   [ -n "$lts" ] || { echo "install: could not find the current Node LTS at nodejs.org"; exit 1; }
   mkdir -p "$lib/node"
