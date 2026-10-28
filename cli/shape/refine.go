@@ -30,6 +30,8 @@ import (
 // RefineInput is one `kogen intent refine <slug> <sha256> <file|->`: the correction request,
 // already read by the caller, and the full baseline hash of the draft it corrects (SHP-11).
 type RefineInput struct {
+	SubmissionRetryLimit int // internal invalid-submission budget; nonpositive means 3
+
 	// NativeRoundLimits is internal and research-only; Shape, Refine and Review
 	// limits are unsupported for now and their keys are ignored.
 	NativeRoundLimits map[string]int
@@ -288,6 +290,9 @@ var refineHashPattern = regexp.MustCompile(`\A[0-9a-f]{64}\z`)
 func (r *refine) run(ctx context.Context) (exit int, err error) {
 	defer os.RemoveAll(r.scratch)
 	defer r.ev.Finish()
+	if limit := submissionRetryLimit(r.in.SubmissionRetryLimit); limit != 3 {
+		r.ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
+	}
 	defer func() {
 		if err == nil {
 			return
@@ -857,8 +862,8 @@ func (r *refine) converseExternal(ctx context.Context, role project.Role, blocks
 			return nil, nil, refineConstraint(out.reason)
 		case refineInvalid:
 			invalid++
-			if invalid >= 3 {
-				e := sys.Fail("shape", "refinement_invalid", "no valid ready correction after 3 submissions; the original draft is preserved", 1)
+			if invalid >= submissionRetryLimit(r.in.SubmissionRetryLimit) {
+				e := sys.Fail("shape", "refinement_invalid", fmt.Sprintf("no valid ready correction after %d submissions; the original draft is preserved", submissionRetryLimit(r.in.SubmissionRetryLimit)), 1)
 				e.Lines = strings.Split(out.diagnostic, "\n")
 				return nil, nil, e
 			}
@@ -998,9 +1003,9 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 			invalid++
 			r.ev.NextAttempt()
 		}
-		if invalid >= 3 {
+		if invalid >= submissionRetryLimit(r.in.SubmissionRetryLimit) {
 			e := sys.Fail("shape", "refinement_invalid",
-				"no valid ready correction after 3 submissions; the original draft is preserved", 1)
+				fmt.Sprintf("no valid ready correction after %d submissions; the original draft is preserved", submissionRetryLimit(r.in.SubmissionRetryLimit)), 1)
 			if result.kind == refineInvalid {
 				e.Lines = strings.Split(result.diagnostic, "\n")
 			}

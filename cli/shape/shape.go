@@ -32,6 +32,8 @@ import (
 // ShapeInput is one `kogen intent shape <slug> <file|->`: the request, or the answers to the
 // questions a former run left pending, already read by the caller.
 type ShapeInput struct {
+	SubmissionRetryLimit int // internal invalid-submission budget; nonpositive means 3
+
 	// NativeRoundLimits is internal and research-only; Shape, Refine and Review
 	// limits are unsupported for now and their keys are ignored.
 	NativeRoundLimits map[string]int
@@ -87,6 +89,9 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 		return 0, err
 	}
 	defer ev.Finish()
+	if limit := submissionRetryLimit(in.SubmissionRetryLimit); limit != 3 {
+		ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
+	}
 
 	cfg, err := project.LoadConfig(root)
 	if err != nil {
@@ -577,7 +582,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 			e.Lines = res.problems
 			return 0, e
 		}
-		e := sys.Fail("shape", "invalid_output", "the shaper's output was not a valid Intent after 3 attempts", 1)
+		e := sys.Fail("shape", "invalid_output", fmt.Sprintf("the shaper's output was not a valid Intent after %d attempts", submissionRetryLimit(sh.in.SubmissionRetryLimit)), 1)
 		e.Lines = res.problems
 		return 0, e
 	case outQuestions:
@@ -763,7 +768,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 		input = append(input, outputs...)
 
 		switch {
-		case result.kind == outInvalid && invalid+1 >= 3:
+		case result.kind == outInvalid && invalid+1 >= submissionRetryLimit(sh.in.SubmissionRetryLimit):
 			return result, usage, nil
 		case result.kind == outInvalid:
 			invalid++
@@ -773,7 +778,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 		case result.kind == outBlocked, result.kind == outQuestions, result.kind == outReady:
 			return result, usage, nil
 		case len(calls) == 0:
-			if invalid+1 >= 3 {
+			if invalid+1 >= submissionRetryLimit(sh.in.SubmissionRetryLimit) {
 				return outcome{kind: outInvalid, problems: []string{"the shaper ended without calling submit"}}, usage, nil
 			}
 			sh.ev.NextAttempt()
@@ -823,7 +828,7 @@ func (sh *shaping) converseExternal(ctx context.Context, blocks []any) (outcome,
 		switch out.kind {
 		case outInvalid:
 			invalid++
-			if invalid >= 3 {
+			if invalid >= submissionRetryLimit(sh.in.SubmissionRetryLimit) {
 				return out, x, nil
 			}
 		case outObservations:
@@ -1032,7 +1037,7 @@ func (sh *shaping) submitOne(ctx context.Context, args map[string]any) (string, 
 			outcome{kind: outInvalid, problems: problems}, nil
 	}
 	lines, uncovered := sh.auditUncovered(sub)
-	lastAttempt := sh.priorInvalid >= 2
+	lastAttempt := sh.priorInvalid >= submissionRetryLimit(sh.in.SubmissionRetryLimit)-1
 	if lines != nil && !lastAttempt {
 		sh.refused("audit", lines)
 		for _, f := range sub.files {
@@ -1100,7 +1105,7 @@ func (sh *shaping) acceptFiles(ctx context.Context, submitted []proposedFile) (s
 		}
 	}
 	intent, _, err := project.CheckIntent(sh.root, sh.slug, sh.overlay())
-	if err != nil && sh.priorInvalid >= 2 {
+	if err != nil && sh.priorInvalid >= submissionRetryLimit(sh.in.SubmissionRetryLimit)-1 {
 		if e, ok := sys.AsError(err); ok && e.Reason == "lint" && len(e.Lines) == 1 && e.Lines[0] == titleTooLong {
 			p := project.IntentMDPath(sh.slug)
 			before := sh.proposed[p]
@@ -1177,7 +1182,7 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 		if err != nil {
 			return "", outcome{}, err
 		}
-		if lines != nil && sh.priorInvalid >= 2 {
+		if lines != nil && sh.priorInvalid >= submissionRetryLimit(sh.in.SubmissionRetryLimit)-1 {
 			if marked, statements, placement, ok := markAssumptions(items, string(text)); ok {
 				p := project.IntentMDPath(sh.slug)
 				if err := os.WriteFile(filepath.Join(sh.root, p), []byte(marked), 0o666); err != nil {
@@ -1592,4 +1597,11 @@ func shortenTitle(title string) string {
 		r = r[:cut]
 	}
 	return strings.TrimRightFunc(string(r), func(c rune) bool { return unicode.IsSpace(c) || unicode.IsPunct(c) })
+}
+
+func submissionRetryLimit(limit int) int {
+	if limit <= 0 {
+		return 3
+	}
+	return limit
 }
