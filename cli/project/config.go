@@ -409,7 +409,37 @@ func (v *validator) externalRole(node *yamlNode, path string, line int) (Role, b
 		v.add(line, path+" with executor claude-code must be {model, effort} non-blank strings")
 		return Role{}, false
 	}
+	if !v.checkEffort(node.pairs, path, line, ExecutorClaudeCode, e) {
+		return Role{}, false
+	}
 	return Role{Model: m, Effort: e}, true
+}
+
+// effortLists are the efforts known per route, exact and case-sensitive. Routes without an
+// entry pass any effort through, except ultra, which no route lists.
+var effortLists = map[string][]string{
+	"anthropic":        {"low", "medium", "high", "xhigh", "max"},
+	"supergrok":        {"low", "medium", "high", "xhigh"},
+	ExecutorClaudeCode: {"low", "medium", "high", "xhigh", "max"},
+}
+
+// checkEffort rejects an effort the route does not accept, naming the line of the effort key.
+func (v *validator) checkEffort(kv []yamlPair, path string, line int, route, effort string) bool {
+	for _, p := range kv {
+		if p.key == "effort" {
+			line = p.line
+		}
+	}
+	list, known := effortLists[route]
+	if known && slices.Contains(list, effort) || !known && effort != "ultra" {
+		return true
+	}
+	accepted := "any effort except ultra"
+	if known {
+		accepted = strings.Join(list, ", ")
+	}
+	v.add(line, fmt.Sprintf("%s.effort %q is not supported; accepted: %s", path, effort, accepted))
+	return false
 }
 
 // modelEffort reads a role mapping: only model, effort, provider and base_url keys, model and
@@ -499,6 +529,9 @@ func (v *validator) roleConfig(kv []yamlPair, path string, line int, model, effo
 		return Role{}, false
 	case provider == "openai-compatible" && (!baseOK || !validBaseURL(base)):
 		v.add(line, path+".base_url must be an http:// or https:// URL")
+		return Role{}, false
+	}
+	if !v.checkEffort(kv, path, line, provider, effort) {
 		return Role{}, false
 	}
 	r := Role{Model: model, Effort: effort}

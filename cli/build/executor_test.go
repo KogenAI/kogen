@@ -293,7 +293,7 @@ func contains2(list []string, s string) bool {
 func TestExternalNeedsNoProviderLoginForTheBuildRole(t *testing.T) {
 	t.Parallel()
 	// The build role uses Claude Code's own sign-in; only the native review needs a Kogen login.
-	cfg, err := project.ParseConfig("version: 1\nmodels:\n  build: {executor: claude-code, model: m, effort: e}\n", "f")
+	cfg, err := project.ParseConfig("version: 1\nmodels:\n  build: {executor: claude-code, model: m, effort: low}\n", "f")
 	if err != nil {
 		t.Fatal(err)
 	}

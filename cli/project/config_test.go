@@ -408,9 +408,9 @@ func TestProviderSelections(t *testing.T) {
 			// KOGEN-057: no allowlists. Any model and effort reach the provider unchanged,
 			// including the ones the old lists refused.
 			for _, c := range []struct{ provider, model, effort string }{
-				{"anthropic", "claude-invented", "high"}, {"anthropic", "claude-opus-5-5", "xhigh"}, {"anthropic", "claude-haiku-5-5", "default"},
+				{"anthropic", "claude-invented", "high"}, {"anthropic", "claude-opus-5-5", "xhigh"}, {"anthropic", "claude-haiku-5-5", "low"},
 				{"opencode-go", "kimi-k3.1-pro", "xhigh"}, {"opencode-go", "glm-5", "low"}, {"opencode-go", "kimi-k3", "default"},
-				{"supergrok", "grok-4.20-0309-reasoning", "max"}, {"supergrok", "grok-5", "default"},
+				{"supergrok", "grok-4.20-0309-reasoning", "xhigh"}, {"supergrok", "grok-5", "low"},
 				{"chatgpt", "gpt-7-preview", "minimal"},
 			} {
 				fields := "model: " + c.model + ", effort: " + c.effort + ", provider: " + c.provider
@@ -483,6 +483,47 @@ func TestLoadConfigOfTheRepository(t *testing.T) {
 
 // ---- the executor of the build role (docs/executor-contract.md section 5) ----
 
+func TestEffortPerRoute(t *testing.T) {
+	for _, tt := range []struct {
+		fields, effort string
+		ok             bool
+		accepted       string
+	}{
+		{"provider: anthropic, model: m", "max", true, ""},
+		{"provider: anthropic, model: m", "xhigh", true, ""},
+		{"provider: anthropic, model: m", "ultra", false, "low, medium, high, xhigh, max"},
+		{"provider: anthropic, model: m", "default", false, "low, medium, high, xhigh, max"},
+		{"provider: anthropic, model: m", "High", false, "low, medium, high, xhigh, max"},
+		{"provider: supergrok, model: m", "xhigh", true, ""},
+		{"provider: supergrok, model: m", "max", false, "low, medium, high, xhigh"},
+		{"executor: claude-code, model: m", "max", true, ""},
+		{"executor: claude-code, model: m", "turbo", false, "low, medium, high, xhigh, max"},
+		{"model: m", "whatever", true, ""},
+		{"model: m", "ultra", false, "any effort except ultra"},
+		{"provider: opencode-go, model: m", "default", true, ""},
+		{"provider: opencode-go, model: m", "ultra", false, "any effort except ultra"},
+		{"provider: openai-compatible, base_url: 'http://h/v1', model: m", "ultra", false, "any effort except ultra"},
+	} {
+		for _, section := range []string{"models:\n  build", "shape_workers:\n  enabled: false\n  read"} {
+			if strings.Contains(tt.fields, "executor") && strings.HasPrefix(section, "shape_workers") {
+				continue
+			}
+			text := "version: 1\n" + section + ": {" + tt.fields + ", effort: " + tt.effort + "}\n"
+			_, err := ParseConfig(text, "f")
+			if tt.ok {
+				if err != nil {
+					t.Errorf("%q: %v", text, err)
+				}
+				continue
+			}
+			se, _ := sys.AsError(err)
+			if se == nil || len(se.Lines) != 1 || !strings.HasSuffix(se.Lines[0], ".effort \""+tt.effort+"\" is not supported; accepted: "+tt.accepted) {
+				t.Errorf("%q: %+v", text, err)
+			}
+		}
+	}
+}
+
 func TestBuildExecutorSelection(t *testing.T) {
 	for _, tt := range []struct {
 		name, build string
@@ -494,7 +535,7 @@ func TestBuildExecutorSelection(t *testing.T) {
 			Role{Model: "claude-sonnet-5-5", Effort: "high", Executor: "claude-code", MaxRounds: 6}},
 		{"key order does not matter", "{max_rounds: 12, effort: low, model: m, executor: claude-code}",
 			Role{Model: "m", Effort: "low", Executor: "claude-code", MaxRounds: 12}},
-		{"quoted executor name", `{executor: "claude-code", model: m, effort: e}`, Role{Model: "m", Effort: "e", Executor: "claude-code"}},
+		{"quoted executor name", `{executor: "claude-code", model: m, effort: low}`, Role{Model: "m", Effort: "low", Executor: "claude-code"}},
 		// Written out, the native executor is the native builder: no value differs from a file
 		// that says nothing, so checkpoints keep their bytes.
 		{"native written out", "{executor: native, model: gpt-6.1-sol, effort: medium}", Role{Model: "gpt-6.1-sol", Effort: "medium"}},
@@ -513,8 +554,8 @@ func TestBuildExecutorSelection(t *testing.T) {
 		})
 	}
 	// Block form.
-	cfg := mustParse(t, "version: 1\nmodels:\n  build:\n    executor: claude-code\n    model: m\n    effort: e\n    max_rounds: 2\n")
-	if got := cfg.Models["build"]; got != (Role{Model: "m", Effort: "e", Executor: "claude-code", MaxRounds: 2}) {
+	cfg := mustParse(t, "version: 1\nmodels:\n  build:\n    executor: claude-code\n    model: m\n    effort: low\n    max_rounds: 2\n")
+	if got := cfg.Models["build"]; got != (Role{Model: "m", Effort: "low", Executor: "claude-code", MaxRounds: 2}) {
 		t.Fatalf("block form %+v", got)
 	}
 	// The other roles keep their defaults.
@@ -593,7 +634,7 @@ func TestClaudeLineupRoleConfiguration(t *testing.T) {
 	}
 	// A round cap is per role: 1 and 2 are accepted on the external roles, the default is 0 here
 	// (DefaultExternalRounds applies) and the cap stays invalid without claude-code.
-	cfg := mustParse(t, "version: 1\nmodels:\n  shape: {executor: claude-code, model: a, effort: b, max_rounds: 1}\n  review: {executor: claude-code, model: c, effort: d, max_rounds: 2}\n")
+	cfg := mustParse(t, "version: 1\nmodels:\n  shape: {executor: claude-code, model: a, effort: low, max_rounds: 1}\n  review: {executor: claude-code, model: c, effort: high, max_rounds: 2}\n")
 	if cfg.Models["shape"].MaxRounds != 1 || cfg.Models["review"].MaxRounds != 2 || cfg.Models["build"].MaxRounds != 0 {
 		t.Fatalf("rounds %+v", cfg.Models)
 	}

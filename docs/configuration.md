@@ -29,7 +29,7 @@ models:
 - **Acceptance.** Kogen ships Cucumber 13.3.0 and runs it on its own Node, so the project needs no Node of its own. A project that already has `@cucumber/cucumber` in its `package.json` keeps its own, run as `"$KOGEN_NODE" node_modules/@cucumber/cucumber/bin/cucumber.js ...`. Step files go in `steps_dir` and use `require('@cucumber/cucumber')`.
 - **protect** lists paths or globs of actual verification definitions/settings (linter rules, formatter settings, suppression files). They are part of every Intent's approved baseline, so a Build cannot pass a check by weakening them. Dependency manifests and lockfiles are editable inputs when they only declare dependencies/project metadata: for example ordinary `mix.exs`, `package.json`, nested `go.mod`, `mix.lock`, `package-lock.json`, `npm-shrinkwrap.json` and `go.sum` are not protected merely because setup, format, compile, tests, vet, audit or another check consumes them. `cli/go.mod` is an editable input. A combined manifest is eligible when it embeds verification settings (such as eslintConfig) or itself defines a configured executable check, such as a package.json script used by an npm check or a Mix alias invoked by a configured command; that manifest remains whole-file protected. There is no field-level or dependency-only exception to explicit whole-file protection. Init rejects dependency-only protection with a path-specific correction request rather than silently deleting it. Existing committed configuration remains authoritative and is not migrated automatically.
 - A genuine shaping conflict means a required edit cannot be avoided without changing the requested outcome and a currently protected path is involved. Shaping reports the protected path and reason without writing a ready Intent or starting approval/Build. Revise the request, or review and commit `.kogen/project.yaml` outside Build, then shape again while preserving checks and actual check configuration. That manual review changes the approval baseline; it is not approval of a protected edit. There is no protected-edit override. If a combined manifest is explicitly protected, revising the request is the available Build path.
-- **Models** and efforts live only here; no command takes model flags. Defaults are Sol 6.1 high for shaping/review and Sol 6.1 medium for building. Any nonempty `model` and `effort` is accepted for every provider and sent unchanged (see [Providers](#providers)). There is no separate planner; an older `models.plan` entry is ignored.
+- **Models** and efforts live only here; no command takes model flags. Defaults are Sol 6.1 high for shaping/review and Sol 6.1 medium for building. Any nonempty `model` is accepted for every provider and sent unchanged; `effort` is checked against the route's known list when the file is read (see [Open model selection](#open-model-selection)). There is no separate planner; an older `models.plan` entry is ignored.
 
 Init detects Go at the root or under `cli/`; other layouts can be supplied from the README. It deduplicates identical check commands; different commands remain because test paths and filters can change coverage. Machine bootstrap (`mix local.hex`, `mix local.rebar`) belongs in prerequisites rather than recurring setup.
 
@@ -351,8 +351,8 @@ savings claim, release/global installation or billing change follows.
 
 Select `provider: anthropic` explicitly in any role or enabled Shape worker.
 The recommended models are `claude-opus-5-5` and `claude-sonnet-5-5`, with `low`,
-`medium`, `high` or `max`. Any other nonempty model or effort (for example `xhigh`,
-which upstream also documents) is sent unchanged. These documentation-backed
+`medium`, `high` or `max`. `xhigh`, which upstream also documents, is accepted too;
+any other effort is rejected when the file is read. Any nonempty model is sent unchanged. These documentation-backed
 choices do not establish live account/model access. A refusal by Anthropic gets the
 refusal line above; no model, effort, provider or account is silently changed.
 Omission keeps legacy ChatGPT defaults/maps. A role edit changes approval/checkpoint
@@ -422,11 +422,17 @@ separate, unclaimed obligations.
 
 ### Open model selection
 
-No provider has a list of allowed models or efforts. Any nonempty `model` and
-`effort` is accepted for every role and every provider, and Kogen sends them
-unchanged. Known models are only recommended defaults and hints. The one exception to
-sending the effort is `default` on OpenCode Go and OpenAI-compatible: it sends no
-`reasoning_effort`.
+No provider has a list of allowed models: any nonempty `model` is accepted and sent
+unchanged. Known models are only recommended defaults and hints. Efforts are checked
+when `.kogen/project.yaml` is read, for every `models` role and `shape_workers` role,
+by exact case-sensitive match: `provider: anthropic` and `executor: claude-code`
+accept `low`, `medium`, `high`, `xhigh`, `max`; `provider: supergrok` accepts `low`,
+`medium`, `high`, `xhigh`. ChatGPT, OpenCode Go and OpenAI-compatible have no known
+list, so any nonempty effort is passed through, except `ultra`, which is rejected on
+every route. A bad effort fails as `environment/project_config_invalid` with
+`line N: models.build.effort "ultra" is not supported; accepted: ...`. The one
+exception to sending the effort is `default` on OpenCode Go and OpenAI-compatible: it
+sends no `reasoning_effort`.
 
 Kogen cannot know what an account or host offers. If a provider refuses the model or
 the request, the error keeps its first line, such as
@@ -523,7 +529,7 @@ models:
 ```
 
 - **`executor`** is `native` (the default; Kogen's own builder with the provider settings above, byte for byte as before) or `claude-code`. Any other name is a configuration error. A role that omits `executor` stays native; no role takes another role\'s executor, shares a session with it or falls back to the native path. Written out, `executor: native` reads exactly like leaving the key out.
-- **`claude-code`** runs your installed Claude Code CLI headless as that role (Build as a textual claim; Shape and Review through schema-constrained structured output). `provider` and `base_url` are refused with it; `model` and `effort` are required and passed to Claude Code unchanged (`--model`, and `--effort` where the installed version supports it).
+- **`claude-code`** runs your installed Claude Code CLI headless as that role (Build as a textual claim; Shape and Review through schema-constrained structured output). `provider` and `base_url` are refused with it; `model` and `effort` are required; the effort must be `low`, `medium`, `high`, `xhigh` or `max` and is passed to Claude Code unchanged (`--model`, and `--effort` where the installed version supports it).
 - **`max_rounds`** (a positive integer, `claude-code` only) caps how many rounds Kogen gives that role's session. The default is 6 per role. A Build that reaches the cap without a verified, reviewed candidate stops with `candidate/executor_round_limit`; the candidate stays in the checkout. The Build also stops the same way, after recording `executor_no_progress`, when three consecutive verification passes fail identically over an unchanged candidate tree; any change or a green pass resets the count.
 
 **Delivery status.** The configuration, the v2 contract, the adapter's structured Shape/Review protocol and the independent **Review** role are in place. Review by Claude Code starts a fresh session (never the builder's), receives the complete exact authority, source and diff as Kogen-owned prompt data (retained privately under the run's `executor-review/` with hashes; a bound of 16 MiB, overflow is `candidate/context_budget_exceeded`), may repair within the Intent, and its verdict goes through the same validation and exact-tree verification as the native reviewer. Red verification returns to the same reviewer; an unresolved blocker stops `candidate/review_blocked`; `intent resume` of an external review checkpoint is `candidate/resume_refused` (start a fresh Build from a Build-clean checkout under the current approval). **Shape and Refine** with Claude Code start a fresh read-only session; its final structured result is the existing `submit` / `submit_refinement` payload, routed through the same validation, readiness, red acknowledgment and publication, and Kogen's feedback returns to the same session. Kogen compares the checkout (tracked, tracked-ignored and nonignored files, modes), the raw index and HEAD around every round: a change stops with `candidate/baseline_changed` or `candidate/head_moved` before publication and is left as it is. Questions keep their numbered CLI; the next invocation is a new session (there is no persistent Claude resume). Enabled `shape_workers` with a Claude Code shaper are refused (`executor/unavailable`) before inference; Kogen's probe, typed images and documentation records are not provided, and research through Claude's own tools is harness-observed only. This is source capability, not live qualification.

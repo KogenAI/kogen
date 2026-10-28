@@ -93,7 +93,7 @@ config_texts = [
   hdr <> "models:\n  build: {model: grok-4.7, effort: high, provider: opencode-go}\n",
   hdr <> "models:\n  review: {model: m, effort: e, provider: claude}\n",
   hdr <> "shape_workers:\n  enabled: true\n  read: {model: kimi-k3, effort: high, provider: opencode-go}\n  probe: {model: claude-sonnet-5-5, effort: medium, provider: anthropic}\n  draft: {model: grok-4.7, effort: low, provider: supergrok}\n",
-  hdr <> "shape_workers:\n  enabled: true\n  read: {model: kimi-k3, effort: max, provider: opencode-go}\n  probe: {model: claude-sonnet-5-5, effort: default, provider: anthropic}\n  draft: {model: m, effort: e}\n",
+  hdr <> "shape_workers:\n  enabled: true\n  read: {model: kimi-k3, effort: max, provider: opencode-go}\n  probe: {model: claude-sonnet-5-5, effort: medium, provider: anthropic}\n  draft: {model: m, effort: e}\n",
   hdr <> "shape_workers:\n  enabled: false\n",
   hdr <> "shape_workers:\n  enabled: true\n",
   hdr <> "shape_workers:\n  enabled: 'true'\n",
