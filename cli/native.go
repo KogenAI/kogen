@@ -19,6 +19,7 @@ import (
 
 	"kogen-loop/provider"
 	"kogen-loop/sys"
+	"kogen/starter"
 )
 
 // runNative runs the commands implemented in Go. ok is false for commands that are not.
@@ -34,6 +35,12 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 		return 0, true
 	case "doctor":
 		return runDoctor(inv, root), true
+	case "starter":
+		if err := starter.Create(inv.file); err != nil {
+			return exitFor(err), true
+		}
+		fmt.Print(starter.NextCommands(inv.file))
+		return 0, true
 	case "list":
 		if inv.json {
 			json.NewEncoder(os.Stdout).Encode(provider.Profiles())

@@ -1,0 +1,21 @@
+version: 1
+commands:
+  setup: []          # run before readiness dry runs and before each Build
+  fix: []            # deterministic fixers, run once after each builder round
+  checks:
+    - name: test
+      run: '"$KOGEN_NODE" --test test/*.test.js'
+  acceptance:
+    run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
+    steps_dir: 'features/steps'
+protect: []          # check configuration the Build must not change, e.g. .credo.exs
+models:
+  shape:
+    model: gpt-6.1-sol
+    effort: high
+  build:
+    model: gpt-6.1-sol
+    effort: medium
+  review:
+    model: gpt-6.1-sol
+    effort: high

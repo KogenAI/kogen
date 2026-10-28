@@ -15,6 +15,7 @@ func TestParseHelpPagesCLI3(t *testing.T) {
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
   provider   Sign in to a provider and show logins
+  starter    Create a starter project to try Kogen on
   uninstall  Remove the installed kogen
   version    Show the Kogen version
   help       List commands
@@ -28,6 +29,7 @@ Run kogen <command> to see its subcommands and options.
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
   provider   Sign in to a provider and show logins
+  starter    Create a starter project to try Kogen on
   uninstall  Remove the installed kogen
   version    Show the Kogen version
   help       List commands
@@ -106,6 +108,7 @@ func TestParseCommandTreeCLI1(t *testing.T) {
 		{name: "supergrok login", args: []string{"provider", "login", "supergrok"}, want: invocation{command: "login", provider: "supergrok"}},
 		{name: "provider list JSON", args: []string{"provider", "list", "--json"}, want: invocation{command: "list", json: true}},
 		{name: "provider list", args: []string{"provider", "list"}, want: invocation{command: "list"}},
+		{name: "starter", args: []string{"starter", "my dir"}, want: invocation{command: "starter", file: "my dir"}},
 		{name: "uninstall", args: []string{"uninstall"}, want: invocation{command: "uninstall"}},
 		{name: "version", args: []string{"version"}, want: invocation{command: "version"}},
 		{name: "version flag", args: []string{"--version"}, want: invocation{command: "version"}},
@@ -160,6 +163,9 @@ func TestParseGrammarCLI2(t *testing.T) {
 		msg  string
 		page string
 	}{
+		{name: "starter missing dir", args: []string{"starter"}, msg: "kogen starter: missing <dir>", page: "top"},
+		{name: "starter extra", args: []string{"starter", "a", "b"}, msg: "kogen starter: unexpected argument 'b'", page: "top"},
+		{name: "starter option", args: []string{"starter", "--x", "a"}, msg: "kogen starter: unknown option '--x'", page: "top"},
 		{name: "doctor unknown option", args: []string{"doctor", "--fast"}, msg: "kogen doctor: unknown option '--fast'", page: "top"},
 		{name: "unknown command", args: []string{"frobnicate"}, msg: "kogen: unknown command 'frobnicate'", page: "top"},
 		{name: "first unknown command wins", args: []string{"queue", "start"}, msg: "kogen: unknown command 'queue'", page: "top"},
