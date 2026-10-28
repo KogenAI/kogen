@@ -330,8 +330,16 @@ func ExcerptOf(e ContextEntry, bytes string, terms []string) string {
 // contextGuidance is the closing paragraph of the shaper's instructions.
 func contextGuidance() string { return agent.Prompt(agent.ShaperContextGuidance) }
 
-// ShaperInstructions is the shaper's policy: its instructions and the context guidance.
-func ShaperInstructions() string { return agent.Prompt(agent.Shaper) + contextGuidance() }
+// namedTestGuidance is what Shape tells a new Intent's step helpers about tests the acceptance
+// requires by name. It belongs to Shape alone: the builder's and reviewer's requests carry
+// nothing of it, so a passing Build's requests are unchanged.
+const namedTestGuidance = "Named-test helpers: when a step or helper requires named tests to have run (for example a step taking a test id and a package that runs `go test -run`), every assertion message must include the required test name, so a failure says which test is missing instead of a bare count such as `0 !== 1`. Also include the command or package the helper ran and the outcome, whether the test was absent, skipped or ran zero times.\n"
+
+// ShaperInstructions is the shaper's policy: its instructions, the context guidance and the
+// named-test helper guidance.
+func ShaperInstructions() string {
+	return agent.Prompt(agent.Shaper) + contextGuidance() + "\n" + namedTestGuidance
+}
 
 // selectionEvent is the context_selection event of one request: what the context carried,
 // the size of the whole conversation input and the references retained for the proposal.

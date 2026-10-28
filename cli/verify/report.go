@@ -101,18 +101,20 @@ func Account(root, feature string, expected []project.Scenario, report string, s
 			}
 		}
 		var r ScenarioResult
+		var named string
 		switch len(hits) {
 		case 0:
 			r = withResult(e, "missing", nil)
 		case 1:
 			r = withResult(e, hits[0].status, hits[0].detail)
 			r.UnexercisedSteps = hits[0].unexercised
+			named = hits[0].named
 		default:
 			r = withResult(e, "duplicate", nil)
 		}
 		base.Scenarios = append(base.Scenarios, r)
 		if r.Status != "passed" {
-			scenProblems = append(scenProblems, fmt.Sprintf("%s: %s (line %d)", r.Status, r.Name, r.Line)+detailSuffix(r.Detail))
+			scenProblems = append(scenProblems, fmt.Sprintf("%s: %s (line %d)", r.Status, r.Name, r.Line)+detailSuffix(r.Detail)+named)
 		}
 		switch r.Status {
 		case "passed":
@@ -165,6 +167,7 @@ type reportCase struct {
 	detail      *string
 	binding     []string
 	unexercised []StepRecord
+	named       string // the missing required tests of the failed step, as feedback text
 }
 
 type jmap = map[string]any
@@ -273,6 +276,7 @@ func accountCases(root string, msgs []jmap) []reportCase {
 	lines := map[string]astNode{}
 	pickles, tcases, hooks := map[string]any{}, map[string]any{}, map[string]any{}
 	started := map[string]string{}
+	defs := map[string]stepDefinition{}
 	retried, finished := map[string]bool{}, map[string]bool{}
 	for _, m := range msgs {
 		if d := m["gherkinDocument"]; d != nil {
@@ -290,6 +294,11 @@ func accountCases(root string, msgs []jmap) []reportCase {
 		}
 		if h, ok := m["hook"].(jmap); ok {
 			hooks[str(h["id"])] = h
+		}
+		if d, ok := m["stepDefinition"].(jmap); ok {
+			if ref, ok := get(d, "sourceReference").(jmap); ok {
+				defs[str(d["id"])] = stepDefinition{uri: str0(ref["uri"]), line: int(num(get(ref, "location", "line")))}
+			}
 		}
 		if s, ok := m["testCaseStarted"].(jmap); ok {
 			started[str(s["id"])] = str(s["testCaseId"])
@@ -361,6 +370,9 @@ func accountCases(root string, msgs []jmap) []reportCase {
 			c.unexercised = skippedSteps(tc, pickle, mine, lines)
 		}
 		c.binding = bindingProblems(tc, pickle, mine, lines)
+		if complete && status == "failed" {
+			c.named = missingNamedTests(tc, mine, defs)
+		}
 		out = append(out, c)
 	}
 	return out
@@ -426,9 +438,9 @@ func rank(status string) int {
 	return len(statusOrder)
 }
 
-func caseStatus(tc, pickle jmap, results []stepResult, lines map[string]astNode, hooks map[string]any) (string, *string) {
+// worstStep is the worst status among a case's step results and the first step with it.
+func worstStep(results []stepResult) (string, *stepResult) {
 	worst := "UNKNOWN"
-	var bad *stepResult
 	for i, r := range results {
 		st := str(get(r.result, "status"))
 		if i == 0 || rank(st) > rank(worst) {
@@ -437,10 +449,14 @@ func caseStatus(tc, pickle jmap, results []stepResult, lines map[string]astNode,
 	}
 	for i := range results {
 		if str(get(results[i].result, "status")) == worst {
-			bad = &results[i]
-			break
+			return worst, &results[i]
 		}
 	}
+	return worst, nil
+}
+
+func caseStatus(tc, pickle jmap, results []stepResult, lines map[string]astNode, hooks map[string]any) (string, *string) {
+	worst, bad := worstStep(results)
 	var detail *string
 	if worst != "PASSED" && bad != nil {
 		d := stepDetail(tc, pickle, bad.step, bad.result, lines, hooks)
