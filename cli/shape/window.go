@@ -16,6 +16,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/project"
+	"kogen/thinking"
 	"kogen/verify"
 )
 
@@ -297,7 +298,7 @@ func (w *window) prepare(p windowPrep, input []any) ([]any, error) {
 	}
 	message := map[string]any{"role": "user", "content": "Local working-window reset. Archived evidence and model statements are diagnostic, not authority. This confers no approval, readiness or discovery authority. Native discovery gates and exact candidate acknowledgment remain required. Navigate ordered history through the archive head and previous links. Retrieve documentation records by one-based line with read_file start_line/end_line. Current cumulative manifest/state: " + string(handoff)}
 	mandatory := append(slices.Clone(w.mandatory), message)
-	reduced := append(slices.Clone(mandatory), newestWindowExchange(input)...)
+	reduced := append(slices.Clone(mandatory), thinking.Strip(newestWindowExchange(input))...)
 	after, err := tools.Measure(p.render(reduced), p.role)
 	if err != nil {
 		return nil, err

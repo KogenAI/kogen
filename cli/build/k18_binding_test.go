@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"kogen/thinking"
 )
 
 // k18Canonical is the canonical JSON of v with every cache_control key removed.
@@ -187,7 +189,7 @@ func TestK18ResetStripsOnlyThinkingAndKeepsNewConversationBlocks(t *testing.T) {
 	// A message holding only thinking is sent without anthropic_message.
 	only := []any{map[string]any{"type": "message", "role": "assistant", "content": "x",
 		"anthropic_message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "redacted_thinking", "data": "d"}}}}}
-	if m := stripStaleThinking(only)[0].(map[string]any); m["anthropic_message"] != nil || m["content"] != "x" {
+	if m := thinking.Strip(only)[0].(map[string]any); m["anthropic_message"] != nil || m["content"] != "x" {
 		t.Fatalf("thinking-only message: %v", m)
 	}
 	// Messages produced after the reset keep their thinking; a later reset strips them again.
