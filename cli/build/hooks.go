@@ -17,6 +17,11 @@ type Deps struct {
 	// NativeRoundLimits is internal and research-only. Only build is supported;
 	// shape (including Refine) and review keys are ignored for now. Zero is unlimited.
 	NativeRoundLimits map[string]int
+	// BuildRequestBudget is internal, like NativeRoundLimits, and applies to the native builder
+	// only. A positive N allows N builder requests over the whole Build (every verification
+	// pass and explicit resume); review requests are not counted. Zero is off. The limit and the
+	// count are kept in the checkpoint: a resume takes them from there, not from this field.
+	BuildRequestBudget int
 
 	// Client sends the model requests; its prompt-cache is not used, the Build keeps its own
 	// (restored from a checkpoint).

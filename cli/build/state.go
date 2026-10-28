@@ -209,6 +209,16 @@ type State struct {
 	// ReviewExecutor is the same for an independent review by an external executor: its own
 	// session, rounds and usage, separate from the builder's. Nil for the native reviewer.
 	ReviewExecutor *ExecutorState `json:"review_executor,omitempty"`
+	// BuildRequestBudget is the enabled total builder request budget and how many builder
+	// requests have been attempted against it; nil (and absent from the checkpoint) when off.
+	BuildRequestBudget *RequestBudget `json:"build_request_budget,omitempty"`
+}
+
+// RequestBudget is a Build's total builder request limit and its cumulative attempt count.
+// An attempt is counted at the durable boundary before dispatch and never uncounted.
+type RequestBudget struct {
+	Limit int `json:"limit"`
+	Count int `json:"count"`
 }
 
 // ExecutorState is an external executor's identity and its running totals in a Build:
@@ -406,6 +416,9 @@ func (s *State) valid(doc *Checkpoint) bool {
 		}
 	}
 	if x := s.Executor; x != nil && (x.Name == "" || x.Rounds < 0) {
+		return false
+	}
+	if r := s.BuildRequestBudget; r != nil && (r.Limit < 1 || r.Count < 0 || r.Count > r.Limit) {
 		return false
 	}
 	c := &s.Continuation
