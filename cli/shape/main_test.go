@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,10 @@ func TestMain(m *testing.M) {
 				os.RemoveAll(d)
 			}
 		}
+	}
+	if err := resolveTestTools(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	code := m.Run()
 	if shim != "" {
@@ -57,4 +62,30 @@ func realGitDir() string {
 		return ""
 	}
 	return dir
+}
+
+// resolveTestTools exports one absolute Node as KOGEN_NODE (and the acceptance Cucumber as
+// KOGEN_CUCUMBER) while HOME is still the developer's, before any fixture changes it.
+func resolveTestTools() error {
+	node := os.Getenv("KOGEN_NODE")
+	if st, err := os.Stat(node); node == "" || err != nil || !st.Mode().IsRegular() || st.Mode().Perm()&0o111 == 0 {
+		path, err := exec.LookPath("node")
+		if err != nil {
+			return fmt.Errorf("shape tests need Node: no executable node found (KOGEN_NODE unset or invalid, none on PATH)")
+		}
+		out, err := exec.Command(path, "-p", "process.execPath").Output()
+		node = strings.TrimSpace(string(out))
+		if err != nil || !filepath.IsAbs(node) {
+			return fmt.Errorf("shape tests need Node: %s did not report its absolute path: %v", path, err)
+		}
+	}
+	os.Setenv("KOGEN_NODE", node)
+	if os.Getenv("KOGEN_CUCUMBER") == "" {
+		if dir, err := filepath.Abs(filepath.Join("..", "..", "test", "acceptance", "node_modules")); err == nil {
+			if st, err := os.Stat(dir); err == nil && st.IsDir() {
+				os.Setenv("KOGEN_CUCUMBER", dir)
+			}
+		}
+	}
+	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -187,14 +186,7 @@ func realQuintTools(t *testing.T) verify.Tools {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node, err := exec.LookPath("node")
-	if err != nil {
-		out, merr := exec.Command("mise", "which", "node").Output()
-		if merr != nil {
-			t.Skip("node is not available")
-		}
-		node = strings.TrimSpace(string(out))
-	}
+	node := os.Getenv("KOGEN_NODE")
 	tools := verify.Tools{
 		Node:     node,
 		Quint:    filepath.Join(root, "spec/node_modules/@informalsystems/quint/dist/src/cli.js"),
