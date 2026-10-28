@@ -609,3 +609,15 @@ func stringAt(pairs []yamlPair, key string) (string, bool) {
 }
 
 func isString(n *yamlNode) bool { return n.quoted || !notStringRe.MatchString(n.text) }
+
+// ReadableConfig is what validation could read from configuration text that may be invalid:
+// every key it accepted, with the defaults (SET-8) for everything else, including a file it
+// cannot parse at all.
+func ReadableConfig(text string) *Config {
+	if node, probs := parseYAML(text); probs == nil && node.kind == kindMap {
+		if cfg, _ := validateConfig(node); cfg != nil {
+			return cfg
+		}
+	}
+	return &Config{Models: DefaultModels(), ShapeWorkers: Workers{Roles: map[string]Role{}}}
+}

@@ -14,6 +14,7 @@ Feature: CLI and process
       """
       Commands:
         context    Read checkout-local facts (JSON)
+        doctor     Report what is ready for a first feature and how to fix the rest
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
@@ -31,6 +32,7 @@ Feature: CLI and process
       """
       Commands:
         context    Read checkout-local facts (JSON)
+        doctor     Report what is ready for a first feature and how to fix the rest
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
@@ -47,6 +49,7 @@ Feature: CLI and process
       """
       Commands:
         context    Read checkout-local facts (JSON)
+        doctor     Report what is ready for a first feature and how to fix the rest
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent
@@ -63,6 +66,7 @@ Feature: CLI and process
       """
       Commands:
         context    Read checkout-local facts (JSON)
+        doctor     Report what is ready for a first feature and how to fix the rest
         completion zsh  Print standalone Zsh completion
         init       Prepare this Git repository for Kogen
         intent     Shape, approve and build an Intent

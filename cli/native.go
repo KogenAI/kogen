@@ -32,6 +32,8 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 		}
 		fmt.Println(line)
 		return 0, true
+	case "doctor":
+		return runDoctor(inv, root), true
 	case "list":
 		if inv.json {
 			json.NewEncoder(os.Stdout).Encode(provider.Profiles())

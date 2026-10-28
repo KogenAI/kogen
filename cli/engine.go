@@ -59,6 +59,9 @@ func runEngine(job engineJob) int {
 	switch inv.command {
 	case "init":
 		code, err = shape.Init(s.Context(), s, shape.InitInput{Client: client, Tools: tools})
+		if err == nil && code == 0 {
+			err = printDoctor(s, job.root, s.Cwd, true)
+		}
 	case "shape":
 		code, err = shape.Shape(s.Context(), s, shape.ShapeInput{Project: job.project, Slug: inv.slug,
 			Request: job.request, RequestPath: job.requestPath, Tools: tools, InstallRoot: job.root, Client: client, External: externalExecutor})

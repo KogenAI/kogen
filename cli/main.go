@@ -20,6 +20,7 @@ import (
 
 const topPage = `Commands:
   context    Read checkout-local facts (JSON)
+  doctor     Report what is ready for a first feature and how to fix the rest
   completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
@@ -72,6 +73,7 @@ var pages = map[string]string{"top": topPage, "intent": intentPage, "provider": 
 type invocation struct {
 	provider string
 	json     bool
+	quick    bool
 	command  string // init, shape, refine, approve, build, login, list, uninstall, version
 	slug     string
 	file     string
@@ -96,6 +98,7 @@ type spec struct {
 
 var leaves = map[string]spec{
 	"init":           {path: "init", command: "init", page: "top"},
+	"doctor":         {path: "doctor", command: "doctor", page: "top", options: []string{"project", "quick", "json"}},
 	"uninstall":      {path: "uninstall", command: "uninstall", page: "top"},
 	"version":        {path: "version", command: "version", page: "top"},
 	"intent shape":   {path: "intent shape", command: "shape", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<file|->"}},
@@ -148,7 +151,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 			return nil, "", &usageError{fmt.Sprintf("kogen %s: unknown command '%s'", group, args[1]), group}
 		}
 		leaf, rest = l, args[2:]
-	case "init", "uninstall", "version":
+	case "init", "doctor", "uninstall", "version":
 		leaf, rest = leaves[args[0]], args[1:]
 	default:
 		return nil, "", &usageError{fmt.Sprintf("kogen: unknown command '%s'", args[0]), "top"}
@@ -176,7 +179,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 			if !contains(leaf.options, name) {
 				return fail("unknown option '--%s'", name)
 			}
-			if name == "json" && !hasValue {
+			if (name == "json" || name == "quick") && !hasValue {
 				opts[name] = "true"
 				continue
 			}
@@ -196,7 +199,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 	if len(pos) > len(leaf.positional) {
 		return fail("unexpected argument '%s'", pos[len(leaf.positional)])
 	}
-	inv := &invocation{json: opts["json"] == "true", command: leaf.command, project: opts["project"], by: opts["by"]}
+	inv := &invocation{json: opts["json"] == "true", quick: opts["quick"] == "true", command: leaf.command, project: opts["project"], by: opts["by"]}
 	if value, ok := opts["context"]; ok {
 		inv.context = &value
 	}

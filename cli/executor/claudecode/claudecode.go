@@ -545,3 +545,6 @@ func bound(s string, n int) string {
 func isRuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
 func quoteBound(s string) string { return strconv.Quote(bound(s, 60)) }
+
+// VersionAtLeast reports whether the output of `claude --version` starts with a version >= min.
+func VersionAtLeast(output, min string) bool { return versionAtLeast(output, min) }
