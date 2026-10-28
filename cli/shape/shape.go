@@ -453,6 +453,7 @@ type shaping struct {
 	window    *window
 	cacheID   string // this conversation's cache identity
 
+	submissions   int              // submissions made in this run
 	priorInvalid  int              // invalid submissions before the current attempt
 	lastUncovered []map[string]any // defects a last-attempt files submission left uncovered
 	auditResult   *auditResult     // the request audit; nil when disabled
@@ -992,11 +993,32 @@ func formatWall(w float64) string {
 // truthful protected-conflict report. Blocked is a report only; it never authorizes an edit
 // or writes submission files. The text goes back to the shaper.
 func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, outcome, error) {
+	sh.submissions++
+	return sh.submitOne(ctx, args)
+}
+
+// refused records one submission_refused event with its problem lines bounded.
+func (sh *shaping) refused(gate string, problems []string) {
+	if len(problems) > 20 {
+		problems = problems[:20]
+	}
+	cut := make([]string, len(problems))
+	for i, p := range problems {
+		if r := []rune(p); len(r) > 300 {
+			p = string(r[:300])
+		}
+		cut[i] = p
+	}
+	sh.ev.Record(map[string]any{"event": "submission_refused", "attempt": sh.submissions, "gate": gate, "problems": cut})
+}
+
+func (sh *shaping) submitOne(ctx context.Context, args map[string]any) (string, outcome, error) {
 	sub, problems, err := sh.validate(args)
 	if err != nil {
 		return "", outcome{}, err
 	}
 	if problems != nil {
+		sh.refused("validation", problems)
 		return "invalid submission:\n" + strings.Join(problems, "\n") +
 				"\nNo proposals from this submission were retained; earlier proposals are unchanged.",
 			outcome{kind: outInvalid, problems: problems}, nil
@@ -1004,6 +1026,10 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 	lines, uncovered := sh.auditUncovered(sub)
 	lastAttempt := sh.priorInvalid >= 2
 	if lines != nil && !lastAttempt {
+		sh.refused("audit", lines)
+		for _, f := range sub.files {
+			sh.proposed[f.path] = f.content
+		}
 		return strings.Join(lines, "\n"), outcome{kind: outInvalid, problems: lines}, nil
 	}
 	if lines != nil && sub.files != nil {
@@ -1017,6 +1043,7 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 	}
 
 	if problems := sh.publicationProblems(sub.files); len(problems) > 0 {
+		sh.refused("publication", problems)
 		return "invalid submission:\n" + strings.Join(problems, "\n") +
 				"\nNo proposals from this submission were retained; earlier proposals are unchanged.",
 			outcome{kind: outInvalid, problems: problems}, nil
@@ -1070,11 +1097,13 @@ func (sh *shaping) acceptFiles(ctx context.Context, submitted []proposedFile) (s
 		if !ok {
 			return "", outcome{}, err
 		}
+		sh.refused("intent", e.Lines)
 		return "invalid submission:\n" + strings.Join(e.Lines, "\n") +
 				"\nEarlier well-formed proposals are retained; submit only corrections.",
 			outcome{kind: outInvalid, problems: e.Lines}, nil
 	}
 	if problems := sh.retainedProblems(intent, files); len(problems) > 0 {
+		sh.refused("retained", problems)
 		return strings.Join(problems, "\n"), outcome{kind: outInvalid, problems: problems}, nil
 	}
 	return sh.checkSubmission(ctx, files)
@@ -1116,11 +1145,23 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 		if err != nil {
 			return "", outcome{}, err
 		}
-		lines, err := sh.decisionCheck(ctx, string(text))
+		lines, items, err := sh.decisionCheck(ctx, string(text))
 		if err != nil {
 			return "", outcome{}, err
 		}
+		if lines != nil && sh.priorInvalid >= 2 {
+			if marked, statements, ok := markAssumptions(items, string(text)); ok {
+				p := project.IntentMDPath(sh.slug)
+				if err := os.WriteFile(filepath.Join(sh.root, p), []byte(marked), 0o666); err != nil {
+					return "", outcome{}, err
+				}
+				sh.proposed[p] = marked
+				sh.ev.Record(map[string]any{"event": "decision_assumptions_marked", "statements": statements})
+				lines = nil
+			}
+		}
 		if lines != nil {
+			sh.refused("decision_check", lines[1:])
 			return strings.Join(lines, "\n"), outcome{kind: outInvalid, problems: lines[1:]}, nil
 		}
 	}
@@ -1130,6 +1171,7 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 		return "", outcome{}, err
 	}
 	if feedback != "" {
+		sh.refused("step_selfcheck", strings.Split(feedback, "\n")[1:])
 		return feedback, outcome{kind: outInvalid, problems: strings.Split(feedback, "\n")[1:]}, nil
 	}
 	sh.progress("kogen: checking readiness")
@@ -1142,6 +1184,7 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 			if e.Reason != "not_ready" {
 				problems = append([]string{e.Error()}, e.Lines...)
 			}
+			sh.refused("readiness", problems)
 			return "not ready:\n" + strings.Join(problems, "\n"), outcome{kind: outInvalid, problems: problems}, nil
 		}
 		return "", outcome{}, err

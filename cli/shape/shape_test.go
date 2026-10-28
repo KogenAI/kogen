@@ -887,3 +887,46 @@ func TestShapeAnthropicInvalidProviderFailureReachesTheDiagnostic(t *testing.T) 
 		t.Fatal("the raw payload leaked")
 	}
 }
+
+// shpRefused is the attempt:gate of every submission_refused event, in order.
+func shpRefused(f *shpFx) []string {
+	var out []string
+	for _, e := range shpNamed(f.events(), "submission_refused") {
+		problems, _ := e["problems"].([]any)
+		if len(problems) == 0 || len(problems) > 20 {
+			out = append(out, fmt.Sprintf("bad problems %v", e))
+		}
+		out = append(out, fmt.Sprintf("%v:%v", e["attempt"], e["gate"]))
+	}
+	return out
+}
+
+func TestShapeRecordsEachRefusedSubmissionWithItsGate(t *testing.T) {
+	both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
+	unsourced := shpFilesWithDecisions("- Non-integers raise TypeError.")
+	noSteps := strings.Replace(shpIntentMD, "- features/steps/is_even_steps.js\n", "", 1)
+	dropped := map[string]any{"files": []any{map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": noSteps}}}
+	for _, tc := range []struct {
+		name   string
+		steps  []shpStep
+		report string
+		want   string
+	}{
+		{"validation", []shpStep{shpSubmit("c1", both), shpSubmit("c2", both), shpSubmit("c3", both)}, "FAILED", "1:validation 2:validation 3:validation"},
+		{"publication", []shpStep{shpAnswer(shpCall("c1", "submit", shpFiles())), shpSubmit("c2", shpFiles()), shpAck("c3")}, "PASSED", "1:publication"},
+		{"intent", []shpStep{shpSubmit("c1", unsourced), shpSubmit("c2", shpFiles())}, "PASSED", "1:intent"},
+		{"retained", []shpStep{shpSubmit("c1", shpFiles()), shpSubmit("c2", dropped), shpAck("c3")}, "FAILED", "2:retained 3:retained"},
+		{"readiness", []shpStep{shpSubmit("c1", shpFiles()), shpAck("c2"), shpAck("c3")}, "UNDEFINED", "1:readiness 2:readiness 3:readiness"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newShpFx(t, tc.steps...)
+			code := 1
+			if tc.report == "PASSED" {
+				code = 0
+			}
+			f.setReport(tc.report, code)
+			f.shape("Add calc.is_even(n).")
+			shpEq(t, "refused", strings.Join(shpRefused(f), " "), tc.want)
+		})
+	}
+}

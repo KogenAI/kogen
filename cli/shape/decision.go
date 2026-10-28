@@ -139,7 +139,7 @@ func decisionOutcome(items []decisionItem, request, intent string) (map[string]a
 
 // decisionCheck makes one fresh read-only call on the candidate intent.md and returns the
 // feedback lines, nil when the candidate may go on.
-func (sh *shaping) decisionCheck(ctx context.Context, intent string) ([]string, error) {
+func (sh *shaping) decisionCheck(ctx context.Context, intent string) ([]string, []decisionItem, error) {
 	input := "Slug: " + sh.slug + "\n\n# Request\n\n" + sh.request + "\n\n# Candidate intent.md\n\n" + intent
 	var args map[string]any
 	sh.decisionChecks++
@@ -147,25 +147,25 @@ func (sh *shaping) decisionCheck(ctx context.Context, intent string) ([]string, 
 		x, err := startExternal(ctx, sh.ext, sh.extMax, sh.repo, sh.root, sh.s.Getenv("HOME"),
 			fmt.Sprintf("%s/executor-decision-%d", sh.ev.Dir, sh.decisionChecks), sh.slug, sh.role, decisionInstructions+"\n\n"+input, "", mustJSON(decisionSchema()), sh.ev.Record, nil)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		defer x.close()
 		res, err := x.round(ctx, "")
 		sh.decisionRounds += x.rounds
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if res.Ending != executor.EndFinish {
-			return nil, decisionInvalid("the session ended without a result")
+			return nil, nil, decisionInvalid("the session ended without a result")
 		}
 		if args, err = submissionArgs(res.Structured); err != nil {
-			return nil, decisionInvalid("not a JSON object")
+			return nil, nil, decisionInvalid("not a JSON object")
 		}
 	} else {
 		sh.progress("kogen: checking the stated decisions")
 		revision, err := CurrentRevision(sh.repo)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		cacheID := startConversation(sh.ev, "decision-check")
 		req := conversationRequest(provider.Request{
@@ -179,25 +179,25 @@ func (sh *shaping) decisionCheck(ctx context.Context, intent string) ([]string, 
 		call.End(resp, err)
 		if err != nil {
 			if e, ok := sys.AsError(err); ok && e.Class == "provider" {
-				return nil, sh.providerFailed(e)
+				return nil, nil, sh.providerFailed(e)
 			}
-			return nil, err
+			return nil, nil, err
 		}
 		sh.progress(fmt.Sprintf("kogen: decision check response %s wall_ms=%d", resp.Usage.Line(), time.Since(t0).Milliseconds()))
 		sh.decisionUsage = sh.decisionUsage.Add(resp.Usage)
 		calls := tools.Calls(resp.Items)
 		if len(calls) != 1 || calls[0].Name != SubmitDecisionCheckTool {
-			return nil, decisionInvalid("expected one " + SubmitDecisionCheckTool + " call")
+			return nil, nil, decisionInvalid("expected one " + SubmitDecisionCheckTool + " call")
 		}
 		args = calls[0].Args()
 	}
 	items, err := parseDecisionCheck(args)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	event, lines := decisionOutcome(items, sh.request, intent)
 	sh.ev.Record(event)
-	return lines, nil
+	return lines, items, nil
 }
 
 // assumptionLines are the Decisions lines marked as assumptions, without their leading "- ",
@@ -216,3 +216,43 @@ func assumptionLines(cfg *project.Config, intent string) []string {
 }
 
 var sourceTagRe = regexp.MustCompile(`\s*\(source: (?:request|answer \d+)\)\s*$`)
+
+var whitespaceRun = regexp.MustCompile(`\s+`)
+
+// markAssumptions rewrites each flagged Decisions line of the intent with an assumption
+// marker before its trailing source tag. ok is false (nothing marked) unless every flagged
+// item is unsupported and its statement is a tagged line of the Decisions section.
+func markAssumptions(items []decisionItem, intent string) (marked string, statements []string, ok bool) {
+	lines := decisionLines(intent)
+	why := map[string]string{}
+	for _, it := range items {
+		if it.verdict == "follows" || strings.Contains(it.statement, "(assumption:") {
+			continue
+		}
+		if it.verdict != "unsupported" {
+			return "", nil, false
+		}
+		found := ""
+		for _, l := range lines {
+			if strings.TrimSpace(l) == strings.TrimSpace(it.statement) && sourceTagRe.MatchString(l) {
+				found = l
+				break
+			}
+		}
+		if found == "" {
+			return "", nil, false
+		}
+		why[found] = strings.TrimSpace(whitespaceRun.ReplaceAllString(it.why, " "))
+		statements = append(statements, it.statement)
+	}
+	if len(statements) == 0 {
+		return "", nil, false
+	}
+	marked = intent
+	for line, w := range why {
+		tag := sourceTagRe.FindString(line)
+		head := strings.TrimRight(strings.TrimSuffix(line, tag), " \t")
+		marked = strings.Replace(marked, line, head+" (assumption: "+w+")"+" "+strings.TrimSpace(tag), 1)
+	}
+	return marked, statements, true
+}

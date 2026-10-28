@@ -135,3 +135,38 @@ func TestDefectTemplates(t *testing.T) {
 		}
 	}
 }
+
+// TestNativeAuditRefusalKeepsTheSubmittedFiles: a well-formed files submission refused by the
+// audit gate stays in the accumulated proposals, so an intent.md-only correction publishes
+// with the earlier acceptance.feature and steps.
+func TestNativeAuditRefusalKeepsTheSubmittedFiles(t *testing.T) {
+	cover := strings.Replace(shpIntentMD, "- Non-integers raise TypeError. (source: request)\n",
+		"- Non-integers raise TypeError. (source: request)\n- Decision: for is_even(0) the result is True (because the example states it) (source: request)\n", 1)
+	f := newShpFx(t, shpSubmit("c1", shpFiles()),
+		shpSubmit("c2", map[string]any{"files": []any{map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": cover}}}))
+	f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"shape_audit:\n  enabled: true\n")
+	f.git("add", ".kogen/project.yaml")
+	f.git("commit", "-qm", "audit")
+	f.setReport("PASSED", 0)
+	audit := shpAnswer(shpCall("a1", SubmitAuditTool, map[string]any{
+		"examples": []any{map[string]any{"quote": "QA"}}, "rules": []any{map[string]any{"quote": "QB"}},
+		"cells":   []any{map[string]any{"example": 0, "rule": 0, "result": "conflicts"}},
+		"defects": []any{map[string]any{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "is_even(0)", "result_a": "True", "result_b": "False"}},
+	}))
+	f.Prov.route = func(req map[string]any) *shpStep {
+		if names := shpToolNames(req); len(names) == 1 && names[0] == SubmitAuditTool {
+			return &audit
+		}
+		return nil
+	}
+	if exit, err := f.shape("Add calc.is_even(n). QA QB"); err != nil || exit != 0 {
+		t.Fatalf("exit %d, err %v\n%s", exit, err, f.Stdout)
+	}
+	shpEq(t, "feature", f.read(".kogen/intents/is-even/acceptance.feature"), shpFeature)
+	shpEq(t, "steps", f.read("features/steps/is_even_steps.js"), shpSteps)
+	shpEq(t, "intent", f.read(".kogen/intents/is-even/intent.md"), cover)
+	refused := shpNamed(f.events(), "submission_refused")
+	if len(refused) != 1 || refused[0]["gate"] != "audit" || refused[0]["attempt"] != float64(1) {
+		t.Fatalf("refused %v", refused)
+	}
+}

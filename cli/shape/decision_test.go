@@ -113,3 +113,23 @@ func TestDecisionInstructionsKeepSourceTag(t *testing.T) {
 		t.Error("instructions do not state the rule")
 	}
 }
+
+func TestMarkAssumptions(t *testing.T) {
+	intent := "# T\n\n## Decisions\n- Keep it small. (source: request)\n- Use blue.   (source: answer 2)\n\n## Other\n"
+	item := func(st, v, why string) decisionItem {
+		return decisionItem{statement: st, verdict: v, why: why, quotes: []string{}}
+	}
+	got, sts, ok := markAssumptions([]decisionItem{item("- Use blue.   (source: answer 2)", "unsupported", " not\n  stated ")}, intent)
+	if !ok || len(sts) != 1 || !strings.Contains(got, "- Use blue. (assumption: not stated) (source: answer 2)") || !strings.Contains(got, "- Keep it small. (source: request)") {
+		t.Fatalf("got %v %q", ok, got)
+	}
+	for _, items := range [][]decisionItem{
+		{item("- Use blue.   (source: answer 2)", "contradicts", "x")},
+		{item("Use blue", "unsupported", "x")},
+		{item("- Keep it small. (source: request)", "unsupported", "x"), item("- Use blue.   (source: answer 2)", "contradicts", "y")},
+	} {
+		if _, _, ok := markAssumptions(items, intent); ok {
+			t.Fatalf("marked %v", items)
+		}
+	}
+}
