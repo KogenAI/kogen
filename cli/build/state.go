@@ -288,7 +288,15 @@ func sameConfig(a, b *project.Config) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return configJSON(a) == configJSON(b)
+	// A configuration saved before review_material existed has no mode: that is parts.
+	normal := func(c *project.Config) string {
+		copied := *c
+		if copied.ReviewMaterial.Mode == "" {
+			copied.ReviewMaterial.Mode = "parts"
+		}
+		return configJSON(&copied)
+	}
+	return normal(a) == normal(b)
 }
 
 // intent rebuilds the Intent from the text the Build was started with.

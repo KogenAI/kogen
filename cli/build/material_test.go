@@ -494,3 +494,100 @@ func TestFittedInlineSourceRelocatesOnPressure(t *testing.T) {
 		})
 	}
 }
+
+func TestOnDemandManifestHasDiffStatHunksAndCovers(t *testing.T) {
+	t.Parallel()
+	b, e, _ := materialAttempt(t)
+	e.write("app.txt", "x\n"+strings.Repeat("0123456789abcdef-line\n", 400))
+	e.write("extra.txt", "one\ntwo\nthree\n")
+	tree, err := b.repo.Tree(b.Start, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := b.repo.Diff(b.Start, tree, []string{"app.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := e.read("app.txt")
+	source := "# Check results\n\n# Diff of existing/deleted paths against start HEAD\n\n" + diff +
+		"\n# Full text of every changed or added file\n\n--- app.txt\n" + app + "\n--- extra.txt (added; mode 100644)\none\ntwo\nthree\n\n--- gone.txt (deleted)\n"
+	catalog := []map[string]any{
+		{"path": "app.txt", "status": "changed", "mode": "100644"},
+		{"path": "extra.txt", "status": "added", "mode": "100644"},
+		{"path": "gone.txt", "status": "deleted", "mode": "100644"},
+	}
+	texts := []materialFileText{{"app.txt", "--- app.txt\n", app}, {"extra.txt", "--- extra.txt (added; mode 100644)\n", "one\ntwo\nthree\n"}}
+	manifest, segments, err := b.materialManifest(tree, catalog, texts, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest) != 3 {
+		t.Fatalf("manifest %v", manifest)
+	}
+	stat := manifest[0]["diff_stat"].(map[string]any)
+	if stat["added"] != 401 || stat["deleted"] != strings.Count(diff, "\n-")-1 {
+		t.Errorf("app.txt stat %v\n%s", stat, diff[:200])
+	}
+	hunks := manifest[0]["hunks"].([]map[string]any)
+	if len(hunks) != 1 || hunks[0]["new_start"] != 1 || hunks[0]["new_count"] != 401 || !strings.HasPrefix(hunks[0]["header"].(string), "@@ -") {
+		t.Errorf("app.txt hunks %v", hunks)
+	}
+	added := manifest[1]["hunks"].([]map[string]any)
+	if !reflect.DeepEqual(added, []map[string]any{{"old_start": 0, "old_count": 0, "new_start": 1, "new_count": 3, "header": "@@ -0,0 +1,3 @@"}}) ||
+		manifest[1]["diff_stat"].(map[string]any)["added"] != 3 {
+		t.Errorf("added %v", manifest[1])
+	}
+	if d := manifest[2]["diff_stat"].(map[string]any); d["added"] != 0 || d["deleted"] != 0 || len(manifest[2]["hunks"].([]map[string]any)) != 0 {
+		t.Errorf("deleted %v", manifest[2])
+	}
+	// The whole source is one part: the file text is covered from line 1 to its last line.
+	covers := materialCovers(materialSet{Source: source, Segments: segments}, 0, len(source))
+	var file map[string]any
+	for _, c := range covers {
+		if c["path"] == "app.txt" && c["kind"] == "file" {
+			file = c
+		}
+	}
+	if file == nil || file["first_line"] != 1 || file["last_line"] != 401 {
+		t.Errorf("covers %v", covers)
+	}
+	// A part that starts inside the file text starts on the line holding its first byte.
+	mid := strings.Index(source, "--- app.txt\n") + len("--- app.txt\n") + len("x\n") + 22 + 5
+	covers = materialCovers(materialSet{Source: source, Segments: segments}, mid, len(source))
+	for _, c := range covers {
+		if c["path"] == "app.txt" && c["kind"] == "file" && c["first_line"] != 3 {
+			t.Errorf("mid cover %v", c)
+		}
+	}
+}
+
+func TestOnDemandManifestCoversADeletedPathsDiffBlock(t *testing.T) {
+	t.Parallel()
+	b, e, _ := materialAttempt(t)
+	if err := os.Remove(filepath.Join(e.root, "app.txt")); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := b.repo.Tree(b.Start, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := b.repo.Diff(b.Start, tree, []string{"app.txt"})
+	if err != nil || diff == "" {
+		t.Fatalf("diff %q %v", diff, err)
+	}
+	source := "# Diff of existing/deleted paths against start HEAD\n\n" + diff +
+		"\n# Full text of every changed or added file\n\n--- app.txt (deleted)\n"
+	catalog := []map[string]any{{"path": "app.txt", "status": "deleted", "mode": "100644"}}
+	manifest, segments, err := b.materialManifest(tree, catalog, nil, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := manifest[0]["diff_stat"].(map[string]any); d["added"] != 0 || d["deleted"] != 0 || len(manifest[0]["hunks"].([]map[string]any)) != 0 {
+		t.Errorf("deleted %v", manifest[0])
+	}
+	covers := materialCovers(materialSet{Source: source, Segments: segments}, 0, len(source))
+	want := []map[string]any{{"path": "app.txt", "kind": "diff", "first_line": 1, "last_line": strings.Count(diff, "\n")}}
+	if !reflect.DeepEqual(covers, want) {
+		t.Errorf("covers %v, want %v", covers, want)
+	}
+}

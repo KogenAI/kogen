@@ -1472,3 +1472,33 @@ func TestChangesAfterEveryPartWasReadStaysBlocked(t *testing.T) {
 	eq(t, "exit", a.exit, 1)
 	contains(t, "stdout", a.out.String(), "review_blocked")
 }
+
+func TestOnDemandReviewApprovesWithoutReadingPartsAndRecordsTheMode(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.write(".kogen/project.yaml", e.read(".kogen/project.yaml")+"review_material:\n  mode: on_demand\n")
+	e.run("git", "add", ".kogen/project.yaml")
+	e.run("git", "commit", "-qm", "review material mode")
+	e.approve()
+	f := e.prov
+	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
+	f.then(submit(f, "approve"))
+	start := e.head()
+	a := e.reviewed()
+	if a.exit != 0 || e.head() == start {
+		t.Fatalf("not landed: %d %s", a.exit, a.shown())
+	}
+	reqs := f.reviewRequests()
+	catalog := reviewCatalog(t, reqs[0])
+	if catalog["mode"] != "on_demand" || len(catalog["parts"].([]any)) < 2 {
+		t.Fatalf("catalog %v", catalog)
+	}
+	if strings.Contains(requestText(reqs[0]), "0123456789abcdef-line") {
+		t.Error("the opening carries a part body")
+	}
+	events := eventsNamed(e.events(e.onlyRun()), "review_material")
+	if len(events) != 1 || events[0]["mode"] != "on_demand" || events[0]["parts_read"] != float64(0) ||
+		events[0]["parts"] != float64(len(catalog["parts"].([]any))) {
+		t.Fatalf("events %v", events)
+	}
+}

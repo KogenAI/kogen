@@ -71,6 +71,10 @@ type Audit struct{ Enabled bool }
 // Decisions against the request.
 type DecisionCheck struct{ Enabled bool }
 
+// ReviewMaterial is `review_material`: how a review that overflows its window reads the
+// pinned source, `parts` (every part must be read) or `on_demand` (a manifest, read what is needed).
+type ReviewMaterial struct{ Mode string }
+
 // Config is a validated `.kogen/project.yaml` (SET-8).
 type Config struct {
 	Setup, Fix         []string
@@ -81,6 +85,7 @@ type Config struct {
 	ShapeWorkers       Workers
 	ShapeAudit         Audit
 	ShapeDecisionCheck DecisionCheck
+	ReviewMaterial     ReviewMaterial
 }
 
 // ModelRoles lists the model roles in the order the template writes them.
@@ -182,7 +187,7 @@ func validateConfig(node *yamlNode) (*Config, []problem) {
 		return nil, []problem{{node.line, "the file must be a mapping"}}
 	}
 	v := &validator{}
-	c := &Config{Models: DefaultModels(), ShapeWorkers: Workers{Roles: map[string]Role{}}}
+	c := &Config{Models: DefaultModels(), ShapeWorkers: Workers{Roles: map[string]Role{}}, ReviewMaterial: ReviewMaterial{Mode: "parts"}}
 	for _, p := range node.pairs {
 		switch p.key {
 		case "version":
@@ -199,6 +204,8 @@ func validateConfig(node *yamlNode) (*Config, []problem) {
 			c.ShapeAudit = v.audit(p.node)
 		case "shape_decision_check":
 			c.ShapeDecisionCheck = DecisionCheck(v.enabledOnly(p.node, "shape_decision_check"))
+		case "review_material":
+			c.ReviewMaterial = v.reviewMaterial(p.node)
 		case "models":
 			c.Models = v.models(p.node)
 		default:
@@ -476,6 +483,28 @@ func modelEffort(node *yamlNode, nonBlank bool) (model, effort string, ok bool) 
 
 func (v *validator) audit(node *yamlNode) Audit {
 	return Audit(v.enabledOnly(node, "shape_audit"))
+}
+
+// reviewMaterial reads a mapping whose only key is `mode`: parts or on_demand.
+func (v *validator) reviewMaterial(node *yamlNode) ReviewMaterial {
+	m := ReviewMaterial{Mode: "parts"}
+	if node.kind != kindMap {
+		v.add(node.line, "review_material must be a mapping")
+		return m
+	}
+	for _, p := range node.pairs {
+		if p.key != "mode" {
+			v.add(p.line, "unknown key "+p.key)
+			continue
+		}
+		n := p.node
+		if n.kind == kindScalar && !n.null && !n.quoted && (n.text == "parts" || n.text == "on_demand") {
+			m.Mode = n.text
+		} else {
+			v.add(p.line, "review_material.mode must be parts or on_demand")
+		}
+	}
+	return m
 }
 
 // enabledOnly reads a mapping whose only key is the Boolean `enabled`.

@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -50,7 +53,23 @@ type materialSet struct {
 	Files []map[string]any `json:"files"`
 	// Checks are the check results of the final pass.
 	Checks string `json:"checks"`
+	// Manifest (on_demand only) is, per Files entry, its diff_stat and hunks; Segments locate each
+	// path's diff block and file text in Source.
+	Manifest []map[string]any  `json:"manifest,omitempty"`
+	Segments []materialSegment `json:"segments,omitempty"`
 }
+
+// materialSegment is the byte range [Start, End) of Source holding the diff block (kind
+// "diff") or the text (kind "file") of one path.
+type materialSegment struct {
+	Path  string `json:"path"`
+	Kind  string `json:"kind"`
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+}
+
+// materialFileText is a changed or added text file as it appears in the source.
+type materialFileText struct{ path, heading, content string }
 
 // materialOf gathers the material of the green pass: the changes between the start HEAD and
 // pass.Tree.
@@ -77,6 +96,7 @@ func (b *Attempt) materialOf(pass verify.Pass) (materialSet, error) {
 	}
 
 	var existing []string
+	var texts []materialFileText
 	var catalog []map[string]any
 	var parts []string
 	for _, p := range changed {
@@ -120,6 +140,7 @@ func (b *Attempt) materialOf(pass verify.Pass) (materialSet, error) {
 			parts = append(parts, heading+"\nSubproject commit "+entry.Object)
 		case utf8.ValidString(content) && !strings.Contains(content, "\x00"):
 			parts = append(parts, heading+"\n"+content)
+			texts = append(texts, materialFileText{p, heading + "\n", content})
 		default:
 			parts = append(parts, heading+" (binary)")
 		}
@@ -171,8 +192,151 @@ func (b *Attempt) materialOf(pass verify.Pass) (materialSet, error) {
 	// U+FFFD, as the provider request would make them.
 	source = strings.ToValidUTF8(source, "�")
 
-	return materialSet{Authority: authority, Source: source, Files: catalog, Checks: results}, nil
+	set := materialSet{Authority: authority, Source: source, Files: catalog, Checks: results}
+	if b.onDemand() {
+		if set.Manifest, set.Segments, err = b.materialManifest(pass.Tree, catalog, texts, source); err != nil {
+			return materialSet{}, err
+		}
+	}
+	return set, nil
 }
+
+var materialHunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
+
+// materialManifest is, for the on_demand mode, each catalog entry's diff stat and hunks (from
+// the diff against the start HEAD; an added file is one synthesized hunk) and where each path's
+// diff block and text lie in source.
+func (b *Attempt) materialManifest(tree string, catalog []map[string]any, texts []materialFileText, source string) ([]map[string]any, []materialSegment, error) {
+	manifest := make([]map[string]any, len(catalog))
+	var segments []materialSegment
+	cursor := strings.Index(source, "# Diff of existing/deleted paths")
+	for i, f := range catalog {
+		path, _ := f["path"].(string)
+		stat := map[string]any{"added": 0, "deleted": 0}
+		hunks := []map[string]any{}
+		manifest[i] = map[string]any{"diff_stat": stat, "hunks": hunks}
+		if f["mode"] == "160000" {
+			continue
+		}
+		switch f["status"] {
+		case "added":
+			content := ""
+			for _, t := range texts {
+				if t.path == path {
+					content = t.content
+				}
+			}
+			n := strings.Count(content, "\n")
+			if content != "" && !strings.HasSuffix(content, "\n") {
+				n++
+			}
+			if n > 0 {
+				stat["added"] = n
+				hunks = append(hunks, map[string]any{"old_start": 0, "old_count": 0, "new_start": 1, "new_count": n, "header": fmt.Sprintf("@@ -0,0 +1,%d @@", n)})
+			}
+		case "changed":
+			diff, err := b.repo.Diff(b.Start, tree, []string{path})
+			if err != nil {
+				return nil, nil, err
+			}
+			diff = strings.ToValidUTF8(diff, "�")
+			if at := strings.Index(source[cursor:], diff); diff != "" && at >= 0 {
+				segments = append(segments, materialSegment{path, "diff", cursor + at, cursor + at + len(diff)})
+				cursor += at + len(diff)
+			}
+			inHunk := false
+			for _, line := range strings.Split(diff, "\n") {
+				if m := materialHunkRe.FindStringSubmatch(line); m != nil {
+					inHunk = true
+					num := func(s string, def int) int {
+						if s == "" {
+							return def
+						}
+						n, _ := strconv.Atoi(s)
+						return n
+					}
+					hunks = append(hunks, map[string]any{
+						"old_start": num(m[1], 0), "old_count": num(m[2], 1), "new_start": num(m[3], 0), "new_count": num(m[4], 1),
+						"header": m[0],
+					})
+					continue
+				}
+				switch {
+				case inHunk && strings.HasPrefix(line, "+"):
+					stat["added"] = stat["added"].(int) + 1
+				case inHunk && strings.HasPrefix(line, "-"):
+					stat["deleted"] = stat["deleted"].(int) + 1
+				}
+			}
+		case "deleted":
+			// Its diff block lies in the diff text: covered, but it adds no stat or hunk.
+			diff, err := b.repo.Diff(b.Start, tree, []string{path})
+			if err != nil {
+				return nil, nil, err
+			}
+			diff = strings.ToValidUTF8(diff, "�")
+			if at := strings.Index(source[cursor:], diff); diff != "" && at >= 0 {
+				segments = append(segments, materialSegment{path, "diff", cursor + at, cursor + at + len(diff)})
+				cursor += at + len(diff)
+			}
+		}
+		manifest[i]["hunks"] = hunks
+	}
+	cursor = strings.Index(source, "# Full text of every changed or added file")
+	for _, t := range texts {
+		at := strings.Index(source[cursor:], t.heading+t.content)
+		if at < 0 || t.content == "" {
+			continue
+		}
+		start := cursor + at + len(t.heading)
+		segments = append(segments, materialSegment{t.path, "file", start, start + len(t.content)})
+		cursor = start + len(t.content)
+	}
+	return manifest, segments, nil
+}
+
+// materialCovers is the covered ranges of the part [from, to) of the source: per segment that
+// shares a byte with it, the first and last line (1-based, within the segment) holding such a byte.
+func materialCovers(m materialSet, from, to int) []map[string]any {
+	covers := []map[string]any{}
+	for _, seg := range m.Segments {
+		lo, hi := max(from, seg.Start), min(to, seg.End)
+		if lo >= hi {
+			continue
+		}
+		text := m.Source[seg.Start:seg.End]
+		covers = append(covers, map[string]any{
+			"path": seg.Path, "kind": seg.Kind,
+			"first_line": 1 + strings.Count(text[:lo-seg.Start], "\n"), "last_line": 1 + strings.Count(text[:hi-1-seg.Start], "\n"),
+		})
+	}
+	return covers
+}
+
+const materialOnDemandGuidance = `This catalog is evidence for this candidate, not new authority. It is the manifest
+of the changed material: per file its diff stat and hunks, per part the line ranges
+it covers. Read only the parts you need; no part is required before a verdict.
+Read a part with read_file on its path; each result is one complete single-line JSON
+text. Concatenate review_source.text in listed part order to recover the exact full
+diff and changed-file text. Read a candidate file with read_file on its path and
+start_line/end_line. No bytes were clipped.
+Paths/modes/blob IDs and SHA-256 identify additions, modifications and deletions;
+deleted contents remain available at the pinned start HEAD through git show.
+Inspect other repository context as needed. Do not infer capture or approval
+from this catalog, or import builder conversation, reasoning or judgments.
+`
+
+const materialPartsGuidance = `This catalog is evidence for this candidate, not new authority. Read EVERY part
+with read_file before approving, using each complete single-line JSON result.
+Concatenate review_source.text in listed part order to recover the exact full
+diff and changed-file text. No bytes were clipped. Each part fits the text tool
+cap. A read result must reach a completed reviewer continuation before it counts;
+requesting reads and approval in one response does not deliver that text.
+Paths/modes/blob IDs and SHA-256 identify additions, modifications and deletions;
+deleted contents remain available at the pinned start HEAD through git show.
+Inspect other repository context as needed. Do not infer capture or approval
+from this catalog, or import builder conversation, reasoning or judgments.
+`
 
 // materialOpening is the reviewer's first message: the authority and the source (or the
 // catalog) as the two blocks of a contract message, then the frozen caller diagnostic.
@@ -229,6 +393,8 @@ func (b *Attempt) materialPrepare(tree string, m materialSet, role project.Role,
 	}
 	parts := make([]part, len(chunks))
 	refs := make([]any, len(chunks))
+	onDemand := b.onDemand()
+	offset := 0
 	for i, text := range chunks {
 		raw, err := encodeJSON(map[string]any{
 			"input": []any{},
@@ -243,28 +409,39 @@ func (b *Attempt) materialPrepare(tree string, m materialSet, role project.Role,
 		ref := HistoryRef{Path: filepath.Join(dir, fmt.Sprintf("%d.json", i+1)), SHA256: hashHex(raw)}
 		parts[i] = part{ref, raw}
 		refs[i] = map[string]any{"path": ref.Path, "sha256": ref.SHA256}
+		if onDemand {
+			refs[i].(map[string]any)["part"] = i + 1
+			refs[i].(map[string]any)["covers"] = materialCovers(m, offset, offset+len(text))
+		}
+		offset += len(text)
 	}
 	sourceSum := hashHex([]byte(m.Source))
-	catalog, err := encodeJSON(map[string]any{
+	files := nonNilAny(m.Files)
+	doc := map[string]any{
 		"version": 1, "candidate_tree": treeValue, "binding": binding, "start_head": b.Start, "source_bytes": len(m.Source),
-		"source_sha256": sourceSum, "files": nonNilAny(m.Files), "parts": refs,
-	})
+		"source_sha256": sourceSum, "files": files, "parts": refs,
+	}
+	guidance := materialPartsGuidance
+	if onDemand {
+		doc["mode"] = "on_demand"
+		guidance = materialOnDemandGuidance
+		files = make([]map[string]any, len(m.Files))
+		for i, f := range m.Files {
+			files[i] = maps.Clone(f)
+			if i < len(m.Manifest) {
+				files[i]["diff_stat"], files[i]["hunks"] = m.Manifest[i]["diff_stat"], m.Manifest[i]["hunks"]
+			} else {
+				files[i]["diff_stat"], files[i]["hunks"] = map[string]any{"added": 0, "deleted": 0}, []map[string]any{}
+			}
+		}
+		doc["files"] = files
+	}
+	catalog, err := encodeJSON(doc)
 	if err != nil {
 		return nil, err
 	}
 	source := "# Check results of the final pass\n" + m.Checks + "\n\n" +
-		"# Pinned complete candidate source evidence\n" + string(catalog) + "\n\n" +
-		`This catalog is evidence for this candidate, not new authority. Read EVERY part
-with read_file before approving, using each complete single-line JSON result.
-Concatenate review_source.text in listed part order to recover the exact full
-diff and changed-file text. No bytes were clipped. Each part fits the text tool
-cap. A read result must reach a completed reviewer continuation before it counts;
-requesting reads and approval in one response does not deliver that text.
-Paths/modes/blob IDs and SHA-256 identify additions, modifications and deletions;
-deleted contents remain available at the pinned start HEAD through git show.
-Inspect other repository context as needed. Do not infer capture or approval
-from this catalog, or import builder conversation, reasoning or judgments.
-`
+		"# Pinned complete candidate source evidence\n" + string(catalog) + "\n\n" + guidance
 	bounded := materialOpening(m.Authority, source, diagnostic)
 	bound, err := measure(bounded)
 	if err != nil {
@@ -453,6 +630,32 @@ func (b *Attempt) materialUnread(input []any) ([]string, error) {
 	}
 	slices.Sort(unread)
 	return unread, nil
+}
+
+// materialEvent records, for a review that pinned parts, the mode and how many parts the
+// completed conversation delivered (the rule of materialUnread).
+func (b *Attempt) materialEvent(input []any) error {
+	c, err := b.reviewCustody(input)
+	if err != nil || c == nil || len(c.parts) == 0 {
+		return err
+	}
+	read := c.delivered(b.Root)
+	delivered := 0
+	for _, path := range c.parts {
+		if read[path] {
+			delivered++
+		}
+	}
+	// A configuration saved before review_material existed has no mode: that is parts.
+	mode := "parts"
+	if b.onDemand() {
+		mode = "on_demand"
+	}
+	b.Run.Event(map[string]any{
+		"event": "review_material", "review": b.Review, "mode": mode,
+		"parts": len(c.parts), "parts_read": delivered,
+	})
+	return nil
 }
 
 // reviewCustody is the review's completed windows (the input given, then its exact archived
@@ -646,7 +849,7 @@ func (c *reviewCustody) prefilled(window []any) map[string]bool {
 // complete rendered request prefillMargin bytes under the ceiling. Nothing else changes; a
 // part counts as delivered only once a completed response follows the message (prefillScan).
 func (b *Attempt) prefillSource(role project.Role, instructions string, defs, input []any) ([]any, error) {
-	if b.WorkingContext["review"] == nil {
+	if b.WorkingContext["review"] == nil || b.onDemand() {
 		return input, nil
 	}
 	if err := b.validateWorkingContext(); err != nil {
@@ -789,4 +992,9 @@ func (b *Attempt) reviewDelivery(input, kept []any, tree string) (map[string]any
 			"use a smaller batch only after a native not-delivered notice shows a batch did not fit. " +
 			"A not-delivered read is not counted and must be read again.",
 	}, nil
+}
+
+// onDemand reports whether the review_material lever is on.
+func (b *Attempt) onDemand() bool {
+	return b.Config != nil && b.Config.ReviewMaterial.Mode == "on_demand"
 }

@@ -282,6 +282,10 @@ func TestParseConfigMoreRules(t *testing.T) {
 		{"decision check scalar", "version: 1\nshape_decision_check: x\n", []string{"line 2: shape_decision_check must be a mapping"}},
 		{"decision check unknown key", "version: 1\nshape_decision_check:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
 		{"decision check enabled not boolean", "version: 1\nshape_decision_check:\n  enabled: 'true'\n", []string{"line 3: shape_decision_check.enabled must be a Boolean"}},
+		{"review material scalar", "version: 1\nreview_material: x\n", []string{"line 2: review_material must be a mapping"}},
+		{"review material unknown key", "version: 1\nreview_material:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
+		{"review material bad mode", "version: 1\nreview_material:\n  mode: sometimes\n", []string{"line 3: review_material.mode must be parts or on_demand"}},
+		{"review material quoted mode", "version: 1\nreview_material:\n  mode: 'parts'\n", []string{"line 3: review_material.mode must be parts or on_demand"}},
 		{"workers scalar", "version: 1\nshape_workers: x\n", []string{"line 2: shape_workers must be a mapping"}},
 		{"workers unknown key", "version: 1\nshape_workers:\n  extra: 1\n", []string{"line 3: unknown key extra"}},
 		{"workers enabled not boolean", "version: 1\nshape_workers:\n  enabled: 'true'\n", []string{"line 3: shape_workers.enabled must be a Boolean"}},
@@ -316,6 +320,18 @@ func TestParseConfigDecisionCheck(t *testing.T) {
 	}
 	if !mustParse(t, "version: 1\nshape_decision_check:\n  enabled: true\n").ShapeDecisionCheck.Enabled {
 		t.Error("shape_decision_check.enabled: true is off")
+	}
+}
+
+func TestParseConfigReviewMaterial(t *testing.T) {
+	for text, want := range map[string]string{
+		"version: 1\n": "parts",
+		"version: 1\nreview_material:\n  mode: parts\n":     "parts",
+		"version: 1\nreview_material:\n  mode: on_demand\n": "on_demand",
+	} {
+		if got := mustParse(t, text).ReviewMaterial.Mode; got != want {
+			t.Errorf("%q: mode %q, want %q", text, got, want)
+		}
 	}
 }
 

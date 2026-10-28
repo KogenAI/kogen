@@ -490,6 +490,11 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 			invalid++
 		case verdict != nil:
 			r.sess.Input = input
+			if !r.external {
+				if err := b.materialEvent(input); err != nil {
+					return reviewVerdict{}, err
+				}
+			}
 			return *verdict, nil
 		}
 		r.sess.Input = input
@@ -569,7 +574,7 @@ func (r *reviewRun) validate(args map[string]any, input []any) (*reviewVerdict, 
 	case verdict == "approve" && blocking > 0:
 		problems = append(problems, "an approve verdict cannot have blocking findings")
 	}
-	if verdict == "changes" && !r.external {
+	if verdict == "changes" && !r.external && !b.onDemand() {
 		unread, err := b.materialUnread(input)
 		if err != nil {
 			return nil, nil, err
@@ -579,7 +584,7 @@ func (r *reviewRun) validate(args map[string]any, input []any) (*reviewVerdict, 
 				len(unread), strings.Join(unread[:min(8, len(unread))], ", ")))
 		}
 	}
-	if verdict == "approve" && !r.external {
+	if verdict == "approve" && !r.external && !b.onDemand() {
 		unread, err := b.materialUnread(input)
 		if err != nil {
 			return nil, nil, err
