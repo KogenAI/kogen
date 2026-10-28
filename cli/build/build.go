@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"kogen-loop/loop"
 	"os"
 	"path/filepath"
 	"slices"
@@ -53,7 +54,8 @@ type Attempt struct {
 	// ext is the external build executor of a fresh Build (nil: the native builder).
 	ext *externalBuild
 	// watch is the no-progress evidence of the native builder's rounds (noprogress.go).
-	watch progressWatch
+	watch            progressWatch
+	nativeNoProgress *loop.NoProgressError
 }
 
 // noRunNotice follows a refusal that happened before any run was created (stdout, indented
@@ -88,6 +90,10 @@ func Resume(ctx context.Context, s *sys.Session, in ResumeInput) (exit int, err 
 // interrupted Build.
 func conclude(s *sys.Session, pb **Attempt, err error) (int, error) {
 	b := *pb
+	var np *loop.NoProgressError
+	if errors.As(err, &np) {
+		err = sys.Fail("candidate", "native_no_progress", np.Error(), 1)
+	}
 	var interrupted *sys.Interrupted
 	var refusal *sys.Error
 	switch {

@@ -130,6 +130,9 @@ func (b *Attempt) details(reason string, report bool, providerFailure map[string
 	if b.Blocker != nil {
 		extra["blocker"] = b.Blocker
 	}
+	if reason == "native_no_progress" && b.nativeNoProgress != nil {
+		extra["native_no_progress"] = map[string]any{"fingerprint": b.nativeNoProgress.Fingerprint, "count": len(b.nativeNoProgress.Rounds), "rounds": b.nativeNoProgress.Rounds}
+	}
 	if providerFailure != nil {
 		extra["provider_failure"] = providerFailure
 	}

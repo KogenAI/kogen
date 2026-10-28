@@ -36,6 +36,7 @@ type Role struct {
 	BaseURL                 string `json:",omitempty"`
 	Executor                string `json:",omitempty"`
 	MaxRounds               int    `json:",omitempty"`
+	NoProgress              bool   `json:",omitempty"`
 }
 
 // DefaultExternalRounds is the round cap of an external role that sets no max_rounds.

@@ -558,6 +558,10 @@ models:
 
 **Resume.** A Build run by Claude Code cannot be resumed (its resume capability is none): `kogen intent resume` refuses its checkpoint with `candidate/resume_refused`. Inspect the preserved candidate, or start a fresh Build. The native builder's resume is unchanged, and so are its checkpoints.
 
+The internal programmatic `project.Role.NoProgress` option is supported only by
+native Build. Shape, Refine, Shape workers and independent Review ignore their
+role's setting; these roles are unsupported for now. It is not a YAML or CLI option.
+
 ## Native shell time bound
 
 `tool_shell_timeout_seconds: 1` is an opt-in positive whole-second per-invocation
