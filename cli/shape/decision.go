@@ -3,6 +3,7 @@ package shape
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,7 +24,11 @@ Give one item for every line of the candidate's "## Decisions" section and for e
 - request_quotes: the passages of the request that support or contradict it, each copied exactly from the request (none when the request is silent);
 - verdict: follows (the request states it), contradicts (the request states otherwise) or unsupported (the request does not state it);
 - why: one short reason.
+A Decision line may be marked as an assumption with (assumption: <what the user must confirm>) placed before its trailing tag; a marked line keeps its trailing (source: request) or (source: answer N).
 Answer by calling ` + SubmitDecisionCheckTool + `.`
+
+// assumptionRule is the feedback line that says exactly how to mark an assumption.
+const assumptionRule = "Mark an assumption with (assumption: <what the user must confirm>) before the required trailing tag, e.g. - <decision> (assumption: <what the user must confirm>) (source: request); every Decision line keeps its trailing (source: request) or (source: answer N)."
 
 func decisionSchema() map[string]any {
 	s := map[string]any{"type": "string"}
@@ -129,7 +134,7 @@ func decisionOutcome(items []decisionItem, request, intent string) (map[string]a
 		return event, nil
 	}
 	head := fmt.Sprintf("Decision check: %d stated decisions are not supported by the request; follow the request, or ask, or mark the decision as an assumption the user must confirm:", len(problems))
-	return event, append([]string{head}, problems...)
+	return event, append([]string{head, assumptionRule}, problems...)
 }
 
 // decisionCheck makes one fresh read-only call on the candidate intent.md and returns the
@@ -204,8 +209,10 @@ func assumptionLines(cfg *project.Config, intent string) []string {
 	var out []string
 	for _, l := range decisionLines(intent) {
 		if strings.Contains(l, "(assumption:") {
-			out = append(out, strings.TrimPrefix(strings.TrimSpace(l), "- "))
+			out = append(out, sourceTagRe.ReplaceAllString(strings.TrimPrefix(strings.TrimSpace(l), "- "), ""))
 		}
 	}
 	return out
 }
+
+var sourceTagRe = regexp.MustCompile(`\s*\(source: (?:request|answer \d+)\)\s*$`)

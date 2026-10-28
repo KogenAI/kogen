@@ -912,17 +912,17 @@ func TestApproveRollbackPreservesExternalReceiptAndMarkerEditsDuringPublication(
 	}
 }
 
-// TestApproveCardUnresolvedConflicts: the last request_audit event's uncovered defects are
-// listed between the assumptions and Files; a later event without them shows nothing.
+// TestApproveCardUnresolvedConflicts: the per-run record of uncovered defects is listed
+// between the assumptions and Files; a later run's record without them shows nothing.
 func TestApproveCardUnresolvedConflicts(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, ".kogen/local/shaping/demo")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ev := filepath.Join(dir, "events.ndjson")
+	rec := filepath.Join(dir, unresolvedFile)
 	d := `{"quote_a":"QA","quote_b":"QB","exposing_input":"f(0)"}`
-	os.WriteFile(ev, []byte(`{"event":"request_audit","defects":[`+d+`],"uncovered":[`+d+`]}`+"\n"), 0o644)
+	os.WriteFile(rec, []byte(`[`+d+`]`), 0o644)
 	lines := unresolvedLines(root, "demo")
 	s := sys.NewWith(nil, "")
 	var out strings.Builder
@@ -933,8 +933,8 @@ func TestApproveCardUnresolvedConflicts(t *testing.T) {
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("card:\n%s", out.String())
 	}
-	os.WriteFile(ev, []byte(`{"event":"request_audit","defects":[`+d+`],"uncovered":[`+d+`]}`+"\n"+`{"event":"request_audit","defects":[]}`+"\n"), 0o644)
+	os.WriteFile(rec, []byte(`[]`), 0o644)
 	if l := unresolvedLines(root, "demo"); len(l) != 0 {
-		t.Fatalf("later event still shows %q", l)
+		t.Fatalf("later run still shows %q", l)
 	}
 }

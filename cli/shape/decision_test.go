@@ -51,7 +51,7 @@ func TestDecisionOutcomeRules(t *testing.T) {
 			continue
 		}
 		head := "Decision check: 1 stated decisions are not supported by the request; follow the request, or ask, or mark the decision as an assumption the user must confirm:"
-		if !slices.Equal(lines, append([]string{head}, c.feedback...)) {
+		if !slices.Equal(lines, append([]string{head, "Mark an assumption with (assumption: <what the user must confirm>) before the required trailing tag, e.g. - <decision> (assumption: <what the user must confirm>) (source: request); every Decision line keeps its trailing (source: request) or (source: answer N)."}, c.feedback...)) {
 			t.Errorf("%s: lines %q", c.name, lines)
 		}
 	}
@@ -60,7 +60,7 @@ func TestDecisionOutcomeRules(t *testing.T) {
 func TestAssumptionLines(t *testing.T) {
 	intent := "## Decisions\n- A. (source: request)\n- B. (assumption: x) (source: request)\n\n## Tests\n- C (assumption: y)\n"
 	on := &project.Config{ShapeDecisionCheck: project.DecisionCheck{Enabled: true}}
-	if got := assumptionLines(on, intent); !slices.Equal(got, []string{"B. (assumption: x) (source: request)"}) {
+	if got := assumptionLines(on, intent); !slices.Equal(got, []string{"B. (assumption: x)"}) {
 		t.Errorf("got %q", got)
 	}
 	if got := assumptionLines(&project.Config{}, intent); got != nil {
@@ -106,4 +106,10 @@ func TestExternalShapeDecisionCheck(t *testing.T) {
 		t.Fatalf("%d decision_check events", n)
 	}
 	noNativeRequests(t, f)
+}
+
+func TestDecisionInstructionsKeepSourceTag(t *testing.T) {
+	if !strings.Contains(decisionInstructions, "keeps its trailing (source: request) or (source: answer N)") {
+		t.Error("instructions do not state the rule")
+	}
 }

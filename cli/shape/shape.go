@@ -1034,6 +1034,16 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 		sh.ev.Record(map[string]any{"event": "request_audit", "examples": sh.auditResult.examples, "rules": sh.auditResult.rules,
 			"cells": sh.auditResult.cells, "defects": all, "uncovered": defects})
 	}
+	if err == nil && out.kind == outReady {
+		rec := sh.lastUncovered
+		if rec == nil {
+			rec = []map[string]any{}
+		}
+		b, _ := json.Marshal(rec)
+		if werr := os.WriteFile(filepath.Join(sh.ev.Dir, unresolvedFile), b, 0o600); werr != nil {
+			return "", outcome{}, werr
+		}
+	}
 	sh.lastUncovered = nil
 	return text, out, err
 }

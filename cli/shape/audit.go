@@ -348,23 +348,23 @@ func defectTemplates(d map[string]any) []string {
 	return append(out, fmt.Sprintf("- Question: \"%s\" versus \"%s\": which applies?", qa, qb))
 }
 
-// unresolvedLines are the card lines of the uncovered defects of the last request_audit event.
+// unresolvedFile is the per-run record of the uncovered defects of the Shape run that
+// produced the current Intent; each ready run replaces it.
+const unresolvedFile = "unresolved.json"
+
+// unresolvedLines are the card lines of the uncovered defects of the run that produced the
+// current Intent.
 func unresolvedLines(root, slug string) []string {
-	b, err := os.ReadFile(filepath.Join(root, ".kogen/local/shaping", slug, "events.ndjson"))
+	b, err := os.ReadFile(filepath.Join(root, ".kogen/local/shaping", slug, unresolvedFile))
 	if err != nil {
 		return nil
 	}
-	var last []any
-	for _, line := range strings.Split(string(b), "\n") {
-		var e map[string]any
-		if json.Unmarshal([]byte(line), &e) != nil || e["event"] != "request_audit" {
-			continue
-		}
-		last, _ = e["uncovered"].([]any)
+	var last []map[string]any
+	if json.Unmarshal(b, &last) != nil {
+		return nil
 	}
 	var out []string
-	for _, it := range last {
-		d, _ := it.(map[string]any)
+	for _, d := range last {
 		out = append(out, fmt.Sprintf("  - quote_a: %v | quote_b: %v | exposing_input: %v", d["quote_a"], d["quote_b"], d["exposing_input"]))
 	}
 	return out
