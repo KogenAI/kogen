@@ -19,18 +19,15 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 	if input == nil {
 		input = []any{}
 	}
-	if p := ResolveProfile(req.Role); p != nil {
-		if p.Settings.Images == "unsupported" && hasImage(input) {
-			return rendered{}, imageRefusal(info)
-		}
-		if p.Settings.Wire == "messages" {
-			info.wire = wireMessages
-		} else if p.Settings.Wire == "responses" {
-			info.wire = wireResponses
-		}
+	if p := ResolveProfile(req.Role); p != nil && p.Settings.Images == "unsupported" && hasImage(input) {
+		return rendered{}, imageRefusal(info)
 	}
+	info.wire = effectiveWire(info, req.Role)
 	if req.DisableParallelToolCalls && info.wire == wireChat {
 		return rendered{}, providerFail("unsupported_capability", "parallel tool calls cannot be disabled on "+info.Label+" (Chat Completions route "+info.Name+"); leave DisableParallelToolCalls false")
+	}
+	if req.ToolChoice != "" && !toolChoiceSupported(info, req.Role) {
+		return rendered{}, providerFail("unsupported_capability", "ToolChoice cannot force a tool on "+info.Label+" ("+wireLabel(info.wire)+" route "+info.Name+"): its thinking mode refuses a forced tool; leave ToolChoice empty")
 	}
 	switch info.wire {
 	case wireChat:
@@ -59,6 +56,9 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		if p := ResolveProfile(req.Role); p != nil {
 			body["tool_choice"] = p.Settings.Tools
 		}
+		if req.ToolChoice != "" {
+			body["tool_choice"] = map[string]any{"type": "function", "name": req.ToolChoice}
+		}
 	}
 	if req.DisableParallelToolCalls {
 		body["parallel_tool_calls"] = false
@@ -74,6 +74,59 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		body["prompt_cache_key"] = id
 	}
 	return r, nil
+}
+
+// effectiveWire is the wire a request for the role is written in: the provider's, unless a
+// profile overrides it.
+func effectiveWire(info Info, role Role) wire {
+	if p := ResolveProfile(role); p != nil {
+		switch p.Settings.Wire {
+		case "messages":
+			return wireMessages
+		case "responses":
+			return wireResponses
+		}
+	}
+	return info.wire
+}
+
+func wireLabel(w wire) string {
+	switch w {
+	case wireChat:
+		return "Chat Completions"
+	case wireMessages:
+		return "Messages"
+	}
+	return "Responses"
+}
+
+// messagesThinking is the thinking type the Messages wire sends for the role.
+func messagesThinking(role Role) string {
+	if p := ResolveProfile(role); p != nil {
+		return p.Settings.Reasoning
+	}
+	return "adaptive"
+}
+
+// toolChoiceSupported reports whether the effective wire can force a named tool. Messages
+// refuses a forced tool while thinking is adaptive (or enabled), so it only qualifies with
+// thinking disabled; no current profile does.
+func toolChoiceSupported(info Info, role Role) bool {
+	switch effectiveWire(info, role) {
+	case wireResponses, wireChat:
+		return true
+	case wireMessages:
+		return messagesThinking(role) == "disabled"
+	}
+	return false
+}
+
+// SupportsToolChoice reports whether Request.ToolChoice can name a required tool for the
+// role's effective wire. Unknown providers and current Anthropic Messages profiles
+// (adaptive thinking) report false; Render and Respond then refuse a nonempty ToolChoice.
+func SupportsToolChoice(role Role) bool {
+	info, ok := Lookup(role.Provider)
+	return ok && toolChoiceSupported(info, role)
 }
 
 // hasImage reports whether a typed image is anywhere in the value.

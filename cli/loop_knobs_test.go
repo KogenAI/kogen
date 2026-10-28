@@ -47,9 +47,9 @@ func TestLoopPinKnobsProvenance(t *testing.T) {
 	}
 	want := map[string]any{
 		"module": "kogen-loop", "protocol": "kogen-loop/v1", "library": "loop/v1",
-		"digest":      "abd53fa2b3d947b51f3f5dfe34169871605d1bc8d7be99f5eb4f01e0334c6567",
-		"files":       float64(123),
-		"source_head": "4afed06da64e348a5a65db6e550f81b65cbe0235", "source_state": "clean",
+		"digest":      "a93251d1f3c8a1692cc2c5cedb380afec6d8c09c72a68c8030cd54edb38ddbd4",
+		"files":       float64(136),
+		"source_head": "e5054c849478ddd0ed1bd2bc38f768f3cd7bd200", "source_state": "clean",
 	}
 	if !reflect.DeepEqual(pin, want) {
 		t.Fatalf("loop-pin.json = %v, want %v", pin, want)

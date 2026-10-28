@@ -97,8 +97,10 @@ const (
 	EventToolCall       = "tool.call"
 	EventToolResult     = "tool.result"
 	EventRoundEnded     = "round.ended"
-	EventError          = "error"
-	EventSessionEnded   = "session.ended"
+	// EventTerminalReminder is emitted by Session for each appended terminal reminder (Go option).
+	EventTerminalReminder = "round.terminal_reminder"
+	EventError            = "error"
+	EventSessionEnded     = "session.ended"
 )
 
 // Endings of a round (round.ended "ending"): model claims, not completion.

@@ -60,6 +60,9 @@ func renderMessages(info Info, req Request, id string, input []any) (rendered, e
 			choice = p.Settings.Tools
 		}
 		toolChoice := map[string]any{"type": choice}
+		if req.ToolChoice != "" {
+			toolChoice = map[string]any{"type": "tool", "name": req.ToolChoice}
+		}
 		if req.DisableParallelToolCalls {
 			toolChoice["disable_parallel_tool_use"] = true
 		}

@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"kogen-loop/api"
 	"kogen-loop/provider"
@@ -31,7 +32,7 @@ type Request struct {
 	Input        []any // Responses-style input items
 	Tools        []any // model-facing tool definitions, sent verbatim
 	// DisableParallelToolCalls asks the provider not to generate parallel tool calls; a batch
-	// that is returned is still executed in full.
+	// that is returned is still executed in full unless Round.StopAfterTerminal is set.
 	DisableParallelToolCalls bool
 }
 
@@ -171,6 +172,10 @@ type Hooks struct {
 	// round number and returns a progress fingerprint. nil disables the no-progress stop;
 	// there is no default. An error stops the run and is returned unchanged.
 	Progress func(ctx context.Context, round int) (string, error)
+	// TerminalReminder is called once for each reminder Round.TerminalReminders appends, before
+	// the next request, with the 1-based reminder number and the effective terminal names. An
+	// error stops the run and is returned unchanged.
+	TerminalReminder func(ctx context.Context, reminder int, terminals []string) error
 }
 
 // NoProgressRounds is the number of consecutive identical Progress fingerprints that stop a
@@ -198,6 +203,7 @@ func (e *NoProgressError) Error() string {
 
 // Round describes one round.
 type Round struct {
+	ReadLedger               *ReadLedger // optional caller-owned history across runs
 	Owner                    string
 	Role                     provider.Role
 	Instructions             string
@@ -206,7 +212,19 @@ type Round struct {
 	Terminal                 []string     // names that end the round without execution; default ["finish"]
 	DisableParallelToolCalls bool         // ask the provider for one tool call per response; unsupported routes refuse
 	MaxRounds                int          // stop with RoundLimitError after this many requests when the round would continue; 0 is no limit (no default)
+	// TerminalReminders permits that many reminder continuations per Run after a response
+	// without a tool call; nonpositive keeps ending such a round with EndNoCall.
+	TerminalReminders int
+	// StopAfterTerminal (default false) makes the first terminal of a batch the Result.Terminal
+	// and answers every later call of that batch with SkippedAfterTerminal instead of running it
+	// (BeforeCall and AfterCall still observe it, with terminal false). False keeps the last
+	// terminal and runs every call.
+	StopAfterTerminal bool
 }
+
+// SkippedAfterTerminal is the output of a call skipped because Round.StopAfterTerminal ended
+// the round at an earlier terminal call of the same batch.
+const SkippedAfterTerminal = "skipped: earlier terminal call ended the round"
 
 // Ending is how a round ended. Both endings are model claims.
 type Ending string
@@ -219,7 +237,7 @@ const (
 // Result is a finished round.
 type Result struct {
 	Ending   Ending
-	Terminal *tools.Call        // last terminal call of the final batch (EndTerminal only), as Kogen's builder keeps
+	Terminal *tools.Call        // last terminal call of the final batch, or the first with StopAfterTerminal (EndTerminal only)
 	Input    []any              // conversation after the round: sent input + replayed response items + outputs of non-terminal calls
 	Response *provider.Response // last response
 	Requests int                // requests sent in this round
@@ -238,10 +256,12 @@ var DefaultTerminal = []string{"finish"}
 //     is marked terminal (the last one wins) and is not executed; otherwise HandleCall when it
 //     handles the call, else Tools.CallContext(ctx, call) and Output.Cut; AfterCall(call, out, terminal,
 //     input ++ outs); append call.Output(out) to outs unless the call is terminal.
+//     With Round.StopAfterTerminal the first terminal wins and each later call is answered with
+//     SkippedAfterTerminal without execution or HandleCall (BeforeCall/AfterCall still run).
 //  6. No terminal call and at least one call: input = input ++ outs and go to 1.
 //  7. Otherwise return the Result.
 //
-// Calls after a terminal call in the same batch still run. A hook error, a tool interrupt
+// Unless Round.StopAfterTerminal is set, calls after a terminal call in the same batch still run. A hook error, a tool interrupt
 // (a shell stopped by the caller), timeout observation failure or a cancelled context
 // stops the round; the error is
 // returned unchanged. When ctx ends, every process group started through rd.Tools.Session
@@ -262,7 +282,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 	if rd.Tools != nil && rd.Tools.Session != nil {
 		defer custody(ctx, rd.Tools.Session)()
 	}
-	requests := 0
+	requests, reminders := 0, 0
 	var streak []int
 	var fingerprint string
 	for {
@@ -303,7 +323,11 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 			}
 			var out tools.Output
 			isTerminal := slices.Contains(terminal, call.Name)
-			if !isTerminal {
+			skip := rd.StopAfterTerminal && last != nil
+			if skip {
+				isTerminal = false
+				out = tools.Output{Text: SkippedAfterTerminal}
+			} else if !isTerminal {
 				handled := false
 				if h.HandleCall != nil {
 					hd, err := h.HandleCall(ctx, call)
@@ -328,7 +352,11 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 						out = o
 					}
 					if rd.Tools != nil {
+						uncut := out.Text
 						out = rd.Tools.Cut(out)
+						if rd.ReadLedger != nil && out.ReadOK {
+							rd.ReadLedger.record(call, out, uncut)
+						}
 					} else {
 						out = out.Cut()
 					}
@@ -354,7 +382,8 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		if last == nil && len(calls) > 0 {
+		remind := last == nil && len(calls) == 0 && reminders < rd.TerminalReminders
+		if last == nil && (len(calls) > 0 || remind) {
 			input = slices.Concat(input, outs)
 			stop := Result{Input: input, Response: resp, Requests: requests}
 			if h.Progress != nil {
@@ -371,8 +400,25 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 					return stop, &NoProgressError{Rounds: streak, Fingerprint: fp}
 				}
 			}
+			if err := ctx.Err(); err != nil {
+				return Result{}, err
+			}
 			if rd.MaxRounds > 0 && requests >= rd.MaxRounds {
 				return stop, &RoundLimitError{Rounds: requests}
+			}
+			if remind {
+				reminders++
+				if h.TerminalReminder != nil {
+					if err := h.TerminalReminder(ctx, reminders, slices.Clone(terminal)); err != nil {
+						return Result{}, err
+					}
+				}
+				if err := ctx.Err(); err != nil {
+					return Result{}, err
+				}
+				input = slices.Concat(input, []any{map[string]any{
+					"role": "user", "content": "Call one of these terminal tools to end this round: " + strings.Join(terminal, ", ") + ".",
+				}})
 			}
 			continue
 		}

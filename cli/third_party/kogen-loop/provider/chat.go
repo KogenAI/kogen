@@ -34,6 +34,9 @@ func renderChat(info Info, req Request, id string, input []any) (rendered, error
 			tools[i] = map[string]any{"type": "function", "function": fn}
 		}
 		body["tool_choice"] = "auto"
+		if req.ToolChoice != "" {
+			body["tool_choice"] = map[string]any{"type": "function", "function": map[string]any{"name": req.ToolChoice}}
+		}
 		body["tools"] = tools
 	}
 	if req.Role.Effort != "default" {

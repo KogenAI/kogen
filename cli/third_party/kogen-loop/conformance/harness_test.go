@@ -44,12 +44,14 @@ type exchange struct {
 }
 
 type fakeProvider struct {
-	t      *testing.T
-	srv    *httptest.Server
-	mu     sync.Mutex
-	script []exchange
-	next   int
-	bodies []map[string]any
+	t         *testing.T
+	srv       *httptest.Server
+	mu        sync.Mutex
+	script    []exchange
+	next      int
+	bodies    []map[string]any
+	rawBodies [][]byte
+	headers   []http.Header
 }
 
 func newFakeProvider(t *testing.T, script []exchange) *fakeProvider {
@@ -75,16 +77,23 @@ func (f *fakeProvider) serve(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(data, &body)
 	f.mu.Lock()
 	f.bodies = append(f.bodies, body)
+	f.rawBodies = append(f.rawBodies, data)
+	f.headers = append(f.headers, r.Header.Clone())
 	i := f.next
 	f.next++
 	f.mu.Unlock()
-	if r.URL.Path != "/v1/responses" || i >= len(f.script) {
+	if (r.URL.Path != "/v1/responses" && r.URL.Path != "/inference/go/openai/v1/chat/completions") || i >= len(f.script) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(400)
 		fmt.Fprint(w, `{"error":{"message":"scripted refusal: no exchange left","code":"invalid_request_error"}}`)
 		return
 	}
 	ex := f.script[i]
+	if strings.HasSuffix(r.URL.Path, "/chat/completions") {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"fixture","choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`)
+		return
+	}
 	if ex.Hang {
 		select {
 		case <-r.Context().Done():

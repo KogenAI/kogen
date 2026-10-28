@@ -26,6 +26,8 @@ type Output struct {
 	Parts []any
 	// Rule is the rule id of a refused shell call, "" otherwise.
 	Rule string
+	// ReadOK marks a successful built-in file or image snapshot.
+	ReadOK bool `json:"-"`
 }
 
 // Typed reports whether the output is typed parts.
@@ -44,7 +46,7 @@ func (o Output) Cut() Output {
 	if o.Parts != nil {
 		return o
 	}
-	return Output{Text: Cut(o.Text)}
+	return Output{Text: Cut(o.Text), ReadOK: o.ReadOK}
 }
 
 // Cut applies this instance's configured budgets (ResultBound, ResultHead) to a text
@@ -54,7 +56,7 @@ func (t *Tools) Cut(out Output) Output {
 		return out
 	}
 	bound, head := t.budgets()
-	return Output{Text: cutText(out.Text, bound, head)}
+	return Output{Text: cutText(out.Text, bound, head), ReadOK: out.ReadOK}
 }
 
 // New validates options and returns a copy of them.
@@ -111,6 +113,10 @@ type Tools struct {
 	// Session runs shell commands (the caller's environment, interrupts) and gives Git its
 	// environment. Nil: this process's environment, no interrupts.
 	Session *sys.Session
+	// CompactDescriptions selects shorter model-facing descriptions from Definition.
+	CompactDescriptions bool
+	// OmitViewImage removes view_image from instance definitions and execution. Default false.
+	OmitViewImage bool
 	// ShellTimeout bounds each shell invocation independently. Nonpositive means no limit.
 	ShellTimeout time.Duration
 	// Repo runs the Git commands of list_files and search_text and the candidate tree of
@@ -151,14 +157,14 @@ func (t *Tools) Run(name string, args map[string]any) (Output, error) {
 // RunContext runs a call, forwarding ctx only for positive ShellTimeout custody.
 // Overall execution custody remains the caller's responsibility.
 func (t *Tools) RunContext(ctx context.Context, name string, args map[string]any) (Output, error) {
-	if !slices.Contains(t.Enabled, name) {
+	if !slices.Contains(t.Enabled, name) || (t.OmitViewImage && name == ViewImageTool) {
 		return Output{Text: "error: unknown tool " + name}, nil
 	}
 	switch name {
 	case ViewImageTool:
 		return t.viewImage(args), nil
 	case ReadFileTool:
-		return Output{Text: t.readFile(args)}, nil
+		return t.readFile(args), nil
 	case WriteFileTool:
 		return Output{Text: t.writeFile(args)}, nil
 	case ListFilesTool:
@@ -270,22 +276,22 @@ func isErrno(err error, want syscall.Errno) bool {
 
 // ---- the tools ----
 
-func (t *Tools) readFile(args map[string]any) string {
+func (t *Tools) readFile(args map[string]any) Output {
 	path, msg := stringArg(args, "path")
 	if msg != "" {
-		return msg
+		return Output{Text: msg}
 	}
 	abs, _ := t.resolve(path)
 	data, err := readFile(abs)
 	switch {
 	case err == nil:
-		return numbered(string(data), args["start_line"], args["end_line"])
+		return Output{Text: numbered(string(data), args["start_line"], args["end_line"]), ReadOK: true}
 	case isErrno(err, syscall.ENOENT):
-		return "error: " + path + " does not exist"
+		return Output{Text: "error: " + path + " does not exist"}
 	case isErrno(err, syscall.EISDIR):
-		return "error: " + path + " is a folder; use list_files"
+		return Output{Text: "error: " + path + " is a folder; use list_files"}
 	}
-	return "error: " + path + ": " + reason(err)
+	return Output{Text: "error: " + path + ": " + reason(err)}
 }
 
 // numbered is the lines from..to of text (1-based, inclusive) as `<n>\t<line>` joined by

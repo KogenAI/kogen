@@ -43,7 +43,7 @@ func (t *Tools) viewImage(args map[string]any) Output {
 	path, isString := args["path"].(string)
 	parts, err := t.readImage(path, isString)
 	if err == nil {
-		return Output{Parts: parts}
+		return Output{Parts: parts, ReadOK: true}
 	}
 	selected := "(no selected path)"
 	if isString {
