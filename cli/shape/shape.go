@@ -32,6 +32,10 @@ import (
 // ShapeInput is one `kogen intent shape <slug> <file|->`: the request, or the answers to the
 // questions a former run left pending, already read by the caller.
 type ShapeInput struct {
+	// NativeRoundLimits is internal and research-only; Shape, Refine and Review
+	// limits are unsupported for now and their keys are ignored.
+	NativeRoundLimits map[string]int
+
 	Project     string // a directory inside the project's repository; empty: the session's directory
 	Slug        string // valid by the caller (3 to 48 lowercase letters, digits and dashes)
 	Request     string // the request or the answers: never empty

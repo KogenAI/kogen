@@ -14,6 +14,10 @@ import (
 // two hooks a later change fills in (the independent review of a green pass and the import
 // of version 3 checkpoints written by the Elixir Kogen).
 type Deps struct {
+	// NativeRoundLimits is internal and research-only. Only build is supported;
+	// shape (including Refine) and review keys are ignored for now. Zero is unlimited.
+	NativeRoundLimits map[string]int
+
 	// Client sends the model requests; its prompt-cache is not used, the Build keeps its own
 	// (restored from a checkpoint).
 	Client *provider.Client
