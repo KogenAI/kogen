@@ -28,6 +28,15 @@ func TestUncoveredDefects(t *testing.T) {
 		{"question with both quotes", defect, "", ask("QA text but QB text?"), true},
 		{"question with one quote", defect, "", ask("QA text?"), false},
 		{"undefined asked with the name", undefined, "", ask("makes a gadget: what is Widget?"), true},
+		{"undefined defined by colon", undefined, intent("- Widget: a part. (source: request)"), nil, true},
+		{"undefined defined by equals", undefined, intent("- Widget = a part."), nil, true},
+		{"undefined defined by means", undefined, intent("- Widget  means a part."), nil, true},
+		{"undefined defined by is", undefined, intent("- Widget is a part."), nil, true},
+		{"undefined mention only", undefined, intent("- Uses Widget here. (source: request)"), nil, false},
+		{"undefined other name", undefined, intent("- Gadget is a part."), nil, false},
+		{"undefined marker before name", undefined, intent("- Note: Widget"), nil, false},
+		{"undefined marker not a word", undefined, intent("- Widget isolated."), nil, false},
+		{"empty result does not disqualify", map[string]any{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)", "result_a": "True", "result_b": ""}, intent("- f(0) returns True."), nil, true},
 		{"undefined asked without the name", undefined, "", ask("makes a gadget?"), false},
 	}
 	for _, c := range cases {

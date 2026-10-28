@@ -237,6 +237,33 @@ func decisionLines(intent string) []string {
 	return strings.Split(rest, "\n")
 }
 
+// definesName reports whether the line has name directly followed, after optional blanks,
+// by ":", "=" or the whole word "means" or "is".
+func definesName(line, name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; ; {
+		j := strings.Index(line[i:], name)
+		if j < 0 {
+			return false
+		}
+		rest := strings.TrimLeft(line[i+j+len(name):], " \t")
+		if strings.HasPrefix(rest, ":") || strings.HasPrefix(rest, "=") {
+			return true
+		}
+		for _, w := range []string{"means", "is"} {
+			if strings.HasPrefix(rest, w) {
+				after := rest[len(w):]
+				if after == "" || !(after[0] == '_' || after[0] >= '0' && after[0] <= '9' || after[0] >= 'a' && after[0] <= 'z' || after[0] >= 'A' && after[0] <= 'Z' || after[0] >= 0x80) {
+					return true
+				}
+			}
+		}
+		i += j + 1
+	}
+}
+
 // uncoveredDefects are the defects neither decided in a Decisions line nor asked in a question.
 func uncoveredDefects(defects []map[string]any, intent string, questions []map[string]any) []map[string]any {
 	lines := decisionLines(intent)
@@ -246,7 +273,11 @@ func uncoveredDefects(defects []map[string]any, intent string, questions []map[s
 		ra, rb := d["result_a"].(string), d["result_b"].(string)
 		covered := false
 		for _, l := range lines {
-			if strings.Contains(l, in) && !(strings.Contains(l, ra) && strings.Contains(l, rb)) {
+			if d["kind"] == "undefined" {
+				if definesName(l, qb) {
+					covered = true
+				}
+			} else if strings.Contains(l, in) && !(ra != "" && rb != "" && strings.Contains(l, ra) && strings.Contains(l, rb)) {
 				covered = true
 			}
 		}
