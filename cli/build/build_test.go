@@ -274,6 +274,10 @@ func TestStartRefusals(t *testing.T) {
 		{"changed since approval", func(e *env) { e.write(project.FeaturePath(testSlug), testFeature+"  # changed\n") }, 1, "intent/changed_since_approval: fixture changed after approval and is now "},
 		{"no intent", func(e *env) { os.RemoveAll(filepath.Join(e.root, ".kogen/intents")) }, 2, "intent/not_found: Intent does not exist\n"},
 		{"dirty tree", func(e *env) { e.write("stray.txt", "x\n") }, 5, "environment/dirty_tree: 1 changed path(s) are not part of an Intent; commit, stash or discard them first\n  stray.txt\n"},
+		{"no git identity", func(e *env) {
+			e.run("git", "config", "--unset", "user.name")
+			e.run("git", "config", "--unset", "user.email")
+		}, 3, "environment/git_identity_missing: no Git identity for the commit; run git config user.name \"<name>\" and git config user.email \"<email>\" (global or repository) before building\n"},
 		{"operation in progress", func(e *env) { e.write(".git/MERGE_HEAD", e.head()+"\n") }, 3, "environment/git_operation_in_progress: a merge is in progress; finish or abort it first\n"},
 	}
 	for _, c := range cases {

@@ -51,7 +51,7 @@ Feature: Approval and starting a Build
     Then the exit code is 2
     And stdout is:
       """
-      intent/approval_identity_unavailable: configure git user.name and user.email, or pass --by <name>
+      intent/approval_identity_unavailable: no Git identity names the approver; run git config user.name "<name>" and git config user.email "<email>" (global or repository), or run kogen intent approve <slug> <sha> --by <name>
       """
     When the caller runs "kogen intent approve is-even --by Dana"
     Then the exit code is 5

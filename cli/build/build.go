@@ -230,6 +230,9 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 	if err != nil {
 		return err
 	}
+	if repo.Identity() == "" {
+		return sys.Fail("environment", "git_identity_missing", "no Git identity for the commit; run git config user.name \"<name>\" and git config user.email \"<email>\" (global or repository) before building", 3)
+	}
 	if intent.Model == nil {
 		return sys.Fail("intent", "parse", "the Intent's Model: line cannot be read", 1)
 	}

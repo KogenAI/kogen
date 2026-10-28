@@ -108,7 +108,7 @@ func approveLocked(ctx context.Context, s *sys.Session, in ApproveInput, repo *g
 	approver := in.By
 	if approver == "" {
 		if approver = repo.Identity(); approver == "" {
-			return 0, sys.Fail("intent", "approval_identity_unavailable", "configure git user.name and user.email, or pass --by <name>", 2)
+			return 0, sys.Fail("intent", "approval_identity_unavailable", "no Git identity names the approver; run git config user.name \"<name>\" and git config user.email \"<email>\" (global or repository), or run kogen intent approve <slug> <sha> --by <name>", 2)
 		}
 	}
 

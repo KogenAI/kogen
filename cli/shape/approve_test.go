@@ -433,7 +433,7 @@ func TestApproveWithoutGitIdentityAndBy(t *testing.T) {
 	f.git("config", "--unset", "user.name")
 	f.git("config", "--unset", "user.email")
 	exit, _, err := f.approve(ApproveInput{})
-	approveWantError(t, err, "intent", "approval_identity_unavailable", "configure git user.name and user.email, or pass --by <name>", 2)
+	approveWantError(t, err, "intent", "approval_identity_unavailable", "no Git identity names the approver; run git config user.name \"<name>\" and git config user.email \"<email>\" (global or repository), or run kogen intent approve <slug> <sha> --by <name>", 2)
 	if exit != 2 {
 		t.Fatalf("exit %d", exit)
 	}
