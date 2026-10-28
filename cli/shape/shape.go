@@ -1171,13 +1171,13 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 			return "", outcome{}, err
 		}
 		if lines != nil && sh.priorInvalid >= 2 {
-			if marked, statements, ok := markAssumptions(items, string(text)); ok {
+			if marked, statements, placement, ok := markAssumptions(items, string(text)); ok {
 				p := project.IntentMDPath(sh.slug)
 				if err := os.WriteFile(filepath.Join(sh.root, p), []byte(marked), 0o666); err != nil {
 					return "", outcome{}, err
 				}
 				sh.proposed[p] = marked
-				sh.ev.Record(map[string]any{"event": "decision_assumptions_marked", "statements": statements})
+				sh.ev.Record(map[string]any{"event": "decision_assumptions_marked", "statements": statements, "placement": placement})
 				lines = nil
 			}
 		}

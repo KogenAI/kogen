@@ -219,19 +219,23 @@ var sourceTagRe = regexp.MustCompile(`\s*\(source: (?:request|answer \d+)\)\s*$`
 
 var whitespaceRun = regexp.MustCompile(`\s+`)
 
-// markAssumptions rewrites each flagged Decisions line of the intent with an assumption
-// marker before its trailing source tag. ok is false (nothing marked) unless every flagged
-// item is unsupported and its statement is a tagged line of the Decisions section.
-func markAssumptions(items []decisionItem, intent string) (marked string, statements []string, ok bool) {
+// markAssumptions marks every flagged item as an assumption. A tagged Decisions line is
+// rewritten in place with the marker before its trailing source tag; a statement found
+// elsewhere in the intent is appended as a new line at the end of the Decisions section.
+// ok is false (nothing marked) unless every flagged item is unsupported and found in the intent.
+func markAssumptions(items []decisionItem, intent string) (marked string, statements, placement []string, ok bool) {
 	lines := decisionLines(intent)
 	why := map[string]string{}
+	var added []string
+	addedSeen := map[string]bool{}
 	for _, it := range items {
 		if it.verdict == "follows" || strings.Contains(it.statement, "(assumption:") {
 			continue
 		}
 		if it.verdict != "unsupported" {
-			return "", nil, false
+			return "", nil, nil, false
 		}
+		w := strings.TrimSpace(whitespaceRun.ReplaceAllString(it.why, " "))
 		found := ""
 		for _, l := range lines {
 			if strings.TrimSpace(l) == strings.TrimSpace(it.statement) && sourceTagRe.MatchString(l) {
@@ -239,14 +243,24 @@ func markAssumptions(items []decisionItem, intent string) (marked string, statem
 				break
 			}
 		}
-		if found == "" {
-			return "", nil, false
+		switch {
+		case found != "":
+			why[found] = w
+			placement = append(placement, "in_place")
+		case containsNormalized(intent, it.statement):
+			text := strings.TrimPrefix(normalizeWhitespace(it.statement), "- ")
+			if !addedSeen[text] {
+				addedSeen[text] = true
+				added = append(added, "- "+text+" (assumption: "+w+") (source: request)")
+			}
+			placement = append(placement, "added")
+		default:
+			return "", nil, nil, false
 		}
-		why[found] = strings.TrimSpace(whitespaceRun.ReplaceAllString(it.why, " "))
 		statements = append(statements, it.statement)
 	}
 	if len(statements) == 0 {
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	marked = intent
 	for line, w := range why {
@@ -254,7 +268,19 @@ func markAssumptions(items []decisionItem, intent string) (marked string, statem
 		head := strings.TrimRight(strings.TrimSuffix(line, tag), " \t")
 		marked = strings.Replace(marked, line, head+" (assumption: "+w+")"+" "+strings.TrimSpace(tag), 1)
 	}
-	return marked, statements, true
+	if len(added) > 0 {
+		loc := decisionsHeading.FindStringIndex(marked)
+		if loc == nil {
+			return "", nil, nil, false
+		}
+		end := len(marked)
+		if n := nextHeading.FindStringIndex(marked[loc[1]:]); n != nil {
+			end = loc[1] + n[0]
+		}
+		pos := loc[1] + len(strings.TrimRight(marked[loc[1]:end], " \t\r\n"))
+		marked = marked[:pos] + "\n" + strings.Join(added, "\n") + marked[pos:]
+	}
+	return marked, statements, placement, true
 }
 
 // normalizeWhitespace turns every run of space, tab, CR and LF into one space and trims.

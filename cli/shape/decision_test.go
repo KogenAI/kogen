@@ -119,16 +119,16 @@ func TestMarkAssumptions(t *testing.T) {
 	item := func(st, v, why string) decisionItem {
 		return decisionItem{statement: st, verdict: v, why: why, quotes: []string{}}
 	}
-	got, sts, ok := markAssumptions([]decisionItem{item("- Use blue.   (source: answer 2)", "unsupported", " not\n  stated ")}, intent)
+	got, sts, _, ok := markAssumptions([]decisionItem{item("- Use blue.   (source: answer 2)", "unsupported", " not\n  stated ")}, intent)
 	if !ok || len(sts) != 1 || !strings.Contains(got, "- Use blue. (assumption: not stated) (source: answer 2)") || !strings.Contains(got, "- Keep it small. (source: request)") {
 		t.Fatalf("got %v %q", ok, got)
 	}
 	for _, items := range [][]decisionItem{
 		{item("- Use blue.   (source: answer 2)", "contradicts", "x")},
-		{item("Use blue", "unsupported", "x")},
+		{item("Use green", "unsupported", "x")},
 		{item("- Keep it small. (source: request)", "unsupported", "x"), item("- Use blue.   (source: answer 2)", "contradicts", "y")},
 	} {
-		if _, _, ok := markAssumptions(items, intent); ok {
+		if _, _, _, ok := markAssumptions(items, intent); ok {
 			t.Fatalf("marked %v", items)
 		}
 	}
