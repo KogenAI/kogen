@@ -25,7 +25,6 @@ const topPage = `Commands:
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
   provider   Sign in to a provider and show logins
-  starter    Create a starter project to try Kogen on
   uninstall  Remove the installed kogen
   version    Show the Kogen version
   help       List commands
@@ -100,7 +99,6 @@ type spec struct {
 var leaves = map[string]spec{
 	"init":           {path: "init", command: "init", page: "top"},
 	"doctor":         {path: "doctor", command: "doctor", page: "top", options: []string{"project", "quick", "json"}},
-	"starter":        {path: "starter", command: "starter", page: "top", positional: []string{"<dir>"}},
 	"uninstall":      {path: "uninstall", command: "uninstall", page: "top"},
 	"version":        {path: "version", command: "version", page: "top"},
 	"intent shape":   {path: "intent shape", command: "shape", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<file|->"}},
@@ -153,7 +151,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 			return nil, "", &usageError{fmt.Sprintf("kogen %s: unknown command '%s'", group, args[1]), group}
 		}
 		leaf, rest = l, args[2:]
-	case "init", "doctor", "starter", "uninstall", "version":
+	case "init", "doctor", "uninstall", "version":
 		leaf, rest = leaves[args[0]], args[1:]
 	default:
 		return nil, "", &usageError{fmt.Sprintf("kogen: unknown command '%s'", args[0]), "top"}
@@ -217,8 +215,6 @@ func parse(args []string) (*invocation, string, *usageError) {
 		if pos[0] != "chatgpt" && pos[0] != "supergrok" && pos[0] != "opencode-go" && pos[0] != "anthropic" && pos[0] != "claude-code" && pos[0] != "openai-compatible" {
 			return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)", pos[0])
 		}
-	case "starter":
-		inv.file = pos[0]
 	case "shape":
 		inv.slug, inv.file = pos[0], pos[1]
 	case "refine":
