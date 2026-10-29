@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -264,7 +265,7 @@ func TestProbeFilesStayInTheScratchCopyAndThePrepareStep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eq(t, "output", got.Output, "overlay\nreplaced\n/n/node yes\n")
+	eq(t, "output", got.Output, "overlay\nreplaced\n/n/node \n")
 	eq(t, "checkout untouched", p.read("app.txt"), "green\n")
 	if fileExists(filepath.Join(p.Root, "probe")) {
 		t.Fatal("the overlay leaked into the checkout")
@@ -288,4 +289,91 @@ func TestProbeFilesStayInTheScratchCopyAndThePrepareStep(t *testing.T) {
 	}
 	_, err = Probe{Root: p.Root, Command: "true", Files: []ProbeFile{{Path: "../a"}, {Path: "link/b"}}}.Run(context.Background(), s)
 	eq(t, "all problems in one message", err.Error(), "error: ../a is outside the scratch copy; link/b would be written through a symlink")
+}
+
+// A probe runs in a session of its own whose environment is built by allowlist: the caller's
+// credentials and credential-store paths never reach it, and its HOME is a private empty
+// folder, not the caller's home.
+func TestShapeProbeMinimalEnvironment(t *testing.T) {
+	tmp := isolateTmp(t)
+	p := newProj(t)
+	callerHome := t.TempDir()
+	store := filepath.Join(callerHome, ".kogen", "credentials")
+	if err := os.MkdirAll(store, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, "chatgpt.json"), []byte(`{"token":"synthetic-saved-login"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := sys.NewWith(testEnv("HOME="+callerHome, "STUDIO_TOKEN=studio-secret", "OPENAI_API_KEY=openai-secret",
+		"UNRELATED_SECRET=unrelated-secret", "KOGEN_CREDENTIALS_DIR="+store, "NODE_OPTIONS=--require=/x", "BASH_ENV=/x", "ENV=/x",
+		"KOGEN_NODE=/caller/node", "LC_ALL=C", "LANG=C", "GOPATH=/fixture/gopath"), p.Root)
+	before := slices.Clone(s.Env)
+	pr := Probe{Root: p.Root, Tools: Tools{Node: "/n/node"},
+		Command: `env; echo "HOME-LIST:"; ls -A "$HOME"; echo "HOME-IS:$HOME"; ls -A "$HOME/.kogen" 2>&1; echo "HOME-DIR:$(cd "$HOME" && pwd -P)"`}
+	got, err := pr.Run(context.Background(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"STUDIO_TOKEN", "studio-secret", "OPENAI_API_KEY", "openai-secret", "UNRELATED_SECRET", "unrelated-secret",
+		"KOGEN_CREDENTIALS_DIR", store, "synthetic-saved-login", "chatgpt.json", "NODE_OPTIONS", "BASH_ENV", "ENV=/x", callerHome, "/caller/node"} {
+		if strings.Contains(got.Output, secret) {
+			t.Errorf("probe output shows %q:\n%s", secret, got.Output)
+		}
+	}
+	for _, want := range []string{"KOGEN_NODE=/n/node\n", "LC_ALL=C\n", "LANG=C\n", "GOPATH=/fixture/gopath\n", "PATH=", "HOME-LIST:\nHOME-IS:" + tmp + "/kogen-probe-home-"} {
+		if !strings.Contains(got.Output, want) {
+			t.Errorf("probe output lacks %q:\n%s", want, got.Output)
+		}
+	}
+	eqSlice(t, "caller environment", s.Env, before)
+	if !fileExists(filepath.Join(store, "chatgpt.json")) {
+		t.Fatal("the caller's credential store changed")
+	}
+	requireNoLeftovers(t, tmp)
+}
+
+// The private home is removed when the probe is refused or interrupted too.
+func TestShapeProbeMinimalEnvironmentHomeIsRemovedOnEveryReturn(t *testing.T) {
+	tmp := isolateTmp(t)
+	p := newProj(t)
+	s, _ := p.session()
+	if _, err := (Probe{Root: p.Root, Command: "true", Files: []ProbeFile{{Path: "../a"}}}).Run(context.Background(), s); err == nil {
+		t.Fatal("want a refusal")
+	}
+	requireNoLeftovers(t, tmp)
+	go func() {
+		for i := 0; i < 400; i++ {
+			if len(leftovers(t, tmp, "kogen-probe-home-")) > 0 {
+				time.Sleep(300 * time.Millisecond)
+				s.Interrupt("SIGTERM")
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+	}()
+	_, err := (Probe{Root: p.Root, Command: "sleep 30"}).Run(context.Background(), s)
+	var intr *sys.Interrupted
+	if !errors.As(err, &intr) || intr.Signal != "SIGTERM" {
+		t.Fatalf("err = %v, want the caller's interrupt", err)
+	}
+	requireNoLeftovers(t, tmp)
+}
+
+// A caller already interrupted must not launch even a quick probe command.
+func TestProbeDoesNotStartAfterCallerInterrupt(t *testing.T) {
+	tmp := isolateTmp(t)
+	p := newProj(t)
+	s, _ := p.session()
+	s.Interrupt("SIGTERM")
+	marker := filepath.Join(tmp, "started")
+	_, err := (Probe{Root: p.Root, Command: "touch '" + marker + "'"}).Run(context.Background(), s)
+	var intr *sys.Interrupted
+	if !errors.As(err, &intr) || intr.Signal != "SIGTERM" {
+		t.Fatalf("err = %v", err)
+	}
+	if fileExists(marker) {
+		t.Fatal("probe started after interrupt")
+	}
+	requireNoLeftovers(t, tmp)
 }

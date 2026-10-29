@@ -2,6 +2,7 @@ package shape
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -980,4 +981,44 @@ func TestShapeShortensATooLongTitleOnlyOnTheLastAttempt(t *testing.T) {
 		shpEq(t, "events", len(shpNamed(f.events(), "title_shortened")), 0)
 		shpEq(t, "refused", strings.Join(shpRefused(f), " "), "1:intent 2:intent 3:intent")
 	})
+}
+
+// The native probe tool reaches the probe boundary: an ordinary command still sees its overlay,
+// PATH, locale and the explicit tools, while the caller's secrets and saved logins never reach
+// the command, the model's tool result or the retained probe_result evidence.
+func TestShapeProbeMinimalEnvironmentWiring(t *testing.T) {
+	serialTmp(t)
+	probe := shpCall("p1", "probe", map[string]any{
+		"command": `cat extra.txt; "$KOGEN_NODE"; echo "lc=$LC_ALL"; command -v sh >/dev/null && echo path-ok; echo "home=$HOME"; ls -A "$HOME" | wc -l; env`,
+		"files":   []any{map[string]any{"path": "extra.txt", "content": "overlay\n"}},
+	})
+	f := newShpFx(t, shpAnswer(probe), shpSubmit("q", map[string]any{"questions": []any{shpQuestion("Q?")}}))
+	node := filepath.Join(f.Aux, "node")
+	if err := os.WriteFile(node, []byte("#!/bin/sh\necho node-ran\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := filepath.Join(f.Home, ".kogen", "credentials")
+	f.Env = append(f.Env, "STUDIO_TOKEN=studio-secret", "OPENAI_API_KEY=openai-secret", "UNRELATED_SECRET=unrelated-secret", "BASH_ENV=/nonexistent", "LC_ALL=C")
+	f.newSession()
+	exit, err := Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client, Tools: verify.Tools{Node: node}})
+	if err != nil || exit != 5 {
+		t.Fatalf("exit %d, err %v\n%s", exit, err, f.Stderr)
+	}
+	out := shpOutputs(f.Prov.requests()[1])["p1"]
+	shpMatch(t, "probe result", out, `^exit status: 0\ntimed_out: false\nwall: \d+\.\d s\noverlay\nnode-ran\nlc=C\npath-ok\nhome=`)
+	shpContains(t, "probe result", out, "\n0\n")
+	retained, _ := json.Marshal(shpNamed(f.events(), "probe_result"))
+	for what, text := range map[string]string{"tool result": out, "probe_result evidence": string(retained)} {
+		for _, secret := range []string{"studio-secret", "STUDIO_TOKEN", "openai-secret", "OPENAI_API_KEY", "unrelated-secret", "UNRELATED_SECRET", "BASH_ENV", f.Home, store} {
+			if strings.Contains(text, secret) {
+				t.Errorf("%s shows %q", what, secret)
+			}
+		}
+	}
+	entries, _ := os.ReadDir(f.Tmp)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "kogen-probe") {
+			t.Fatalf("probe folder left behind: %s", e.Name())
+		}
+	}
 }

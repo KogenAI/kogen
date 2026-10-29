@@ -150,6 +150,11 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 		return ProbeResult{}, err
 	}
 	defer os.RemoveAll(scratch)
+	home, err := os.MkdirTemp("", "kogen-probe-home-")
+	if err != nil {
+		return ProbeResult{}, err
+	}
+	defer os.RemoveAll(home)
 	if err := CopyTree(pr.Root, scratch); err != nil {
 		return ProbeResult{}, err
 	}
@@ -171,12 +176,13 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 		}
 		return ProbeResult{}, err
 	}
-	deadline, observer := probeDeadline, probeObserver
-	var started []int
-	if observer != nil {
-		started = s.Groups()
+	if err := s.Err(); err != nil {
+		return ProbeResult{}, err
 	}
-	r, err := probeRun(s, pr.Command, scratch, sys.Options{Context: ctx, Timeout: deadline, Env: pr.Tools.env(), KillGroupOnExit: true, RefuseForeignKill: true})
+	deadline, observer := probeDeadline, probeObserver
+	ps := sys.NewWith(probeEnv(s, home), scratch)
+	defer followInterrupt(s, ps)()
+	r, err := probeRun(ps, pr.Command, scratch, sys.Options{Context: ctx, Timeout: deadline, Env: pr.Tools.env(), KillGroupOnExit: true, RefuseForeignKill: true})
 	if errors.Is(err, sys.ErrTimeoutObservation) {
 		return ProbeResult{}, fmt.Errorf("probe failed: the timeout observation failed, so the probe's result is unknown: %w", err)
 	}
@@ -194,14 +200,54 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 	result := ProbeResult{Status: r.Status, TimedOut: r.TimedOut, Output: r.Output, Wall: wall, InputChanges: changes}
 	if observer != nil {
 		group := 0
-		for _, g := range s.Groups() {
-			if !slices.Contains(started, g) {
-				group = g
-			}
+		for _, g := range ps.Groups() {
+			group = g
 		}
 		observer(ProbeObservation{Command: pr.Command, Scratch: scratch, Deadline: deadline, Group: group, Result: result})
 	}
 	return result, nil
+}
+
+// probeEnvKeys are the only caller variables a probe inherits besides PATH and locale:
+// explicit toolchain locations, so installed tools stay reachable.
+var probeEnvKeys = []string{"PATH", "LANG", "LANGUAGE", "GOROOT", "GOPATH", "GOTOOLDIR",
+	"MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_CACHE_DIR", "ASDF_DIR", "ASDF_DATA_DIR"}
+
+// probeEnv is the probe's whole environment, built from the caller session by allowlist: PATH,
+// locale and toolchain locations, with HOME set to the probe's private empty home. Nothing else
+// the caller has set (credentials, tokens, shell startup or tool option selectors) is passed on.
+func probeEnv(s *sys.Session, home string) []string {
+	var env []string
+	seen := map[string]bool{}
+	for i := len(s.Env) - 1; i >= 0; i-- {
+		k, v, ok := strings.Cut(s.Env[i], "=")
+		if !ok || seen[k] || !(slices.Contains(probeEnvKeys, k) || strings.HasPrefix(k, "LC_")) {
+			continue
+		}
+		seen[k] = true
+		env = append(env, k+"="+v)
+	}
+	slices.Reverse(env)
+	return append(env, "HOME="+home)
+}
+
+// followInterrupt carries the caller session's interrupt to the probe's own session, whose
+// process groups it then stops. The returned function ends the watch.
+func followInterrupt(caller, probe *sys.Session) (stop func()) {
+	quit := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		select {
+		case <-caller.Context().Done():
+			var intr *sys.Interrupted
+			if errors.As(caller.Err(), &intr) {
+				probe.Interrupt(intr.Signal)
+			}
+		case <-quit:
+		}
+	}()
+	return func() { close(quit); <-done }
 }
 
 func randomHex(n int) string {
