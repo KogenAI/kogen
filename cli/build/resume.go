@@ -285,6 +285,9 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 		event["checkpoint_index_sha256"], event["index_sha256"] = hashHex(savedIndex), hashHex(currentIndex)
 	}
 	run.Event(event)
+	if e := research.BudgetEvent(); e != nil {
+		run.Event(e)
+	}
 	if err := b.Save(b.Continuation); err != nil {
 		return err
 	}

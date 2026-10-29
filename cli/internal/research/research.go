@@ -1,9 +1,10 @@
 // Package research holds Kogen's internal research settings for the pinned loop: the one
 // struct and the one zero-valued source (Current) that every production construction path
 // reads. There is no command-line flag, project.yaml key or environment variable; to try a
-// setting, change its line in Current. Zero means the loop's own default for every field,
-// and the requests, tool definitions, results, transcripts and checkpoints are then exactly
-// what the pinned loop produces without these options.
+// setting, change its line in Current. Zero means the loop's own default for a field. Every
+// field is zero except the provider response budget, which is ten minutes for every
+// provider-backed entry; with all fields zero the requests, tool definitions, results,
+// transcripts and checkpoints are exactly what the pinned loop produces without these options.
 //
 // The loop validates the settings, not this package: Validate calls the loop's own checks
 // and returns their original errors.
@@ -12,6 +13,7 @@ package research
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"kogen-loop/loop"
@@ -47,7 +49,7 @@ type Settings struct {
 	AuthorityBoundary *int
 }
 
-// Current is the source of the settings: one line per setting, all zero.
+// Current is the source of the settings: one line per setting, all zero but the response budget.
 var Current = Settings{
 	Tools: ToolSettings{
 		ResultBound: 0,
@@ -58,7 +60,7 @@ var Current = Settings{
 		BodyBound:   0,
 	},
 	Client: ClientSettings{
-		ResponseBudget: 0,
+		ResponseBudget: 10 * time.Minute,
 	},
 	InputBudgetBytes:  0,
 	AuthorityBoundary: nil,
@@ -92,11 +94,11 @@ func CutText(text string) string {
 	return Cut(tools.Output{Text: text}).Text
 }
 
-// ApplyClient lowers the client's response budget to the configured one; zero leaves the
-// client as the caller built it.
+// ApplyClient lowers the client's response budget to the configured one; a zero setting, or
+// a budget the caller already built that is lower, leaves the client as it was.
 func ApplyClient(c *provider.Client) *provider.Client {
-	if c != nil && Current.Client.ResponseBudget != 0 {
-		c.ResponseBudget = Current.Client.ResponseBudget
+	if b := Current.Client.ResponseBudget; c != nil && b != 0 && (c.ResponseBudget == 0 || b < c.ResponseBudget) {
+		c.ResponseBudget = b
 	}
 	return c
 }
@@ -134,8 +136,45 @@ func Measure(body map[string]any, role provider.Role) (tools.Measurement, error)
 	return m, nil
 }
 
+// BudgetEvent is the run-log record of the effective response budget, which a run records
+// once when it starts, not per request. Nil without a configured budget: the library default
+// then applies and nothing is recorded.
+func BudgetEvent() map[string]any {
+	d := Current.Client.ResponseBudget
+	if d == 0 {
+		return nil
+	}
+	return map[string]any{"event": "response_budget", "budget_ms": d.Milliseconds(), "budget": DescribeBudget(d)}
+}
+
+// DescribeBudget is how Kogen names a response budget: ten minutes as "10 minutes", the
+// library's own wording for its thirty-minute default, and any other duration as Go renders it.
+func DescribeBudget(d time.Duration) string {
+	if d == 10*time.Minute {
+		return "10 minutes"
+	}
+	return d.String()
+}
+
+// diagnostic renames the expiry of the client's configured budget in a provider failure. The
+// pinned library renders an explicit budget as a Go duration ("10m0s") and its own default as
+// "30 minutes"; classification, exit code and every other message and duration are unchanged.
+func diagnostic(err error, budget time.Duration) error {
+	e, ok := err.(*sys.Error)
+	if !ok || budget != 10*time.Minute || e.Class != "provider" || e.Reason != "unavailable" {
+		return err
+	}
+	if rest, found := strings.CutSuffix(e.Detail, " response wait exceeded "+budget.String()); found {
+		renamed := *e
+		renamed.Detail = rest + " response wait exceeded " + DescribeBudget(budget)
+		return &renamed
+	}
+	return err
+}
+
 // Respond sends req with c.Respond after refusing, before any transport, a complete request
-// over the configured input ceiling. With a zero InputBudgetBytes it is c.Respond.
+// over the configured input ceiling. With a zero InputBudgetBytes it is c.Respond. A response
+// wait that expires names the budget as Kogen describes it.
 func Respond(ctx context.Context, c *provider.Client, s *sys.Session, req provider.Request, obs provider.Observer) (*provider.Response, error) {
 	if Current.InputBudgetBytes != 0 {
 		m, err := Measure(c.Body(req), req.Role)
@@ -148,7 +187,8 @@ func Respond(ctx context.Context, c *provider.Client, s *sys.Session, req provid
 				m.RenderedBytes, m.InputBudgetBytes, m.OutputReserveTokens), 1)
 		}
 	}
-	return c.Respond(ctx, s, req, obs)
+	resp, err := c.Respond(ctx, s, req, obs)
+	return resp, diagnostic(err, c.ResponseBudget)
 }
 
 // Validate runs the loop's own checks of the settings without credentials, network or

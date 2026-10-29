@@ -96,6 +96,9 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 	if limit := submissionRetryLimit(in.SubmissionRetryLimit); limit != 3 {
 		ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
 	}
+	if e := research.BudgetEvent(); e != nil {
+		ev.Record(e)
+	}
 
 	cfg, err := project.LoadConfig(root)
 	if err != nil {

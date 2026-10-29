@@ -298,6 +298,9 @@ func (r *refine) run(ctx context.Context) (exit int, err error) {
 	if limit := submissionRetryLimit(r.in.SubmissionRetryLimit); limit != 3 {
 		r.ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
 	}
+	if e := research.BudgetEvent(); e != nil {
+		r.ev.Record(e)
+	}
 	defer func() {
 		if err == nil {
 			return

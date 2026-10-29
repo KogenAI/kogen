@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -174,5 +175,100 @@ func TestApplyReachesEveryOption(t *testing.T) {
 	}
 	if got := CutText(strings.Repeat("a", 5000)); len(got) > 2000 || !strings.Contains(got, "bytes omitted") {
 		t.Fatalf("cut %d bytes", len(got))
+	}
+}
+
+// TestProductionResponseBudgetDefault holds the one tunable line: ten minutes, with every other
+// setting still the loop's own default.
+func TestProductionResponseBudgetDefault(t *testing.T) {
+	if want := (Settings{Client: ClientSettings{ResponseBudget: 10 * time.Minute}}); !reflect.DeepEqual(Current, want) {
+		t.Fatalf("Current = %+v", Current)
+	}
+	if err := Validate(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if e := BudgetEvent(); e["event"] != "response_budget" || e["budget"] != "10 minutes" || e["budget_ms"] != int64(600000) || len(e) != 3 {
+		t.Fatalf("event %v", e)
+	}
+	set(t, Settings{})
+	if BudgetEvent() != nil {
+		t.Fatal("a zero budget is recorded")
+	}
+}
+
+// TestApplyClientKeepsALowerBudget holds that a client built with a lower budget is not raised
+// to the configured one.
+func TestApplyClientKeepsALowerBudget(t *testing.T) {
+	for _, c := range []struct{ client, want time.Duration }{
+		{0, 10 * time.Minute}, {time.Second, time.Second}, {10 * time.Minute, 10 * time.Minute}, {30 * time.Minute, 10 * time.Minute},
+	} {
+		client := provider.NewClient("")
+		client.ResponseBudget = c.client
+		if got := ApplyClient(client).ResponseBudget; got != c.want {
+			t.Errorf("client %s: %s, want %s", c.client, got, c.want)
+		}
+	}
+}
+
+// TestRespondNamesTheTenMinuteExpiry holds that only the configured ten-minute expiry is
+// renamed: other durations, classes and reasons pass unchanged.
+func TestRespondNamesTheTenMinuteExpiry(t *testing.T) {
+	expired := func(budget time.Duration, e *sys.Error) error { return diagnostic(e, budget) }
+	got := expired(10*time.Minute, sys.Fail("provider", "unavailable", "SuperGrok response wait exceeded 10m0s", 4)).(*sys.Error)
+	if got.Class != "provider" || got.Reason != "unavailable" || got.Exit != 4 || got.Detail != "SuperGrok response wait exceeded 10 minutes" {
+		t.Fatalf("%+v", got)
+	}
+	for _, c := range []struct {
+		budget time.Duration
+		err    *sys.Error
+	}{
+		{10 * time.Minute, sys.Fail("provider", "unavailable", "ChatGPT response wait exceeded 2s", 4)},
+		{10 * time.Minute, sys.Fail("provider", "unavailable", "ChatGPT response wait exceeded 30 minutes", 4)},
+		{10 * time.Minute, sys.Fail("provider", "refused", "ChatGPT response wait exceeded 10m0s", 4)},
+		{10 * time.Minute, sys.Fail("provider", "unavailable", "the response wait exceeded 10m0s of patience", 4)},
+		{time.Second, sys.Fail("provider", "unavailable", "ChatGPT response wait exceeded 1s", 4)},
+		{5 * time.Minute, sys.Fail("provider", "unavailable", "ChatGPT response wait exceeded 5m0s", 4)},
+	} {
+		if err := expired(c.budget, c.err); err != error(c.err) {
+			t.Errorf("%q was changed: %v", c.err.Detail, err)
+		}
+	}
+	if diagnostic(nil, 10*time.Minute) != nil {
+		t.Error("nil became an error")
+	}
+}
+
+// TestRespondExpiryEndsUnavailableNamingTenMinutes runs a real client whose clock passes ten
+// minutes while the provider stalls.
+func TestRespondExpiryEndsUnavailableNamingTenMinutes(t *testing.T) {
+	var mu sync.Mutex
+	now := time.Now()
+	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		mu.Lock()
+		now = now.Add(10*time.Minute + time.Second)
+		mu.Unlock()
+		panic(http.ErrAbortHandler)
+	}))
+	defer srv.Close()
+	home := t.TempDir()
+	dir := filepath.Join(home, ".kogen", "credentials")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key, _ := json.Marshal(map[string]any{"provider": "anthropic", "api_key": "sk-ant-FIXTURE-KEY"})
+	if err := os.WriteFile(filepath.Join(dir, "anthropic.json"), key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := sys.NewWith([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "KOGEN_PROVIDER_URL=" + srv.URL, "KOGEN_AUTH_URL=" + srv.URL}, t.TempDir())
+	c := ApplyClient(newClient())
+	c.Now = clock
+	_, err := Respond(context.Background(), c, s, request(10), nil)
+	e, ok := sys.AsError(err)
+	if !ok || e.Class != "provider" || e.Reason != "unavailable" || e.Exit != 4 || !strings.HasSuffix(e.Detail, "response wait exceeded 10 minutes") {
+		t.Fatalf("err %v", err)
 	}
 }

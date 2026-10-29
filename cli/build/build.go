@@ -324,6 +324,9 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 	}
 	*out = b
 	run.Event(map[string]any{"event": "start", "slug": slug, "start_head": start, "approved": approval.SHA256})
+	if e := research.BudgetEvent(); e != nil {
+		run.Event(e)
+	}
 	if err := b.Save(b.Continuation); err != nil {
 		return err
 	}

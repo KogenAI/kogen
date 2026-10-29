@@ -33,7 +33,7 @@ models:
 
 Init detects Go at the root or under `cli/`; other layouts can be supplied from the README. It deduplicates identical check commands; different commands remain because test paths and filters can change coverage. Machine bootstrap (`mix local.hex`, `mix local.rebar`) belongs in prerequisites rather than recurring setup.
 
-Progress goes to stderr: each build/review request names its model/effort, and completed shape/build/review responses report usage and wall time. Probe completion reports exit status, timeout and duration without echoing its output. A quiet in-flight request has no streaming activity indicator; each logical provider response has a fixed 30-minute absolute monotonic budget, starting before credentials and shared by refresh, lock waits, retries and backoff. Bytes do not renew it. Expiry cancels the HTTP request and reports `provider/unavailable: <ChatGPT|SuperGrok> response wait exceeded 30 minutes` (exit 4); explicit cancellation keeps its signal exit. This is distinct from unlimited project command durations and adds no public timeout setting or retries. Build request durations are also stored as `wall_ms` in the existing run log.
+Progress goes to stderr: each build/review request names its model/effort, and completed shape/build/review responses report usage and wall time. Probe completion reports exit status, timeout and duration without echoing its output. A quiet in-flight request has no streaming activity indicator; each logical provider response has an absolute monotonic budget, starting before credentials and shared by refresh, lock waits, retries and backoff. Kogen's research settings lower it from the pinned library's 30 minutes to 10 minutes for every provider-backed entry (Shape, Refine, native Build, independent Review, workers and the setup conversation), and each run's log records it once as a `response_budget` event. Bytes do not renew it. Expiry cancels the HTTP request and reports `provider/unavailable: <provider> response wait exceeded 10 minutes` (exit 4), keeping each entry's existing rerun or resume; explicit cancellation keeps its signal exit. This is distinct from unlimited project command durations and adds no public timeout setting or retries. Build request durations are also stored as `wall_ms` in the existing run log.
 
 A terminal `response.completed` with omitted output or `output: []` supplies final metadata, not a new empty result: Kogen retains complete streamed done items and any unfinished added items. Success still requires nonempty validated items at contiguous nonnegative indexes, no pending items, and no stream, envelope, status, error or usage failure. Deltas and partial tool arguments cannot authorize tools; function arguments must decode to a JSON object. Nonempty final output instead replaces the streamed output under the existing coverage and validation rules. Rejected responses retain unknown usage; bounded structural diagnostics describe retained state without exposing payloads and are not proof of compatibility success.
 
@@ -229,10 +229,15 @@ refusal or 403 access denial stops without retry/fallback; 401 refreshes once th
 retries once. Network/429/5xx/cut streams retain the 3-attempt 2s/8s policy. No
 subscription-pool exhaustion code is guessed. Unsupported capabilities fail
 honestly without dropping fields, changing effort or model, or switching routes.
-The 30-minute logical deadline, full rendered 524288-byte inclusive request ceiling,
+The 10-minute Kogen logical deadline, full rendered 524288-byte inclusive request ceiling,
 131072-token reserve, image guards and independent reviewer remain unchanged.
 
 ### Installed qualification handoff
+
+Separately after installation, confirm the installed SHA against the provider/unavailable
+ending baseline; deterministic local tests do not establish that no increase occurred.
+Do not run paid sweeps for this confirmation.
+
 
 Local fakes prove wiring and replay, not account capability, image interpretation,
 subscription pool charging or visual approval. After human consent and Kogen-owned
@@ -312,7 +317,7 @@ cache identities; append-only turns, retries, window resets and saved-owner resu
 
 401 rejects the Go key without OAuth refresh; 402/403 are honest access/billing
 refusals, not fallback permission. Model/capability refusals do not retry. The
-30-minute logical deadline includes credential/network/retry waits and cancellation;
+10-minute Kogen logical deadline includes credential/network/retry waits and cancellation;
 network/429/5xx alone use bounded 3-attempt 2s/8s retries. Malformed, truncated,
 refused or incomplete completions never execute a partial tool batch.
 
@@ -405,7 +410,7 @@ Only useful complete end-turn text or a valid tool-use batch succeeds; truncatio
 refusal and other non-success stops never expose partial tools or alter requests.
 
 Network failures, cut streams, 429 and 5xx (including 529) retain the three-attempt
-2s/8s transient policy within one 30-minute logical deadline. Cancellation closes
+2s/8s transient policy within one 10-minute Kogen logical deadline. Cancellation closes
 the socket. Keys do not refresh. 401 is login, 404 model_unavailable, 413
 context_too_long, definite 400/402/403 refused; malformed complete output is
 invalid_response. Diagnostics retain bounded structural status/type/request IDs,

@@ -365,8 +365,8 @@ const priorDocumentation = `{"description":"Shape documentation lookup discovers
 // default byte for byte. The four entry paths (Shape, Refine, Review, native Build) run their
 // own unchanged golden, request and checkpoint tests with the zero source.
 func TestLoopKnobsZeroCompatibility(t *testing.T) {
-	t.Run("the source of the settings is zero", func(t *testing.T) {
-		if !reflect.DeepEqual(research.Current, research.Settings{}) {
+	t.Run("the source of the settings is zero but the response budget", func(t *testing.T) {
+		if want := (research.Settings{Client: research.ClientSettings{ResponseBudget: 10 * time.Minute}}); !reflect.DeepEqual(research.Current, want) {
 			t.Fatalf("research.Current = %+v", research.Current)
 		}
 		if research.Current.AuthorityBoundary != nil {
@@ -455,6 +455,7 @@ func TestLoopKnobsZeroCompatibility(t *testing.T) {
 		}
 		client := provider.NewClient("kogen dev+12345678 (test)")
 		client.ResponseBudget = 42 * time.Second
+		setKnobs(t, research.Settings{})
 		if research.ApplyClient(client).ResponseBudget != 42*time.Second || research.ApplyClient(provider.NewClient("")).ResponseBudget != 0 {
 			t.Error("zero settings changed a client's response budget")
 		}
