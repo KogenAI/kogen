@@ -177,7 +177,7 @@ func TestTheReviewerApprovesUnchangedCodeWithoutRepairs(t *testing.T) {
 	eq(t, "passes", res["passes"], any(float64(1)))
 	eq(t, "reviews", res["reviews"], any(float64(1)))
 	review := e.jsonFile(e.runPath(id, "review-1.json"))
-	eq(t, "model", review["model"], any(defaultRole().Model))
+	eq(t, "model", review["model"], any(project.DefaultModels()["review"].Model))
 	eq(t, "verdict", review["verdict"], any("approve"))
 	eq(t, "tree", review["tree"], any(e.gitOut("rev-parse", "HEAD^{tree}")))
 	if attempts := review["attempts"].([]any); len(attempts) != 1 || attempts[0].(map[string]any)["verdict"] != "approve" {

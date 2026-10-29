@@ -67,10 +67,11 @@ func TestRenderConfigBlockCollectionsAndLongValues(t *testing.T) {
 	if *cfg.Acceptance != *input.Acceptance {
 		t.Errorf("acceptance %+v", cfg.Acceptance)
 	}
-	for _, role := range []string{"shape", "review"} {
-		if cfg.Models[role] != (Role{Model: long, Effort: "high"}) {
-			t.Errorf("%s = %+v", role, cfg.Models[role])
-		}
+	if cfg.Models["shape"] != (Role{Model: long, Effort: "high"}) {
+		t.Errorf("shape = %+v", cfg.Models["shape"])
+	}
+	if cfg.Models["review"] != (Role{Model: "gpt-6.1-terra", Effort: "medium"}) {
+		t.Errorf("review = %+v", cfg.Models["review"])
 	}
 	if cfg.Models["build"] != (Role{Model: long, Effort: "medium"}) {
 		t.Errorf("build = %+v", cfg.Models["build"])
@@ -106,11 +107,19 @@ models:
     model: gpt-6.1-sol
     effort: medium
   review:
-    model: gpt-6.1-sol
-    effort: high
+    model: gpt-6.1-terra
+    effort: medium
 `
 	if Template() != want {
 		t.Errorf("template:\n%s", Template())
+	}
+	wantDefaults := map[string]Role{
+		"shape":  {Model: "gpt-6.1-sol", Effort: "high"},
+		"build":  {Model: "gpt-6.1-sol", Effort: "medium"},
+		"review": {Model: "gpt-6.1-terra", Effort: "medium"},
+	}
+	if !maps.Equal(DefaultModels(), wantDefaults) {
+		t.Errorf("DefaultModels = %+v, want %+v", DefaultModels(), wantDefaults)
 	}
 	d := DefaultModels()
 	d["shape"] = Role{Model: "changed"}
@@ -164,7 +173,7 @@ models:
 	wantModels := map[string]Role{
 		"shape":  {Model: "gpt-6.1-sol", Effort: "high"},
 		"build":  {Model: "gpt-6-luna", Effort: "high"},
-		"review": {Model: "gpt-6.1-sol", Effort: "high"},
+		"review": {Model: "gpt-6.1-terra", Effort: "medium"},
 	}
 	if !maps.Equal(cfg.Models, wantModels) {
 		t.Errorf("models %v", cfg.Models)
@@ -395,6 +404,26 @@ func TestLoadConfigReadsTheTemplate(t *testing.T) {
 	}
 	if len(cfg.Setup) != 0 || cfg.Acceptance != nil || !maps.Equal(cfg.Models, DefaultModels()) {
 		t.Errorf("template config %+v", cfg)
+	}
+}
+
+func TestLoadConfigExplicitReviewWinsAndFileIsUnchanged(t *testing.T) {
+	root := t.TempDir()
+	const text = "version: 1\nmodels:\n  review: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\n"
+	writeFile(t, root, ConfigPath, text)
+	cfg, err := LoadConfig(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}); cfg.Models["review"] != want {
+		t.Errorf("review = %+v, want %+v", cfg.Models["review"], want)
+	}
+	if cfg.Models["shape"] != DefaultModels()["shape"] || cfg.Models["build"] != DefaultModels()["build"] {
+		t.Errorf("other roles changed: %+v", cfg.Models)
+	}
+	got, err := os.ReadFile(filepath.Join(root, ConfigPath))
+	if err != nil || string(got) != text {
+		t.Errorf("configuration file changed: %q, %v", got, err)
 	}
 }
 
@@ -763,7 +792,7 @@ func TestLegacyNoProgressKeysAreNotSettings(t *testing.T) {
 	// spellings are not read: they are an unrecognized role key like any other. Strict loading
 	// keeps reporting that (unchanged), and the readable view leaves the role at its default,
 	// exactly as the same input without the key.
-	const plain = "version: 1\nmodels:\n  shape: {model: gpt-6.1-sol, effort: high}\n  build: {model: gpt-6.1-sol, effort: medium}\n  review: {model: gpt-6.1-sol, effort: high}\n"
+	const plain = "version: 1\nmodels:\n  shape: {model: gpt-6.1-sol, effort: high}\n  build: {model: gpt-6.1-sol, effort: medium}\n  review: {model: gpt-6.1-terra, effort: medium}\n"
 	want := ReadableConfig(plain)
 	if !maps.Equal(want.Models, DefaultModels()) {
 		t.Fatalf("control models %+v", want.Models)

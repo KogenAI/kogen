@@ -17,7 +17,7 @@ Feature: Reviewing
     Given the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
-    And the review request uses model "gpt-6.1-sol" with effort "high"
+    And the review request uses model "gpt-6.1-terra" with effort "medium"
     And the review request offers exactly the tools "read_file, view_image, list_files, search_text, write_file, shell, submit_review"
     And the review request contains the text of the file ".kogen/intents/is-even/intent.md"
     And the review request contains the diff of "calc.py" against the start HEAD

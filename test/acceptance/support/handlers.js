@@ -100,7 +100,7 @@ function configText() {
     'models:',
     '  shape:  {model: gpt-6.1-sol, effort: high}',
     '  build:  {model: gpt-6.1-sol, effort: medium}',
-    '  review: {model: gpt-6.1-sol, effort: high}',
+    '  review: {model: gpt-6.1-terra, effort: medium}',
     '',
   ].join('\n');
 }
@@ -219,8 +219,8 @@ function initTemplate() {
     '    model: gpt-6.1-sol',
     '    effort: medium',
     '  review:',
-    '    model: gpt-6.1-sol',
-    '    effort: high',
+    '    model: gpt-6.1-terra',
+    '    effort: medium',
     '',
   ].join('\n');
 }

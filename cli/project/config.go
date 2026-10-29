@@ -98,7 +98,7 @@ func DefaultModels() map[string]Role {
 	return map[string]Role{
 		"shape":  {Model: "gpt-6.1-sol", Effort: "high"},
 		"build":  {Model: "gpt-6.1-sol", Effort: "medium"},
-		"review": {Model: "gpt-6.1-sol", Effort: "high"},
+		"review": {Model: "gpt-6.1-terra", Effort: "medium"},
 	}
 }
 

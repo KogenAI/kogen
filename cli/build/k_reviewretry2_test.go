@@ -120,7 +120,7 @@ func TestKReviewRetry2LogReplay(t *testing.T) {
 	eq(t, "fault", faults[0]["fault"], any("forced_tool_not_called"))
 	eq(t, "fault review", faults[0]["review"], any(float64(1)))
 	eq(t, "fault route", faults[0]["route"], any("chatgpt"))
-	eq(t, "fault model", faults[0]["model"], any("gpt-6.1-sol"))
+	eq(t, "fault model", faults[0]["model"], any("gpt-6.1-terra"))
 	eq(t, "fault tool", faults[0]["tool"], any("submit_review"))
 	var allowances []string
 	for _, ev := range eventsNamed(events, "review_allowance") {
@@ -400,7 +400,7 @@ func TestKReviewRetry2ForcedReset(t *testing.T) {
 	}
 	fill := map[string]any{"query": strings.Repeat("x", 150_000)}
 	for _, rt := range []route{
-		{name: "chatgpt", model: "gpt-6.1-sol", forced: forcedSubmit, requests: responses,
+		{name: "chatgpt", model: "gpt-6.1-terra", forced: forcedSubmit, requests: responses,
 			script: func(f *fakeProvider) []handler {
 				return []handler{filler(f, 150_000), filler(f, 150_000), filler(f, 150_000), prose(big), prose("Nothing to add."),
 					submit(f, "approve", finding("note", "fine"))}
