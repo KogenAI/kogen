@@ -10,6 +10,7 @@ package loop
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 
 	"kogen-loop/api"
@@ -173,8 +174,11 @@ var DefaultTerminal = []string{"finish"}
 // Calls after a terminal call in the same batch still run. A hook error, a tool interrupt
 // (a shell stopped by the caller), timeout observation failure or a cancelled context
 // stops the round; the error is
-// returned unchanged. When ctx ends, every process group started through rd.Tools.Session
-// during the round is terminated before Run returns.
+// returned unchanged. Whatever the outcome, every process group started through
+// rd.Tools.Session during the round is terminated before Run returns, background
+// processes included; they stay alive between the round's calls. A shell that is starting,
+// or running when ctx ends is stopped by the call itself (Tools.CallContext forwards ctx).
+// Groups started before the round and processes that left their group are untouched.
 func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (result Result, err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -183,8 +187,13 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 	if len(terminal) == 0 {
 		terminal = DefaultTerminal
 	}
-	if rd.Tools != nil && rd.Tools.Session != nil {
-		defer custody(ctx, rd.Tools.Session)()
+	if rd.Tools != nil {
+		if rd.Tools.Session == nil {
+			t := *rd.Tools
+			t.Session = sys.NewWith(os.Environ(), t.Root)
+			rd.Tools = &t
+		}
+		defer custody(rd.Tools.Session)()
 	}
 	requests := 0
 	for {
@@ -283,33 +292,25 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 	}
 }
 
-// custody terminates the process groups the round started when ctx ends or the caller
-// interrupts the session, and makes the returned function wait until that termination has
-// finished. Groups that the session started before the round are left alone.
-func custody(ctx context.Context, s *sys.Session) (wait func()) {
+// custody ends the process groups the round started, and makes the returned function wait
+// until they are gone. The returned function always stops them, whatever the outcome:
+// success, a hook or requester error, cancellation, a deadline or an interrupt. Shell
+// calls forward the round's context themselves, so a shell that is starting when ctx ends
+// cannot be missed by a snapshot. Groups that the session started before the round are
+// left alone.
+func custody(s *sys.Session) (end func()) {
 	before := map[int]bool{}
 	for _, g := range s.Groups() {
 		before[g] = true
 	}
-	terminate := func() {
+	return func() {
 		var mine []int
-		for _, g := range s.Groups() {
+		for _, g := range s.LiveGroups() {
 			if !before[g] {
 				mine = append(mine, g)
 			}
 		}
 		sys.Terminate(mine)
-	}
-	done := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		defer close(done)
-		terminate()
-	})
-	return func() {
-		if !stop() {
-			<-done
-		} else if s.Err() != nil {
-			terminate()
-		}
+		s.Retire(mine)
 	}
 }

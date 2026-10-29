@@ -99,7 +99,6 @@ func TestClimbLeversRemoved(t *testing.T) {
 		{reflect.TypeOf(tools.Measurement{}), "OutputReserveTokens"},
 		{reflect.TypeOf(tools.Measurement{}), "Fits"},
 		{reflect.TypeOf(tools.Documentation{}), "Timeout"},
-		{reflect.TypeOf(tools.Tools{}), "ShellTimeout"},
 	} {
 		if _, ok := c.typ.FieldByName(c.field); !ok {
 			t.Errorf("%s.%s must remain", c.typ, c.field)

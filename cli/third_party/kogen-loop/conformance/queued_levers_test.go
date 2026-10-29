@@ -110,7 +110,6 @@ func TestQueuedLeversRemoved(t *testing.T) {
 		{reflect.TypeOf(provider.Request{}), "ToolChoice"},
 		{reflect.TypeOf(loop.Round{}), "Terminal"},
 		{reflect.TypeOf(loop.SessionConfig{}), "Terminal"},
-		{reflect.TypeOf(tools.Tools{}), "ShellTimeout"},
 		{reflect.TypeOf(tools.Tools{}), "Enabled"},
 	} {
 		if _, ok := c.typ.FieldByName(c.field); !ok {
@@ -128,15 +127,6 @@ func TestQueuedLeverCleanup(t *testing.T) {
 		if _, err := os.Stat(filepath.Join("..", gone)); !os.IsNotExist(err) {
 			t.Errorf("%s must be deleted (stat error %v)", gone, err)
 		}
-	}
-
-	// The default-definition tests carry the full-description ShellTimeout assertions.
-	defs, err := os.ReadFile("../tools/defs_test.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(defs), "ShellTimeout") {
-		t.Error("tools/defs_test.go lost the ShellTimeout assertions")
 	}
 
 	words := append([]string{"round.terminal_reminder", "read_ledger", "Call one of these terminal tools"}, removedLevers...)

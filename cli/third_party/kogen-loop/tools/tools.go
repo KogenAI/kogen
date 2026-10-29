@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -48,16 +47,14 @@ func (o Output) Cut() Output {
 }
 
 // Tools runs the model's tool calls in one repository. A refused or failed call is a tool
-// result (text starting `error:` or `refused:`), never a Go error; the only error is an
-// interrupt, context stop during timeout custody, or timeout observation failure.
+// result (text starting `error:` or `refused:`), never a Go error; the only errors are an
+// interrupt and a done context that stopped a shell.
 type Tools struct {
 	// Root is the repository root; relative paths resolve against it.
 	Root string
 	// Session runs shell commands (the caller's environment, interrupts) and gives Git its
 	// environment. Nil: this process's environment, no interrupts.
 	Session *sys.Session
-	// ShellTimeout bounds each shell invocation independently. Nonpositive means no limit.
-	ShellTimeout time.Duration
 	// Repo runs the Git commands of list_files and search_text and the candidate tree of
 	// view_image. Nil: Git in Root with the Session's environment (see git.go).
 	Repo Git
@@ -86,8 +83,10 @@ func (t *Tools) Run(name string, args map[string]any) (Output, error) {
 	return t.RunContext(nil, name, args)
 }
 
-// RunContext runs a call, forwarding ctx only for positive ShellTimeout custody.
-// Overall execution custody remains the caller's responsibility.
+// RunContext runs a call. ctx (nil: never done) is forwarded to shell commands: a shell
+// that has not started does not start once ctx is done, and one that is starting or running
+// has its process group terminated and joined before the call returns ctx.Err(). Processes
+// a finished shell left behind are not touched here; the round's custody ends them.
 func (t *Tools) RunContext(ctx context.Context, name string, args map[string]any) (Output, error) {
 	if !slices.Contains(t.Enabled, name) {
 		return Output{Text: "error: unknown tool " + name}, nil
@@ -118,7 +117,7 @@ func (t *Tools) RunContext(ctx context.Context, name string, args map[string]any
 // Call runs a function call of a response.
 func (t *Tools) Call(c Call) (Output, error) { return t.CallContext(nil, c) }
 
-// CallContext runs a response call with optional positive-timeout custody cancellation.
+// CallContext runs a response call like RunContext.
 func (t *Tools) CallContext(ctx context.Context, c Call) (Output, error) {
 	return t.RunContext(ctx, c.Name, c.Args())
 }
@@ -413,21 +412,16 @@ func (t *Tools) searchText(args map[string]any) string {
 	return gitFailure(res)
 }
 
-// shell runs /bin/sh -c in the repository root with stdin closed and ShellTimeout.
-// Only an expired timeout prefixes the ordinary exit status and combined output.
+// shell runs /bin/sh -c in the repository root with stdin closed and no time limit.
 // A command that would stop processes this run did not start is refused with
 // sys.RefusalText as ordinary tool text. KillGroupOnExit stays off: background servers
-// outlive a call, and round and engine cleanup end them with the round.
+// outlive a call, and the round's custody ends them with the round, whatever its outcome.
 func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string, error) {
 	command, msg := stringArg(args, "command")
 	if msg != "" {
 		return msg, "", nil
 	}
-	opts := sys.Options{Timeout: t.ShellTimeout, RefuseForeignKill: true}
-	if t.ShellTimeout > 0 {
-		opts.Context = ctx
-	}
-	res, err := t.session().Run(command, t.Root, opts)
+	res, err := t.session().RunContext(ctx, command, t.Root, sys.Options{RefuseForeignKill: true})
 	if err != nil {
 		return "", "", err
 	}
@@ -435,9 +429,6 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string,
 		return res.Output, res.Rule, nil
 	}
 	text := "exit status: " + strconv.Itoa(res.Status) + "\n" + res.Output
-	if res.TimedOut {
-		text = "timed out after " + t.ShellTimeout.String() + "\n" + text
-	}
 	return text, "", nil
 }
 

@@ -33,6 +33,8 @@ type Session struct {
 
 	mu        sync.Mutex
 	groups    map[int]bool
+	finished  map[int]bool     // groups seen empty after their command ended; nothing is left to stop
+	lifelines map[int]*os.File // supervisor lifelines held for groups that outlived their command
 	cancelled string
 	done      chan struct{}
 	ctx       context.Context
@@ -50,7 +52,7 @@ func New() *Session {
 // NewWith returns a Session with an explicit environment and directory.
 func NewWith(env []string, cwd string) *Session {
 	ctx, stop := context.WithCancel(context.Background())
-	return &Session{Stdout: io.Discard, Stderr: io.Discard, Env: env, Cwd: cwd, groups: map[int]bool{}, done: make(chan struct{}), ctx: ctx, stop: stop}
+	return &Session{Stdout: io.Discard, Stderr: io.Discard, Env: env, Cwd: cwd, groups: map[int]bool{}, finished: map[int]bool{}, lifelines: map[int]*os.File{}, done: make(chan struct{}), ctx: ctx, stop: stop}
 }
 
 // Out writes text to stdout unchanged.
@@ -172,25 +174,47 @@ type Result struct {
 	Rule     string // rule id of a refusal, "" otherwise
 }
 
-// Run runs `/bin/sh -c command` in dir. It returns *Interrupted when the caller
+// Run runs `/bin/sh -c command` in dir like RunContext, with no context.
+func (s *Session) Run(command, dir string, opts Options) (Result, error) {
+	return s.RunContext(nil, command, dir, opts)
+}
+
+// startHook, when set by a test, is called at the shell-start boundary: "enter" before
+// anything starts, "starting" after the process exists but before it is registered (the
+// session is locked, so group queries wait), and "started" once it is registered.
+var startHook func(stage string)
+
+func hookStart(stage string) {
+	if h := startHook; h != nil {
+		h(stage)
+	}
+}
+
+// RunContext runs `/bin/sh -c command` in dir. A done ctx (nil: never) stops the command:
+// nothing starts once ctx is done, and a command that is starting or running has its whole
+// group terminated (SIGTERM, then SIGKILL after the bounded wait) and joined before
+// RunContext returns ctx.Err(). It returns *Interrupted when the caller
 // interrupts; nothing starts after an interrupt. A fired positive Timeout waits
 // for whole-group termination and disappearance before returning timeout feedback;
 // an observed interrupt wins, then Options.Context, then ErrTimeoutObservation.
 // Darwin and Linux observe native membership including zombies; other platforms
-// return ErrTimeoutObservation after teardown. Context does not change nonpositive
-// Timeout or FinishOnInterrupt behavior. The caller still owns execution custody.
-func (s *Session) Run(command, dir string, opts Options) (Result, error) {
+// return ErrTimeoutObservation after teardown. Options.Context does not change nonpositive
+// Timeout or FinishOnInterrupt behavior. A command that leaves background processes in its
+// group keeps its group until the caller stops it (Terminate, then Retire); groups left
+// behind are not stopped by RunContext returning.
+func (s *Session) RunContext(ctx context.Context, command, dir string, opts Options) (Result, error) {
+	hookStart("enter")
 	if opts.RefuseForeignKill {
 		if rule, refused := ForeignKill(command, s.Owned); refused {
 			return Result{Status: 126, Output: RefusalText(rule), Rule: rule}, nil
 		}
 	}
 	s.Debug("command in " + dir + ": " + command)
-	cmd, release, err := supervised(command)
+	cmd, lifeline, err := supervised(command)
 	if err != nil {
 		return Result{Status: 127, Output: err.Error()}, nil
 	}
-	defer release()
+	defer lifeline.release()
 	cmd.Dir = dir
 	cmd.Env = append([]string{}, s.Env...)
 	for k, v := range opts.Env {
@@ -207,13 +231,21 @@ func (s *Session) Run(command, dir string, opts Options) (Result, error) {
 		s.mu.Unlock()
 		return Result{}, &Interrupted{sig}
 	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			s.mu.Unlock()
+			return Result{}, err
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		s.mu.Unlock()
 		return Result{Status: 127, Output: err.Error()}, nil
 	}
 	pgid := cmd.Process.Pid
+	hookStart("starting")
 	s.groups[pgid] = true
 	s.mu.Unlock()
+	hookStart("started")
 
 	// Completion and the callback compete for ownership, not for timer.Stop's result.
 	var owner commandLifecycle
@@ -240,6 +272,12 @@ func (s *Session) Run(command, dir string, opts Options) (Result, error) {
 			<-waited
 		}
 		return Result{}, s.Err()
+	case <-contextDone(ctx):
+		// The group's stop is joined here, so a caller that returns on ctx has nothing
+		// of this command left to race.
+		Terminate([]int{pgid})
+		<-waited
+		return Result{}, ctx.Err()
 	}
 	timedOut := owner.timedOut()
 	if timedOut {
@@ -269,7 +307,44 @@ func (s *Session) Run(command, dir string, opts Options) (Result, error) {
 	if opts.KillGroupOnExit {
 		sweepGroup(pgid)
 	}
+	s.afterCommand(pgid, lifeline)
 	return Result{Status: exitStatus(cmd.ProcessState), Output: buf.String(), TimedOut: timedOut}, nil
+}
+
+// afterCommand records what an ended command left. A group that is already empty is
+// finished (its number may be reused, so it is never signalled again); a group with
+// members keeps the supervisor's lifeline, so that a dying caller still stops them.
+func (s *Session) afterCommand(pgid int, l *lifeline) {
+	if syscall.Kill(-pgid, 0) == syscall.ESRCH {
+		s.mu.Lock()
+		s.finished[pgid] = true
+		s.mu.Unlock()
+		return
+	}
+	if l == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lifelines[pgid] = l.keep()
+}
+
+// Retire ends the supervision of groups the caller has stopped on purpose: their
+// lifelines close marked as retired, so no supervisor mistakes it for the caller's death.
+func (s *Session) Retire(groups []int) {
+	s.mu.Lock()
+	var held []*os.File
+	for _, g := range groups {
+		if w := s.lifelines[g]; w != nil {
+			held = append(held, w)
+			delete(s.lifelines, g)
+		}
+	}
+	s.mu.Unlock()
+	for _, w := range held {
+		w.Write([]byte{lifelineRetired})
+		w.Close()
+	}
 }
 
 // sweepGroup ends what the finished command left in its group and waits until the
@@ -375,6 +450,20 @@ func (s *Session) Groups() []int {
 	return s.groupList()
 }
 
+// LiveGroups lists the started groups that may still have members: Groups without those
+// seen empty after their command ended.
+func (s *Session) LiveGroups() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]int, 0, len(s.groups))
+	for g := range s.groups {
+		if !s.finished[g] {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 func (s *Session) groupList() []int {
 	out := make([]int, 0, len(s.groups))
 	for g := range s.groups {
@@ -429,12 +518,37 @@ func TmpPath(prefix string) string {
 // supervisor. cli main calls MaybeSupervise before anything else.
 const SuperviseArg = "__kogen_supervise"
 
+// lifeline is the pipe whose write end this process holds for a supervisor: the
+// supervisor stops its group when that end closes unretired.
+type lifeline struct {
+	r, w *os.File
+	kept bool
+}
+
+// release closes the supervisor's read end here and the write end unless it was kept.
+func (l *lifeline) release() {
+	if l == nil {
+		return
+	}
+	l.r.Close()
+	if !l.kept {
+		l.w.Close()
+	}
+}
+
+// keep hands the write end to the caller, who closes it with Retire.
+func (l *lifeline) keep() *os.File {
+	l.kept = true
+	return l.w
+}
+
 // supervised returns a command that runs `/bin/sh -c command` under the supervisor, with
-// the supervisor's lifeline (fd 3) held open by this process until release.
-func supervised(command string) (*exec.Cmd, func(), error) {
+// the supervisor's lifeline (fd 3) held open by this process until release. The lifeline
+// is nil when the command is not supervised.
+func supervised(command string) (*exec.Cmd, *lifeline, error) {
 	self, err := os.Executable()
 	if err != nil || !supervisorAvailable(self) {
-		return exec.Command("/bin/sh", "-c", command), func() {}, nil
+		return exec.Command("/bin/sh", "-c", command), nil, nil
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -442,7 +556,7 @@ func supervised(command string) (*exec.Cmd, func(), error) {
 	}
 	cmd := exec.Command(self, SuperviseArg, command)
 	cmd.ExtraFiles = []*os.File{r}
-	return cmd, func() { r.Close(); w.Close() }, nil
+	return cmd, &lifeline{r: r, w: w}, nil
 }
 
 // supervisorAvailable is false in test binaries, which are not Kogen.
@@ -456,8 +570,16 @@ func EnableSupervisor() { supervisorEnabled.Store(true) }
 // MaybeSupervise runs the supervisor and exits when args start with SuperviseArg.
 // The supervisor leads the command's process group, survives the terminal signals Kogen
 // sends to the group, starts `/bin/sh -c command` in the same group, and stops the whole group
-// (SIGTERM, then SIGKILL after 5 seconds) when its lifeline from Kogen closes.
+// (SIGTERM, then SIGKILL after 5 seconds) when its lifeline from Kogen closes. That stop
+// is complete before the supervisor exits: it does not end with the direct shell, so a
+// descendant that ignores SIGTERM still gets SIGKILL. When the command ends first and
+// its group still has members, a small keeper stays in the group holding the lifeline,
+// so Kogen's death still stops them; Retire, or the group emptying, ends the keeper.
 func MaybeSupervise(args []string) {
+	if len(args) == 1 && args[0] == lifelineArg {
+		keeperMain()
+		os.Exit(0)
+	}
 	if len(args) < 2 || args[0] != SuperviseArg {
 		return
 	}
@@ -471,24 +593,39 @@ func MaybeSupervise(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(127)
 	}
+	// state: 0 command running, 1 command ended first, 2 the lifeline closed first.
+	var mu sync.Mutex
+	state := 0
+	swept := make(chan struct{})
+	pgid, self := syscall.Getpgrp(), os.Getpid()
 	go func() {
 		io.Copy(io.Discard, lifeline) // returns when Kogen dies or releases the lifeline
-		if cmd.ProcessState == nil {
-			pgid := syscall.Getpgrp()
-			syscall.Kill(-pgid, syscall.SIGTERM)
-			for i := 0; i < 50; i++ {
-				time.Sleep(100 * time.Millisecond)
-				if syscall.Kill(cmd.Process.Pid, 0) != nil {
-					break
-				}
-			}
-			syscall.Kill(-pgid, syscall.SIGKILL)
+		mu.Lock()
+		if state == 0 {
+			state = 2
+		}
+		sweep := state == 2
+		mu.Unlock()
+		if sweep {
+			sweepOwnGroup(pgid, self)
+			close(swept)
 		}
 	}()
 	cmd.Wait()
 	status := exitStatus(cmd.ProcessState)
 	if status < 0 {
 		status = 127
+	}
+	mu.Lock()
+	if state == 0 {
+		state = 1
+	}
+	stopping := state == 2
+	mu.Unlock()
+	if stopping {
+		<-swept
+	} else if others, err := groupOthers(pgid, self); err != nil || others {
+		leaveKeeper(lifeline)
 	}
 	os.Exit(status)
 }
