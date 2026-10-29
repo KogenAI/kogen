@@ -24,15 +24,7 @@ func renderMessages(info Info, req Request, id string, input []any) (rendered, e
 	if hasImage(input) {
 		return rendered{}, imageRefusal(info)
 	}
-	messages := anthropicMessages(input, req.AuthorityBoundary != nil)
-	var authority string
-	if req.AuthorityBoundary != nil {
-		where, err := markAuthority(messages, *req.AuthorityBoundary)
-		if err != nil {
-			return rendered{}, err
-		}
-		authority = where
-	}
+	messages := anthropicMessages(input)
 	var boundaries []any
 	body := map[string]any{
 		"model":         req.Role.Model,
@@ -63,96 +55,22 @@ func renderMessages(info Info, req Request, id string, input []any) (rendered, e
 		if req.ToolChoice != "" {
 			toolChoice = map[string]any{"type": "tool", "name": req.ToolChoice}
 		}
-		if req.DisableParallelToolCalls {
-			toolChoice["disable_parallel_tool_use"] = true
-		}
 		body["tool_choice"] = toolChoice
 		body["tools"] = tools
 	}
 	body["system"] = []any{map[string]any{"type": "text", "text": req.Instructions, "cache_control": ephemeral()}}
 	boundaries = append(boundaries, "system[0]")
-	if authority != "" {
-		boundaries = append(boundaries, authority)
-	}
-	if where, ok := markNewest(messages, req.AuthorityBoundary != nil); ok && where != authority {
+	if where, ok := markNewest(messages); ok {
 		boundaries = append(boundaries, where)
 	}
 	body["messages"] = messages
-	if req.AuthorityBoundary != nil {
-		if n := countBreakpoints(body); n > maxBreakpoints {
-			return rendered{}, providerFail("invalid_request", "cache breakpoint limit exceeded: "+itoa(int64(n))+" cache_control locations, at most "+itoa(maxBreakpoints)+" allowed")
-		}
-	}
 	return rendered{body: body, mode: "explicit", boundaries: boundaries}, nil
-}
-
-const maxBreakpoints = 4
-
-// markAuthority puts the authority breakpoint on text block index of the first user message
-// (a string content is block 0). The message is replaced by a copy in messages.
-func markAuthority(messages []any, index int) (string, error) {
-	invalid := func(why string) error {
-		return providerFail("invalid_request", "invalid authority boundary: "+why)
-	}
-	for i, m := range messages {
-		msg, _ := asMap(m)
-		if msg["role"] != "user" {
-			continue
-		}
-		var blocks []any
-		switch c := msg["content"].(type) {
-		case string:
-			blocks = []any{map[string]any{"type": "text", "text": c}}
-		default:
-			list, _ := asList(c)
-			blocks = append([]any(nil), list...)
-		}
-		if index < 0 || index >= len(blocks) {
-			return "", invalid("index " + itoa(int64(index)) + " outside the first user message's " + itoa(int64(len(blocks))) + " content blocks")
-		}
-		b, ok := asMap(blocks[index])
-		if !ok || b["type"] != "text" {
-			return "", invalid("block " + itoa(int64(index)) + " is not a text block")
-		}
-		nb := copyMap(b)
-		if nb["cache_control"] == nil {
-			nb["cache_control"] = ephemeral()
-		}
-		blocks[index] = nb
-		nm := copyMap(msg)
-		nm["content"] = blocks
-		messages[i] = nm
-		return "messages[" + itoa(int64(i)) + "].content[" + itoa(int64(index)) + "]", nil
-	}
-	return "", invalid("no user message")
-}
-
-// countBreakpoints counts the distinct cache_control locations of the final body.
-func countBreakpoints(body map[string]any) int {
-	n := 0
-	for _, field := range []string{"tools", "system", "messages"} {
-		list, _ := asList(body[field])
-		for _, item := range list {
-			m, _ := asMap(item)
-			if field == "messages" {
-				blocks, _ := asList(m["content"])
-				for _, b := range blocks {
-					if bm, ok := asMap(b); ok && bm["cache_control"] != nil {
-						n++
-					}
-				}
-			} else if m["cache_control"] != nil {
-				n++
-			}
-		}
-	}
-	return n
 }
 
 // markNewest puts the rolling breakpoint on the last content block of the newest message
 // (a string content becomes one text block); thinking blocks cannot carry one. The message
 // is replaced by a copy: the caller's replay items are never modified.
-func markNewest(messages []any, preserveMarker bool) (string, bool) {
+func markNewest(messages []any) (string, bool) {
 	if len(messages) == 0 {
 		return "", false
 	}
@@ -178,9 +96,7 @@ func markNewest(messages []any, preserveMarker bool) (string, bool) {
 	for k, v := range b {
 		nb[k] = v
 	}
-	if !preserveMarker || nb["cache_control"] == nil {
-		nb["cache_control"] = ephemeral()
-	}
+	nb["cache_control"] = ephemeral()
 	blocks[j] = nb
 	nm := make(map[string]any, len(msg))
 	for k, v := range msg {
@@ -194,7 +110,7 @@ func markNewest(messages []any, preserveMarker bool) (string, bool) {
 // anthropicMessages renders the conversation: a received assistant message goes back as it
 // came, parallel tool results gather in the one user message that follows it, user and
 // assistant text keep their blocks as text blocks.
-func anthropicMessages(input []any, preserveFirst bool) []any {
+func anthropicMessages(input []any) []any {
 	messages := []any{}
 	ids := map[string]bool{}
 	for _, it := range input {
@@ -231,28 +147,6 @@ func anthropicMessages(input []any, preserveFirst bool) []any {
 			messages = append(messages, map[string]any{"role": "user", "content": []any{block}})
 		case item["role"] == "user" || item["role"] == "assistant":
 			content := blockText(item["content"])
-			firstUser := true
-			for _, previous := range messages {
-				m, _ := asMap(previous)
-				if m["role"] == "user" {
-					firstUser = false
-					break
-				}
-			}
-			if preserveFirst && firstUser && item["role"] == "user" {
-				if blocks, ok := asList(item["content"]); ok {
-					converted := make([]any, len(blocks))
-					for i, block := range blocks {
-						m, ok := asMap(block)
-						if ok && (m["type"] == "input_text" || m["type"] == "text") {
-							converted[i] = map[string]any{"type": "text", "text": m["text"]}
-						} else {
-							converted[i] = block
-						}
-					}
-					content = converted
-				}
-			}
 			messages = append(messages, map[string]any{"role": item["role"], "content": content})
 		}
 	}

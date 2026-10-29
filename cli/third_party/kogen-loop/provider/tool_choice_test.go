@@ -33,21 +33,8 @@ func tcGolden(t *testing.T) map[string]string {
 	return golden
 }
 
-func tcKey(route string, tools, parallelOff bool) string {
-	return fmt.Sprintf("%s/tools=%v/parallel_off=%v", route, tools, parallelOff)
-}
-
-// tcCases lists each route's combinations of tools and the existing parallel control; Chat
-// Completions refuses the control, so it has none.
-func tcCases(r tcRoute, f func(tools, parallelOff bool)) {
-	for _, tools := range []bool{true, false} {
-		for _, parallelOff := range []bool{false, true} {
-			if parallelOff && r.wire == "chat" {
-				continue
-			}
-			f(tools, parallelOff)
-		}
-	}
+func tcKey(route string, tools bool) string {
+	return fmt.Sprintf("%s/tools=%v", route, tools)
 }
 
 // Empty ToolChoice sends the bytes captured from the unchanged encoders (testdata was
@@ -55,20 +42,20 @@ func tcCases(r tcRoute, f func(tools, parallelOff bool)) {
 func TestToolChoiceEmptyBytes(t *testing.T) {
 	golden := tcGolden(t)
 	for _, r := range tcRoutes {
-		tcCases(r, func(tools, parallelOff bool) {
-			key := tcKey(r.name, tools, parallelOff)
+		for _, tools := range []bool{true, false} {
+			key := tcKey(r.name, tools)
 			want, ok := golden[key]
 			if !ok {
 				t.Fatalf("no golden for %s", key)
 			}
-			reqs, err := tcRespond(t, r, nil, tools, parallelOff)
+			reqs, err := tcRespond(t, r, nil, tools)
 			if err != nil || len(reqs) != 1 {
 				t.Fatalf("%s: err=%v requests=%d", key, err, len(reqs))
 			}
 			if got := string(reqs[0].Body); got != want {
 				t.Errorf("%s: bytes changed\n got %s\nwant %s", key, got, want)
 			}
-		})
+		}
 	}
 }
 
@@ -88,14 +75,14 @@ func TestToolChoiceTransport(t *testing.T) {
 			continue
 		}
 		for _, name := range []string{"submit", "read_file", "other-tool"} {
-			tcCases(r, func(tools, parallelOff bool) {
-				key := tcKey(r.name, tools, parallelOff) + "/" + name
-				reqs, err := tcRespond(t, r, func(q *Request) { q.ToolChoice = name }, tools, parallelOff)
+			for _, tools := range []bool{true, false} {
+				key := tcKey(r.name, tools) + "/" + name
+				reqs, err := tcRespond(t, r, func(q *Request) { q.ToolChoice = name }, tools)
 				if err != nil || len(reqs) != 1 {
 					t.Fatalf("%s: err=%v requests=%d", key, err, len(reqs))
 				}
 				got := decodeStd(t, key, reqs[0].Body)
-				want := decodeStd(t, key, []byte(golden[tcKey(r.name, tools, parallelOff)]))
+				want := decodeStd(t, key, []byte(golden[tcKey(r.name, tools)]))
 				if tools {
 					want["tool_choice"] = decodeStd(t, key, []byte(shape(name)))
 					if !reflect.DeepEqual(got["tool_choice"], want["tool_choice"]) {
@@ -107,10 +94,7 @@ func TestToolChoiceTransport(t *testing.T) {
 				if !reflect.DeepEqual(got, want) {
 					t.Errorf("%s: more than tool_choice changed\n got %s\nwant %v", key, reqs[0].Body, want)
 				}
-				if parallelOff && r.wire == "responses" && got["parallel_tool_calls"] != false {
-					t.Errorf("%s: parallel control lost: %s", key, reqs[0].Body)
-				}
-			})
+			}
 		}
 	}
 }
@@ -133,29 +117,27 @@ func TestToolChoiceUnsupported(t *testing.T) {
 			continue
 		}
 		for _, tools := range []bool{true, false} {
-			for _, parallelOff := range []bool{false, true} {
-				req := tcRequest(role, tools, parallelOff)
-				req.ToolChoice = "submit"
-				label := fmt.Sprintf("%s tools=%v parallel_off=%v", r.name, tools, parallelOff)
-				check := func(what string, err error) {
-					t.Helper()
-					se := mustErr(t, err)
-					if se.Class != "provider" || se.Reason != "unsupported_capability" || se.Exit != 4 ||
-						!strings.Contains(se.Detail, "ToolChoice") || !strings.Contains(se.Detail, "Messages route anthropic") {
-						t.Errorf("%s %s: %v", label, what, se)
-					}
+			req := tcRequest(role, tools)
+			req.ToolChoice = "submit"
+			label := fmt.Sprintf("%s tools=%v", r.name, tools)
+			check := func(what string, err error) {
+				t.Helper()
+				se := mustErr(t, err)
+				if se.Class != "provider" || se.Reason != "unsupported_capability" || se.Exit != 4 ||
+					!strings.Contains(se.Detail, "ToolChoice") || !strings.Contains(se.Detail, "Messages route anthropic") {
+					t.Errorf("%s %s: %v", label, what, se)
 				}
-				_, err := e.c.Render(req)
-				check("Render", err)
-				_, err = tcRespondWith(t, e, req)
-				check("Respond", err)
 			}
+			_, err := e.c.Render(req)
+			check("Render", err)
+			_, err = tcRespondWith(t, e, req)
+			check("Respond", err)
 		}
 		if n := len(requests()); n != 0 {
 			t.Errorf("%s: %d transport attempts for a refused choice", r.name, n)
 		}
 		// Empty still reaches the route on the same client.
-		if _, err := tcRespondWith(t, e, tcRequest(role, true, false)); err != nil || len(requests()) != 1 {
+		if _, err := tcRespondWith(t, e, tcRequest(role, true)); err != nil || len(requests()) != 1 {
 			t.Errorf("%s: empty choice: err=%v requests=%d", r.name, err, len(requests()))
 		}
 	}
@@ -164,7 +146,7 @@ func TestToolChoiceUnsupported(t *testing.T) {
 			t.Errorf("unknown provider %q reports support", role.Provider)
 		}
 		e, _, _ := tcRoutes[0].setup(t)
-		req := tcRequest(role, true, false)
+		req := tcRequest(role, true)
 		req.ToolChoice = "submit"
 		if _, err := e.c.Render(req); err == nil {
 			t.Errorf("Render accepted unknown provider %q", role.Provider)

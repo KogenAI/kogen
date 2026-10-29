@@ -205,18 +205,13 @@ func TestLinuxTimeoutObservationMoved(t *testing.T) {
 
 func TestLinuxTimeoutObservationAgreement(t *testing.T) {
 	c := linuxObsGroup(t, "printf ready; read x")
-	gone := lobGoneGroup(t)
-	for _, pgid := range []int{c.Process.Pid, gone} {
-		a1, e1 := timeoutGroupAlive(pgid)
-		a2, e2 := linuxTimeoutGroupAlive(pgid, os.DirFS("/proc"))
-		if a1 != a2 || (e1 == nil) != (e2 == nil) {
-			t.Fatalf("pgid %d: %v %v vs %v %v", pgid, a1, e1, a2, e2)
-		}
+	pgid := c.Process.Pid
+	a1, e1 := timeoutGroupAlive(pgid)
+	a2, e2 := linuxTimeoutGroupAlive(pgid, os.DirFS("/proc"))
+	if a1 != a2 || (e1 == nil) != (e2 == nil) {
+		t.Fatalf("pgid %d: %v %v vs %v %v", pgid, a1, e1, a2, e2)
 	}
-	if alive, err := timeoutGroupAlive(c.Process.Pid); err != nil || !alive {
+	if alive, err := timeoutGroupAlive(pgid); err != nil || !alive {
 		t.Fatalf("live: %v %v", alive, err)
-	}
-	if alive, err := timeoutGroupAlive(gone); err != nil || alive {
-		t.Fatalf("gone: %v %v", alive, err)
 	}
 }

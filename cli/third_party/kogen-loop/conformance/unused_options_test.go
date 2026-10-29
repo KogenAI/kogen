@@ -36,7 +36,6 @@ func TestUnusedOptionsRemoved(t *testing.T) {
 	}{
 		{reflect.TypeOf(provider.Request{}), "CacheID"},
 		{reflect.TypeOf(loop.Direct{}), "CacheID"},
-		{reflect.TypeOf(loop.Direct{}), "InputBudgetBytes"},
 		{reflect.TypeOf(provider.Client{}), "ResponseBudget"},
 	} {
 		if _, ok := c.typ.FieldByName(c.field); !ok {
@@ -76,7 +75,7 @@ func TestUnusedOptionsRemoved(t *testing.T) {
 	program := func(body string) string {
 		return "package main\n\nimport (\n\t\"kogen-loop/loop\"\n\t\"kogen-loop/provider\"\n)\n\n" +
 			"var _ = provider.Request{CacheID: \"id\"}\n" +
-			"var _ = loop.Direct{CacheID: \"id\", InputBudgetBytes: 65536}\n" +
+			"var _ = loop.Direct{CacheID: \"id\"}\n" +
 			"var _ = loop.Round{Terminal: []string{\"finish\"}}\n" +
 			"var _ = loop.SessionConfig{Root: \".\"}\n" +
 			"var _ = loop.FailOverBudget{}\n" + body + "\nfunc main() {}\n"

@@ -215,15 +215,6 @@ func TestLDOCRangeNotFound(t *testing.T) {
 	}
 }
 
-// A long query must not turn an ordinary no-match into a synthetic body while fitting.
-func TestLDOCRangeNotFoundLongMetadata(t *testing.T) {
-	o := rangeOrigin(t, map[string]string{"/p": "short page"})
-	out, text := rangeFetch(t, Documentation{ResultBound: 1024}, o, "/p", map[string]any{"find": "absent", "query": strings.Repeat("q", 2000)})
-	if len(text) > 1024 || out["status"] != "not_found" || out["body"] != "" || out["next_offset"] != nil {
-		t.Fatalf("no-match fitting: %s", text)
-	}
-}
-
 func TestLDOCRangeCompatibility(t *testing.T) {
 	lines := ""
 	for i := 0; len(lines) < 163840; i++ {
@@ -296,60 +287,49 @@ func TestLDOCRangeCompatibility(t *testing.T) {
 	}
 }
 
-func TestLDOCRangeConfigured(t *testing.T) {
+// Paging a marked page under the fixed 16384-byte result bound reconstructs the whole body,
+// and a late slice of a clean page stays retrieved.
+func TestLDOCRangeFixedBounds(t *testing.T) {
 	quotes := strings.Repeat(`"`, 3000) + "\n"
 	page := rangePage(t, 163840, map[int]string{0: quotes, 60000: docMarker + "\n", 100000: "late\n"})
 	clean := rangePage(t, 163840, nil)
 	o := rangeOrigin(t, map[string]string{"/p": page, "/c": clean})
-	for _, bound := range []int{0, 1024, 32768} {
-		d := Documentation{ResultBound: bound, BodyBound: 65536}
-		if err := d.Validate(); err != nil {
-			t.Fatal(err)
+	d := Documentation{}
+	offset := 0
+	var got strings.Builder
+	for {
+		out, text := rangeFetch(t, d, o, "/p", map[string]any{"offset": offset})
+		if len(text) > docOutputLimit {
+			t.Fatalf("result is %d bytes", len(text))
 		}
-		limit := bound
-		if limit == 0 {
-			limit = 16384
+		src := rangeSource(out)
+		if rangeInt(t, out, "body_total") != len(page) || rangeInt(t, out, "body_offset") != offset || out["untrusted"] != true {
+			t.Fatalf("at %d: %v", offset, out["body_total"])
 		}
-		offset, calls := 0, 0
-		var got strings.Builder
-		for ; calls < 65536+1; calls++ {
-			out, text := rangeFetch(t, d, o, "/p", map[string]any{"offset": offset})
-			if len(text) > limit {
-				t.Fatalf("bound %d: result is %d bytes", limit, len(text))
-			}
-			src := rangeSource(out)
-			if rangeInt(t, out, "body_total") != 65536 || rangeInt(t, out, "body_offset") != offset || out["untrusted"] != true {
-				t.Fatalf("bound %d at %d: %v", limit, offset, out["body_total"])
-			}
-			// The marker lies inside the first 65536 bytes, so the page is marked even
-			// where the selected slice misses it.
-			if out["status"] != "untrusted" || out["error"] != docUntrusted {
-				t.Fatalf("bound %d at %d: status %v", limit, offset, out["status"])
-			}
-			got.WriteString(src)
-			next, more := out["next_offset"]
-			if !more {
-				break
-			}
-			if int(next.(float64)) != offset+len(src) || len(src) == 0 {
-				t.Fatalf("bound %d at %d: no progress", limit, offset)
-			}
-			offset = int(next.(float64))
+		// The marker lies inside the page, so the page is marked even where the selected
+		// slice misses it.
+		if out["status"] != "untrusted" || out["error"] != docUntrusted {
+			t.Fatalf("at %d: status %v", offset, out["status"])
 		}
-		if calls > 65536 {
-			t.Fatalf("bound %d: paging did not finish", limit)
+		got.WriteString(src)
+		next, more := out["next_offset"]
+		if !more {
+			break
 		}
-		if got.String() != page[:65536] {
-			t.Fatalf("bound %d: reconstruction differs (%d bytes)", limit, got.Len())
+		if int(next.(float64)) != offset+len(src) || len(src) == 0 {
+			t.Fatalf("at %d: no progress", offset)
 		}
+		offset = int(next.(float64))
 	}
-	// A marker beyond BodyBound is never read; a late slice of a clean page stays retrieved.
-	out, _ := rangeFetch(t, Documentation{BodyBound: 65536}, o, "/c", map[string]any{"offset": 70000})
-	if out["status"] != "retrieved" || rangeInt(t, out, "body_offset") != 65536 || out["body"] != "" {
+	if got.String() != page {
+		t.Fatalf("reconstruction differs (%d bytes)", got.Len())
+	}
+	out, _ := rangeFetch(t, d, o, "/c", map[string]any{"offset": 170000})
+	if out["status"] != "retrieved" || rangeInt(t, out, "body_offset") != len(clean) || out["body"] != "" {
 		t.Fatalf("clamped offset: %v", out)
 	}
-	out, _ = rangeFetch(t, Documentation{BodyBound: 65536}, o, "/p", map[string]any{"offset": 100})
-	if out["status"] != "untrusted" || !strings.HasPrefix(out["body"].(string), docMarker) || out["untrusted"] != true {
-		t.Fatalf("marker outside the slice: %v", out["status"])
+	out, _ = rangeFetch(t, d, o, "/c", map[string]any{"offset": 100000})
+	if out["status"] != "retrieved" || rangeInt(t, out, "body_offset") != 100000 {
+		t.Fatalf("late slice of a clean page: %v", out["status"])
 	}
 }

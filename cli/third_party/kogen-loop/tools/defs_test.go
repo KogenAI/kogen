@@ -1,10 +1,13 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 // genericNames are the definitions that live here; testdata/defs_golden.json also holds
@@ -39,7 +42,46 @@ func TestGenericDefinitionsMatchTheGolden(t *testing.T) {
 			if !reflect.DeepEqual(got, want[name]) {
 				t.Errorf("definition differs\n got: %s\nwant: %s", mustJSON(t, got), mustJSON(t, want[name]))
 			}
+			inst, ok := (&Tools{}).Definition(name)
+			if !ok || !bytes.Equal(mustJSON(t, inst), mustJSON(t, def)) {
+				t.Errorf("instance definition differs from the default: %v", ok)
+			}
 		})
+	}
+}
+
+// TestShellTimeoutChangesOnlyTheFullShellDescription checks that the caller-owned timeout is
+// reflected in the full shell description, stably, without touching earlier definitions or
+// another instance, and that a zero timeout restores the default bytes.
+func TestShellTimeoutChangesOnlyTheFullShellDescription(t *testing.T) {
+	instance := &Tools{}
+	old, _ := instance.Definition(ShellTool)
+	before := mustJSON(t, old)
+	instance.ShellTimeout = 2 * time.Second
+	timed, _ := instance.Definition(ShellTool)
+	desc := timed["description"].(string)
+	if !strings.Contains(desc, "2s") || !strings.Contains(desc, "process group") || !strings.Contains(desc, "before") {
+		t.Errorf("timeout description: %s", desc)
+	}
+	again, _ := instance.Definition(ShellTool)
+	if !bytes.Equal(mustJSON(t, timed), mustJSON(t, again)) || !bytes.Equal(before, mustJSON(t, old)) {
+		t.Error("definition mutated or unstable")
+	}
+	untouched, _ := (&Tools{}).Definition(ShellTool)
+	if !bytes.Equal(before, mustJSON(t, untouched)) {
+		t.Error("other instance changed")
+	}
+	for _, name := range genericNames[1:] {
+		def, _ := Definition(name)
+		got, _ := instance.Definition(name)
+		if !bytes.Equal(mustJSON(t, def), mustJSON(t, got)) {
+			t.Errorf("%s changed by the shell timeout", name)
+		}
+	}
+	instance.ShellTimeout = 0
+	restored, _ := instance.Definition(ShellTool)
+	if !bytes.Equal(before, mustJSON(t, restored)) {
+		t.Error("zero timeout not restored")
 	}
 }
 

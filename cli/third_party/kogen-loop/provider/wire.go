@@ -23,9 +23,6 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		return rendered{}, imageRefusal(info)
 	}
 	info.wire = effectiveWire(info, req.Role)
-	if req.DisableParallelToolCalls && info.wire == wireChat {
-		return rendered{}, providerFail("unsupported_capability", "parallel tool calls cannot be disabled on "+info.Label+" (Chat Completions route "+info.Name+"); leave DisableParallelToolCalls false")
-	}
 	if req.ToolChoice != "" && !toolChoiceSupported(info, req.Role) {
 		return rendered{}, providerFail("unsupported_capability", "ToolChoice cannot force a tool on "+info.Label+" ("+wireLabel(info.wire)+" route "+info.Name+"): its thinking mode refuses a forced tool; leave ToolChoice empty")
 	}
@@ -59,9 +56,6 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		if req.ToolChoice != "" {
 			body["tool_choice"] = map[string]any{"type": "function", "name": req.ToolChoice}
 		}
-	}
-	if req.DisableParallelToolCalls {
-		body["parallel_tool_calls"] = false
 	}
 	r := rendered{body: body, mode: "implicit"}
 	switch {

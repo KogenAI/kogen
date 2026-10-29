@@ -12,7 +12,6 @@ import (
 	"sync"
 	"testing"
 
-	"kogen-loop/api"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
@@ -90,84 +89,35 @@ func parallelDefs() []any {
 func disabled(t *testing.T, body map[string]any) bool {
 	t.Helper()
 	tc, _ := body["tool_choice"].(map[string]any)
-	return tc["disable_parallel_tool_use"] == true
+	_, present := tc["disable_parallel_tool_use"]
+	return present
 }
 
+// Through the real loop and Direct the provider's own parallel-call behavior is preserved:
+// no request carries a parallel-call control and the automatic tool_choice stays.
 func TestParallelToolCallsLoop(t *testing.T) {
-	for _, off := range []bool{true, false} {
-		srv := newParallelServer(t, []string{"probe"}, []string{"finish"})
-		client, session := parallelClient(t, srv.srv.URL)
-		d := &Direct{Client: client, Session: session}
-		rd := Round{Role: parallelRole, Instructions: "p", Definitions: parallelDefs(), Tools: &tools.Tools{Session: session}, DisableParallelToolCalls: off}
-		h := Hooks{HandleCall: func(_ context.Context, c tools.Call) (Handled, error) {
-			return Handled{Handled: true, Output: tools.Output{Text: "ok"}}, nil
-		}}
-		res, err := Run(context.Background(), rd, []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "go"}}}}, d, h)
-		if err != nil || res.Requests != 2 || res.Ending != EndTerminal {
-			t.Fatalf("off=%v: %+v %v", off, res, err)
-		}
-		reqs := srv.requests()
-		if len(reqs) != 2 {
-			t.Fatalf("off=%v: %d requests", off, len(reqs))
-		}
-		for i, r := range reqs {
-			if disabled(t, r) != off {
-				t.Errorf("off=%v request %d: tool_choice %v", off, i+1, r["tool_choice"])
-			}
-		}
-	}
-
-	// Measurement uses the configured body: pad so the default body fits exactly and the
-	// configured one exceeds the budget by the added control.
-	srv := newParallelServer(t, []string{"finish"})
+	srv := newParallelServer(t, []string{"probe"}, []string{"finish"})
 	client, session := parallelClient(t, srv.srv.URL)
-	size := func(instr string, off bool) (tools.Measurement, Request) {
-		r := Request{Role: parallelRole, Instructions: instr, Input: []any{}, Tools: parallelDefs(), DisableParallelToolCalls: off}
-		m, err := tools.Measure(client.Body(provider.Request{Role: r.Role, Instructions: r.Instructions, Input: r.Input, Tools: r.Tools, DisableParallelToolCalls: off}), r.Role)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return m, r
-	}
-	base, _ := size("", false)
-	pad := strings.Repeat("a", base.InputBudgetBytes-base.RenderedBytes)
-	if m, _ := size(pad, false); !m.Fits || m.RenderedBytes != m.InputBudgetBytes {
-		t.Fatalf("calibration default: %+v", m)
-	}
-	if m, _ := size(pad, true); m.Fits {
-		t.Fatalf("calibration configured fits: %+v", m)
-	}
-	fob := FailOverBudget{Client: client}
-	if _, err := fob.Prepare(context.Background(), Request{Role: parallelRole, Instructions: pad, Input: []any{}, Tools: parallelDefs()}); err != nil {
-		t.Fatalf("default at the boundary refused: %v", err)
-	}
-	_, err := fob.Prepare(context.Background(), Request{Role: parallelRole, Instructions: pad, Input: []any{}, Tools: parallelDefs(), DisableParallelToolCalls: true})
-	if e, ok := sys.AsError(err); !ok || e.Reason != api.ErrContextBudget {
-		t.Fatalf("configured body over the boundary not refused: %v", err)
-	}
 	d := &Direct{Client: client, Session: session}
-	if _, _, err := d.Request(context.Background(), Request{Role: parallelRole, Instructions: pad, Input: []any{}, Tools: parallelDefs(), DisableParallelToolCalls: true}); err == nil {
-		t.Fatal("Direct sent an over-budget configured request")
+	rd := Round{Role: parallelRole, Instructions: "p", Definitions: parallelDefs(), Tools: &tools.Tools{Session: session}}
+	h := Hooks{HandleCall: func(_ context.Context, c tools.Call) (Handled, error) {
+		return Handled{Handled: true, Output: tools.Output{Text: "ok"}}, nil
+	}}
+	res, err := Run(context.Background(), rd, []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "go"}}}}, d, h)
+	if err != nil || res.Requests != 2 || res.Ending != EndTerminal {
+		t.Fatalf("%+v %v", res, err)
 	}
-	if n := len(srv.requests()); n != 0 {
-		t.Fatalf("%d requests sent despite refusal", n)
+	reqs := srv.requests()
+	if len(reqs) != 2 {
+		t.Fatalf("%d requests", len(reqs))
 	}
-	if _, _, err := d.Request(context.Background(), Request{Role: parallelRole, Instructions: pad, Input: []any{}, Tools: parallelDefs()}); err != nil {
-		t.Fatalf("default at boundary: %v", err)
-	}
-	if reqs := srv.requests(); len(reqs) != 1 || disabled(t, reqs[0]) {
-		t.Fatal("default request carried the control")
-	}
-
-	// Unsupported route refuses through Run before transport.
-	hits := 0
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
-	defer bad.Close()
-	cl, ss := parallelClient(t, bad.URL)
-	_, err = Run(context.Background(), Round{Role: provider.Role{Provider: "openai-compatible", Model: "m", Effort: "default", BaseURL: bad.URL}, DisableParallelToolCalls: true},
-		nil, &Direct{Client: cl, Session: ss}, Hooks{})
-	if err == nil || !strings.Contains(err.Error(), "parallel tool calls") || hits != 0 {
-		t.Fatalf("err=%v hits=%d", err, hits)
+	for i, r := range reqs {
+		if disabled(t, r) {
+			t.Errorf("request %d carried the control: %v", i+1, r["tool_choice"])
+		}
+		if tc, _ := r["tool_choice"].(map[string]any); tc["type"] != "auto" {
+			t.Errorf("request %d tool_choice %v, want auto", i+1, r["tool_choice"])
+		}
 	}
 }
 
@@ -185,13 +135,13 @@ func TestParallelToolCallsBatch(t *testing.T) {
 			return nil
 		},
 	}
-	rd := Round{Role: parallelRole, Instructions: "p", Definitions: parallelDefs(), Tools: &tools.Tools{Session: session}, DisableParallelToolCalls: true}
+	rd := Round{Role: parallelRole, Instructions: "p", Definitions: parallelDefs(), Tools: &tools.Tools{Session: session}}
 	res, err := Run(context.Background(), rd, []any{}, &Direct{Client: client, Session: session}, h)
 	if err != nil || res.Ending != EndTerminal || res.Requests != 1 {
 		t.Fatalf("%+v %v", res, err)
 	}
-	if !disabled(t, srv.requests()[0]) {
-		t.Fatal("control not sent")
+	if disabled(t, srv.requests()[0]) {
+		t.Fatal("parallel-call control sent")
 	}
 	if strings.Join(ran, ",") != "probea0,probec0" {
 		t.Errorf("executed %v", ran)

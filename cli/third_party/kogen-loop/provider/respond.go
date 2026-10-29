@@ -20,10 +20,6 @@ type Request struct {
 	Role         Role
 	Instructions string
 	Input, Tools []any
-	// DisableParallelToolCalls asks the provider not to generate parallel tool calls: Responses
-	// parallel_tool_calls false, Messages tool_choice.disable_parallel_tool_use true. Chat
-	// Completions routes refuse it. False sends today's exact bytes.
-	DisableParallelToolCalls bool
 	// ToolChoice, when nonempty, names the one tool the provider must call for this request
 	// (an API-level requirement): Responses {"type":"function","name":N}, Chat Completions
 	// {"type":"function","function":{"name":N}}. It applies only when Tools is nonempty. A
@@ -31,11 +27,6 @@ type Request struct {
 	// provider/unsupported_capability before any transport, never ignoring it. Empty sends
 	// today's exact bytes.
 	ToolChoice string
-	// AuthorityBoundary, when non-nil, is the zero-based content block index in the first
-	// user message that ends the stable authority; the Messages wire puts one extra
-	// cache breakpoint there (at most four in all). Nil sends today's exact bytes; other
-	// routes ignore it.
-	AuthorityBoundary *int
 	// Single makes ChatGPT attempts single-shot: no retry of transient or unreadable
 	// answers and no refresh after a 401 (the other providers keep their retries).
 	Single bool
@@ -525,7 +516,6 @@ func (r *run) post(ctx context.Context, url string, header map[string]string) (*
 	for k, v := range r.rend.headers {
 		req.Header.Set(k, v)
 	}
-	r.logPrefix()
 	return r.k.do(req)
 }
 
@@ -567,7 +557,6 @@ func (r *run) exchangeResponses(token string) (result, error) {
 	if !k.info.supergrok() {
 		req.Header["User-Agent"] = []string{""}
 	}
-	r.logPrefix()
 	resp, err := k.do(req)
 	if err != nil {
 		return r.transportFailure(ctx, err)

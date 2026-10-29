@@ -15,10 +15,16 @@ import (
 // that scan to complete without any remembered error. A membership witness wins
 // over remembered errors.
 func linuxTimeoutGroupAlive(pgid int, proc fs.FS) (bool, error) {
+	return linuxTimeoutGroupAliveWith(pgid, proc, func(pid, sig int) error { return syscall.Kill(pid, syscall.Signal(sig)) })
+}
+
+// linuxTimeoutGroupAliveWith is linuxTimeoutGroupAlive with the kill syscall
+// supplied by the caller.
+func linuxTimeoutGroupAliveWith(pgid int, proc fs.FS, kill func(pid, sig int) error) (bool, error) {
 	if pgid <= 1 {
 		return false, fmt.Errorf("invalid process group %d", pgid)
 	}
-	err := syscall.Kill(-pgid, 0)
+	err := kill(-pgid, 0)
 	if err == nil || errors.Is(err, syscall.EPERM) {
 		return true, nil
 	}

@@ -44,8 +44,8 @@ var tcRoutes = []tcRoute{
 }
 
 // tcRequest is the fixed request every case sends; only the role and the options vary.
-func tcRequest(role Role, withTools, parallelOff bool) Request {
-	req := Request{Role: role, Instructions: "policy", Input: user("hi"), CacheID: "fixed-cache-id", DisableParallelToolCalls: parallelOff}
+func tcRequest(role Role, withTools bool) Request {
+	req := Request{Role: role, Instructions: "policy", Input: user("hi"), CacheID: "fixed-cache-id"}
 	if withTools {
 		req.Tools = []any{goTool("read_file"), goTool("submit")}
 	}
@@ -54,10 +54,10 @@ func tcRequest(role Role, withTools, parallelOff bool) Request {
 
 // tcRespond runs the real Client.Respond against the route's local fixture and returns the
 // transport bodies it saw and the error.
-func tcRespond(t *testing.T, route tcRoute, mutate func(*Request), withTools, parallelOff bool) ([]recorded, error) {
+func tcRespond(t *testing.T, route tcRoute, mutate func(*Request), withTools bool) ([]recorded, error) {
 	t.Helper()
 	e, role, requests := route.setup(t)
-	req := tcRequest(role, withTools, parallelOff)
+	req := tcRequest(role, withTools)
 	if mutate != nil {
 		mutate(&req)
 	}

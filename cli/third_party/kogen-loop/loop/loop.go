@@ -3,11 +3,6 @@
 // ends the round with a terminal tool call or with an answer that has no tool call. A round
 // ending is the model's claim, never proof that the work is done.
 //
-// Round.MaxRounds (0: no limit, no default) stops a run that would continue after that many
-// requests with *RoundLimitError. Hooks.Progress (nil: disabled, no default) returns a
-// fingerprint after each continuing round; NoProgressRounds identical ones stop the run with
-// *NoProgressError, checked before the round limit.
-//
 // Run is the engine. Callers attach custody, checkpoints, events and policy with Hooks and
 // intercept calls with Hooks.HandleCall; Session is the standalone multi-round conversation.
 package loop
@@ -16,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 
 	"kogen-loop/api"
 	"kogen-loop/provider"
@@ -31,9 +25,6 @@ type Request struct {
 	Instructions string
 	Input        []any // Responses-style input items
 	Tools        []any // model-facing tool definitions, sent verbatim
-	// DisableParallelToolCalls asks the provider not to generate parallel tool calls; a batch
-	// that is returned is still executed in full.
-	DisableParallelToolCalls bool
 }
 
 // Requester sends one request. It returns the response and the input actually sent.
@@ -52,22 +43,10 @@ type FailOverBudget struct {
 	Client  *provider.Client
 	Cache   *provider.Cache
 	CacheID string
-
-	// InputBudgetBytes lowers the input ceiling. Zero keeps the default (524288); otherwise it
-	// must be in [MinInputBudgetBytes, tools.InputBudgetBytes]. It never raises the role's bound.
-	InputBudgetBytes int
 }
-
-// MinInputBudgetBytes is the smallest nonzero FailOverBudget.InputBudgetBytes.
-const MinInputBudgetBytes = 65536
 
 // Prepare returns r.Input unchanged when the request fits.
 func (p FailOverBudget) Prepare(ctx context.Context, r Request) ([]any, error) {
-	if b := p.InputBudgetBytes; b != 0 && (b < MinInputBudgetBytes || b > tools.InputBudgetBytes) {
-		return nil, sys.Fail(api.ErrClassLoop, api.ErrInvalidTask, fmt.Sprintf(
-			"InputBudgetBytes %d is invalid: must be 0 (default) or in [%d, %d]",
-			b, MinInputBudgetBytes, tools.InputBudgetBytes), 2)
-	}
 	if _, ok := provider.Lookup(r.Role.Provider); !ok {
 		// Respond refuses an unknown provider with its own error; there is nothing to measure.
 		return r.Input, nil
@@ -78,16 +57,13 @@ func (p FailOverBudget) Prepare(ctx context.Context, r Request) ([]any, error) {
 	}
 	body := client.Body(provider.Request{
 		Role: r.Role, Instructions: r.Instructions, Input: r.Input, Tools: r.Tools,
-		CacheID: p.CacheID, Cache: p.Cache, DisableParallelToolCalls: r.DisableParallelToolCalls,
+		CacheID: p.CacheID, Cache: p.Cache,
 	})
 	m, err := tools.Measure(body, r.Role)
 	if err != nil {
 		return nil, err
 	}
 	limit := m.InputBudgetBytes
-	if p.InputBudgetBytes != 0 && p.InputBudgetBytes < limit {
-		limit = p.InputBudgetBytes
-	}
 	if m.RenderedBytes > limit {
 		return nil, sys.Fail(api.ErrClassLoop, api.ErrContextBudget, fmt.Sprintf(
 			"%s: complete next request %d bytes exceeds %d; reserve %d tokens. Nothing was sent and nothing was clipped.",
@@ -111,16 +87,12 @@ type Direct struct {
 	Observer provider.Observer // nil: none
 	CacheID  string            // one cache identity per conversation (kept across rounds)
 	Cache    *provider.Cache
-
-	// InputBudgetBytes is passed to FailOverBudget.
-	InputBudgetBytes int
 }
 
 // Request refuses an over-budget request, then sends it with provider.Client.Respond. It
 // returns the response and the input it sent.
 func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []any, error) {
-	sent, err := FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID,
-		InputBudgetBytes: d.InputBudgetBytes}.Prepare(ctx, r)
+	sent, err := FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID}.Prepare(ctx, r)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -130,7 +102,7 @@ func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []
 	}
 	resp, err := client.Respond(ctx, d.Session, provider.Request{
 		Role: r.Role, Instructions: r.Instructions, Input: sent, Tools: r.Tools,
-		CacheID: d.CacheID, Cache: d.Cache, DisableParallelToolCalls: r.DisableParallelToolCalls,
+		CacheID: d.CacheID, Cache: d.Cache,
 	}, d.Observer)
 	if err != nil {
 		return nil, nil, err
@@ -153,53 +125,16 @@ type Hooks struct {
 	BeforeCall    func(ctx context.Context, call tools.Call, input []any) error
 	HandleCall    func(ctx context.Context, call tools.Call) (Handled, error)
 	AfterCall     func(ctx context.Context, call tools.Call, out tools.Output, terminal bool, input []any) error
-	// Progress is called after each round that did not end (after its calls) with the 1-based
-	// round number and returns a progress fingerprint. nil disables the no-progress stop;
-	// there is no default. An error stops the run and is returned unchanged.
-	Progress func(ctx context.Context, round int) (string, error)
-	// TerminalReminder is called once for each reminder Round.TerminalReminders appends, before
-	// the next request, with the 1-based reminder number and the effective terminal names. An
-	// error stops the run and is returned unchanged.
-	TerminalReminder func(ctx context.Context, reminder int, terminals []string) error
-}
-
-// NoProgressRounds is the number of consecutive identical Progress fingerprints that stop a
-// run with NoProgressError. It is a constant, not a setting.
-const NoProgressRounds = 3
-
-// RoundLimitError is returned by Run when Round.MaxRounds requests were sent and the round
-// would have continued. Rounds is the number of rounds run.
-type RoundLimitError struct{ Rounds int }
-
-func (e *RoundLimitError) Error() string {
-	return fmt.Sprintf("loop: round limit reached after %d rounds", e.Rounds)
-}
-
-// NoProgressError is returned by Run when NoProgressRounds consecutive rounds returned an
-// identical Progress fingerprint. Rounds holds those round numbers.
-type NoProgressError struct {
-	Rounds      []int
-	Fingerprint string
-}
-
-func (e *NoProgressError) Error() string {
-	return fmt.Sprintf("loop: no progress in rounds %v (fingerprint %q)", e.Rounds, e.Fingerprint)
 }
 
 // Round describes one round.
 type Round struct {
-	ReadLedger               *ReadLedger // optional caller-owned history across runs
-	Owner                    string
-	Role                     provider.Role
-	Instructions             string
-	Definitions              []any        // tool definitions sent to the model
-	Tools                    *tools.Tools // executes non-handled calls (enabled set, protected/excluded paths)
-	Terminal                 []string     // names that end the round without execution; default ["finish"]
-	DisableParallelToolCalls bool         // ask the provider for one tool call per response; unsupported routes refuse
-	MaxRounds                int          // stop with RoundLimitError after this many requests when the round would continue; 0 is no limit (no default)
-	// TerminalReminders permits that many reminder continuations per Run after a response
-	// without a tool call; nonpositive keeps ending such a round with EndNoCall.
-	TerminalReminders int
+	Owner        string
+	Role         provider.Role
+	Instructions string
+	Definitions  []any        // tool definitions sent to the model
+	Tools        *tools.Tools // executes non-handled calls (enabled set, protected/excluded paths)
+	Terminal     []string     // names that end the round without execution; default ["finish"]
 }
 
 // Ending is how a round ended. Both endings are model claims.
@@ -244,11 +179,6 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if rd.Tools != nil {
-		if err := rd.Tools.Validate(); err != nil {
-			return Result{}, err
-		}
-	}
 	terminal := rd.Terminal
 	if len(terminal) == 0 {
 		terminal = DefaultTerminal
@@ -256,9 +186,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 	if rd.Tools != nil && rd.Tools.Session != nil {
 		defer custody(ctx, rd.Tools.Session)()
 	}
-	requests, reminders := 0, 0
-	var streak []int
-	var fingerprint string
+	requests := 0
 	for {
 		if h.BeforeRequest != nil {
 			if err := h.BeforeRequest(ctx, input); err != nil {
@@ -268,7 +196,6 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 		requests++
 		resp, sent, err := rq.Request(ctx, Request{
 			Owner: rd.Owner, Role: rd.Role, Instructions: rd.Instructions, Input: input, Tools: rd.Definitions,
-			DisableParallelToolCalls: rd.DisableParallelToolCalls,
 		})
 		if err != nil {
 			return Result{}, err
@@ -321,15 +248,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 						}
 						out = o
 					}
-					if rd.Tools != nil {
-						uncut := out.Text
-						out = rd.Tools.Cut(out)
-						if rd.ReadLedger != nil && out.ReadOK {
-							rd.ReadLedger.record(call, out, uncut)
-						}
-					} else {
-						out = out.Cut()
-					}
+					out = out.Cut()
 				}
 			}
 			// A tool can return after custody has terminated its process group.
@@ -352,44 +271,8 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		remind := last == nil && len(calls) == 0 && reminders < rd.TerminalReminders
-		if last == nil && (len(calls) > 0 || remind) {
+		if last == nil && len(calls) > 0 {
 			input = slices.Concat(input, outs)
-			stop := Result{Input: input, Response: resp, Requests: requests}
-			if h.Progress != nil {
-				fp, err := h.Progress(ctx, requests)
-				if err != nil {
-					return Result{}, err
-				}
-				if len(streak) > 0 && fp == fingerprint {
-					streak = append(streak, requests)
-				} else {
-					streak, fingerprint = []int{requests}, fp
-				}
-				if len(streak) >= NoProgressRounds {
-					return stop, &NoProgressError{Rounds: streak, Fingerprint: fp}
-				}
-			}
-			if err := ctx.Err(); err != nil {
-				return Result{}, err
-			}
-			if rd.MaxRounds > 0 && requests >= rd.MaxRounds {
-				return stop, &RoundLimitError{Rounds: requests}
-			}
-			if remind {
-				reminders++
-				if h.TerminalReminder != nil {
-					if err := h.TerminalReminder(ctx, reminders, slices.Clone(terminal)); err != nil {
-						return Result{}, err
-					}
-				}
-				if err := ctx.Err(); err != nil {
-					return Result{}, err
-				}
-				input = slices.Concat(input, []any{map[string]any{
-					"role": "user", "content": "Call one of these terminal tools to end this round: " + strings.Join(terminal, ", ") + ".",
-				}})
-			}
 			continue
 		}
 		res := Result{Ending: EndNoCall, Terminal: last, Input: slices.Concat(input, outs), Response: resp, Requests: requests}

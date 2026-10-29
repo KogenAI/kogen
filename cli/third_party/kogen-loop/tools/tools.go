@@ -26,8 +26,6 @@ type Output struct {
 	Parts []any
 	// Rule is the rule id of a refused shell call, "" otherwise.
 	Rule string
-	// ReadOK marks a successful built-in file or image snapshot.
-	ReadOK bool `json:"-"`
 }
 
 // Typed reports whether the output is typed parts.
@@ -46,62 +44,7 @@ func (o Output) Cut() Output {
 	if o.Parts != nil {
 		return o
 	}
-	return Output{Text: Cut(o.Text), ReadOK: o.ReadOK}
-}
-
-// Cut applies this instance's configured budgets (ResultBound, ResultHead) to a text
-// output; typed parts pass unchanged. The receiver must be valid (see Validate).
-func (t *Tools) Cut(out Output) Output {
-	if out.Parts != nil {
-		return out
-	}
-	bound, head := t.budgets()
-	return Output{Text: cutText(out.Text, bound, head), ReadOK: out.ReadOK}
-}
-
-// New validates options and returns a copy of them.
-func New(options Tools) (*Tools, error) {
-	if err := options.Validate(); err != nil {
-		return nil, err
-	}
-	return &options, nil
-}
-
-// Validate checks the nested Documentation options, then ResultBound and ResultHead: negatives are refused, the resolved bound
-// must be at least 128, the resolved head below it, and at least 64 bytes must remain
-// after the head for the marker and tail.
-func (t *Tools) Validate() error {
-	if err := t.Documentation.Validate(); err != nil {
-		return err
-	}
-	if t.ResultBound < 0 {
-		return fmt.Errorf("tools: ResultBound %d is negative", t.ResultBound)
-	}
-	if t.ResultHead < 0 {
-		return fmt.Errorf("tools: ResultHead %d is negative", t.ResultHead)
-	}
-	bound, head := t.budgets()
-	if bound < minResultBound {
-		return fmt.Errorf("tools: ResultBound %d is below the minimum %d", bound, minResultBound)
-	}
-	if head >= bound {
-		return fmt.Errorf("tools: ResultHead %d must be less than ResultBound %d", head, bound)
-	}
-	if bound-head < minResultTail {
-		return fmt.Errorf("tools: ResultBound %d minus ResultHead %d leaves %d bytes remaining, need at least %d for the marker and tail", bound, head, bound-head, minResultTail)
-	}
-	return nil
-}
-
-func (t *Tools) budgets() (bound, head int) {
-	bound, head = t.ResultBound, t.ResultHead
-	if bound == 0 {
-		bound = maxResult
-	}
-	if head == 0 {
-		head = defaultResultHead
-	}
-	return bound, head
+	return Output{Text: Cut(o.Text)}
 }
 
 // Tools runs the model's tool calls in one repository. A refused or failed call is a tool
@@ -113,10 +56,6 @@ type Tools struct {
 	// Session runs shell commands (the caller's environment, interrupts) and gives Git its
 	// environment. Nil: this process's environment, no interrupts.
 	Session *sys.Session
-	// CompactDescriptions selects shorter model-facing descriptions from Definition.
-	CompactDescriptions bool
-	// OmitViewImage removes view_image from instance definitions and execution. Default false.
-	OmitViewImage bool
 	// ShellTimeout bounds each shell invocation independently. Nonpositive means no limit.
 	ShellTimeout time.Duration
 	// Repo runs the Git commands of list_files and search_text and the candidate tree of
@@ -135,18 +74,11 @@ type Tools struct {
 	Probe func(command string, files any) (string, error)
 	// Documentation is the shaper's documentation tool (user-agent, timeout).
 	Documentation Documentation
-	// ResultBound is the most UTF-8 bytes of a result the engine delivers (see Cut). Zero:
-	// 16384. Library only.
-	ResultBound int
-	// ResultHead is the bytes kept from the start of a longer result. Zero: 4096.
-	ResultHead int
 }
 
 const (
 	maxResult         = 16_384
 	defaultResultHead = 4096
-	minResultBound    = 128
-	minResultTail     = 64
 )
 
 // Run runs one tool call. The arguments are a decoded JSON object (Call.Args).
@@ -157,7 +89,7 @@ func (t *Tools) Run(name string, args map[string]any) (Output, error) {
 // RunContext runs a call, forwarding ctx only for positive ShellTimeout custody.
 // Overall execution custody remains the caller's responsibility.
 func (t *Tools) RunContext(ctx context.Context, name string, args map[string]any) (Output, error) {
-	if !slices.Contains(t.Enabled, name) || (t.OmitViewImage && name == ViewImageTool) {
+	if !slices.Contains(t.Enabled, name) {
 		return Output{Text: "error: unknown tool " + name}, nil
 	}
 	switch name {
@@ -285,7 +217,7 @@ func (t *Tools) readFile(args map[string]any) Output {
 	data, err := readFile(abs)
 	switch {
 	case err == nil:
-		return Output{Text: numbered(string(data), args["start_line"], args["end_line"]), ReadOK: true}
+		return Output{Text: numbered(string(data), args["start_line"], args["end_line"])}
 	case isErrno(err, syscall.ENOENT):
 		return Output{Text: "error: " + path + " does not exist"}
 	case isErrno(err, syscall.EISDIR):

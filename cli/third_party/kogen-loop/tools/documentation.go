@@ -3,7 +3,6 @@ package tools
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -24,56 +23,17 @@ type Documentation struct {
 	Timeout time.Duration
 	// PublicSearch is the search URL prefix; empty is Bing's. The query is appended encoded.
 	PublicSearch string
-	// ResultBound is the most bytes of encoded JSON one Lookup returns; zero is 16384.
-	ResultBound int
-	// BodyBound is the most bytes read from one response body (a prefix, never an error);
-	// zero is 8388608 (8 MiB).
-	BodyBound int
 }
 
 const (
 	docMarker      = "UNTRUSTED-DIRECTIVE-7b9acb97"
 	docOutputLimit = 16_384
 	docBodyLimit   = 8 << 20
-	docMinBound    = 1024
 	docRedirects   = 5
 	docUnsupported = "documentation source unsupported"
 	docUnreachable = "documentation source unreachable"
 	docUntrusted   = "documentation response untrusted"
 )
-
-func (d Documentation) bounds() (result, body int) {
-	result, body = d.ResultBound, d.BodyBound
-	if result == 0 {
-		result = docOutputLimit
-	}
-	if body == 0 {
-		body = docBodyLimit
-	}
-	return result, body
-}
-
-// Validate checks ResultBound and BodyBound: negatives are refused, each resolved bound
-// must be at least 1024 bytes, and the resolved result bound at most the resolved body bound.
-func (d Documentation) Validate() error {
-	if d.ResultBound < 0 {
-		return fmt.Errorf("tools: Documentation.ResultBound %d is negative", d.ResultBound)
-	}
-	if d.BodyBound < 0 {
-		return fmt.Errorf("tools: Documentation.BodyBound %d is negative", d.BodyBound)
-	}
-	result, body := d.bounds()
-	if result < docMinBound {
-		return fmt.Errorf("tools: Documentation.ResultBound %d is below the minimum %d", result, docMinBound)
-	}
-	if body < docMinBound {
-		return fmt.Errorf("tools: Documentation.BodyBound %d is below the minimum %d", body, docMinBound)
-	}
-	if result > body {
-		return fmt.Errorf("tools: Documentation.ResultBound %d must not exceed BodyBound %d", result, body)
-	}
-	return nil
-}
 
 type docSource struct{ URL, Title string }
 
@@ -195,7 +155,7 @@ func (d Documentation) Lookup(args map[string]any) string {
 }
 
 func (d Documentation) encode(r docResult) string {
-	r = d.fit(r)
+	r = docFit(r)
 	b, err := encodeJSON(r.value())
 	if err != nil {
 		return `{"error":"documentation source unsupported","status":"unsupported"}`
@@ -466,8 +426,7 @@ func (d Documentation) once(u string) (int, http.Header, []byte, error) {
 		return 0, nil, nil, err
 	}
 	defer resp.Body.Close()
-	_, bodyBound := d.bounds()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(bodyBound)))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, docBodyLimit))
 	if err != nil {
 		return 0, nil, nil, err
 	}
@@ -653,12 +612,8 @@ func docUTF8(b []byte) string {
 // docFit shrinks the result until its JSON is at most 16384 bytes: sources go last-first
 // once the body is small, the body halves otherwise, an untrusted body always keeps the
 // marker. After 24 rounds only the marker (untrusted) or nothing is left.
-func docFit(r docResult) docResult { return Documentation{}.fit(r) }
-
-// fit is docFit with the configured result bound. Only a configured bound (nonzero
-// ResultBound) also trims query, URL and operation once shrinking is exhausted.
-func (d Documentation) fit(r docResult) docResult {
-	limit, _ := d.bounds()
+func docFit(r docResult) docResult {
+	const limit = docOutputLimit
 	for left := 24; ; left-- {
 		r.derive()
 		if left == 0 {
@@ -668,9 +623,6 @@ func (d Documentation) fit(r docResult) docResult {
 			}
 			r.Sources, r.Truncated = nil, true
 			r.derive()
-			if d.ResultBound != 0 {
-				r = docFitMetadata(r, limit)
-			}
 			return r
 		}
 		if b, err := encodeJSON(r.value()); err == nil && len(b) <= limit {
@@ -693,30 +645,5 @@ func (d Documentation) fit(r docResult) docResult {
 		default:
 			r.Sources, r.Truncated = nil, true
 		}
-	}
-}
-
-// docFitMetadata trims the longest of query, URL and operation, UTF-8-safely, until the
-// JSON fits; keys, status, error and marker stay.
-func docFitMetadata(r docResult, limit int) docResult {
-	for {
-		b, err := encodeJSON(r.value())
-		if err != nil || len(b) <= limit {
-			return r
-		}
-		field := &r.Query
-		for _, f := range []*string{&r.URL, &r.Operation} {
-			if len(*f) > len(*field) {
-				field = f
-			}
-		}
-		if len(*field) == 0 {
-			return r
-		}
-		cut := len(b) - limit
-		if cut > len(*field) {
-			cut = len(*field)
-		}
-		*field = validPrefix((*field)[:len(*field)-cut])
 	}
 }

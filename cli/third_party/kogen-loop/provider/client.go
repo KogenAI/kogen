@@ -30,8 +30,6 @@ type Client struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Cache holds the conversations' cache identities shared by requests that do not bring their own.
 	Cache *Cache
-	// PrefixLog receives synchronous model-attempt events. Set before concurrent use.
-	PrefixLog func(PrefixEvent)
 	// Locker takes the credential locks.
 	Locker Locker
 	// Input is where key logins read their secret; nil is the process's standard input.
@@ -43,10 +41,8 @@ type Client struct {
 	// the package ResponseBudget (30 minutes); a nonzero value must be in [1s, 30m].
 	ResponseBudget time.Duration
 
-	prefixMu     sync.Mutex
-	prefixBodies map[string][]byte
-	httpOnce     sync.Once
-	defHTTP      *http.Client
+	httpOnce sync.Once
+	defHTTP  *http.Client
 }
 
 // NewClient returns a Client with the default transport and no conversation cache identities yet.

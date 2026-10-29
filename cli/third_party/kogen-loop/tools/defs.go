@@ -111,38 +111,15 @@ func Definition(name string) (map[string]any, bool) {
 	return nil, false
 }
 
-// Definition returns a generic definition matching this Tools configuration.
-// OmitViewImage suppresses view_image. CompactDescriptions and a positive ShellTimeout
-// affect descriptions only. Callers pass these
-// definitions and the same Tools instance to Round; package defaults stay unbounded.
+// Definition returns a generic definition matching this Tools configuration. A positive
+// ShellTimeout affects the shell description only. Callers pass these definitions and the
+// same Tools instance to Round; package defaults stay unbounded.
 func (t *Tools) Definition(name string) (map[string]any, bool) {
-	if t.OmitViewImage && name == ViewImageTool {
-		return nil, false
-	}
 	d, ok := Definition(name)
 	if !ok {
 		return d, false
 	}
-	if t.CompactDescriptions {
-		descriptions := map[string]string{
-			ShellTool:         "/bin/sh -c at root; stdin closed; status, combined output. No time limit. Finite: foreground, no polling. Persistent: background, log, read, stop.",
-			ViewImageTool:     "View local static non-interlaced RGB8 PNG: 1..131072 bytes, dimensions 1..2048. Read-only; may resize.",
-			ReadFileTool:      "Read repo-relative file, numbered lines.",
-			WriteFileTool:     "Write repo-relative file; create folders.",
-			ListFilesTool:     "List non-ignored files.",
-			SearchTextTool:    "Git grep regex; path:line:text.",
-			DocumentationTool: "Search/fetch docs; offset: byte; find: heading/line.",
-		}
-		d["description"] = descriptions[name]
-		if name == DocumentationTool {
-			d["parameters"].(map[string]any)["properties"].(map[string]any)["base"].(map[string]any)["description"] = "Optional origin: requests use it, no other host."
-		}
-	}
 	if name == ShellTool && t.ShellTimeout > 0 {
-		if t.CompactDescriptions {
-			d["description"] = strings.Replace(d["description"].(string), "No time limit.", "Time limit: "+t.ShellTimeout.String()+" per call; the process group is stopped before timeout feedback.", 1)
-			return d, true
-		}
 		d["description"] = strings.Replace(d["description"].(string), "Commands have no time limit.",
 			"Each shell call has a caller-configured time limit of "+t.ShellTimeout.String()+". A timed-out command's process group is stopped before a timed-out result is returned.", 1)
 	}

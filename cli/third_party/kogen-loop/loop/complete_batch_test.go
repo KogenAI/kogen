@@ -29,10 +29,7 @@ func TestCompleteBatchRunsAfterTerminalAndLastTerminalWins(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tl, err := tools.New(tools.Tools{Root: root, Enabled: []string{tools.ReadFileTool, tools.WriteFileTool}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	tl := &tools.Tools{Root: root, Enabled: []string{tools.ReadFileTool, tools.WriteFileTool}}
 	items := []map[string]any{
 		fcall("r", "read_file", `{"path":"a.txt"}`), fcall("t1", "finish", "{}"),
 		fcall("w", "write_file", `{"path":"b.txt","content":"x"}`), fcall("t2", "finish", "{}"),

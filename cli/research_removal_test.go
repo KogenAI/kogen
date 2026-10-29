@@ -194,7 +194,7 @@ func TestResearchRemovalDefaults(t *testing.T) {
 			t.Fatalf("%d bytes, marker at %d: %.120q", len(cut), loc, cut[max(0, loc-10):])
 		}
 		for i, text := range knobFixtureRaw() {
-			if got, want := tl.Cut(tools.Output{Text: text}).Text, tools.Cut(text); got != want {
+			if got, want := (tools.Output{Text: text}).Cut().Text, tools.Cut(text); got != want {
 				t.Errorf("cut %d: %d bytes, default %d", i, len(got), len(want))
 			}
 		}
@@ -205,9 +205,6 @@ func TestResearchRemovalDefaults(t *testing.T) {
 	})
 
 	t.Run("documentation keeps its pinned defaults", func(t *testing.T) {
-		if err := (tools.Documentation{}).Validate(); err != nil {
-			t.Fatal(err)
-		}
 		origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			for i := 0; i < 4000; i++ {
 				fmt.Fprintf(w, "line %05d\n", i)
@@ -221,9 +218,6 @@ func TestResearchRemovalDefaults(t *testing.T) {
 	})
 
 	t.Run("a plain request has no authority boundary and equals the previous pin's", func(t *testing.T) {
-		if (provider.Request{}).AuthorityBoundary != nil {
-			t.Fatal("the authority boundary is enabled")
-		}
 		raw, err := os.ReadFile("testdata/loop_knobs_golden.json")
 		if err != nil {
 			t.Fatal(err)
