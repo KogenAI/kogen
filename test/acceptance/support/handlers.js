@@ -119,16 +119,15 @@ function setConfigKey(world, key, value) {
     'models.build': /^  build:.*$/m,
     'models.review': /^  review:.*$/m,
     shape_workers: /^shape_workers:.*$/m,
-    tool_shell_timeout_seconds: /^tool_shell_timeout_seconds:.*$/m,
   };
-  if ((key === 'shape_workers' || key === 'tool_shell_timeout_seconds') && !lineMap[key].test(content)) content = `${content.replace(/\n*$/, '\n')}${key}: placeholder\n`;
+  if (key === 'shape_workers' && !lineMap[key].test(content)) content = `${content.replace(/\n*$/, '\n')}${key}: placeholder\n`;
   const line = lineMap[key];
   assert.ok(line, `unsupported config setting in fixture: ${key}`);
   const formatted = value === 'null' ? 'null' : value;
   if (key === 'commands.acceptance.run' && formatted !== 'null' && !formatted.startsWith("'") && !formatted.startsWith('"')) {
     content = content.replace(line, `    run: '${formatted.replaceAll("'", "''")}'`);
   } else {
-    content = content.replace(line, `${key === 'protect' || key === 'shape_workers' || key === 'tool_shell_timeout_seconds' ? key : key.endsWith('.run') ? '    run' : key.endsWith('.steps_dir') ? '    steps_dir' : `  ${key.split('.').at(-1)}`}: ${formatted}`);
+    content = content.replace(line, `${key === 'protect' || key === 'shape_workers' ? key : key.endsWith('.run') ? '    run' : key.endsWith('.steps_dir') ? '    steps_dir' : `  ${key.split('.').at(-1)}`}: ${formatted}`);
   }
   fs.writeFileSync(file, content);
   git(world, ['add', '--', '.kogen/project.yaml']);

@@ -125,7 +125,7 @@ type reviewRun struct {
 }
 
 func (b *Attempt) reviewNativeTools() *tools.Tools {
-	return &tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout}
+	return &tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: reviewToolNames, Protected: b.Baseline, Excluded: b.Excluded}
 }
 func reviewTools(t *tools.Tools) []any {
 	return shellDefinitions(t, slices.Concat(reviewToolNames, []string{agent.SubmitReviewTool}))

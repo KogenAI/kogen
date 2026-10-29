@@ -324,11 +324,6 @@ func TestKReviewRetrySafetyBoundaries(t *testing.T) {
 		eq(t, "response budget", provider.ResponseBudget, 30*time.Minute)
 		eq(t, "request ceiling", agent.InputBudgetBytes, 524288)
 		eq(t, "output reserve", agent.OutputReserveTokens, 131072)
-		cfg, err := project.LoadConfig(newEnv(t).root)
-		if err != nil {
-			t.Fatal(err)
-		}
-		eq(t, "default shell timeout", cfg.ShellTimeout, time.Duration(0))
 		eq(t, "api forcing needs a supporting route", provider.SupportsToolChoice(provider.Role{Provider: "anthropic", Model: "claude-sonnet-5-5"}), false)
 		eq(t, "compatible hosts force through Chat Completions tool_choice", provider.SupportsToolChoice(provider.Role{Provider: "openai-compatible", Model: "local"}), true)
 	})

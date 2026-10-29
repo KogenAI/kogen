@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"kogen-loop/sys"
 )
@@ -750,40 +749,6 @@ func TestNativeRoleJSONKeepsItsBytes(t *testing.T) {
 	b, _ = json.Marshal(Role{Model: "m", Effort: "e", Executor: "claude-code", MaxRounds: 4})
 	if string(b) != `{"Provider":"","Model":"m","Effort":"e","Executor":"claude-code","MaxRounds":4}` {
 		t.Fatalf("%s", b)
-	}
-}
-
-func TestShellTimeoutConfig(t *testing.T) {
-	for _, tc := range []struct {
-		value   string
-		seconds int64
-		invalid bool
-	}{
-		{"", 0, false}, {"1", 1, false}, {"2", 2, false}, {"9223372036", 9223372036, false},
-		{"9223372037", 0, true}, {"0", 0, true}, {"-1", 0, true}, {"1.5", 0, true}, {"'one'", 0, true}, {"{unknown: 1}", 0, true}, {"{seconds: 1}", 0, true},
-	} {
-		text := "version: 1\n"
-		if tc.value != "" {
-			text += "tool_shell_timeout_seconds: " + tc.value + "\n"
-		}
-		cfg, err := ParseConfig(text, "test")
-		if tc.invalid {
-			if err == nil {
-				t.Fatalf("%s: missing error", tc.value)
-			}
-			se, ok := sys.AsError(err)
-			if !ok || !strings.Contains(se.Render(), "tool_shell_timeout_seconds") {
-				t.Fatalf("%s: %v", tc.value, err)
-			}
-			continue
-		}
-		if err != nil || cfg.ShellTimeout != time.Duration(tc.seconds)*time.Second {
-			t.Fatalf("%s: %v %v", tc.value, cfg, err)
-		}
-		round, err := ParseConfig(RenderConfig(cfg), "rendered")
-		if err != nil || round.ShellTimeout != cfg.ShellTimeout {
-			t.Fatalf("round trip %s: %v", tc.value, err)
-		}
 	}
 }
 

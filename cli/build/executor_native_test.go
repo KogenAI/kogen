@@ -387,7 +387,6 @@ func TestNativeRoundMapsCancellationButKeepsTheSessionsInterrupt(t *testing.T) {
 	prov := newFakeProvider(t)
 	prov.then(respondWith([]map[string]any{prov.call("shell", map[string]any{"command": "sleep 30"}), prov.call("finish", map[string]any{"summary": "x"})}, nil))
 	b := newConformanceAttempt(t, root, home, prov, true)
-	b.Config.ShellTimeout = time.Second
 	sess, _ := nativeExecutor{b: b}.Start(context.Background(), executor.Task{Brief: executor.Brief{Stable: "s", Dynamic: "d"}}, nil)
 	// The caller interrupts the Session: the round returns the interrupt, exit code intact.
 	go func() {
@@ -404,7 +403,7 @@ func TestNativeRoundMapsCancellationButKeepsTheSessionsInterrupt(t *testing.T) {
 	}
 }
 
-func TestNativeBoundedShellContextCancellationStops(t *testing.T) {
+func TestNativeShellContextCancellationStops(t *testing.T) {
 	root := conformance.NewCheckout(t)
 	home := physical(t, t.TempDir())
 	seedLogin(t, home)
@@ -412,7 +411,6 @@ func TestNativeBoundedShellContextCancellationStops(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "started")
 	prov.then(respondWith([]map[string]any{prov.call("shell", map[string]any{"command": "echo started > '" + marker + "'; sleep 30"})}, nil))
 	b := newConformanceAttempt(t, root, home, prov, true)
-	b.Config.ShellTimeout = 10 * time.Second
 	sess, _ := nativeExecutor{b: b}.Start(context.Background(), executor.Task{Brief: executor.Brief{Stable: "s", Dynamic: "d"}}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

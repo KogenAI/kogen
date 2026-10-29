@@ -1,9 +1,7 @@
 package project
 
 import (
-	"fmt"
 	"strings"
-	"time"
 )
 
 // Template is the configuration `kogen init` writes before it keeps any detected command (SET-8):
@@ -78,9 +76,6 @@ func RenderConfig(c *Config) string {
 		lines = append(lines, templateLine("protect:"))
 	} else {
 		lines = append(lines, "protect:\n"+strings.Join(prefixed("  - ", quoted(c.Protect)), "\n"))
-	}
-	if c.ShellTimeout > 0 {
-		lines = append(lines, fmt.Sprintf("tool_shell_timeout_seconds: %d", c.ShellTimeout/time.Second))
 	}
 	lines = append(lines, "models:")
 	_, models, _ := strings.Cut(Template(), "models:\n")

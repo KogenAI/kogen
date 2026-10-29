@@ -593,12 +593,9 @@ configuration is unchanged. The verification-level `no_progress` stop (a native 
 answering without a tool call to the same red verification pass) and
 `executor_no_progress` remain.
 
-## Native shell time bound
+## Removed shell time limit
 
-`tool_shell_timeout_seconds: 1` is an opt-in positive whole-second per-invocation
-limit for native Build and independent Review shell calls. The default, when absent,
-is unbounded. Timeout feedback follows owned process-group teardown; interruption
-and cancellation stop the run instead. Shape and Refine probe calls, including
-Shape worker probes, retain their five-minute behavior. Configured setup, fix,
-check and acceptance commands are unaffected. This key does not apply to the
-external `claude-code` executor.
+The opt-in `tool_shell_timeout_seconds` option was removed. Native Build and
+independent Review shell calls have no time limit, and no setting adds one. A
+`.kogen/project.yaml` that still names the key is refused as an unknown key, not
+ignored or migrated; delete the line. There is no per-call model-shell limit.

@@ -82,15 +82,6 @@ Feature: Building
     Then the tool result for "shell sleep 2" contains "exit status: 0"
     And the exit code is 0
 
-  @LOOP-5 @LOOP-11
-  Scenario: Caller opts in to native shell bounds
-    Given the project config sets "tool_shell_timeout_seconds" to "1"
-    And the Intent "is-even" from fixture "is-even" is approved
-    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 3"
-    When the caller runs "kogen intent build is-even"
-    Then the tool result for "shell sleep 3" contains "timed out after 1s"
-    And the exit code is 0
-
   @LOOP-5
   Scenario: A command that asks for input fails at once instead of waiting
     Given the Intent "is-even" from fixture "is-even" is approved
