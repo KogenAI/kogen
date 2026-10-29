@@ -30,10 +30,11 @@ const (
 )
 
 type refOpts struct {
-	approved bool // the draft carries a current approval
-	source   bool // the draft carries a source receipt
-	red      bool // the original's dry run fails its scenarios
-	external int  // >0: the shape role is claude-code with this max_rounds (lineup tests)
+	approved bool       // the draft carries a current approval
+	source   bool       // the draft carries a source receipt
+	red      bool       // the original's dry run fails its scenarios
+	external int        // >0: the shape role is claude-code with this max_rounds (lineup tests)
+	wire     *forceWire // non-nil: the shape role is this provider route (force tests)
 }
 
 type refFx struct {
@@ -50,6 +51,9 @@ func newRefFx(t *testing.T, o refOpts, steps ...shpStep) *refFx {
 	f := &refFx{shpFx: newShpFx(t, steps...)}
 	if o.external > 0 {
 		f.useExternalShape(o.external)
+	}
+	if o.wire != nil {
+		o.wire.configure(f.shpFx)
 	}
 	status, code := "PASSED", 0
 	if o.red {
@@ -89,7 +93,7 @@ func newRefFx(t *testing.T, o refOpts, steps ...shpStep) *refFx {
 		f.approval = f.read(".kogen/local/approvals/is-even.json")
 	}
 	f.Prov.mu.Lock()
-	f.Prov.reqs = nil
+	f.Prov.reqs, f.Prov.raws = nil, nil
 	f.Prov.mu.Unlock()
 	return f
 }
@@ -886,14 +890,15 @@ func TestRefineThreeInvalidSubmissionsStopIt(t *testing.T) {
 		refMessage("done"),
 		shpAnswer(shpCall("c1", "submit_refinement", map[string]any{"files": []any{}})),
 		shpAnswer(shpCall("c2", "submit_refinement", map[string]any{"files": []any{map[string]any{"path": refIntentPath}}})),
-		refSubmit("c3", refIntentPath, refTitled),
+		shpAnswer(shpCall("c3", "submit_refinement", map[string]any{"files": []any{map[string]any{"path": refIntentPath}}})),
+		refSubmit("c4", refIntentPath, refTitled),
 	)
 	before := f.pkg()
 	exit, err := f.refine(f.hash0)
 	e := shpWantError(t, err, "shape", "refinement_invalid", "no valid ready correction after 3 submissions; the original draft is preserved", 1)
 	shpEq(t, "exit", exit, 1)
 	shpEq(t, "lines", strings.Join(e.Lines, "|"), strings.Join(strings.Split(refineInvalidFiles, "\n"), "|"))
-	shpEq(t, "requests", len(f.Prov.requests()), 3)
+	shpEq(t, "requests", len(f.Prov.requests()), 4)
 	refText(t, "empty files", shpOutputs(f.Prov.requests()[2])["c1"], refineInvalidShape)
 	refEqual(t, "package", f.pkg(), before)
 	rendered := e.Render()

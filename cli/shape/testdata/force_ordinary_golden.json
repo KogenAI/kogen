@@ -1,0 +1,86 @@
+{
+  "refine/chat": [
+    {
+      "bytes": 33055,
+      "body_sha256": "a3a4caed40699e8697b43708498e2dd7605334835bbffdb7d8267ae3ef8d7423",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      }
+    },
+    {
+      "bytes": 34098,
+      "body_sha256": "90329f97f7ad4a93db20e838ead760a175e8ef956c800b1f4dd3e619b4171175",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      }
+    }
+  ],
+  "refine/responses": [
+    {
+      "bytes": 33047,
+      "body_sha256": "eb83d61243e17d0f7bbb960a7800ba6ab8aac8fc3420e8e8791bdb3a4890b915",
+      "headers": {
+        "Accept": "text/event-stream",
+        "Authorization": "Bearer access",
+        "Content-Type": "application/json",
+        "Conversation_id": "conversation-\u003cCACHE\u003e",
+        "Session_id": "conversation-\u003cCACHE\u003e"
+      }
+    },
+    {
+      "bytes": 34046,
+      "body_sha256": "6c0b66a8c9926d5a5585742fb856e3561c9219899e2e97f5181f29b95763a792",
+      "headers": {
+        "Accept": "text/event-stream",
+        "Authorization": "Bearer access",
+        "Content-Type": "application/json",
+        "Conversation_id": "conversation-\u003cCACHE\u003e",
+        "Session_id": "conversation-\u003cCACHE\u003e"
+      }
+    }
+  ],
+  "shape/chat": [
+    {
+      "bytes": 39958,
+      "body_sha256": "3c11057f25464bc68d4d687ff38decb0f95d24ec58b773c0d7cf5466125263e6",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      }
+    },
+    {
+      "bytes": 44105,
+      "body_sha256": "b6a18d3248b05a04111df2ae8ee0161915ba22dbe6c3a5c465dd40b9cd405369",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      }
+    }
+  ],
+  "shape/responses": [
+    {
+      "bytes": 39937,
+      "body_sha256": "184b7d3c2eabe7a5b200c984a2fd5bdef78269fc1a9977fbc1d0f483deaf9cda",
+      "headers": {
+        "Accept": "text/event-stream",
+        "Authorization": "Bearer access",
+        "Content-Type": "application/json",
+        "Conversation_id": "conversation-\u003cCACHE\u003e",
+        "Session_id": "conversation-\u003cCACHE\u003e"
+      }
+    },
+    {
+      "bytes": 44047,
+      "body_sha256": "c4a0f40121ced3636c3e95db5227f38771357bef157c273fae197d390ef0dfc0",
+      "headers": {
+        "Accept": "text/event-stream",
+        "Authorization": "Bearer access",
+        "Content-Type": "application/json",
+        "Conversation_id": "conversation-\u003cCACHE\u003e",
+        "Session_id": "conversation-\u003cCACHE\u003e"
+      }
+    }
+  ]
+}

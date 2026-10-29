@@ -119,7 +119,7 @@ func TestSubmissionRetryRefine(t *testing.T) {
 				}
 				var steps []shpStep
 				for i := 0; i < count; i++ {
-					steps = append(steps, refMessage("done"))
+					steps = append(steps, shpAnswer(shpCall(fmt.Sprint("i", i), "submit_refinement", map[string]any{"files": []any{}})))
 				}
 				if success {
 					steps = append(steps, refSubmit("valid", refIntentPath, refTitled))

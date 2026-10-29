@@ -509,6 +509,7 @@ const (
 	outQuestions
 	outBlocked
 	outReady
+	outNoTool
 )
 
 type outcome struct {
@@ -590,6 +591,10 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 		e := sys.Fail("shape", "invalid_output", fmt.Sprintf("the shaper's output was not a valid Intent after %d attempts", submissionRetryLimit(sh.in.SubmissionRetryLimit)), 1)
 		e.Lines = res.problems
 		return 0, e
+	case outNoTool:
+		e := sys.Fail("shape", "invalid_output", fmt.Sprintf("the shaper answered without calling any tool %d times (no-tool limit); no submission was made", noToolLimit), 1)
+		e.Lines = res.problems
+		return 0, e
 	case outQuestions:
 		round := map[string]any{"questions": questionList(res.questions), "answers": map[string]any{}}
 		st.Rounds = append(st.Rounds, round)
@@ -661,7 +666,8 @@ func (sh *shaping) providerFailed(e *sys.Error) error {
 // (SHP-4, SHP-8).
 func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider.Usage, error) {
 	var usage provider.Usage
-	invalid := 0
+	turns := newTurns("shape")
+	defer turns.counts(sh.ev)
 	for {
 		sh.requests++
 		sh.s.Progress(fmt.Sprintf("kogen: shaping (request %d, %d s)", sh.requests, sh.elapsed()))
@@ -690,22 +696,24 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 			Role: ProviderRole(sh.role), Instructions: ShaperInstructions(), Input: input, Tools: sh.toolDefs,
 			Scope: sh.ev.Dir, Context: map[string]any{"phase": "shape", "role": "shape", "slug": sh.slug},
 		}, sh.cacheID)
+		turns.apply(&req)
 		input, err = sh.window.prepare(windowPrep{role: req.Role,
 			root: sh.root, ev: sh.ev, progress: sh.progress,
 			render: func(items []any) map[string]any { r := req; r.Input = items; return sh.client.Body(r) },
 			state: func(head windowRef, count int, snapshot map[string]any, observations []any) map[string]any {
-				return map[string]any{
+				return turns.extend(map[string]any{
 					"history": map[string]any{"head": head.value(), "count": count}, "manifest": manifest,
 					"declared_steps": nonNilStrings(sh.declaredSteps), "inspected": sh.inspected,
-					"documentation": snapshot, "invalid_submissions": invalid, "readiness": windowReadyRecord(sh.ready),
+					"documentation": snapshot, "invalid_submissions": turns.invalid, "readiness": windowReadyRecord(sh.ready),
 					"assistant_observations": observations,
-				}
+				})
 			},
 		}, input)
 		if err != nil {
 			return outcome{}, usage, err
 		}
 		req.Input = input
+		turns.announce(req, sh.role, sh.ev)
 		call := sh.ev.BeginCall("shape", "", revision.Map(), "main shaping", sh.role).Sized(sh.client, req)
 		resp, err := tools.Deliver(input, "shape", sh.ev.Record, func() (*provider.Response, error) {
 			r, err := research.Respond(ctx, sh.client, sh.s, req, call)
@@ -719,6 +727,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 		usage = usage.Add(resp.Usage)
 		calls := tools.Calls(resp.Items)
 		input = append(input, tools.Replay(resp.Items)...)
+		toolFree := turns.answered(len(calls))
 
 		var outputs []any
 		var result outcome
@@ -745,7 +754,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 				sh.batchUsed = true
 				outputs = append(outputs, toolOutput(c, string(text)))
 			case c.Name == agent.SubmitTool:
-				sh.priorInvalid = invalid
+				sh.priorInvalid = turns.invalid
 				text, r, err := sh.submit(ctx, c.Args())
 				if err != nil {
 					return outcome{}, usage, err
@@ -773,22 +782,22 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 		input = append(input, outputs...)
 
 		switch {
-		case result.kind == outInvalid && invalid+1 >= submissionRetryLimit(sh.in.SubmissionRetryLimit):
-			return result, usage, nil
 		case result.kind == outInvalid:
-			invalid++
+			turns.invalid++
+			if turns.invalid >= submissionRetryLimit(sh.in.SubmissionRetryLimit) {
+				return result, usage, nil
+			}
 			sh.ev.NextAttempt()
 		case result.kind == outObservations:
 			sh.ev.NextAttempt()
 		case result.kind == outBlocked, result.kind == outQuestions, result.kind == outReady:
 			return result, usage, nil
-		case len(calls) == 0:
-			if invalid+1 >= submissionRetryLimit(sh.in.SubmissionRetryLimit) {
-				return outcome{kind: outInvalid, problems: []string{"the shaper ended without calling submit"}}, usage, nil
+		case toolFree:
+			if turns.exhausted() {
+				return outcome{kind: outNoTool, problems: []string{"the shaper ended without calling submit"}}, usage, nil
 			}
 			sh.ev.NextAttempt()
-			input = append(input, map[string]any{"role": "user", "content": "End by calling submit with either questions or files."})
-			invalid++
+			input = append(input, map[string]any{"role": "user", "content": turns.reminder})
 		}
 	}
 }

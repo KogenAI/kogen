@@ -881,7 +881,8 @@ func (r *refine) converseExternal(ctx context.Context, role project.Role, blocks
 // correction, or three invalid or not-ready submissions (SHP-11).
 func (r *refine) converse(ctx context.Context, role project.Role, defs []any, input []any) (map[string]string, *verify.Ready, provider.Usage, error) {
 	var usage provider.Usage
-	invalid := 0
+	turns := newTurns("refine")
+	defer turns.counts(r.ev)
 	for {
 		if err := interrupted(ctx, r.s); err != nil {
 			return nil, nil, usage, err
@@ -927,6 +928,7 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 			Role: ProviderRole(role), Instructions: refineInstructions(), Input: input, Tools: defs,
 			Scope: r.ev.Dir, Context: map[string]any{"phase": "shape", "role": "shape", "slug": r.slug},
 		}, r.cacheID)
+		turns.apply(&req)
 		input, err = r.window.prepare(windowPrep{role: req.Role,
 			root: r.root, ev: r.ev, progress: r.s.Progress,
 			render: func(items []any) map[string]any { q := req; q.Input = items; return r.client.Body(q) },
@@ -935,18 +937,19 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 				for _, p := range sortedKeys(r.originals) {
 					frozen = append(frozen, map[string]any{"path": p, "sha256": ContentHash(r.originals[p])})
 				}
-				return map[string]any{
+				return turns.extend(map[string]any{
 					"history": map[string]any{"head": head.value(), "count": count}, "manifest": manifest,
 					"frozen_originals": frozen, "ownership": nonNilStrings(r.allowed),
-					"documentation": snapshot, "invalid_submissions": invalid, "readiness": windowReadyRecord(r.observed),
+					"documentation": snapshot, "invalid_submissions": turns.invalid, "readiness": windowReadyRecord(r.observed),
 					"assistant_observations": observations,
-				}
+				})
 			},
 		}, input)
 		if err != nil {
 			return nil, nil, usage, err
 		}
 		req.Input = input
+		turns.announce(req, role, r.ev)
 		call := r.ev.BeginCall("shape", "", map[string]any{"head": r.head, "tree": r.tree}, "targeted refinement", role).Sized(r.client, req)
 		resp, err := research.Respond(ctx, r.client, r.s, req, call)
 		call.End(resp, err)
@@ -957,6 +960,7 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 		usage = usage.Add(resp.Usage)
 		replay := tools.Replay(resp.Items)
 		calls := tools.Calls(resp.Items)
+		toolFree := turns.answered(len(calls))
 
 		var outputs []any
 		var result refineOutcome
@@ -1004,20 +1008,23 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 		case refineConstrained:
 			return nil, nil, usage, refineConstraint(result.reason)
 		}
-		if result.kind == refineInvalid || len(calls) == 0 {
-			invalid++
+		if result.kind == refineInvalid {
+			turns.invalid++
 			r.ev.NextAttempt()
-		}
-		if invalid >= submissionRetryLimit(r.in.SubmissionRetryLimit) {
-			e := sys.Fail("shape", "refinement_invalid",
-				fmt.Sprintf("no valid ready correction after %d submissions; the original draft is preserved", submissionRetryLimit(r.in.SubmissionRetryLimit)), 1)
-			if result.kind == refineInvalid {
+			if turns.invalid >= submissionRetryLimit(r.in.SubmissionRetryLimit) {
+				e := sys.Fail("shape", "refinement_invalid",
+					fmt.Sprintf("no valid ready correction after %d submissions; the original draft is preserved", submissionRetryLimit(r.in.SubmissionRetryLimit)), 1)
 				e.Lines = strings.Split(result.diagnostic, "\n")
+				return nil, nil, usage, e
 			}
-			return nil, nil, usage, e
 		}
-		if len(calls) == 0 {
-			input = append(input, map[string]any{"role": "user", "content": "Call submit_refinement with a nonempty files array of complete existing owned artifact contents (edits or readiness acknowledgment), or constraint."})
+		if toolFree {
+			r.ev.NextAttempt()
+			if turns.exhausted() {
+				return nil, nil, usage, sys.Fail("shape", "refinement_invalid",
+					fmt.Sprintf("the refiner answered without calling any tool %d times (no-tool limit); no correction was submitted and the original draft is preserved", noToolLimit), 1)
+			}
+			input = append(input, map[string]any{"role": "user", "content": turns.reminder})
 		}
 	}
 }

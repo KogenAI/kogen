@@ -39,11 +39,18 @@ type shpProvider struct {
 	srv  *httptest.Server
 	mu   sync.Mutex
 	reqs []map[string]any
+	raws []shpRaw
 	seq  []shpStep
 	next int
 	// route, when set, chooses the answer by what the request says; nil falls back to the
 	// sequence.
 	route func(req map[string]any) *shpStep
+}
+
+// shpRaw is one request as it arrived: the exact body bytes and the headers.
+type shpRaw struct {
+	body   []byte
+	header http.Header
 }
 
 func newShpProvider(t *testing.T, steps ...shpStep) *shpProvider {
@@ -59,6 +66,7 @@ func (p *shpProvider) serve(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(body, &req)
 	p.mu.Lock()
 	p.reqs = append(p.reqs, req)
+	p.raws = append(p.raws, shpRaw{body: body, header: r.Header.Clone()})
 	n := len(p.reqs) - 1
 	var step shpStep
 	route := p.route
@@ -121,6 +129,13 @@ func (p *shpProvider) requests() []map[string]any {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]map[string]any(nil), p.reqs...)
+}
+
+// rawRequests are the exact bodies and headers received, in order.
+func (p *shpProvider) rawRequests() []shpRaw {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]shpRaw(nil), p.raws...)
 }
 
 // shpCall is a function call item.
