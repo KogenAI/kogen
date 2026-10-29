@@ -36,9 +36,6 @@ type Request struct {
 	// cache breakpoint there (at most four in all). Nil sends today's exact bytes; other
 	// routes ignore it.
 	AuthorityBoundary *int
-	// Budget caps the logical call's absolute wait; zero or more than ResponseBudget means
-	// ResponseBudget.
-	Budget time.Duration
 	// Single makes ChatGPT attempts single-shot: no retry of transient or unreadable
 	// answers and no refresh after a 401 (the other providers keep their retries).
 	Single bool
@@ -119,6 +116,8 @@ type run struct {
 	requestID   string
 	cacheStatus string
 	respMeta    map[string]any
+	so          *streamObs // the current attempt's stream observations
+	watch       *idleWatch // the current attempt's first-byte and idle timer
 }
 
 type operation struct {
@@ -186,7 +185,7 @@ func (c *Client) Body(req Request) map[string]any {
 // Respond sends one request and returns the validated answer. Provider failures are
 // *sys.Error (class provider, exit 4, reason context_too_long when the conversation no
 // longer fits); an interrupt is *sys.Interrupted. One logical call has a 30-minute
-// budget (lowerable by Client.ResponseBudget and Request.Budget) shared by credentials, refresh, retries and backoff (GPT-8).
+// budget (lowerable by Client.ResponseBudget) shared by credentials, refresh, retries and backoff (GPT-8).
 func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs Observer) (*Response, error) {
 	info, ok := Lookup(req.Role.Provider)
 	if !ok {
@@ -201,9 +200,6 @@ func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs O
 			return nil, sys.Fail("provider", "refused", "response budget must be zero or between 1s and 30m0s", 4)
 		}
 		budget = c.ResponseBudget
-	}
-	if req.Budget > 0 && req.Budget < budget {
-		budget = req.Budget
 	}
 	if info.compatible() && req.Role.BaseURL == "" {
 		return nil, sys.Fail("provider", "refused", "openai-compatible needs base_url in .kogen/project.yaml", 4)
@@ -236,9 +232,10 @@ func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs O
 			" bytes exceeds "+itoa(int64(limit))+"; reserve 131072 tokens. Retain private source/replay; use external image preparation or ordinary Refine and new approval.", 1)
 	}
 	_, hasKey := rend.body["prompt_cache_key"]
+	ev := newEvidence(id, rend.mode, rend.boundaries, unsupported, req.Instructions, req.Input, req.Tools)
 	r := &run{k: k, req: req, obs: obs, cache: cache, key: key, state: st, rend: rend, encoded: encoded,
 		hasKey: hasKey && (info.supergrok() || info.chatgpt()), model: req.Role.Model,
-		ev: newEvidence(id, rend.mode, rend.boundaries, unsupported, req.Instructions, req.Input, req.Tools),
+		ev: ev,
 		op: operation{id: newID("operation"), timestamp: timestamp(c.now()), model: req.Role.Model, effort: req.Role.Effort}}
 	var resp *Response
 	if req.Single && info.chatgpt() {
@@ -482,7 +479,10 @@ func (r *run) transport(token string) (result, error) {
 	start := r.k.c.now()
 	ts := timestamp(start)
 	r.requestID = ""
+	r.so = newStreamObs(start)
+	r.watch = nil
 	res, err := r.exchange(token)
+	r.watch = nil
 	if err == nil && res.kind == resError && r.refused(res.fail) {
 		// The refusal is evidence of the route, whatever happens next.
 		r.markUnsupported()
@@ -541,11 +541,15 @@ func (r *run) exchange(token string) (result, error) {
 
 func (r *run) exchangeResponses(token string) (result, error) {
 	k := r.k
+	r.so.endTracked = true
 	ctx, cancel, err := k.requestContext()
 	if err != nil {
+		r.so.finishCheck(k)
 		return result{}, err
 	}
 	defer cancel()
+	w := r.newWatch(cancel)
+	defer w.stop()
 	header := map[string]string{"Authorization": "Bearer " + token, "Accept": "text/event-stream", "Content-Type": "application/json"}
 	if k.info.supergrok() {
 		header["User-Agent"] = k.c.userAgent()
@@ -569,9 +573,15 @@ func (r *run) exchangeResponses(token string) (result, error) {
 		return r.transportFailure(ctx, err)
 	}
 	defer resp.Body.Close()
+	w.attach(resp.Body)
+	r.so.gotHeaders(k.c.now())
 	r.requestID = identifier(resp.Header.Get("X-Request-Id"))
+	if w.expired() {
+		return r.idleStop(ctx, w)
+	}
 	if resp.StatusCode != 200 && resp.StatusCode != 206 {
-		body, rerr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		r.so.endTracked = false
+		body, rerr := io.ReadAll(io.LimitReader(r.whole(resp.Body), 4<<20))
 		if rerr != nil {
 			return r.transportFailure(ctx, rerr)
 		}
@@ -580,27 +590,49 @@ func (r *run) exchangeResponses(token string) (result, error) {
 		}
 		return httpFailure(resp.StatusCode, body, k.info.supergrok(), token), nil
 	}
+	r.so.beginStream()
 	acc := newAccumulator()
 	buf := make([]byte, 32<<10)
 	for {
 		if err := k.check(); err != nil {
+			r.so.finishCheck(k)
 			return result{}, err
 		}
 		n, rerr := resp.Body.Read(buf)
+		at := k.c.now()
+		r.so.read(at, n)
+		if w.observe(at, n) {
+			return r.idleStop(ctx, w)
+		}
 		if n > 0 {
-			if detail := acc.feed(string(buf[:n])); detail != "" {
+			detail := acc.feed(string(buf[:n]))
+			if acc.delta {
+				r.so.firstDelta(at)
+			}
+			if detail != "" {
+				r.so.finish("complete")
 				return result{kind: resInvalid, detail: detail}, nil
 			}
 			if err := k.check(); err != nil {
+				r.so.finishCheck(k)
 				return result{}, err
 			}
 			if acc.done || acc.failure != nil {
+				r.so.finish("complete")
 				return acc.finish(k.info.supergrok()), nil
 			}
 		}
 		if rerr == io.EOF || rerr == io.ErrUnexpectedEOF {
 			if err := k.check(); err != nil {
+				r.so.finishCheck(k)
 				return result{}, err
+			}
+			// The parser takes EOF as the end; the telemetry calls a stream that never
+			// completed a broken one.
+			if rerr == io.EOF && (acc.done || acc.failure != nil) {
+				r.so.finish("complete")
+			} else {
+				r.so.finish("transport")
 			}
 			return acc.finish(k.info.supergrok()), nil
 		}
@@ -618,6 +650,8 @@ func (r *run) exchangeChat(key string) (result, error) {
 		return result{}, err
 	}
 	defer cancel()
+	w := r.newWatch(cancel)
+	defer w.stop()
 	header := map[string]string{"Accept": "application/json", "Content-Type": "application/json", "User-Agent": k.c.userAgent()}
 	if key != "" {
 		header["Authorization"] = "Bearer " + key
@@ -631,8 +665,15 @@ func (r *run) exchangeChat(key string) (result, error) {
 		return r.transportFailure(ctx, err)
 	}
 	defer resp.Body.Close()
+	w.attach(resp.Body)
+	at := k.c.now()
+	r.so.gotHeaders(at)
 	r.requestID = identifier(resp.Header.Get("X-Request-Id"))
-	body, rerr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	// A body read whole has no stream: its headers are the first byte and idle starts there.
+	if w.observe(at, 1) {
+		return r.idleStop(ctx, w)
+	}
+	body, rerr := io.ReadAll(io.LimitReader(r.whole(resp.Body), 64<<20))
 	if rerr != nil {
 		return r.transportFailure(ctx, rerr)
 	}
@@ -675,11 +716,15 @@ func (r *run) exchangeChat(key string) (result, error) {
 // exchangeMessages is one Anthropic request: a streamed answer assembled once complete.
 func (r *run) exchangeMessages(key string) (result, error) {
 	k := r.k
+	r.so.endTracked = true
 	ctx, cancel, err := k.requestContext()
 	if err != nil {
+		r.so.finishCheck(k)
 		return result{}, err
 	}
 	defer cancel()
+	w := r.newWatch(cancel)
+	defer w.stop()
 	resp, err := r.post(ctx, k.origin()+messagesPath, map[string]string{
 		"x-api-key": key, "anthropic-version": anthropicVersion, "Accept": "text/event-stream",
 		"Content-Type": "application/json", "User-Agent": k.c.userAgent(),
@@ -688,14 +733,20 @@ func (r *run) exchangeMessages(key string) (result, error) {
 		return r.transportFailure(ctx, err)
 	}
 	defer resp.Body.Close()
+	w.attach(resp.Body)
+	r.so.gotHeaders(k.c.now())
 	for _, name := range []string{"Request-Id", "X-Request-Id"} {
 		if id := safeIdentifier(resp.Header.Get(name), key); id != nil {
 			r.requestID = id.(string)
 			break
 		}
 	}
+	if w.expired() {
+		return r.idleStop(ctx, w)
+	}
 	if resp.StatusCode != 200 && resp.StatusCode != 206 {
-		body, rerr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		r.so.endTracked = false
+		body, rerr := io.ReadAll(io.LimitReader(r.whole(resp.Body), 4<<20))
 		if rerr != nil {
 			return r.transportFailure(ctx, rerr)
 		}
@@ -704,30 +755,46 @@ func (r *run) exchangeMessages(key string) (result, error) {
 		}
 		return messagesFailure(resp.StatusCode, body, key), nil
 	}
+	r.so.beginStream()
 	var all strings.Builder
 	tail := ""
 	buf := make([]byte, 32<<10)
 	for {
 		if err := k.check(); err != nil {
+			r.so.finishCheck(k)
 			return result{}, err
 		}
 		n, rerr := resp.Body.Read(buf)
+		at := k.c.now()
+		r.so.read(at, n)
+		if w.observe(at, n) {
+			return r.idleStop(ctx, w)
+		}
 		if n > 0 {
 			chunk := string(buf[:n])
 			all.WriteString(chunk)
 			pieces := strings.Split(strings.ReplaceAll(tail+chunk, "\r\n", "\n"), "\n\n")
 			tail = pieces[len(pieces)-1]
 			for _, p := range pieces[:len(pieces)-1] {
-				if f := decodeFrame(p); f.event != nil && (f.event["type"] == "message_stop" || f.event["type"] == "error") {
-					return r.completeMessages(all.String(), key)
+				f := decodeFrame(p)
+				if f.event == nil {
+					continue
+				}
+				if f.event["type"] == "content_block_delta" || f.event["type"] == "message_delta" {
+					r.so.firstDelta(at)
+				}
+				if f.event["type"] == "message_stop" || f.event["type"] == "error" {
+					return r.completeMessages(all.String(), key, "complete")
 				}
 			}
 			if err := k.check(); err != nil {
+				r.so.finishCheck(k)
 				return result{}, err
 			}
 		}
 		if rerr == io.EOF || rerr == io.ErrUnexpectedEOF {
-			return r.completeMessages(all.String(), key)
+			// An unfinished frame is not a parsed terminal event.
+			return r.completeMessages(all.String(), key, "transport")
 		}
 		if rerr != nil {
 			return r.transportFailure(ctx, rerr)
@@ -735,10 +802,12 @@ func (r *run) exchangeMessages(key string) (result, error) {
 	}
 }
 
-func (r *run) completeMessages(stream, key string) (result, error) {
+func (r *run) completeMessages(stream, key, end string) (result, error) {
 	if err := r.k.check(); err != nil {
+		r.so.finishCheck(r.k)
 		return result{}, err
 	}
+	r.so.finish(end)
 	res := parseMessages(stream)
 	if res.kind == resOK {
 		meta := map[string]any{
@@ -789,6 +858,10 @@ func messagesFailure(status int, body []byte, key string) result {
 // transportFailure is a failed exchange: the caller's interrupt or the spent budget end
 // the call; anything else is a transient network error.
 func (r *run) transportFailure(ctx context.Context, err error) (result, error) {
+	if _, ok := r.k.stopped(); !ok && r.watch.expired() {
+		return r.idleStop(ctx, r.watch)
+	}
+	r.so.finishFailure(r.k, ctx.Err())
 	if stop, ok := r.k.stopped(); ok {
 		return result{}, stop
 	}
@@ -876,10 +949,12 @@ func (r *run) record(res result, err error, start time.Time, ts string) {
 		"usage":                       known.Map(),
 		"usage_state":                 state,
 		"wall_ms":                     r.k.c.now().Sub(start).Milliseconds(),
-		"ttft_ms":                     nil,
 		"outcome":                     outcome,
 		"error":                       errField,
 	} {
+		rec[k] = v
+	}
+	for k, v := range r.so.fields() {
 		rec[k] = v
 	}
 	switch {

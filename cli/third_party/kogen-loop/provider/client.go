@@ -41,7 +41,6 @@ type Client struct {
 	Version string
 	// ResponseBudget lowers the absolute budget of one logical Respond call. Zero keeps
 	// the package ResponseBudget (30 minutes); a nonzero value must be in [1s, 30m].
-	// Request.Budget can only shorten it further.
 	ResponseBudget time.Duration
 
 	prefixMu     sync.Mutex

@@ -32,31 +32,22 @@ type Request struct {
 	Input        []any // Responses-style input items
 	Tools        []any // model-facing tool definitions, sent verbatim
 	// DisableParallelToolCalls asks the provider not to generate parallel tool calls; a batch
-	// that is returned is still executed in full unless Round.StopAfterTerminal is set.
+	// that is returned is still executed in full.
 	DisableParallelToolCalls bool
 }
 
-// Requester sends one request. It returns the response and the input actually sent (a
-// context policy may reduce it).
+// Requester sends one request. It returns the response and the input actually sent.
 type Requester interface {
 	Request(ctx context.Context, r Request) (*provider.Response, []any, error)
 }
 
-// ContextPolicy prepares the input of a request. The default refuses an over-budget request
-// (typed error loop/context_budget_exceeded) instead of silently clipping. Compaction,
-// working-window and summary experiments implement this interface.
-type ContextPolicy interface {
-	Prepare(ctx context.Context, r Request) ([]any, error)
-}
-
-// FailOverBudget is the default ContextPolicy: it measures the complete rendered request and
+// FailOverBudget measures the complete rendered request and
 // refuses one that exceeds the role's input budget (provider.InputBudgetBytes, or a smaller
 // documented bound of the model family) with loop/context_budget_exceeded, before anything is
-// sent. It never clips the input.
+// sent. It never clips the input. Direct always applies it.
 //
 // Client, Cache and CacheID only make the measured body the body that will be sent (cache
-// identity placement); Direct fills them in when it uses the zero value. The zero value works
-// on its own.
+// identity placement); Direct fills them in. The zero value works on its own.
 type FailOverBudget struct {
 	Client  *provider.Client
 	Cache   *provider.Cache
@@ -112,30 +103,24 @@ func ownerLabel(owner string) string {
 	return owner
 }
 
-// Direct is the provider-backed Requester (provider.Client.Respond) with a ContextPolicy and
-// an optional provider.Observer for attempt records.
+// Direct is the provider-backed Requester (provider.Client.Respond) that refuses an
+// over-budget request before sending it, with an optional provider.Observer for attempt records.
 type Direct struct {
 	Client   *provider.Client
 	Session  *sys.Session
-	Policy   ContextPolicy     // nil: FailOverBudget{}
 	Observer provider.Observer // nil: none
 	CacheID  string            // one cache identity per conversation (kept across rounds)
 	Cache    *provider.Cache
 
-	// InputBudgetBytes is passed to the default FailOverBudget only; a non-nil Policy owns
-	// policy and this field (even invalid) is ignored.
+	// InputBudgetBytes is passed to FailOverBudget.
 	InputBudgetBytes int
 }
 
-// Request applies the policy, then sends the request with provider.Client.Respond. It
-// returns the response and the input the policy let through.
+// Request refuses an over-budget request, then sends it with provider.Client.Respond. It
+// returns the response and the input it sent.
 func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []any, error) {
-	policy := d.Policy
-	if policy == nil {
-		policy = FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID,
-			InputBudgetBytes: d.InputBudgetBytes}
-	}
-	sent, err := policy.Prepare(ctx, r)
+	sent, err := FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID,
+		InputBudgetBytes: d.InputBudgetBytes}.Prepare(ctx, r)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -215,16 +200,7 @@ type Round struct {
 	// TerminalReminders permits that many reminder continuations per Run after a response
 	// without a tool call; nonpositive keeps ending such a round with EndNoCall.
 	TerminalReminders int
-	// StopAfterTerminal (default false) makes the first terminal of a batch the Result.Terminal
-	// and answers every later call of that batch with SkippedAfterTerminal instead of running it
-	// (BeforeCall and AfterCall still observe it, with terminal false). False keeps the last
-	// terminal and runs every call.
-	StopAfterTerminal bool
 }
-
-// SkippedAfterTerminal is the output of a call skipped because Round.StopAfterTerminal ended
-// the round at an earlier terminal call of the same batch.
-const SkippedAfterTerminal = "skipped: earlier terminal call ended the round"
 
 // Ending is how a round ended. Both endings are model claims.
 type Ending string
@@ -237,7 +213,7 @@ const (
 // Result is a finished round.
 type Result struct {
 	Ending   Ending
-	Terminal *tools.Call        // last terminal call of the final batch, or the first with StopAfterTerminal (EndTerminal only)
+	Terminal *tools.Call        // last terminal call of the final batch (EndTerminal only)
 	Input    []any              // conversation after the round: sent input + replayed response items + outputs of non-terminal calls
 	Response *provider.Response // last response
 	Requests int                // requests sent in this round
@@ -256,12 +232,10 @@ var DefaultTerminal = []string{"finish"}
 //     is marked terminal (the last one wins) and is not executed; otherwise HandleCall when it
 //     handles the call, else Tools.CallContext(ctx, call) and Output.Cut; AfterCall(call, out, terminal,
 //     input ++ outs); append call.Output(out) to outs unless the call is terminal.
-//     With Round.StopAfterTerminal the first terminal wins and each later call is answered with
-//     SkippedAfterTerminal without execution or HandleCall (BeforeCall/AfterCall still run).
 //  6. No terminal call and at least one call: input = input ++ outs and go to 1.
 //  7. Otherwise return the Result.
 //
-// Unless Round.StopAfterTerminal is set, calls after a terminal call in the same batch still run. A hook error, a tool interrupt
+// Calls after a terminal call in the same batch still run. A hook error, a tool interrupt
 // (a shell stopped by the caller), timeout observation failure or a cancelled context
 // stops the round; the error is
 // returned unchanged. When ctx ends, every process group started through rd.Tools.Session
@@ -323,11 +297,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 			}
 			var out tools.Output
 			isTerminal := slices.Contains(terminal, call.Name)
-			skip := rd.StopAfterTerminal && last != nil
-			if skip {
-				isTerminal = false
-				out = tools.Output{Text: SkippedAfterTerminal}
-			} else if !isTerminal {
+			if !isTerminal {
 				handled := false
 				if h.HandleCall != nil {
 					hd, err := h.HandleCall(ctx, call)

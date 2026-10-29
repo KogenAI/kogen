@@ -28,7 +28,7 @@ func validationOf(t *testing.T, err error) map[string]any {
 }
 
 func single(e *env, mods ...func(*Request)) (*Response, error) {
-	req := Request{Role: fixtureRole, Instructions: "fixture", Single: true, Budget: time.Second}
+	req := Request{Role: fixtureRole, Instructions: "fixture", Single: true}
 	for _, m := range mods {
 		m(&req)
 	}
@@ -348,14 +348,13 @@ func TestFailureEventsWinOverRetainedItems(t *testing.T) {
 // provider_wait_test: an expired invocation does not consume the next invocation's budget.
 func TestExpiredInvocationDoesNotConsumeTheNextBudget(t *testing.T) {
 	e, f := chatEnv(t, jsonAnswer(500, map[string]any{}), textAnswer("fresh"))
-	e.realClock()
-	start := time.Now()
-	_, err := e.respond(Request{Budget: 80 * time.Millisecond})
+	e.c.ResponseBudget = time.Second
+	_, err := e.respond(Request{})
 	se := mustErr(t, err)
-	if se.Reason != "unavailable" || se.Detail != "ChatGPT response wait exceeded 30 minutes" || time.Since(start) > 600*time.Millisecond || len(f.requests()) != 1 {
-		t.Fatalf("err = %v after %v, %d requests", se, time.Since(start), len(f.requests()))
+	if se.Reason != "unavailable" || se.Detail != "ChatGPT response wait exceeded 1s" || len(f.requests()) != 1 || !reflect.DeepEqual(e.clk.slept(), []time.Duration{time.Second}) {
+		t.Fatalf("err = %v, %d requests, slept %v", se, len(f.requests()), e.clk.slept())
 	}
-	resp, err := e.respond(Request{Budget: time.Second})
+	resp, err := e.respond(Request{})
 	if err != nil || resp.Items[0]["content"].([]any)[0].(map[string]any)["text"] != "fresh" || len(f.requests()) != 2 {
 		t.Fatalf("%v %v", resp, err)
 	}
@@ -364,11 +363,12 @@ func TestExpiredInvocationDoesNotConsumeTheNextBudget(t *testing.T) {
 // provider_wait_test: the second backoff also spends the original budget.
 func TestSecondBackoffSpendsTheOriginalBudget(t *testing.T) {
 	e, f := chatEnv(t, jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}))
-	_, err := e.respond(Request{Budget: 2300 * time.Millisecond})
-	if mustErr(t, err).Detail != "ChatGPT response wait exceeded 30 minutes" || len(f.requests()) != 2 {
+	e.c.ResponseBudget = 3 * time.Second
+	_, err := e.respond(Request{})
+	if mustErr(t, err).Detail != "ChatGPT response wait exceeded 3s" || len(f.requests()) != 2 {
 		t.Fatalf("err = %v, %d requests", err, len(f.requests()))
 	}
-	if got := e.clk.slept(); !reflect.DeepEqual(got, []time.Duration{2 * time.Second, 300 * time.Millisecond}) {
+	if got := e.clk.slept(); !reflect.DeepEqual(got, []time.Duration{2 * time.Second, time.Second}) {
 		t.Fatalf("slept %v", got)
 	}
 }
@@ -388,7 +388,7 @@ func TestBudgetIsCappedAtThirtyMinutes(t *testing.T) {
 	// Each 100 ms lock wait advances the fake clock by 10 s, to keep the test fast.
 	e.c.Sleep = func(ctx context.Context, d time.Duration) error { return e.clk.Sleep(ctx, d*100) }
 	start := e.clk.Now()
-	_, err = e.respond(Request{Budget: 24 * time.Hour})
+	_, err = e.respond(Request{})
 	if se := mustErr(t, err); se.Detail != "ChatGPT response wait exceeded 30 minutes" {
 		t.Fatalf("err = %v", err)
 	}
@@ -500,7 +500,8 @@ func TestValidatedOpenStreamIsCancelled(t *testing.T) {
 	opened, closed := make(chan struct{}), make(chan struct{})
 	e, _ := chatEnv(t, openEvents(opened, closed, done(map[string]any{"output": []any{tool()}})))
 	e.realClock()
-	resp, err := e.respond(Request{Budget: time.Second})
+	e.c.ResponseBudget = time.Second
+	resp, err := e.respond(Request{})
 	if err != nil || !reflect.DeepEqual(resp.Items, []map[string]any{tool()}) {
 		t.Fatalf("%v %v", resp, err)
 	}
@@ -535,12 +536,13 @@ func TestExpiryIsCheckedWithBusyStreamAndClosesTheRequest(t *testing.T) {
 	}
 	e, _ := chatEnv(t, busy)
 	e.realClock()
+	e.c.ResponseBudget = time.Second
 	start := time.Now()
-	_, err := e.respond(Request{Budget: 150 * time.Millisecond})
-	if mustErr(t, err).Detail != "ChatGPT response wait exceeded 30 minutes" {
+	_, err := e.respond(Request{})
+	if mustErr(t, err).Detail != "ChatGPT response wait exceeded 1s" {
 		t.Fatalf("err = %v", err)
 	}
-	if d := time.Since(start); d < 150*time.Millisecond || d > time.Second {
+	if d := time.Since(start); d < time.Second || d > 3*time.Second {
 		t.Fatalf("expired after %v", d)
 	}
 	select {
@@ -553,7 +555,7 @@ func TestExpiryIsCheckedWithBusyStreamAndClosesTheRequest(t *testing.T) {
 // provider_wait_test: unreadable output retries once within the same invocation.
 func TestUnreadableOutputRetriesOnce(t *testing.T) {
 	e, f := chatEnv(t, events(done(map[string]any{"output": []any{tool()}, "usage": "bad"})), textAnswer("retry"))
-	resp, err := e.respond(Request{Budget: time.Second})
+	resp, err := e.respond(Request{})
 	if err != nil || resp.Items[0]["content"].([]any)[0].(map[string]any)["text"] != "retry" || len(f.requests()) != 2 {
 		t.Fatalf("%v %v %d", resp, err, len(f.requests()))
 	}

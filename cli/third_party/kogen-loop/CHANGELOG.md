@@ -13,3 +13,4 @@
 - bd627aa Keep the provider's bounded refusal message
 - c803fea Add a round limit and no-progress stop to Run
 - c7e8331 Fix two Linux test flakes
+- Remove the unused `provider.Request.AnthropicCacheTTL` and `Budget`, `loop.Direct.Policy` (with `ContextPolicy`), `loop.Round.StopAfterTerminal` and `loop.SessionConfig.CacheID` options

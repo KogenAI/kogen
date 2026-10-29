@@ -118,12 +118,16 @@ func TestRespondHappyPathWithFunctionCall(t *testing.T) {
 	for k, want := range map[string]any{
 		"provider": "chatgpt", "configured_model": "gpt-6.1-sol", "configured_effort": "high", "effective_model": "gpt-6.1-sol-2026",
 		"effective_effort": "high", "effective_service_tier": "default", "provider_response_id": "resp_1", "provider_request_id": "req-fixture",
-		"outcome": "completed", "usage_state": "known", "error": nil, "requested_service_tier": nil, "ttft_ms": nil,
+		"outcome": "completed", "usage_state": "known", "error": nil, "requested_service_tier": nil,
 		"phase": "build", "role": "build", "run_id": "r1", "slug": "is-even", "operation_id": resp.OperationID,
 	} {
 		if !reflect.DeepEqual(rec[k], want) {
 			t.Errorf("record[%s] = %#v, want %#v", k, rec[k], want)
 		}
+	}
+	// The stream carried a delta, so ttft_ms is the (frozen test clock's) first-delta time.
+	if v, ok := rec["ttft_ms"].(int64); !ok || v < 0 {
+		t.Errorf("ttft_ms = %#v", rec["ttft_ms"])
 	}
 	cache := rec["cache"].(map[string]any)
 	if cache["status"] != "applied" || cache["applied_mode"] != nil || cache["applied_ttl"] != nil || cache["configured_ttl"] != nil ||
@@ -443,8 +447,9 @@ func TestSuperGrokBudgetMessage(t *testing.T) {
 	f := newFake(t, httpFail(500, "e", "x"))
 	e := newEnv(t, f)
 	e.saveCreds("supergrok", e.supergrokCreds())
-	_, err := e.respond(Request{Role: grokRole, Budget: time.Second})
-	if se := mustErr(t, err); se.Detail != "SuperGrok response wait exceeded 30 minutes" || se.Reason != "unavailable" {
+	e.c.ResponseBudget = time.Second
+	_, err := e.respond(Request{Role: grokRole})
+	if se := mustErr(t, err); se.Detail != "SuperGrok response wait exceeded 1s" || se.Reason != "unavailable" {
 		t.Fatalf("err = %v", se)
 	}
 }

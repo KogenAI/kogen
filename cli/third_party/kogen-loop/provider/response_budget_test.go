@@ -24,23 +24,23 @@ func (b *budgetTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 // assertBudgetDeadline observes the actual transport deadline rather than inferring
 // the selected budget from the diagnostic text.
-func assertBudgetDeadline(t *testing.T, client, request, want time.Duration) {
+func assertBudgetDeadline(t *testing.T, client, want time.Duration) {
 	t.Helper()
 	e, _ := chatEnv(t, textAnswer("ok"))
 	e.c.ResponseBudget = client
 	transport := &budgetTransport{base: http.DefaultTransport}
 	e.c.HTTP = &http.Client{Transport: transport}
-	if _, err := e.respond(Request{Budget: request}); err != nil {
+	if _, err := e.respond(Request{}); err != nil {
 		t.Fatal(err)
 	}
 	if transport.remaining <= want-50*time.Millisecond || transport.remaining > want {
-		t.Fatalf("client %v request %v: deadline remaining %v, want %v", client, request, transport.remaining, want)
+		t.Fatalf("client %v: deadline remaining %v, want %v", client, transport.remaining, want)
 	}
 }
 
 // expiryDetail expires a call on the fake clock (a held credential lock; each wait advances
 // the clock 100x) and returns its error detail.
-func expiryDetail(t *testing.T, client, request time.Duration) string {
+func expiryDetail(t *testing.T, client time.Duration) string {
 	t.Helper()
 	f := newFake(t, textAnswer("never"))
 	e := newEnv(t, f)
@@ -54,7 +54,7 @@ func expiryDetail(t *testing.T, client, request time.Duration) string {
 	e.saveCreds("chatgpt", e.chatgptCreds("expires_at", e.clk.Now().Unix()+10))
 	e.c.Sleep = func(ctx context.Context, d time.Duration) error { return e.clk.Sleep(ctx, d*100) }
 	e.c.ResponseBudget = client
-	_, err = e.respond(Request{Budget: request})
+	_, err = e.respond(Request{})
 	se := mustErr(t, err)
 	if se.Class != "provider" || se.Reason != "unavailable" || se.Exit != 4 || len(f.requests()) != 0 {
 		t.Fatalf("%v", se)
@@ -64,19 +64,19 @@ func expiryDetail(t *testing.T, client, request time.Duration) string {
 
 func TestClientResponseBudgetDefault(t *testing.T) {
 	for _, b := range []time.Duration{0, 30 * time.Minute} {
-		assertBudgetDeadline(t, b, 0, 30*time.Minute)
+		assertBudgetDeadline(t, b, 30*time.Minute)
 	}
 	if ResponseBudget != 30*time.Minute {
 		t.Fatal(ResponseBudget)
 	}
 	want := "ChatGPT response wait exceeded 30 minutes"
-	if got := expiryDetail(t, 0, 0); got != want {
+	if got := expiryDetail(t, 0); got != want {
 		t.Fatal(got)
 	}
 	if got := NewClient("v"); got.ResponseBudget != 0 {
 		t.Fatal(got.ResponseBudget)
 	}
-	if got := expiryDetail(t, 30*time.Minute, 0); got != "ChatGPT response wait exceeded 30m0s" {
+	if got := expiryDetail(t, 30*time.Minute); got != "ChatGPT response wait exceeded 30m0s" {
 		t.Fatal(got)
 	}
 	// request bytes and the transport deadline are the same for zero and explicit 30m
@@ -123,35 +123,24 @@ func TestClientResponseBudgetValidation(t *testing.T) {
 	}
 }
 
-func TestClientResponseBudgetPrecedence(t *testing.T) {
+func TestClientResponseBudgetSelection(t *testing.T) {
 	cases := []struct {
-		client, req time.Duration
-		want        string
+		client time.Duration
+		want   string
 	}{
-		{10 * time.Minute, 0, "10m0s"},
-		{10 * time.Minute, 2 * time.Second, "2s"},
-		{10 * time.Minute, 10 * time.Minute, "10m0s"},
-		{10 * time.Minute, time.Hour, "10m0s"},
-		{10 * time.Minute, 150 * time.Millisecond, "150ms"},
-		{2 * time.Second, 2 * time.Second, "2s"},
-		{2 * time.Second, 5 * time.Second, "2s"},
+		{10 * time.Minute, "10m0s"},
+		{2 * time.Second, "2s"},
+		{time.Second, "1s"},
 	}
 	for _, c := range cases {
 		want, err := time.ParseDuration(c.want)
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertBudgetDeadline(t, c.client, c.req, want)
-		if got := expiryDetail(t, c.client, c.req); got != "ChatGPT response wait exceeded "+c.want {
-			t.Fatalf("%v/%v: %s", c.client, c.req, got)
+		assertBudgetDeadline(t, c.client, want)
+		if got := expiryDetail(t, c.client); got != "ChatGPT response wait exceeded "+c.want {
+			t.Fatalf("%v: %s", c.client, got)
 		}
-	}
-	// invalid client value is not bypassed by a valid request override
-	e, f := chatEnv(t, textAnswer("ok"))
-	e.c.ResponseBudget = 31 * time.Minute
-	_, err := e.respond(Request{Budget: time.Second})
-	if se := mustErr(t, err); se.Reason != "refused" || len(f.requests()) != 0 {
-		t.Fatalf("%v", err)
 	}
 }
 
@@ -234,21 +223,17 @@ func TestClientResponseBudgetAbsolute(t *testing.T) {
 
 func TestClientResponseBudgetDiagnostic(t *testing.T) {
 	cases := []struct {
-		client, req time.Duration
-		want        string
+		client time.Duration
+		want   string
 	}{
-		{0, 0, "30 minutes"},
-		{0, 150 * time.Millisecond, "30 minutes"},
-		{10 * time.Minute, 0, "10m0s"},
-		{30 * time.Minute, 0, "30m0s"},
-		{10 * time.Minute, 2 * time.Second, "2s"},
-		{10 * time.Minute, 150 * time.Millisecond, "150ms"},
-		{2 * time.Second, 2 * time.Second, "2s"},
-		{2 * time.Second, time.Minute, "2s"},
+		{0, "30 minutes"},
+		{10 * time.Minute, "10m0s"},
+		{30 * time.Minute, "30m0s"},
+		{2 * time.Second, "2s"},
 	}
 	for _, c := range cases {
-		if got := expiryDetail(t, c.client, c.req); got != "ChatGPT response wait exceeded "+c.want {
-			t.Fatalf("%v/%v: %s", c.client, c.req, got)
+		if got := expiryDetail(t, c.client); got != "ChatGPT response wait exceeded "+c.want {
+			t.Fatalf("%v: %s", c.client, got)
 		}
 	}
 }

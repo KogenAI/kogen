@@ -220,8 +220,8 @@ func TestConcurrentProactiveRefreshHappensOnceUnderTheLock(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					c := &Client{Version: e.c.Version} // two Kogens: separate clients, one home
-					_, errs[i] = c.Respond(context.Background(), e.s, Request{Role: role, Instructions: "p", Budget: 20 * time.Second}, nil)
+					c := &Client{Version: e.c.Version, ResponseBudget: 20 * time.Second} // two Kogens: separate clients, one home
+					_, errs[i] = c.Respond(context.Background(), e.s, Request{Role: role, Instructions: "p"}, nil)
 				}()
 			}
 			wg.Wait()
@@ -260,7 +260,8 @@ func TestRefreshWaitsForAHeldLockAndUsesTheNewerToken(t *testing.T) {
 		e.saveCreds("chatgpt", e.chatgptCreds("access_token", "other-process-access", "expires_at", time.Now().Unix()+3600))
 		held.Release()
 	}()
-	if _, err := e.respond(Request{Budget: 10 * time.Second}); err != nil {
+	e.c.ResponseBudget = 10 * time.Second
+	if _, err := e.respond(Request{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.authRequests()) != 0 || bearer(f.requests()[0]) != "Bearer other-process-access" {

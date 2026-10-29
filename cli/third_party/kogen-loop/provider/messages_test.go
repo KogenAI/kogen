@@ -486,9 +486,10 @@ func TestAnthropicOpaqueIdentifiersCannotEchoTheKeyAndWaitsEndTheRequest(t *test
 	opened, closed := make(chan struct{}), make(chan struct{})
 	e, _ = keyEnv(t, "anthropic", openEvents(opened, closed, ev("message_start", "message", map[string]any{"id": "m"})))
 	e.realClock()
+	e.c.ResponseBudget = time.Second
 	start := time.Now()
-	_, err = e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Instructions: "p", Budget: 150 * time.Millisecond}, nil)
-	if se := mustErr(t, err); se.Detail != "Anthropic response wait exceeded 30 minutes" || time.Since(start) > 2*time.Second {
+	_, err = e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Instructions: "p"}, nil)
+	if se := mustErr(t, err); se.Detail != "Anthropic response wait exceeded 1s" || time.Since(start) > 3*time.Second {
 		t.Fatalf("%v after %v", err, time.Since(start))
 	}
 	select {

@@ -56,6 +56,7 @@ type accumulator struct {
 	reasons                                                  map[string]bool
 	terminalResponse, terminalOutput, terminalOutputReplaced bool
 	observed                                                 int
+	delta                                                    bool // a parsed *.delta event was seen
 }
 
 func newAccumulator() *accumulator {
@@ -129,6 +130,9 @@ func (a *accumulator) observedCount() int {
 
 func (a *accumulator) apply(ev map[string]any) {
 	typ, _ := ev["type"].(string)
+	if strings.HasSuffix(typ, ".delta") {
+		a.delta = true
+	}
 	switch typ {
 	case "response.output_item.added":
 		if i, ok := index(ev["output_index"]); ok {

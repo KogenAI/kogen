@@ -37,25 +37,17 @@ type Request struct {
     Tools        []any         // model-facing tool definitions, sent verbatim
 }
 
-// Requester sends one request. It returns the response and the input actually sent
-// (a context policy may reduce it).
+// Requester sends one request. It returns the response and the input actually sent.
 type Requester interface {
     Request(ctx context.Context, r Request) (*provider.Response, []any, error)
 }
 
-// ContextPolicy prepares the input of a request. The default refuses an over-budget request
-// (typed error loop/context_budget_exceeded) instead of silently clipping. Compaction,
-// working-window and summary experiments implement this interface.
-type ContextPolicy interface {
-    Prepare(ctx context.Context, r Request) ([]any, error)
-}
-
-// Direct is the provider-backed Requester (provider.Client.Respond) with a ContextPolicy
-// and an optional provider.Observer for attempt records.
+// Direct is the provider-backed Requester (provider.Client.Respond). It always refuses an
+// over-budget request (typed error loop/context_budget_exceeded) before sending it, never
+// clipping, and takes an optional provider.Observer for attempt records.
 type Direct struct {
     Client   *provider.Client
     Session  *sys.Session
-    Policy   ContextPolicy      // nil: FailOverBudget{}
     Observer provider.Observer  // nil: none
     CacheID  string             // one cache identity per conversation (kept across rounds)
     Cache    *provider.Cache
@@ -86,7 +78,6 @@ type Round struct {
     Definitions  []any        // tool definitions sent to the model
     Tools        *tools.Tools // executes non-handled calls (enabled set, protected/excluded paths)
     Terminal     []string     // names that end the round without execution; default ["finish"]
-    StopAfterTerminal bool    // library-only; default false (see "Stop after terminal")
 }
 
 type Ending string
@@ -98,7 +89,7 @@ const (
 
 type Result struct {
     Ending   Ending
-    Terminal *tools.Call        // last terminal call of the final batch (EndTerminal only); the first with StopAfterTerminal
+    Terminal *tools.Call        // last terminal call of the final batch (EndTerminal only)
     Input    []any              // conversation after the round: sent input + replayed response items + outputs of non-terminal calls
     Response *provider.Response // last response
     Requests int                // requests sent in this round
@@ -116,7 +107,7 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (Res
 5. For each call, in order:
    1. Return `ctx.Err()` if it's set.
    2. `BeforeCall(call, input ++ outs)`.
-   3. If the name is in `Terminal`, mark it terminal and don't execute it. When a batch has several terminal calls, the **last** one is `Result.Terminal`, as Kogen's builder keeps it; earlier ones stay unanswered. With `StopAfterTerminal` the first terminal wins and later calls are skipped (see "Stop after terminal").
+   3. If the name is in `Terminal`, mark it terminal and don't execute it. When a batch has several terminal calls, the **last** one is `Result.Terminal`, as Kogen's builder keeps it; earlier ones stay unanswered. Every call in a batch runs, including calls after a terminal call.
    4. Otherwise take `HandleCall` if it's set and handled; if not, `out, err := Tools.CallContext(ctx, call)` and use `Tools.Cut(out)` (configured budgets; `out.Cut()` when `Tools` is nil). Intercepted `HandleCall` output stays host-owned and is not cut. `err` is returned unchanged as a stop for shell interruption, context cancellation/deadline during positive-timeout custody, or timeout observation failure.
    5. `AfterCall(call, out, terminal, input ++ outs)`.
    6. Append `call.Output(out)` to `outs` unless the call is terminal.
@@ -136,10 +127,6 @@ Both stops are optional and caller-enabled; neither has a default (no default `M
 - `const NoProgressRounds = 3`: when that many consecutive rounds return an identical fingerprint, `Run` returns `*NoProgressError{Rounds, Fingerprint}` (e.g. `[1 2 3]`) with the Result populated as above. A differing fingerprint resets the count.
 - Order after a continuing round: Progress hook, no-progress check, round-limit check; no-progress wins when both trigger.
 
-### Stop after terminal (Go library)
-
-`Round.StopAfterTerminal bool` is an opt-in library option; no task field, CLI flag, session setting or event change exists. The default `false` keeps the behavior above byte for byte: every call in a batch runs and the last terminal wins. When `true`, the first terminal (a name in the effective `Terminal` list or a terminal returned by `HandleCall`) becomes `Result.Terminal`. Every later call in that batch, including later terminal names, is not executed and `HandleCall` is not invoked; it receives an ordinary non-terminal output with the exact text `skipped: earlier terminal call ended the round` (`loop.SkippedAfterTerminal`), and one `call.Output` per skipped call is appended to the transcript. The chosen terminal keeps the no-output semantics. `BeforeCall` and `AfterCall` still run for skipped calls (`AfterCall` gets the skip output and `terminal=false`), so event-producing hooks count them as ordinary calls and results. Cancellation and hook errors keep their precedence. With no terminal, all calls run as usual.
-
 ### Terminal reminders (Go library)
 
 `Round.TerminalReminders int` (and `SessionConfig.TerminalReminders`) is an opt-in library option; no task JSON field or CLI flag exists and there is no default. Nonpositive keeps today's behavior: a response without a tool call ends the round with `EndNoCall`. A positive value permits that many reminder continuations per `Run` (the count resets on every `Run`, including each Session turn), only after a response with no tool call and no terminal. A terminal call, including an intercepted one, ends the round immediately. When the budget is spent the round ends with `EndNoCall` normally.
@@ -151,19 +138,20 @@ Both stops are optional and caller-enabled; neither has a default (no default `M
 
 ### Input window budget (Go library)
 
-`InputBudgetBytes int` on `loop.FailOverBudget` and `loop.Direct` is a library-only lower-only option: no task JSON field, CLI flag or `SessionConfig` option exists. Zero keeps today's inclusive 524288-byte ceiling. A nonzero value must be in [65536, 524288]; negatives and out-of-range values return `loop/invalid_task` (exit 2) naming `InputBudgetBytes` and the range, before anything is sent. `FailOverBudget.Prepare` and `Direct`'s default-policy route validate it.
+`InputBudgetBytes int` on `loop.FailOverBudget` and `loop.Direct` is a library-only lower-only option: no task JSON field, CLI flag or `SessionConfig` option exists. Zero keeps today's inclusive 524288-byte ceiling. A nonzero value must be in [65536, 524288]; negatives and out-of-range values return `loop/invalid_task` (exit 2) naming `InputBudgetBytes` and the range, before anything is sent. `FailOverBudget.Prepare` and `Direct`, which always applies it, validate it.
 
 - The complete rendered request (instructions, tools, cache placement, parallel-call control) is measured inclusively, as today. The effective ceiling is the minimum of the configured-or-default budget and the role/family bound; the output reserve, unchanged input on success, `loop/context_budget_exceeded` refusal and message format (with the effective ceiling) are unchanged. Refusals send nothing and nothing is clipped. Caller instructions/tools larger than the budget are refused, not clipped.
-- A non-nil `Direct.Policy` entirely owns policy: `Direct.InputBudgetBytes`, even invalid, is ignored there.
 - The provider's own hard ceiling is unchanged.
 
 ### Client response budget (Go library)
 
 `provider.Client.ResponseBudget time.Duration` is a library-only lower-only option: no CLI flag, task field or provider protocol change exists. The unit is a Go `time.Duration`. Zero keeps the package constant `provider.ResponseBudget` (30 minutes), with unchanged wire bytes, diagnostics and retry behavior. A nonzero value must be in the inclusive range 1 second through 30 minutes; `Respond` refuses anything else before credentials, network traffic or backoff with `*sys.Error` (class `provider`, reason `refused`, exit 4, detail `response budget must be zero or between 1s and 30m0s`).
 
-- Precedence: the effective logical-call budget is the client value (30 minutes for zero), shortened by an existing positive `Request.Budget` when that is smaller. `Request.Budget` keeps its semantics (subsecond values allowed, values above the ceiling clamped; the 1-second minimum applies to the client option only) and can neither raise the client ceiling nor bypass invalid client validation.
+- The effective logical-call budget is the client value, or 30 minutes for zero; nothing else selects it.
 - The budget stays absolute: it covers credential waits, refresh, transport, stream reads, retry backoff and retries; bytes and heartbeats never renew it. No retry is added.
-- Expiry uses the existing path: `provider/unavailable`, exit 4, provider-labelled. With `ResponseBudget` zero the detail is exactly `response wait exceeded 30 minutes` (also when `Request.Budget` shortens the wait). With a nonzero value the detail is `response wait exceeded ` plus the effective budget as `time.Duration.String()`, including a smaller `Request.Budget`: for example `response wait exceeded 10m0s`, `30m0s` for an explicit 30 minutes, `2s`.
+- Every transport attempt also has default silence timeouts, for everyone and without a caller-facing option; they end only that attempt and never renew or extend the absolute budget. The first byte must arrive within 90 s for ChatGPT and 45 s for Anthropic Messages and every other provider; after that no more than 180 s may pass between bytes. For streams (Responses, Messages) the first-byte clock starts at request dispatch, response headers are not a stream byte, and any actual body byte, a heartbeat or a partial frame included, renews the idle clock (a read of zero bytes does not). For non-streaming Chat Completions the headers are the first byte, idle starts at the headers and body bytes renew it. Elapsed time is read from `Client.Now`; a blocked header wait or body read is cancelled when its limit passes rather than waiting for another byte. A byte arriving strictly before the limit is valid; at the limit the attempt has expired.
+- An expired attempt is a transient failure (outcome `failed`, `end_reason` `idle`, also on Chat Completions) whose detail is `no first byte within 90 s`, `no first byte within 45 s` or `stream idle for 180 s`. It is retried by the existing attempt policy with unchanged count and 2 s/8 s backoff, and is single-shot with `Request.Single` on ChatGPT. The absolute budget and caller cancellation take precedence over an overlapping timeout. Request bytes are unchanged.
+- Expiry uses the existing path: `provider/unavailable`, exit 4, provider-labelled. With `ResponseBudget` zero the detail is exactly `response wait exceeded 30 minutes`. With a nonzero value the detail is `response wait exceeded ` plus the budget as `time.Duration.String()`: for example `response wait exceeded 10m0s`, `30m0s` for an explicit 30 minutes, `2s`.
 
 ### Disabling parallel tool calls (Go library)
 
@@ -173,7 +161,7 @@ Both stops are optional and caller-enabled; neither has a default (no default `M
 - True on the Responses wire (ChatGPT, SuperGrok) renders `parallel_tool_calls: false`, also with no tools. True on the Messages wire (Anthropic) renders `tool_choice.disable_parallel_tool_use: true` beside the existing choice `type`; with no tools no `tool_choice` is created.
 - Support follows the effective wire after profile resolution, not the provider name. A Chat Completions route (OpenCode Go, OpenAI-compatible) refuses true before any transport with a provider `unsupported_capability` error naming parallel tool calls and the route.
 - A provider rejection is returned as an honest error; the request is not silently retried without the control.
-- Batch semantics are unchanged: every call returned in a batch is still executed (unless `StopAfterTerminal` is set), including calls after a terminal call. The option asks the provider to generate fewer parallel calls; it does not truncate a batch. Replay, usage, cache placement, retries and credentials are unchanged.
+- Batch semantics are unchanged: every call returned in a batch is still executed, including calls after a terminal call. The option asks the provider to generate fewer parallel calls; it does not truncate a batch. Replay, usage, cache placement, retries and credentials are unchanged.
 
 ### Named provider tool choice (Go library)
 
@@ -191,7 +179,7 @@ Both stops are optional and caller-enabled; neither has a default (no default `M
 
 - Default: nil (off) sends today's exact request bytes on every route. Other routes (Responses, Chat Completions) ignore the option even when set.
 - Non-nil is a zero-based content block index in the first user message; a string content is block 0. On the Messages wire the block gets one extra `cache_control` marker, on the selected last stable authority block rather than the dynamic evidence after it. Ordinary text blocks keep their boundaries; raw `anthropic_message` blocks retain theirs. The caller's input is never modified.
-- TTL policy is that of the existing breakpoints: implicit five minutes, no explicit `ttl`. This adds no TTL feature.
+- Every breakpoint keeps the default five-minute lifetime (`{"type":"ephemeral"}`, no explicit `ttl`).
 - Distinct final `cache_control` locations across tools, system and messages (including retained raw markers) are counted. A target that is already the newest-message marker or already marked is not counted twice. More than four is refused with `cache breakpoint limit exceeded`; markers are never silently dropped.
 - Preflight errors, before any HTTP request: a negative or out-of-range index, no user message or a non-text target return a provider `invalid_request` error containing `invalid authority boundary`. The validation applies only when enabled.
 
@@ -424,7 +412,7 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 ### Session resume (capability `session_resume: "transcript"`)
 
 With `session.dir`, the loop writes `session.json` atomically (0600, directory 0700) **after each completed round**:
-`{protocol, session_id, role, instructions_sha256, definitions_sha256, terminal, input}`. `terminal` is `{"call_id", "name"}` of the last round's terminal call, or `null` after a no-call ending. By default the provider cache/routing identity is the `session_id`, so it survives a resume. Go callers may set `SessionConfig.CacheID` to a nonempty key instead; supply it again on resume because it is not stored in the transcript. It does not override the session ID or change resume validation. The key is sent to providers for caching/routing: it is a key, not content, so do not put conversation content or secrets in it. Existing provider length normalization still applies. A standalone `Session` answers every unanswered call id of the previous round with the feedback.
+`{protocol, session_id, role, instructions_sha256, definitions_sha256, terminal, input}`. `terminal` is `{"call_id", "name"}` of the last round's terminal call, or `null` after a no-call ending. The provider cache/routing identity is always the `session_id`, so it survives a resume; existing provider length normalization still applies. A standalone `Session` answers every unanswered call id of the previous round with the feedback.
 
 `resume: true` loads it, refuses any mismatch (`loop/session_mismatch`), and runs one more round with `prompt` as feedback (rule in §2). A crash inside a round resumes from the last completed round. Tool effects after that boundary are the caller's to inspect: the loop doesn't replay or undo them. This standalone transcript is **not** Kogen's checkpoint format. Kogen keeps its own custody through hooks.
 
@@ -445,7 +433,7 @@ With `session.dir`, the loop writes `session.json` atomically (0600, directory 0
 }
 ```
 
-`false` and missing capabilities are real absences, not hidden equivalents. Subagents, compaction, alternative read/edit tools and review/build mechanisms are future experiments behind `ContextPolicy`, `HandleCall` and tool registration. Defaults don't change without scoped evidence.
+`false` and missing capabilities are real absences, not hidden equivalents. Subagents, compaction, alternative read/edit tools and review/build mechanisms are future experiments behind `HandleCall` and tool registration. Defaults don't change without scoped evidence.
 
 ## 5. Errors
 
@@ -465,9 +453,24 @@ Typed `sys.Error{Class, Reason, Detail, Exit}`. Provider errors keep their exist
   `anthropic_invalid` category may have one of `error_type`, `stop_reason`,
   `block_type`, or `delta_type`; unrecognized or ill-typed values are `unknown`.
   These allowlisted values contain no provider messages or payloads. A null
-  `ttft_ms` does not prove no first token, and unknown `usage_state` does not
+  `ttft_ms` does not prove no first token (non-streaming reads and streams without a
+  parsed delta report null), and unknown `usage_state` does not
   prove no processing. A false failed end-turn/tool-use marker does not identify
   the cause. Diagnostics do not change retry or validity decisions.
+- Every provider attempt record also carries stream observations, in integer
+  milliseconds relative to that attempt's own start and reset on each retry:
+  `headers_ms` (after the client's successful Do), `first_byte_ms`, `last_byte_ms`,
+  `ttft_ms` (the first parsed Responses `*.delta` or Messages `content_block_delta` /
+  `message_delta` event), `max_gap_ms`, `gap_hist` (six counts of gaps between
+  consecutive positive-byte reads: [0,1s], (1s,10s], (10s,30s], (30s,60s], (60s,120s],
+  over 120s), `stream_bytes` and `end_reason` (`complete`, `transport`, `cancel`,
+  `budget` or `idle`, with the precedence of the transport-failure path; a stream cut
+  before its completion is `transport` even where the parser reads EOF as the end).
+  `idle` marks an attempt ended by the first-byte or idle timeout (see Client response
+  budget), on every route including Chat Completions. Missing observations are null.
+  Chat Completions and error-body reads set only `headers_ms` and `last_byte_ms`. The
+  observations themselves change nothing; the only enforcement is the per-attempt
+  first-byte and idle timeout above, and requests, budgets and results are unchanged.
 - **Breaking changes** (removed or renamed field, changed meaning, changed engine order, changed default behavior) need `kogen-loop/v2` and `loop/v2`, and consumers must migrate deliberately.
 The external reference described a Kogen-owned synchronized copy at
 `cli/third_party/kogen-loop/`, a `replace` directive, sync script and

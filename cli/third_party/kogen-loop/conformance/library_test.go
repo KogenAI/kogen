@@ -23,7 +23,7 @@ type scripted struct {
 	log       *[]string
 	responses []*provider.Response
 	asked     []loop.Request
-	sendMore  []any // appended to the input it reports as sent (a context policy)
+	sendMore  []any // appended to the input it reports as sent (a Requester may report another input)
 }
 
 func (s *scripted) Request(ctx context.Context, r loop.Request) (*provider.Response, []any, error) {
@@ -168,11 +168,11 @@ func TestEngineOrder(t *testing.T) {
 	}
 }
 
-func TestSentInputOfAContextPolicyIsWhatTheConversationKeeps(t *testing.T) {
+func TestSentInputOfARequesterIsWhatTheConversationKeeps(t *testing.T) {
 	w := newWorld(t)
 	rq := &scripted{
 		responses: []*provider.Response{respond("r1", fakeCall("c1", "finish", `{}`))},
-		sendMore:  []any{userMessage("added by the policy")},
+		sendMore:  []any{userMessage("added by the requester")},
 	}
 	res, err := loop.Run(context.Background(), roundWith(t, w), []any{userMessage("go")}, rq, loop.Hooks{})
 	if err != nil {

@@ -185,6 +185,7 @@ var volatileKeys = map[string]bool{
 	"wall_ms": true, "model_active_ms": true, "t0": true, "at": true, "timestamp": true, "started_at": true,
 	"operation_id": true, "attempt_id": true, "conversation_id": true, "session_id": true, "prompt_cache_key": true,
 	"cache_id": true, "run_id": true, "approval": true, "approval_bytes": true, "index": true, "identity": true, "request_bytes": true, "ttft_ms": true, "duration_ms": true,
+	"headers_ms": true, "first_byte_ms": true, "last_byte_ms": true, "max_gap_ms": true, "gap_hist": true,
 }
 
 var cacheIdentity = regexp.MustCompile(`conversation-[0-9a-f]+`)

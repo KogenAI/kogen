@@ -50,13 +50,6 @@ func TestDirectBudgetWiring(t *testing.T) {
 	}
 }
 
-type budgetPassPolicy struct{ seen *Request }
-
-func (p budgetPassPolicy) Prepare(_ context.Context, r Request) ([]any, error) {
-	*p.seen = r
-	return r.Input, nil
-}
-
 func TestDirectBudgetTransport(t *testing.T) {
 	srv := newParallelServer(t, []string{"finish"}, []string{"finish"}, []string{"finish"})
 	client, session := parallelClient(t, srv.srv.URL)
@@ -79,16 +72,6 @@ func TestDirectBudgetTransport(t *testing.T) {
 	}
 	if len(srv.requests()) != 3 {
 		t.Fatal("refusal reached transport")
-	}
-
-	// A custom policy receives the original request and bypasses even invalid configuration.
-	srv2 := newParallelServer(t, []string{"finish"})
-	client2, session2 := parallelClient(t, srv2.srv.URL)
-	var seen Request
-	d = Direct{Client: client2, Session: session2, Policy: budgetPassPolicy{&seen}, InputBudgetBytes: -1}
-	_, sent, err := d.Request(context.Background(), r)
-	if err != nil || !reflect.DeepEqual(seen, r) || !reflect.DeepEqual(sent, r.Input) || len(srv2.requests()) != 1 {
-		t.Fatalf("custom policy: seen=%v sent=%v err=%v", seen, sent, err)
 	}
 }
 

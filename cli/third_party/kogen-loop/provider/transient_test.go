@@ -145,8 +145,9 @@ func TestCodelessSuperGrokGenerationFailureRetriesOnlyUnderTheNarrowRule(t *test
 func TestOverloadBackoffEndsWithTheAbsoluteBudgetAndWithCancellation(t *testing.T) {
 	body := map[string]any{"code": "server_is_overloaded", "message": "Our servers are currently overloaded"}
 	e, f := retryEnv(t, "chatgpt", failureStream("error", body), failureStream("error", body), failureStream("error", body))
-	_, err := e.c.Respond(context.Background(), e.s, Request{Role: roleOf("chatgpt"), Instructions: "p", Budget: 250 * time.Millisecond}, nil)
-	if se := mustErr(t, err); se.Detail != "ChatGPT response wait exceeded 30 minutes" || len(f.requests()) != 1 {
+	e.c.ResponseBudget = time.Second
+	_, err := e.c.Respond(context.Background(), e.s, Request{Role: roleOf("chatgpt"), Instructions: "p"}, nil)
+	if se := mustErr(t, err); se.Detail != "ChatGPT response wait exceeded 1s" || len(f.requests()) != 1 {
 		t.Fatalf("%v, %d requests", se, len(f.requests()))
 	}
 	e, f = retryEnv(t, "chatgpt", failureStream("error", body), textAnswer("never"))
