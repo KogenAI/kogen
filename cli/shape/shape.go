@@ -35,10 +35,6 @@ import (
 type ShapeInput struct {
 	SubmissionRetryLimit int // internal invalid-submission budget; nonpositive means 3
 
-	// NativeRoundLimits is internal and research-only; Shape, Refine and Review
-	// limits are unsupported for now and their keys are ignored.
-	NativeRoundLimits map[string]int
-
 	Project     string // a directory inside the project's repository; empty: the session's directory
 	Slug        string // valid by the caller (3 to 48 lowercase letters, digits and dashes)
 	Request     string // the request or the answers: never empty

@@ -120,7 +120,6 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 	tl := research.ApplyTools(&tools.Tools{Root: b.Root, Session: b.s, Repo: agent.Git(b.repo), Enabled: builderTools, Protected: b.Baseline, Excluded: b.Excluded, ShellTimeout: b.Config.ShellTimeout})
 	rd := loop.Round{
 		Owner: "build", Role: providerRole(role), Instructions: agent.Prompt(agent.Builder),
-		MaxRounds:   b.deps.NativeRoundLimits["build"],
 		Definitions: shellDefinitions(tl, builderDefs),
 		Tools:       tl,
 		Terminal:    []string{agent.FinishTool},
@@ -219,11 +218,6 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 		b.Run.Event(map[string]any{"event": "native_no_progress", "fingerprint": noProgress.Fingerprint, "count": len(noProgress.Rounds), "rounds": noProgress.Rounds})
 	}
 	if err != nil {
-		var limit *loop.RoundLimitError
-		if errors.As(err, &limit) {
-			b.Run.Event(map[string]any{"event": "native_round_limit", "role": "build", "limit": rd.MaxRounds, "rounds": limit.Rounds})
-			return executor.RoundResult{}, sys.Fail("candidate", "native_round_limit", limit.Error(), 1)
-		}
 		return executor.RoundResult{}, n.stop(ctx, err)
 	}
 	n.input, n.finish = res.Input, nil

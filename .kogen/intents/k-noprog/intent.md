@@ -14,7 +14,7 @@ Propagate the stop through Build's existing error/finalization path. Record a tr
 
 ## Decisions
 - Internal only, per role, default off; no CLI or project.yaml exposure. (source: request)
-- Native Build only, through loop.Run and loop.Hooks.Progress, as for K-NROUNDS. Manual Shape, Refine, workers and Review ignore NoProgress and are documented as unsupported for now. (source: request)
+- Native Build only, through loop.Run and loop.Hooks.Progress. Manual Shape, Refine, workers and Review ignore NoProgress and are documented as unsupported for now. (source: request)
 - Stop repeated tool-call rounds with the existing threshold, retaining truthful reason and fingerprint count without a new output format. (source: request)
 - Shared host: temporary directories only; never kill by process name/pattern, only owned PIDs; no synthetic CPU load. (source: request)
 

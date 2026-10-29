@@ -14,10 +14,7 @@ import (
 // two hooks a later change fills in (the independent review of a green pass and the import
 // of version 3 checkpoints written by the Elixir Kogen).
 type Deps struct {
-	// NativeRoundLimits is internal and research-only. Only build is supported;
-	// shape (including Refine) and review keys are ignored for now. Zero is unlimited.
-	NativeRoundLimits map[string]int
-	// BuildRequestBudget is internal, like NativeRoundLimits, and applies to the native builder
+	// BuildRequestBudget is internal and applies to the native builder
 	// only. A positive N allows N builder requests over the whole Build (every verification
 	// pass and explicit resume); review requests are not counted. Zero is off. The limit and the
 	// count are kept in the checkpoint: a resume takes them from there, not from this field.
