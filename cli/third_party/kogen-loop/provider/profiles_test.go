@@ -105,3 +105,13 @@ func TestProfileEvidenceScope(t *testing.T) {
 		t.Fatal(string(b))
 	}
 }
+
+func TestOfficialTextRecommendedChatGPTDefaults(t *testing.T) {
+	const want = "Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).\n"
+	if !strings.Contains(OfficialText(), "\n"+want) && !strings.HasPrefix(OfficialText(), want) {
+		t.Fatalf("OfficialText lacks recommended defaults line %q:\n%s", want, OfficialText())
+	}
+	if strings.Contains(OfficialText(), "Review gpt-6.1-sol/high (omitted") {
+		t.Fatal("OfficialText still recommends Review gpt-6.1-sol/high")
+	}
+}

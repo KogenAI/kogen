@@ -22,7 +22,7 @@ Feature: ChatGPT connection
         review/high [native-go-sol-review-2026-10-24]
       anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
         review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
       Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
     When the caller runs "kogen provider login chatgpt" in the background
@@ -51,7 +51,7 @@ Feature: ChatGPT connection
         review/high [native-go-sol-review-2026-10-24]
       anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
         review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
       Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
 
@@ -76,7 +76,7 @@ Feature: ChatGPT connection
         review/high [native-go-sol-review-2026-10-24]
       anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
         review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
       Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
 
@@ -340,7 +340,7 @@ Feature: ChatGPT connection
         review/high [native-go-sol-review-2026-10-24]
       anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
         review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
       Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
     Given the file "{home}/.kogen/credentials/supergrok.json" contains:
@@ -362,7 +362,7 @@ Feature: ChatGPT connection
         review/high [native-go-sol-review-2026-10-24]
       anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
         review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
       Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
 
@@ -387,7 +387,7 @@ Feature: ChatGPT connection
         review/high [native-go-sol-review-2026-10-24]
       anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
         review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).
+      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
       Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
       """
 

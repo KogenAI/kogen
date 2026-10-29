@@ -153,7 +153,7 @@ func OfficialText() string {
 			fmt.Fprintf(&b, "  %s/%s [%s]\n", q.Role, q.Effort, strings.Join(q.EvidenceIDs, ", "))
 		}
 	}
-	b.WriteString("Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-sol/high (omitted roles keep these defaults).\n")
+	b.WriteString("Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).\n")
 	b.WriteString("Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.\n")
 	return b.String()
 }
