@@ -113,6 +113,7 @@ Feature: CLI and process
       | kogen intent build a --detach   | kogen intent build: unknown option '--detach'                      | intent   |
       | kogen intent shape a b c        | kogen intent shape: unexpected argument 'c'                        | intent   |
       | kogen provider login grok       | kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible) | provider |
+      | kogen provider login openai-compatible --base-url https://a.example/v1 | kogen provider login: unknown option '--base-url' | provider |
 
   @CLI-2
   Scenario: The last repeated option wins and a missing project folder is an environment error

@@ -53,9 +53,65 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 		stop := s.WatchSignals()
 		defer stop()
 		client := provider.NewClient(versionLine(root))
-		return exitFor(client.Login(s.Context(), s, inv.provider, browserRedirect(s))), true
+		return exitFor(login(s, client, inv.provider)), true
 	}
 	return 0, false
+}
+
+// login signs in to one provider. Only openai-compatible differs: it reads the base URL the
+// key is for, then the key, and the loop binds the key to that URL's origin (K-CRED-ORIGIN).
+// Every other provider goes through Client.Login unchanged.
+func login(s *sys.Session, client *provider.Client, name string) error {
+	if name != "openai-compatible" {
+		return client.Login(s.Context(), s, name, browserRedirect(s))
+	}
+	return loginCompatible(s, client)
+}
+
+// loginCompatible prompts `Base URL:` and reads a line, then prompts `API key:` and leaves the
+// key to the loop's private key input. Both come from one buffered reader over the same input
+// source, so a key line already buffered with the URL line is not lost. The URL is the user's
+// own: it is never taken from the repository.
+func loginCompatible(s *sys.Session, client *provider.Client) error {
+	in := provider.StdinInput()
+	if client.Input != nil {
+		in = *client.Input
+	}
+	lines := bufio.NewReader(in.Reader)
+	in.Reader = lines
+	client.Input = &in
+	s.Puts("Base URL:")
+	baseURL, err := readInputLine(s, lines)
+	if err != nil {
+		return err
+	}
+	s.Puts("API key:")
+	return client.LoginWithBaseURL(s.Context(), s, "openai-compatible", baseURL, nil)
+}
+
+// readInputLine reads one line without its line ending, giving up when the caller interrupts.
+func readInputLine(s *sys.Session, r *bufio.Reader) (string, error) {
+	type read struct {
+		line string
+		err  error
+	}
+	got := make(chan read, 1)
+	go func() {
+		line, err := r.ReadString('\n')
+		got <- read{line, err}
+	}()
+	select {
+	case x := <-got:
+		if x.err != nil && x.err != io.EOF {
+			return "", sys.Fail("provider", "login_failed", "OpenAI-compatible base URL input interrupted; saved login unchanged", 4)
+		}
+		return strings.TrimSuffix(strings.TrimSuffix(x.line, "\n"), "\r"), nil
+	case <-s.Context().Done():
+		if err := s.Err(); err != nil {
+			return "", err
+		}
+		return "", s.Context().Err()
+	}
 }
 
 // exitFor prints a Kogen error line (CLI-6) and returns the exit code: 0, the error's exit,

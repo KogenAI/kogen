@@ -392,6 +392,34 @@ Feature: ChatGPT connection
       """
 
   @GPT-4
+  Scenario: The compatible login reads the base URL, then the key, and binds the key to that origin
+    When the caller runs "kogen provider login openai-compatible" with stdin:
+      """
+      https://a.example/v1
+      KEY
+      """
+    Then the exit code is 0
+    And stdout is:
+      """
+      Base URL:
+      API key:
+      openai-compatible: key saved (not verified)
+      """
+    And the file "{home}/.kogen/credentials/openai-compatible.json" contains "https://a.example"
+    And the file "{home}/.kogen/credentials/openai-compatible.json" has mode "600"
+
+  @GPT-4
+  Scenario: The compatible login refuses an HTTP base URL and keeps a keyless localhost host login-free
+    When the caller runs "kogen provider login openai-compatible" with stdin:
+      """
+      http://localhost:11434/v1
+      KEY
+      """
+    Then the exit code is 4
+    And stdout contains "provider/login_failed: OpenAI-compatible key login needs an HTTPS base URL, not http://localhost:11434; saved login unchanged"
+    And the file "{home}/.kogen/credentials/openai-compatible.json" does not exist
+
+  @GPT-4
   Scenario: Offline machine catalog separates exact qualifications and evidence
     When the caller runs "kogen provider list --json"
     Then the exit code is 0

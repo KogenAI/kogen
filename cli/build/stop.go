@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"kogen-loop/sys"
+	"kogen/agent"
 	"kogen/verify"
 )
 
@@ -62,6 +63,7 @@ func (b *Attempt) stopped(e *sys.Error) (int, error) {
 			Detail: "the conversation no longer fits " + b.Config.Models["build"].Model + "'s context; edits are left in place",
 		}
 	}
+	e = agent.WithOriginHint(e)
 	report := b.Phase != "startup"
 	if report {
 		b.s.Puts(fmt.Sprintf("failed %s: %s (Build %s)", b.Slug, e.Reason, b.Run.ID))

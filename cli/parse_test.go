@@ -62,7 +62,7 @@ Commands:
   login opencode-go        Save your OpenCode Go workspace key from stdin
   login anthropic          Save your Anthropic API key privately from stdin
   login claude-code        Save your Claude Code token (claude setup-token) privately from stdin
-  login openai-compatible  Save an optional key for an OpenAI-compatible host from stdin
+  login openai-compatible  Save a key for an OpenAI-compatible host: its base URL line, then the key line (stdin or terminal)
   list [--json]            Show local logins and official compatibility
 
 Logins belong to this machine, never to a repo.

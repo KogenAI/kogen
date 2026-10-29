@@ -640,6 +640,7 @@ func questionList(qs []map[string]any) []any {
 // providerFailed reports the provider error, then ends shaping with the sentence that says
 // what to rerun.
 func (sh *shaping) providerFailed(e *sys.Error) error {
+	e = agent.WithOriginHint(e)
 	sh.s.Out(e.Render())
 	var retry string
 	if sh.in.RequestPath == "" {

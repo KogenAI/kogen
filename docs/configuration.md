@@ -537,12 +537,21 @@ Usual addresses: Ollama `http://localhost:11434/v1`, LM Studio
 - **Request.** A non-streaming Chat Completions POST to `<base_url>/chat/completions`,
   the same wire as OpenCode Go. The model is sent unchanged. Effort `default` sends no
   `reasoning_effort`; any other effort is sent as `reasoning_effort`.
-- **Key.** A key is optional. `kogen provider login openai-compatible` reads one from
-  stdin (not echoed on a terminal) and saves it at
-  `~/.kogen/credentials/openai-compatible.json` (0600); it prints
-  `openai-compatible: key saved (not verified)`. With a saved key Kogen sends
-  `Authorization: Bearer <key>`. Without one it sends no Authorization header, and a
-  keyless local host needs no login.
+- **Key.** A key is optional. `kogen provider login openai-compatible` prompts
+  `Base URL:` and reads one line, then prompts `API key:` and reads the key from the
+  same input, stdin or a terminal (the key is not echoed on a terminal):
+  `printf 'https://a.example/v1\nKEY\n' | kogen provider login openai-compatible`.
+  The URL is your own input and is never taken from `.kogen/project.yaml` or any other
+  repository file, so a repository cannot choose where your key goes. A saved key needs
+  an HTTPS URL. It is saved at `~/.kogen/credentials/openai-compatible.json` (0600),
+  bound to that URL's origin (scheme, host and effective port), and the command prints
+  `openai-compatible: key saved (not verified)`. Kogen sends
+  `Authorization: Bearer <key>` only to a role whose `base_url` has that origin; a role at
+  another origin is refused before any request, and so is a key saved by an earlier
+  version that has no origin. In both cases run
+  `kogen provider login openai-compatible` again with the base URL the key is for.
+  Without a saved key Kogen sends no Authorization header, and a keyless local host, such as
+  `http://localhost:11434/v1` above, needs no login.
 - **Provider list.** `kogen provider list` shows `openai-compatible: key saved (not
   verified)` once a key is saved. Without a key the list is unchanged.
 - **Caching.** No vendor cache field or header is sent (see [Prompt caching](#prompt-caching)).
