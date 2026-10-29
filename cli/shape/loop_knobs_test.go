@@ -11,19 +11,7 @@ import (
 	"time"
 
 	"kogen-loop/sys"
-	"kogen/internal/research"
 )
-
-// setKnobs makes s the research settings for one test. Callers are serial (serialTmp first),
-// so no other test reads the settings while they are changed.
-func setKnobs(t *testing.T, s research.Settings) {
-	t.Helper()
-	old := research.Current
-	research.Current = s
-	t.Cleanup(func() { research.Current = old })
-}
-
-func knobInt(v int) *int { return &v }
 
 // docBigOrigin serves a 44000-byte page at /big and a source list for any search.
 func docBigOrigin(t *testing.T) *httptest.Server {
@@ -104,10 +92,10 @@ func knobRefineEntry(t *testing.T, call shpStep, request string) knobResult {
 
 var knobEntries = []knobEntry{{"shape", knobShapeEntry}, {"refine", knobRefineEntry}}
 
-// knobTools runs one entry under each tool-result setting.
+// knobTools runs one entry with a tool result over the default bound.
 func knobTools(t *testing.T, e knobEntry) {
 	probe := shpAnswer(shpCall("p1", "probe", map[string]any{"command": probeBig}))
-	t.Run("zero keeps 16384 and 4096", func(t *testing.T) {
+	t.Run("a result is cut at 16384 bytes with a 4096-byte head", func(t *testing.T) {
 		serialTmp(t)
 		r := e.run(t, probe, "Clarify the draft.")
 		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
@@ -115,33 +103,14 @@ func knobTools(t *testing.T, e knobEntry) {
 		}
 		knobCut(t, "probe result", shpOutputs(r.reqs[1])["p1"], 16384, 4096)
 	})
-	for _, c := range []struct {
-		name        string
-		settings    research.Settings
-		bound, head int
-	}{
-		{name: "ResultBound alone", settings: research.Settings{Tools: research.ToolSettings{ResultBound: 8192}}, bound: 8192, head: 4096},
-		{name: "ResultHead alone", settings: research.Settings{Tools: research.ToolSettings{ResultHead: 1024}}, bound: 16384, head: 1024},
-		{name: "both", settings: research.Settings{Tools: research.ToolSettings{ResultBound: 2000, ResultHead: 500}}, bound: 2000, head: 500},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			serialTmp(t)
-			setKnobs(t, c.settings)
-			r := e.run(t, probe, "Clarify the draft.")
-			if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
-				t.Fatalf("exit %d err %v requests %d", r.exit, r.err, len(r.reqs))
-			}
-			knobCut(t, "probe result", shpOutputs(r.reqs[1])["p1"], c.bound, c.head)
-		})
-	}
 }
 
-// knobDocumentation runs one entry under each documentation setting.
+// knobDocumentation runs one entry with a documentation page over the result bound.
 func knobDocumentation(t *testing.T, e knobEntry) {
 	fetch := func(origin *httptest.Server) shpStep {
 		return shpAnswer(shpCall("d1", "documentation", map[string]any{"operation": "fetch", "url": origin.URL + "/big", "base": origin.URL}))
 	}
-	t.Run("zero keeps the full page within 16384", func(t *testing.T) {
+	t.Run("the page is cut within 16384 bytes", func(t *testing.T) {
 		serialTmp(t)
 		origin := docBigOrigin(t)
 		r := e.run(t, fetch(origin), "Clarify the draft.")
@@ -154,57 +123,16 @@ func knobDocumentation(t *testing.T, e knobEntry) {
 			t.Fatalf("%d bytes: %.200q", len(out), out)
 		}
 		if len(out) < 8192 {
-			t.Fatalf("zero must not shrink the result: %d bytes", len(out))
+			t.Fatalf("the result shrank below the default: %d bytes", len(out))
 		}
-	})
-	t.Run("Documentation.ResultBound", func(t *testing.T) {
-		serialTmp(t)
-		setKnobs(t, research.Settings{Documentation: research.DocumentationSettings{ResultBound: 2048}})
-		origin := docBigOrigin(t)
-		r := e.run(t, fetch(origin), "Clarify the draft.")
-		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
-			t.Fatalf("exit %d err %v requests %d", r.exit, r.err, len(r.reqs))
-		}
-		out := shpOutputs(r.reqs[1])["d1"]
-		shpContains(t, "total", out, `"body_total":44000`)
-		if len(out) > 2048 || len(out) < 1024 || !strings.Contains(out, `"truncated":true`) {
-			t.Fatalf("%d bytes: %.200q", len(out), out)
-		}
-	})
-	t.Run("Documentation.BodyBound", func(t *testing.T) {
-		serialTmp(t)
-		setKnobs(t, research.Settings{Documentation: research.DocumentationSettings{BodyBound: 20000}})
-		origin := docBigOrigin(t)
-		r := e.run(t, fetch(origin), "Clarify the draft.")
-		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
-			t.Fatalf("exit %d err %v requests %d", r.exit, r.err, len(r.reqs))
-		}
-		shpContains(t, "the page was read to the bound only", shpOutputs(r.reqs[1])["d1"], `"body_total":20000`)
 	})
 }
 
-// knobInput runs one entry with a request of about 108 KB under the input ceiling.
+// knobInput runs one entry with a request of about 108 KB under the 524288-byte input budget.
 func knobInput(t *testing.T, e knobEntry) {
 	big := strings.Repeat("Clarify. ", 12000)
-	t.Run("zero sends the request", func(t *testing.T) {
+	t.Run("a request within the input budget is sent", func(t *testing.T) {
 		serialTmp(t)
-		r := e.run(t, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), big)
-		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
-			t.Fatalf("exit %d err %v requests %d", r.exit, r.err, len(r.reqs))
-		}
-	})
-	t.Run("InputBudgetBytes lowers the ceiling before transport", func(t *testing.T) {
-		serialTmp(t)
-		setKnobs(t, research.Settings{InputBudgetBytes: 65536})
-		r := e.run(t, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), big)
-		e1 := shpWantError(t, r.err, "candidate", "context_budget_exceeded", "ceiling 65536", 1)
-		shpEq(t, "exit", r.exit, 1)
-		shpEq(t, "requests", len(r.reqs), 0)
-		shpContains(t, "unsent input is retained", e1.Detail, "retained in working-context custody")
-	})
-	t.Run("InputBudgetBytes at the library maximum changes nothing", func(t *testing.T) {
-		serialTmp(t)
-		setKnobs(t, research.Settings{InputBudgetBytes: 524288})
 		r := e.run(t, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), big)
 		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
 			t.Fatalf("exit %d err %v requests %d", r.exit, r.err, len(r.reqs))
@@ -212,93 +140,42 @@ func knobInput(t *testing.T, e knobEntry) {
 	})
 }
 
-// knobAuthority runs one entry on an Anthropic role.
+// knobAuthority runs one entry on an Anthropic role and requires the first request to carry
+// no authority breakpoint in its first user message.
 func knobAuthority(t *testing.T, name string) {
-	marks := func(body map[string]any) (n int, first bool) {
-		var walk func(v any) int
-		walk = func(v any) int {
-			switch x := v.(type) {
-			case []any:
-				n := 0
-				for _, e := range x {
-					n += walk(e)
-				}
-				return n
-			case map[string]any:
-				n := 0
-				if x["cache_control"] != nil {
-					n++
-				}
-				for _, e := range x {
-					n += walk(e)
-				}
-				return n
-			}
-			return 0
-		}
-		messages, _ := body["messages"].([]any)
-		if len(messages) > 0 {
-			first, _ := messages[0].(map[string]any)
-			return walk(messages), walk(first["content"]) > 0
-		}
-		return 0, false
+	serialTmp(t)
+	var f *shpFx
+	if name == "shape" {
+		f = newShpFx(t)
+		step := shpAnthropic(f)
+		f.Prov.route = func(map[string]any) *shpStep { return &step }
+		f.newSession()
+		Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client})
+	} else {
+		r := newRefFx(t, refOpts{red: true})
+		f = r.shpFx
+		step := shpAnthropic(f)
+		f.Prov.route = func(map[string]any) *shpStep { return &step }
+		r.hash0 = r.hash()
+		r.remove(".kogen/local/readiness/is-even.json")
+		f.newSession()
+		Refine(context.Background(), f.S, RefineInput{Project: f.Root, Slug: shpSlug, Hash: r.hash0, Request: "Clarify the draft.", Client: f.Client})
 	}
-	run := func(t *testing.T, boundary *int) (map[string]any, string) {
-		serialTmp(t)
-		setKnobs(t, research.Settings{AuthorityBoundary: boundary})
-		var f *shpFx
-		var err error
-		if name == "shape" {
-			f = newShpFx(t)
-			step := shpAnthropic(f)
-			f.Prov.route = func(map[string]any) *shpStep { return &step }
-			f.newSession()
-			_, err = Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client})
-		} else {
-			r := newRefFx(t, refOpts{red: true})
-			f = r.shpFx
-			step := shpAnthropic(f)
-			f.Prov.route = func(map[string]any) *shpStep { return &step }
-			r.hash0 = r.hash()
-			r.remove(".kogen/local/readiness/is-even.json")
-			f.newSession()
-			_, err = Refine(context.Background(), f.S, RefineInput{Project: f.Root, Slug: shpSlug, Hash: r.hash0, Request: "Clarify the draft.", Client: f.Client})
-		}
-		reqs := f.Prov.requests()
-		if len(reqs) == 0 {
-			return nil, knobText(f, err)
-		}
-		return reqs[0], knobText(f, err)
+	reqs := f.Prov.requests()
+	if len(reqs) == 0 {
+		t.Fatal("no request reached the provider")
 	}
-	var base int
-	t.Run("nil sends no authority breakpoint", func(t *testing.T) {
-		body, _ := run(t, nil)
-		if body == nil {
-			t.Fatal("no request reached the provider")
+	messages, _ := reqs[0]["messages"].([]any)
+	if len(messages) == 0 {
+		t.Fatal("no messages in the first request")
+	}
+	first, _ := messages[0].(map[string]any)
+	blocks, _ := first["content"].([]any)
+	for _, b := range blocks {
+		if block, _ := b.(map[string]any); block["cache_control"] != nil {
+			t.Fatal("the first user message carries a breakpoint")
 		}
-		var first bool
-		base, first = marks(body)
-		if first {
-			t.Fatalf("the first user message carries a breakpoint without the setting")
-		}
-	})
-	t.Run("a target inside the first user message is marked in the sent request", func(t *testing.T) {
-		body, _ := run(t, knobInt(0))
-		if body == nil {
-			t.Fatal("no request reached the provider")
-		}
-		n, first := marks(body)
-		if !first || n != base+1 {
-			t.Fatalf("breakpoints %d (was %d), first message marked %v", n, base, first)
-		}
-	})
-	t.Run("a target outside it is refused in request preflight before transport", func(t *testing.T) {
-		body, stdout := run(t, knobInt(99))
-		if body != nil {
-			t.Fatalf("a request reached the provider: %v", body["model"])
-		}
-		shpContains(t, "refusal", stdout, "invalid authority boundary: index 99 outside the first user message's")
-	})
+	}
 }
 
 func TestLoopKnobsShape(t *testing.T) {
@@ -307,7 +184,7 @@ func TestLoopKnobsShape(t *testing.T) {
 	t.Run("tools", func(t *testing.T) { knobTools(t, e) })
 	t.Run("documentation", func(t *testing.T) { knobDocumentation(t, e) })
 	t.Run("input", func(t *testing.T) { knobInput(t, e) })
-	t.Run("authority", func(t *testing.T) { knobAuthority(t, "shape") })
+	t.Run("the first request carries no authority breakpoint", func(t *testing.T) { knobAuthority(t, "shape") })
 	t.Run("client keeps the loop's response budget", func(t *testing.T) {
 		serialTmp(t)
 		f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
@@ -317,7 +194,7 @@ func TestLoopKnobsShape(t *testing.T) {
 		}
 		shpEq(t, "response budget", f.Client.ResponseBudget, time.Duration(0))
 	})
-	t.Run("zero leaves an injected client as it was", func(t *testing.T) {
+	t.Run("an injected client is left as it was", func(t *testing.T) {
 		serialTmp(t)
 		f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 		f.Client.ResponseBudget = 42 * time.Second
@@ -329,7 +206,6 @@ func TestLoopKnobsShape(t *testing.T) {
 	})
 	t.Run("workers use the same bounds", func(t *testing.T) {
 		serialTmp(t)
-		setKnobs(t, research.Settings{Tools: research.ToolSettings{ResultBound: 2000, ResultHead: 500}})
 		f := newShpFx(t)
 		sh := &shaping{s: f.S, repo: f.Repo, root: f.Root, client: f.Client}
 		out, err := sh.agentTools(context.Background(), []string{"probe"}).Run("probe", map[string]any{"command": probeBig})
@@ -337,7 +213,7 @@ func TestLoopKnobsShape(t *testing.T) {
 			t.Fatal(err)
 		}
 		shpEq(t, "text is whole before delivery", strings.Contains(out.Text, "bytes omitted"), false)
-		knobCut(t, "delivered", research.Cut(out).Text, 2000, 500)
+		knobCut(t, "delivered", out.Cut().Text, 16384, 4096)
 	})
 }
 
@@ -347,7 +223,7 @@ func TestLoopKnobsRefine(t *testing.T) {
 	t.Run("tools", func(t *testing.T) { knobTools(t, e) })
 	t.Run("documentation", func(t *testing.T) { knobDocumentation(t, e) })
 	t.Run("input", func(t *testing.T) { knobInput(t, e) })
-	t.Run("authority", func(t *testing.T) { knobAuthority(t, "refine") })
+	t.Run("the first request carries no authority breakpoint", func(t *testing.T) { knobAuthority(t, "refine") })
 	t.Run("client keeps the loop's response budget", func(t *testing.T) {
 		serialTmp(t)
 		f := newRefFx(t, refOpts{red: true}, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), refSubmit("c1", refIntentPath, shpIntentMD))

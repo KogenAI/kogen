@@ -4,7 +4,6 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/tools"
 	"kogen/git"
-	"kogen/internal/research"
 	"kogen/project"
 )
 
@@ -29,7 +28,7 @@ func startConversation(ev *Evidence, owner string) string {
 // place where a conversation's requests get their identity.
 func conversationRequest(req provider.Request, cacheID string) provider.Request {
 	req.CacheID = cacheID
-	return research.Request(req)
+	return req
 }
 
 // toolOutput is the delivered result of one tool call (Shape.output): bounded text, or
@@ -37,9 +36,9 @@ func conversationRequest(req provider.Request, cacheID string) provider.Request 
 func toolOutput(c tools.Call, result any) map[string]any {
 	switch v := result.(type) {
 	case tools.Output:
-		return c.Output(research.Cut(v))
+		return c.Output(v.Cut())
 	case string:
-		return c.Output(research.CutText(v))
+		return c.Output(tools.Cut(v))
 	}
 	return c.Output(result)
 }

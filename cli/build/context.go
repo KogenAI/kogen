@@ -14,7 +14,6 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	agent "kogen-loop/tools"
-	"kogen/internal/research"
 	"kogen/project"
 	"kogen/thinking"
 )
@@ -170,10 +169,10 @@ func safeFile(path string) bool {
 
 // measure is the complete rendered request against the 524288-byte input budget.
 func (b *Attempt) bodyOf(role project.Role, instructions string, items, tools []any, owner string) map[string]any {
-	return b.deps.Client.Body(research.Request(provider.Request{
+	return b.deps.Client.Body(provider.Request{
 		Role: providerRole(role), Instructions: instructions, Input: items, Tools: tools, ToolChoice: b.force,
 		CacheID: b.cacheID(owner), Cache: provider.NewCache(b.PromptCache),
-	}))
+	})
 }
 
 // conversation names the owner's current model conversation: the builder's, or the review
@@ -221,7 +220,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		}
 		state = &OwnerContext{Mandatory: nonNil(mandatory), Observations: []any{}, History: []HistoryRef{}}
 	}
-	measured, err := research.Measure(b.bodyOf(role, instructions, input, tools, owner), providerRole(role))
+	measured, err := agent.Measure(b.bodyOf(role, instructions, input, tools, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
@@ -338,14 +337,14 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		message := map[string]any{"role": "user", "content": "Local working-window reset\n" + string(encoded)}
 		w.mandatory = append(slices.Clone(state.Mandatory), message)
 		w.reduced = append(slices.Clone(w.mandatory), thinking.Strip(newestExchange(in))...)
-		next, err := research.Measure(b.bodyOf(role, instructions, w.reduced, tools, owner), providerRole(role))
+		next, err := agent.Measure(b.bodyOf(role, instructions, w.reduced, tools, owner), providerRole(role))
 		return w, next, err
 	}
 	window, next, err := construct(input, nil)
 	if err != nil {
 		return nil, err
 	}
-	mand, err := research.Measure(b.bodyOf(role, instructions, window.mandatory, tools, owner), providerRole(role))
+	mand, err := agent.Measure(b.bodyOf(role, instructions, window.mandatory, tools, owner), providerRole(role))
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +376,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		return nil, sys.Fail("candidate", "context_budget_exceeded", fmt.Sprintf(
 			"%s: measured %d bytes; mandatory %d bytes; ceiling %d, output reserve %d tokens. Retained checkpoint %s/checkpoint.json and history %s. "+
 				"Inspect custody; prepare a smaller supported image externally or use ordinary Refine and new exact approval if scope must change.",
-			owner, measured.RenderedBytes, mand.RenderedBytes, research.InputBudget(), reservedOutputTokens, b.Run.Dir, strings.Join(paths, ", ")), 1)
+			owner, measured.RenderedBytes, mand.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, b.Run.Dir, strings.Join(paths, ", ")), 1)
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o777); err != nil {
@@ -412,7 +411,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		"input_tokens_after": next.RenderedBytes, "carried_items": len(window.reduced),
 	})
 	b.s.Progress(fmt.Sprintf("kogen: %s local reset %d -> %d bytes; ceiling %d; reserve %d; history %s%s",
-		owner, measured.RenderedBytes, next.RenderedBytes, research.InputBudget(), reservedOutputTokens, path, suffix))
+		owner, measured.RenderedBytes, next.RenderedBytes, agent.InputBudgetBytes, reservedOutputTokens, path, suffix))
 	return window.reduced, nil
 }
 

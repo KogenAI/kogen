@@ -13,9 +13,9 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
+	"kogen/agent"
 	"kogen/executor"
 	"kogen/git"
-	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -121,10 +121,7 @@ func conclude(s *sys.Session, pb **Attempt, err error) (int, error) {
 }
 
 func buildRun(ctx context.Context, s *sys.Session, in Input, out **Attempt) error {
-	if err := research.Validate(ctx, s); err != nil {
-		return err
-	}
-	research.ApplyBuildReview(in.Deps.Client)
+	agent.ApplyBuildReview(in.Deps.Client)
 	if in.Context != nil {
 		if err := in.Context.Validate(); err != nil {
 			return err
@@ -323,7 +320,7 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 	}
 	*out = b
 	run.Event(map[string]any{"event": "start", "slug": slug, "start_head": start, "approved": approval.SHA256})
-	run.Event(research.BudgetEvent(in.Deps.Client))
+	run.Event(agent.BudgetEvent(in.Deps.Client))
 	if err := b.Save(b.Continuation); err != nil {
 		return err
 	}
@@ -578,16 +575,17 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 	if b.RootRun != nil {
 		parent = *b.RootRun
 	}
-	req := research.Request(provider.Request{
+	req := provider.Request{
 		Role: providerRole(sp.Role), Instructions: sp.Instructions, Input: input, Tools: sp.Tools, ToolChoice: sp.ForceTool, CacheID: b.cacheID(sp.Owner), Cache: b.cache,
 		Context: map[string]any{
 			"phase": sp.Owner, "role": sp.Owner, "run_id": b.Run.ID, "slug": b.Slug, "lineage": parent,
 			"pass": b.Pass, "repair": b.Repairs,
 		},
-	})
+	}
 	requestBytes := b.requestBytes(req)
 	resp, err := tools.Deliver(input, sp.Owner, b.Run.Event, func() (*provider.Response, error) {
-		return research.Respond(ctx, b.deps.Client, b.s, req, attempts{b.Run})
+		resp, err := b.deps.Client.Respond(ctx, b.s, req, attempts{b.Run})
+		return resp, agent.NameBudgetExpiry(err, b.deps.Client.ResponseBudget)
 	})
 	if err != nil {
 		return nil, nil, err

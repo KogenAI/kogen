@@ -23,7 +23,6 @@ import (
 	"kogen/agent"
 	"kogen/executor"
 	"kogen/git"
-	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -69,9 +68,6 @@ func Refine(ctx context.Context, s *sys.Session, in RefineInput) (exit int, err 
 }
 
 func refineStart(ctx context.Context, s *sys.Session, in RefineInput) (int, error) {
-	if err := research.Validate(ctx, s); err != nil {
-		return 0, err
-	}
 	dir := in.Project
 	if dir == "" {
 		dir = s.Cwd
@@ -293,7 +289,7 @@ func (r *refine) run(ctx context.Context) (exit int, err error) {
 	if limit := submissionRetryLimit(r.in.SubmissionRetryLimit); limit != 3 {
 		r.ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
 	}
-	r.ev.Record(research.BudgetEvent(r.client))
+	r.ev.Record(agent.BudgetEvent(r.client))
 	defer func() {
 		if err == nil {
 			return
@@ -947,7 +943,7 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 		req.Input = input
 		turns.announce(req, role, r.ev)
 		call := r.ev.BeginCall("shape", "", map[string]any{"head": r.head, "tree": r.tree}, "targeted refinement", role).Sized(r.client, req)
-		resp, err := research.Respond(ctx, r.client, r.s, req, call)
+		resp, err := r.client.Respond(ctx, r.s, req, call)
 		call.End(resp, err)
 		if err != nil {
 			return nil, nil, usage, err
@@ -1027,12 +1023,12 @@ func (r *refine) converse(ctx context.Context, role project.Role, defs []any, in
 
 // runTool runs one of the read-only tools or the probe in the scratch checkout.
 func (r *refine) runTool(ctx context.Context, c tools.Call) (tools.Output, error) {
-	tl := research.ApplyTools(&tools.Tools{
+	tl := &tools.Tools{
 		Root: r.scratch, Session: r.s, Repo: agent.Git(r.scratchR),
 		Enabled:       []string{tools.ReadFileTool, tools.ListFilesTool, tools.SearchTextTool, agent.ProbeTool, tools.DocumentationTool},
 		Probe:         func(command string, files any) (string, error) { return r.probe(ctx, command, files) },
 		Documentation: tools.Documentation{UserAgent: documentationAgent(r.client)},
-	})
+	}
 	if c.Name != agent.ProbeTool {
 		return tl.Run(c.Name, c.Args())
 	}

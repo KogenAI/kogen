@@ -17,7 +17,12 @@ vendor's own; Kogen adds no documentation implementation. The documentation tool
 requests changes with the vendored loop; `cli/agent/testdata/defs_golden.json` carries that one
 entry. L-TTL is out of scope.
 
-## Internal research settings
+## Internal research settings (historical)
+
+**Historical:** Kogen removed this internal option layer (K-RESEARCH-REMOVE). `cli/internal/research`,
+`research.Current` and the settings below no longer exist; their defaults are now plain
+construction, and the pin and its public library options are untouched. What follows records the
+state at this re-pin.
 
 `cli/internal/research` holds one struct and one zero-valued source (`research.Current`) of
 `Tools.ResultBound`, `Tools.ResultHead`, `Documentation.ResultBound`, `Documentation.BodyBound`,

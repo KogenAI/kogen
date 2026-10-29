@@ -8,21 +8,10 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"kogen/internal/research"
 )
 
-// The research settings reach the native builder and the independent review. These tests are
-// serial: they change the process-wide settings and restore them.
-
-func setKnobs(t *testing.T, s research.Settings) {
-	t.Helper()
-	old := research.Current
-	research.Current = s
-	t.Cleanup(func() { research.Current = old })
-}
-
-func knobInt(v int) *int { return &v }
+// The defaults of the native builder and the independent review: tool results cut at 16384 bytes
+// with a 4096-byte head, the 524288-byte input budget and no authority breakpoint.
 
 // knobShell is a shell command whose output is far over any result bound under test.
 const knobShell = "head -c 30000 /dev/zero | tr '\\000' a"
@@ -122,260 +111,93 @@ func bigDiagnostic() *Diagnostic {
 }
 
 func TestLoopKnobsNativeBuilder(t *testing.T) {
-	t.Run("tools", func(t *testing.T) {
-		for _, c := range []struct {
-			name        string
-			settings    research.Settings
-			bound, head int
-		}{
-			{"zero keeps 16384 and 4096", research.Settings{}, 16384, 4096},
-			{"ResultBound alone", research.Settings{Tools: research.ToolSettings{ResultBound: 8192}}, 8192, 4096},
-			{"ResultHead alone", research.Settings{Tools: research.ToolSettings{ResultHead: 1024}}, 16384, 1024},
-			{"both", research.Settings{Tools: research.ToolSettings{ResultBound: 2000, ResultHead: 500}}, 2000, 500},
-		} {
-			t.Run(c.name, func(t *testing.T) {
-				setKnobs(t, c.settings)
-				e := newEnv(t)
-				e.prov.then(e.prov.calls("shell", map[string]any{"command": knobShell}))
-				e.prov.then(landScript(e.prov)...)
-				a := e.build()
-				if a.exit != 0 {
-					t.Fatalf("exit %d: %s", a.exit, a.shown())
-				}
-				knobCut(t, "shell result", knobOutput(t, e.prov.toolOutputs()), c.bound, c.head)
-			})
+	t.Run("a tool result is cut at 16384 bytes with a 4096-byte head", func(t *testing.T) {
+		e := newEnv(t)
+		e.prov.then(e.prov.calls("shell", map[string]any{"command": knobShell}))
+		e.prov.then(landScript(e.prov)...)
+		a := e.build()
+		if a.exit != 0 {
+			t.Fatalf("exit %d: %s", a.exit, a.shown())
 		}
+		knobCut(t, "shell result", knobOutput(t, e.prov.toolOutputs()), 16384, 4096)
 	})
 
-	t.Run("documentation settings are accepted and leave the builder's tools alone", func(t *testing.T) {
-		setKnobs(t, research.Settings{Documentation: research.DocumentationSettings{ResultBound: 2048, BodyBound: 4096}})
+	t.Run("a large diagnostic fits the input budget and is sent", func(t *testing.T) {
 		e := newEnv(t)
 		e.prov.then(landScript(e.prov)...)
-		if a := e.build(); a.exit != 0 {
+		if a := e.build(func(in *Input) { in.Context = bigDiagnostic() }); a.exit != 0 {
 			t.Fatalf("exit %d: %s", a.exit, a.shown())
 		}
 	})
 
-	t.Run("a setting the loop refuses stops before any request", func(t *testing.T) {
-		setKnobs(t, research.Settings{Tools: research.ToolSettings{ResultBound: 1000}})
+	t.Run("the sent request carries no authority breakpoint", func(t *testing.T) {
 		e := newEnv(t)
-		e.prov.then(landScript(e.prov)...)
-		start := e.head()
-		a := e.build()
-		if a.err == nil || !strings.Contains(a.err.Error(), "tools: ResultHead 4096 must be less than ResultBound 1000") {
-			t.Fatalf("exit %d err %v: %s", a.exit, a.err, a.shown())
+		anthropicRole(e, "build")
+		e.prov.then(refused())
+		e.build()
+		reqs := e.prov.requests()
+		if len(reqs) == 0 {
+			t.Fatal("no request reached the provider")
 		}
-		eq(t, "requests", e.prov.count(), 0)
-		eq(t, "head", e.head(), start)
-		eq(t, "runs", len(e.runIDs()), 0)
-	})
-
-	t.Run("input budget", func(t *testing.T) {
-		t.Run("zero sends the request", func(t *testing.T) {
-			e := newEnv(t)
-			e.prov.then(landScript(e.prov)...)
-			if a := e.build(func(in *Input) { in.Context = bigDiagnostic() }); a.exit != 0 {
-				t.Fatalf("exit %d: %s", a.exit, a.shown())
-			}
-		})
-		t.Run("a lower ceiling stops an over-ceiling opening before transport", func(t *testing.T) {
-			setKnobs(t, research.Settings{InputBudgetBytes: 65536})
-			e := newEnv(t)
-			e.prov.then(landScript(e.prov)...)
-			a := e.build(func(in *Input) { in.Context = bigDiagnostic() })
-			eq(t, "requests", e.prov.count(), 0)
-			if a.exit == 0 {
-				t.Fatalf("the Build landed: %s", a.shown())
-			}
-			contains(t, "ceiling", a.shown()+fmt.Sprint(a.err), "ceiling 65536")
-			eq(t, "outcome", e.result(e.onlyRun())["outcome"], any("context_budget_exceeded"))
-		})
-	})
-
-	t.Run("authority boundary", func(t *testing.T) {
-		build := func(t *testing.T, boundary *int) (map[string]any, *attempt) {
-			setKnobs(t, research.Settings{AuthorityBoundary: boundary})
-			e := newEnv(t)
-			anthropicRole(e, "build")
-			e.prov.then(refused())
-			a := e.build()
-			reqs := e.prov.requests()
-			if len(reqs) == 0 {
-				return nil, a
-			}
-			return reqs[0], a
+		if _, first := knobMarks(reqs[0]); first {
+			t.Fatal("the first block carries a breakpoint")
 		}
-		var base int
-		t.Run("nil sends no authority breakpoint", func(t *testing.T) {
-			body, _ := build(t, nil)
-			if body == nil {
-				t.Fatal("no request reached the provider")
-			}
-			var first bool
-			base, first = knobMarks(body)
-			if first {
-				t.Fatal("the first block carries a breakpoint without the setting")
-			}
-		})
-		t.Run("a target inside the first user message is marked in the sent request", func(t *testing.T) {
-			body, _ := build(t, knobInt(0))
-			if body == nil {
-				t.Fatal("no request reached the provider")
-			}
-			n, first := knobMarks(body)
-			if !first || n != base+1 {
-				t.Fatalf("breakpoints %d (was %d), first message marked %v", n, base, first)
-			}
-		})
-		t.Run("a target outside it is refused in request preflight before transport", func(t *testing.T) {
-			body, a := build(t, knobInt(99))
-			if body != nil {
-				t.Fatalf("a request reached the provider")
-			}
-			contains(t, "refusal", a.shown()+fmt.Sprint(a.err), "invalid authority boundary: index 99 outside the first user message's")
-		})
 	})
 }
 
 func TestLoopKnobsReview(t *testing.T) {
 	bigApp := "// candidate\n" + strings.Repeat("padding of the candidate source line\n", 1800)
-	land := func(e *env) {
-		e.prov.then(e.prov.calls("write_file", map[string]any{"path": "app.txt", "content": bigApp}, "finish", map[string]any{"summary": "done"}))
-	}
 
-	t.Run("tools", func(t *testing.T) {
-		for _, c := range []struct {
-			name        string
-			settings    research.Settings
-			bound, head int
-		}{
-			{"zero keeps 16384 and 4096", research.Settings{}, 16384, 4096},
-			{"ResultBound alone", research.Settings{Tools: research.ToolSettings{ResultBound: 8192}}, 8192, 4096},
-			{"ResultHead alone", research.Settings{Tools: research.ToolSettings{ResultHead: 1024}}, 16384, 1024},
-			{"both", research.Settings{Tools: research.ToolSettings{ResultBound: 2000, ResultHead: 500}}, 2000, 500},
-		} {
-			t.Run(c.name, func(t *testing.T) {
-				setKnobs(t, c.settings)
-				e := newEnv(t)
-				f := e.prov
-				f.then(landScript(f)...)
-				f.then(f.calls("shell", map[string]any{"command": knobShell}), submit(f, "approve"))
-				if a := e.reviewed(); a.exit != 0 {
-					t.Fatalf("exit %d: %s", a.exit, a.shown())
-				}
-				var outputs []string
-				for _, req := range f.reviewRequests() {
-					items, _ := req["input"].([]any)
-					for _, it := range items {
-						if m, _ := it.(map[string]any); m["type"] == "function_call_output" {
-							outputs = append(outputs, fmt.Sprint(m["output"]))
-						}
-					}
-				}
-				knobCut(t, "reviewer shell result", knobOutput(t, outputs), c.bound, c.head)
-			})
-		}
-	})
-
-	t.Run("a setting the loop refuses stops before the review", func(t *testing.T) {
-		setKnobs(t, research.Settings{Documentation: research.DocumentationSettings{BodyBound: 1023}})
+	t.Run("a tool result is cut at 16384 bytes with a 4096-byte head", func(t *testing.T) {
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
-		a := e.reviewed()
-		if a.err == nil || !strings.Contains(a.err.Error(), "tools: Documentation.BodyBound 1023 is below the minimum 1024") {
-			t.Fatalf("exit %d err %v: %s", a.exit, a.err, a.shown())
+		f.then(f.calls("shell", map[string]any{"command": knobShell}), submit(f, "approve"))
+		if a := e.reviewed(); a.exit != 0 {
+			t.Fatalf("exit %d: %s", a.exit, a.shown())
 		}
-		eq(t, "requests", f.count(), 0)
-	})
-
-	t.Run("input budget", func(t *testing.T) {
-		t.Run("zero keeps the candidate source inline", func(t *testing.T) {
-			e := newEnv(t)
-			f := e.prov
-			land(e)
-			f.then(submit(f, "approve"))
-			if a := e.reviewed(); a.exit != 0 {
-				t.Fatalf("exit %d: %s", a.exit, a.shown())
-			}
-			reqs := f.reviewRequests()
-			eq(t, "review requests", len(reqs), 1)
-			text := requestText(reqs[0])
-			contains(t, "inline source", text, "padding of the candidate source line")
-			lacks(t, "catalog", text, "Pinned complete candidate source evidence")
-		})
-		t.Run("a lower ceiling pins the source to parts before transport", func(t *testing.T) {
-			setKnobs(t, research.Settings{InputBudgetBytes: 65536})
-			e := newEnv(t)
-			f := e.prov
-			land(e)
-			shared := readPinned(e, f)
-			for i := 0; i < 120; i++ {
-				f.then(shared)
-			}
-			if a := e.reviewed(); a.exit != 0 {
-				t.Fatalf("exit %d: %s", a.exit, a.shown())
-			}
-			parts, _ := filepath.Glob(filepath.Join(e.root, ".kogen/local/runs/*/review-source/*/*.json"))
-			if len(parts) == 0 {
-				t.Fatal("the source was never pinned")
-			}
-			reqs := f.reviewRequests()
-			if len(reqs) < 2 {
-				t.Fatalf("review requests %d", len(reqs))
-			}
-			text := requestText(reqs[0])
-			contains(t, "catalog", text, "Pinned complete candidate source evidence")
-			lacks(t, "inline source", text, "padding of the candidate source line")
-		})
-	})
-
-	t.Run("authority boundary", func(t *testing.T) {
-		review := func(t *testing.T, boundary *int) (map[string]any, *attempt, *env) {
-			setKnobs(t, research.Settings{AuthorityBoundary: boundary})
-			e := newEnv(t)
-			anthropicRole(e, "review")
-			f := e.prov
-			f.then(landScript(f)...)
-			f.then(refused())
-			a := e.reviewed()
-			var first map[string]any
-			for _, req := range f.requests() {
-				if _, anth := req["messages"]; anth {
-					first = req
-					break
+		var outputs []string
+		for _, req := range f.reviewRequests() {
+			items, _ := req["input"].([]any)
+			for _, it := range items {
+				if m, _ := it.(map[string]any); m["type"] == "function_call_output" {
+					outputs = append(outputs, fmt.Sprint(m["output"]))
 				}
 			}
-			return first, a, e
 		}
-		var base int
-		t.Run("nil sends no authority breakpoint", func(t *testing.T) {
-			body, _, _ := review(t, nil)
-			if body == nil {
-				t.Fatal("no review request reached the provider")
+		knobCut(t, "reviewer shell result", knobOutput(t, outputs), 16384, 4096)
+	})
+
+	t.Run("the candidate source stays inline within the input budget", func(t *testing.T) {
+		e := newEnv(t)
+		f := e.prov
+		f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigApp}, "finish", map[string]any{"summary": "done"}))
+		f.then(submit(f, "approve"))
+		if a := e.reviewed(); a.exit != 0 {
+			t.Fatalf("exit %d: %s", a.exit, a.shown())
+		}
+		reqs := f.reviewRequests()
+		eq(t, "review requests", len(reqs), 1)
+		text := requestText(reqs[0])
+		contains(t, "inline source", text, "padding of the candidate source line")
+		lacks(t, "catalog", text, "Pinned complete candidate source evidence")
+	})
+
+	t.Run("the sent request carries no authority breakpoint", func(t *testing.T) {
+		e := newEnv(t)
+		anthropicRole(e, "review")
+		f := e.prov
+		f.then(landScript(f)...)
+		f.then(refused())
+		e.reviewed()
+		for _, req := range f.requests() {
+			if _, anth := req["messages"]; anth {
+				if _, first := knobMarks(req); first {
+					t.Fatal("the first block carries a breakpoint")
+				}
+				return
 			}
-			var first bool
-			base, first = knobMarks(body)
-			if first {
-				t.Fatal("the first block carries a breakpoint without the setting")
-			}
-		})
-		t.Run("a target inside the first user message is marked in the sent request", func(t *testing.T) {
-			body, _, _ := review(t, knobInt(0))
-			if body == nil {
-				t.Fatal("no review request reached the provider")
-			}
-			n, first := knobMarks(body)
-			if !first || n != base+1 {
-				t.Fatalf("breakpoints %d (was %d), first message marked %v", n, base, first)
-			}
-		})
-		t.Run("a target outside it is refused in request preflight before transport", func(t *testing.T) {
-			body, a, _ := review(t, knobInt(99))
-			if body != nil {
-				t.Fatal("a review request reached the provider")
-			}
-			contains(t, "refusal", a.shown()+fmt.Sprint(a.err), "invalid authority boundary: index 99 outside the first user message's")
-		})
+		}
+		t.Fatal("no review request reached the provider")
 	})
 }

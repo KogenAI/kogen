@@ -11,10 +11,7 @@ import (
 	"time"
 
 	"kogen-loop/provider"
-	"kogen-loop/sys"
-	"kogen-loop/tools"
 	"kogen/agent"
-	"kogen/internal/research"
 )
 
 // responseBudgetSupport are the package-local tests that observe the real clients of every
@@ -40,11 +37,10 @@ var responseBudgetSupport = []struct {
 		"TestShapeBudgetRolesBuild/a stalled builder expires unavailable naming ten minutes and its resume lands under a new budget",
 		"TestShapeBudgetRolesBuild/a stalled review expires unavailable naming ten minutes and its resume answers it",
 	}},
-	{"./internal/research", []string{
-		"TestProductionResponseBudgetDefault",
+	{"./agent", []string{
 		"TestBudgetRoleConstants",
-		"TestRespondNamesTheTenMinuteExpiry",
-		"TestRespondExpiryEndsUnavailableNamingTenMinutes",
+		"TestNameBudgetExpiryNamesTheTenMinuteExpiry",
+		"TestNameBudgetExpiryEndsUnavailableNamingTenMinutes",
 	}},
 }
 
@@ -53,41 +49,15 @@ var responseBudgetSupport = []struct {
 // environment, and the supporting tests need the one the suite was started in.
 var responseBudgetStartEnv = os.Environ()
 
-// TestResponseBudgetDefaultContract is the contract of what the response budget is not: research
-// has no response budget setting, and with it gone the requests and every other setting stay as
-// they were, byte for byte. Which role gets which budget is TestShapeBudgetRoleContract's.
+// TestResponseBudgetDefaultContract is the contract of what the response budget does to the
+// wire: nothing. A Build/Review client and an unconfigured one render and send the same bytes.
+// Which role gets which budget is TestShapeBudgetRoleContract's.
 func TestResponseBudgetDefaultContract(t *testing.T) {
-	t.Run("the production source sets nothing and research has no response budget", func(t *testing.T) {
-		if !reflect.DeepEqual(research.Current, research.Settings{}) {
-			t.Fatalf("research.Current = %+v", research.Current)
-		}
-		if _, ok := reflect.TypeOf(research.Settings{}).FieldByName("Client"); ok {
-			t.Fatal("research still configures the client")
-		}
-		if research.Current.AuthorityBoundary != nil {
-			t.Fatal("the authority boundary is not disabled")
-		}
-		if err := research.Validate(context.Background(), sys.New()); err != nil {
-			t.Fatal(err)
-		}
-		if research.InputBudget() != tools.InputBudgetBytes {
-			t.Fatalf("input budget %d", research.InputBudget())
-		}
-		if got := research.ApplyTools(&tools.Tools{}); !reflect.DeepEqual(got, &tools.Tools{}) {
-			t.Fatalf("tool options changed: %+v", got)
-		}
-		for i, text := range knobFixtureRaw() {
-			if got, want := research.CutText(text), tools.Cut(text); got != want {
-				t.Errorf("cut %d: %d bytes, library %d", i, len(got), len(want))
-			}
-		}
-	})
-
 	t.Run("serialized requests equal the unconfigured client's", func(t *testing.T) {
 		render := func(client *provider.Client) any {
-			return knobNormalize(knobFixtureRequests(research.CutText, research.Request, func(r provider.Request) map[string]any { return client.Body(r) }))
+			return knobNormalize(knobFixtureRequests(func(r provider.Request) map[string]any { return client.Body(r) }))
 		}
-		build := research.ApplyBuildReview(provider.NewClient("kogen dev+12345678 (test)"))
+		build := agent.ApplyBuildReview(provider.NewClient("kogen dev+12345678 (test)"))
 		if unconfigured := render(provider.NewClient("kogen dev+12345678 (test)")); !reflect.DeepEqual(render(build), unconfigured) {
 			t.Fatal("the fixed requests differ between a Build/Review client and an unconfigured one")
 		}
@@ -100,15 +70,15 @@ func TestResponseBudgetDefaultContract(t *testing.T) {
 			sess := knobSession(t, k)
 			client := configure(provider.NewClient("kogen dev+12345678 (test)"))
 			client.Sleep = func(context.Context, time.Duration) error { return nil }
-			req := research.Request(provider.Request{Role: role, Instructions: "policy", Input: knobFixtureInput(research.CutText),
-				Tools: agent.AsAny(agent.Defs(knobFixtureEveryTool...)), CacheID: "knob-fixture-cache"})
-			research.Respond(context.Background(), client, sess, req, nil)
+			req := provider.Request{Role: role, Instructions: "policy", Input: knobFixtureInput(),
+				Tools: agent.AsAny(agent.Defs(knobFixtureEveryTool...)), CacheID: "knob-fixture-cache"}
+			client.Respond(context.Background(), sess, req, nil)
 			if len(k.bodies) == 0 {
 				t.Fatal("nothing was sent")
 			}
 			return k.bodies[0]
 		}
-		buildReview := send(research.ApplyBuildReview)
+		buildReview := send(agent.ApplyBuildReview)
 		if plain := send(func(c *provider.Client) *provider.Client { return c }); !bytes.Equal(buildReview, plain) {
 			t.Fatalf("sent %d bytes under the Build/Review budget, %d under the library's", len(buildReview), len(plain))
 		}
@@ -124,13 +94,13 @@ func TestResponseBudgetDefaultContract(t *testing.T) {
 func TestShapeBudgetRoleContract(t *testing.T) {
 	t.Run("wire identity and other settings", TestResponseBudgetDefaultContract)
 	t.Run("the role constants are Build and Review's ten minutes and the loop's thirty for the rest", func(t *testing.T) {
-		if research.BuildReviewBudget != 10*time.Minute {
-			t.Fatalf("Build/Review budget %s", research.BuildReviewBudget)
+		if agent.BuildReviewBudget != 10*time.Minute {
+			t.Fatalf("Build/Review budget %s", agent.BuildReviewBudget)
 		}
 		if provider.ResponseBudget != 30*time.Minute || provider.NewClient("").ResponseBudget != 0 {
 			t.Fatalf("library default %s / client %s", provider.ResponseBudget, provider.NewClient("").ResponseBudget)
 		}
-		if got := research.ApplyBuildReview(provider.NewClient("")).ResponseBudget; got != 10*time.Minute {
+		if got := agent.ApplyBuildReview(provider.NewClient("")).ResponseBudget; got != 10*time.Minute {
 			t.Fatalf("Build/Review client %s", got)
 		}
 		for _, c := range []struct {
@@ -139,9 +109,9 @@ func TestShapeBudgetRoleContract(t *testing.T) {
 			text   string
 		}{
 			{provider.NewClient(""), 1800000, "30 minutes"},
-			{research.ApplyBuildReview(provider.NewClient("")), 600000, "10 minutes"},
+			{agent.ApplyBuildReview(provider.NewClient("")), 600000, "10 minutes"},
 		} {
-			if e := research.BudgetEvent(c.client); e["budget_ms"] != c.ms || e["budget"] != c.text || e["event"] != "response_budget" || len(e) != 3 {
+			if e := agent.BudgetEvent(c.client); e["budget_ms"] != c.ms || e["budget"] != c.text || e["event"] != "response_budget" || len(e) != 3 {
 				t.Errorf("event %v, want %d %s", e, c.ms, c.text)
 			}
 		}

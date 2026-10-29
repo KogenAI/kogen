@@ -25,7 +25,6 @@ import (
 	"kogen/agent"
 	"kogen/executor"
 	"kogen/git"
-	"kogen/internal/research"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -69,9 +68,6 @@ func Shape(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err er
 }
 
 func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err error) {
-	if err := research.Validate(ctx, s); err != nil {
-		return 0, err
-	}
 	dir := in.Project
 	if dir == "" {
 		dir = s.Cwd
@@ -92,7 +88,7 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 	if limit := submissionRetryLimit(in.SubmissionRetryLimit); limit != 3 {
 		ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
 	}
-	ev.Record(research.BudgetEvent(in.Client))
+	ev.Record(agent.BudgetEvent(in.Client))
 
 	cfg, err := project.LoadConfig(root)
 	if err != nil {
@@ -712,7 +708,7 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 		turns.announce(req, sh.role, sh.ev)
 		call := sh.ev.BeginCall("shape", "", revision.Map(), "main shaping", sh.role).Sized(sh.client, req)
 		resp, err := tools.Deliver(input, "shape", sh.ev.Record, func() (*provider.Response, error) {
-			r, err := research.Respond(ctx, sh.client, sh.s, req, call)
+			r, err := sh.client.Respond(ctx, sh.s, req, call)
 			call.End(r, err)
 			return r, err
 		})
@@ -948,11 +944,11 @@ func (sh *shaping) runTool(ctx context.Context, c tools.Call) (tools.Output, err
 // agentTools are the tools a model may call in the checkout: names of them, the probe among
 // them when listed.
 func (sh *shaping) agentTools(ctx context.Context, names []string) *tools.Tools {
-	return research.ApplyTools(&tools.Tools{
+	return &tools.Tools{
 		Root: sh.root, Session: sh.s, Repo: agent.Git(sh.repo), Enabled: names,
 		Probe:         func(command string, files any) (string, error) { return sh.probe(ctx, command, files) },
 		Documentation: tools.Documentation{UserAgent: documentationAgent(sh.client)},
-	})
+	}
 }
 
 // documentationAgent is the user-agent of documentation lookups: `kogen/<version>`, the

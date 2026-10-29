@@ -246,6 +246,12 @@ honestly without dropping fields, changing effort or model, or switching routes.
 The Kogen logical deadline (10 minutes for Build and Review, 30 for Shape, Refine and init), full rendered 524288-byte inclusive request ceiling,
 131072-token reserve, image guards and independent reviewer remain unchanged.
 
+Kogen has no internal research options for the loop: tool results (16384 bytes, 4096-byte head),
+documentation lookups, the 524288-byte request ceiling and the authority boundary (disabled) are the
+pinned loop's own defaults, constructed plainly, and the only response budgets are the fixed
+10 minutes (Build and Review) and the loop's 30 (Shape, Refine, init and workers). There is no
+flag, `project.yaml` key or environment variable for them.
+
 ### Installed qualification handoff
 
 Separately after installation, confirm the installed SHA against the provider/unavailable
