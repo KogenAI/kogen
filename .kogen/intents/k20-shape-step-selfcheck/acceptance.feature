@@ -25,10 +25,6 @@ Feature: Shape checks the step code it writes before publishing
     When the k20 Shape plays "ambiguous"
     Then the k20 first submission was fed back for the "ambiguous" failure and the corrected second submission published
 
-  Scenario: An unused definition is fed back and the corrected submission publishes
-    When the k20 Shape plays "unused"
-    Then the k20 first submission was fed back for the "unused" failure and the corrected second submission published
-
   Scenario: go run for an asserted exit code is fed back and the corrected submission publishes
     When the k20 Shape plays "gorun"
     Then the k20 first submission was fed back for the "gorun" failure and the corrected second submission published

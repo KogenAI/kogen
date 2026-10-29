@@ -30,8 +30,6 @@ func k20Steps(variant string) string {
 		return k20Header + k20Given + k20Even
 	case "ambiguous":
 		return k20Header + k20Given + k20Even + k20Even + k20Odd
-	case "unused":
-		return k20Header + k20Given + k20Even + k20Odd + "Then('it is prime', function () {});\n"
 	case "gorun":
 		return k20Header + k20Spawn + k20Given +
 			"Then('it is even', function () { const r = spawnSync('sh', ['-c', 'go run ./cmd/evencheck 4']); assert.equal(r.status, 2); });\n" + k20Odd

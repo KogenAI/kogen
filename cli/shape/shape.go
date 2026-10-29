@@ -1583,6 +1583,9 @@ func (sh *shaping) printReady(added []string, usageLine string) int {
 	sh.s.Puts("Step files: " + stepText)
 	sh.s.Puts("Model: " + sh.ready.Intent.ModelLine)
 	sh.s.Puts(fmt.Sprintf("Scenarios: %d (%d fail now, %d pass now)", len(sh.ready.Scenarios), failing, passing))
+	for _, w := range sh.ready.StepWarnings {
+		sh.s.Puts(w.Line())
+	}
 	sh.s.Puts(usageLine)
 	sh.s.Puts("Next: kogen intent approve " + sh.slug)
 	return 0

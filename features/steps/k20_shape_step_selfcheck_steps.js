@@ -18,7 +18,6 @@ const CASES = {
   require: { key: `load|${STEP_FILE}|false`, line: `- load ${STEP_FILE}: `, has: ['is_even_missing_helper'] },
   undefined: { key: 'steps|it is not even|false', line: '- steps it is not even: undefined step', has: [] },
   ambiguous: { key: 'steps|it is even|false', line: '- steps it is even: ambiguous step', has: [] },
-  unused: { key: 'definitions|it is prime|false', line: '- definitions it is prime: unused definition', has: [] },
   gorun: { key: `exit_code|${STEP_FILE}|false`, line: `- exit_code ${STEP_FILE}: `, has: ['go run'] },
   observer: { key: 'observer|even-observer bad|false', line: '- observer even-observer bad: exit 0, recorded exit 1', has: [] },
 };

@@ -55,6 +55,9 @@ type Ready struct {
 	SHA256         string
 	Head           string
 	CandidateTree  string
+	// StepWarnings are the unused step definitions of the Intent's own step files: a warning
+	// that never refuses readiness, kept with the evidence.
+	StepWarnings []StepWarning
 }
 
 // Failures reports whether any scenario failed in the dry run (accounted red).
@@ -141,6 +144,13 @@ func (r *Readiness) Cached(s *sys.Session, slug string) *Ready {
 	if !ok || len(recorded) != len(expected) {
 		return nil
 	}
+	if _, present := rec["step_warnings"]; !present {
+		return nil // older records did not perform step analysis
+	}
+	warnings, valid := cachedStepWarnings(rec["step_warnings"])
+	if !valid {
+		return nil
+	}
 	var scenarios []ScenarioResult
 	anyFailed := false
 	for i, e := range expected {
@@ -191,7 +201,27 @@ func (r *Readiness) Cached(s *sys.Session, slug string) *Ready {
 		}
 	}
 	return &Ready{Intent: intent, Feasibility: proof, Model: intent.Model, Scenarios: scenarios, AcceptanceExit: exit,
-		Baseline: in.baseline, SHA256: in.sha, Head: in.head, CandidateTree: in.tree}
+		Baseline: in.baseline, SHA256: in.sha, Head: in.head, CandidateTree: in.tree, StepWarnings: warnings}
+}
+
+// cachedStepWarnings reads the retained step warnings of a record.
+func cachedStepWarnings(v any) ([]StepWarning, bool) {
+	list, ok := v.([]any)
+	if !ok {
+		return nil, false
+	}
+	var out []StepWarning
+	for _, e := range list {
+		m, ok := e.(map[string]any)
+		pattern, p := m["pattern"].(string)
+		file, f := m["file"].(string)
+		detail, d := m["detail"].(string)
+		if !ok || !p || !f || !d || len(m) != 3 {
+			return nil, false
+		}
+		out = append(out, StepWarning{Pattern: pattern, File: file, Detail: detail})
+	}
+	return out, true
 }
 
 func intValue(v any) (int, bool) {
@@ -243,6 +273,7 @@ func (r *Readiness) RecordPass(s *sys.Session, slug string, ready *Ready) error 
 		"scenarios":       nonNil(ready.Scenarios),
 		"feasibility":     nonNil(ready.Feasibility),
 	}
+	rec["step_warnings"] = nonNil(ready.StepWarnings)
 	b, err := project.EncodeJSON(rec)
 	if err != nil {
 		return err
@@ -298,7 +329,7 @@ func (r *Readiness) Check(ctx context.Context, s *sys.Session, slug string) (*Re
 }
 
 func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug string, in inputs) (*Ready, error) {
-	intent, _, err := project.CheckIntent(dir, slug, nil)
+	intent, expected, err := project.CheckIntent(dir, slug, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +357,11 @@ func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug st
 	if err != nil {
 		return nil, err
 	}
-	problems := slices.Concat(modelProblems, dryRunProblems(acc))
+	stepProblems, warnings, err := r.stepAnalysis(ctx, s, dir, intent, expected)
+	if err != nil {
+		return nil, err
+	}
+	problems := slices.Concat(modelProblems, dryRunProblems(acc), stepProblems)
 	if len(problems) > 0 {
 		e := sys.Fail("intent", "not_ready", "the Intent is not ready to build", 1)
 		for _, p := range problems {
@@ -334,8 +369,41 @@ func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug st
 		}
 		return nil, e
 	}
+	for _, w := range warnings {
+		record(r.Evidence, map[string]any{"event": "step_warning", "source": "readiness", "pattern": w.Pattern, "file": w.File, "detail": w.Detail})
+	}
 	return &Ready{Intent: intent, Feasibility: proof, Model: intent.Model, Scenarios: acc.Scenarios, AcceptanceExit: acc.Status,
-		Baseline: in.baseline, SHA256: in.sha, Head: in.head, CandidateTree: in.tree}, nil
+		Baseline: in.baseline, SHA256: in.sha, Head: in.head, CandidateTree: in.tree, StepWarnings: warnings}, nil
+}
+
+// stepAnalysis loads the Intent's own step files in dir the way the acceptance command does.
+// Its problems are exit-code wrapper violations: undefined and ambiguous steps and files that
+// do not load are already reported by the acceptance run, with their own feedback. Unused
+// definitions are warnings, never problems. Without Node and Cucumber, or when the script
+// cannot run, nothing is added: the acceptance run reports what it could not load.
+func (r *Readiness) stepAnalysis(ctx context.Context, s *sys.Session, dir string, intent *project.Intent, scenarios []project.Scenario) (problems []string, warnings []StepWarning, err error) {
+	own, files, texts := StepAnalysis(dir, intent, scenarios)
+	node, cucumber := r.Tools.Node, r.Tools.Cucumber
+	if node == "" {
+		node = s.Getenv("KOGEN_NODE")
+	}
+	if cucumber == "" {
+		cucumber = s.Getenv("KOGEN_CUCUMBER")
+	}
+	if len(own) == 0 || node == "" || cucumber == "" {
+		return nil, nil, nil
+	}
+	raw, loaded, err := RunStepScript(ctx, node, cucumber, dir, s.Env, files, texts)
+	if err != nil || !loaded {
+		return nil, nil, err
+	}
+	items := StepItems(own, raw)
+	for _, it := range items {
+		if it.Check == "exit_code" && !it.OK {
+			problems = append(problems, it.Check+" "+it.Target+": "+it.Detail)
+		}
+	}
+	return problems, StepWarnings(items), nil
 }
 
 func (r *Readiness) acceptanceRun() string {

@@ -128,6 +128,7 @@ func TestReadinessRecordEqualsTheElixirRecordAndReadsBack(t *testing.T) {
 			// Equal by value: Elixir orders the keys of small nested maps its own way.
 			var expectedRecord map[string]any
 			json.Unmarshal(g.Record, &expectedRecord)
+			expectedRecord["step_warnings"] = []any{}
 			for _, scenario := range expectedRecord["scenarios"].([]any) {
 				scenario.(map[string]any)["unexercised_steps"] = []any{}
 			}
