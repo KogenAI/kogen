@@ -34,15 +34,15 @@
       "GOMAXPROCS": null,
       "GOOS": null,
       "GORACE": null,
-      "GOROOT": "/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2",
+      "GOROOT": "<home>/.local/share/mise/installs/go/1.27.2",
       "GOTOOLCHAIN": null,
       "GOWORK": null,
-      "KOGEN_CUCUMBER": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/cucumber/node_modules",
-      "KOGEN_NODE": "/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin/node",
-      "KOGEN_QUINT": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/quint/node_modules/@informalsystems/quint/dist/src/cli.js",
+      "KOGEN_CUCUMBER": "<home>/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/cucumber/node_modules",
+      "KOGEN_NODE": "<home>/.local/share/mise/installs/node/24.21.0/bin/node",
+      "KOGEN_QUINT": "<home>/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/quint/node_modules/@informalsystems/quint/dist/src/cli.js",
       "KOGEN_TEST_PYTHON_BIN": null,
-      "PATH": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/bin:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/.mix/escripts:/Users/almirsarajcic/.local/share/mise/installs/erlang/29.1.1/bin:/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2/bin:/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin:/Users/almirsarajcic/.local/share/mise/installs/python/3.13.16/bin:/Users/almirsarajcic/.local/share/mise/shims:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/homebrew/bin:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/sbin:/Users/almirsarajcic/.codex/tmp/arg0-macos/codex-arg0Pp7UuP:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
-      "TMPDIR": "/var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/"
+      "PATH": "<redacted local PATH>",
+      "TMPDIR": "<tmp>"
     },
     "startedAt": "2026-10-24T17:12:40.476020Z",
     "loadBefore": [
@@ -59,11 +59,11 @@
     ],
     "raw": {
       "stdout": {
-        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/baseline.stdout",
+        "path": "<home>/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/baseline.stdout",
         "sha256": "222984ac10a5d163646f9c9c6c3511cc0358ea08530d8c22190c79d2f1056f58"
       },
       "stderr": {
-        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/baseline.stderr",
+        "path": "<home>/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/baseline.stderr",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       }
     },
@@ -117,15 +117,15 @@
       "GOMAXPROCS": null,
       "GOOS": null,
       "GORACE": null,
-      "GOROOT": "/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2",
+      "GOROOT": "<home>/.local/share/mise/installs/go/1.27.2",
       "GOTOOLCHAIN": null,
       "GOWORK": null,
-      "KOGEN_CUCUMBER": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/cucumber/node_modules",
-      "KOGEN_NODE": "/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin/node",
-      "KOGEN_QUINT": "/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/quint/node_modules/@informalsystems/quint/dist/src/cli.js",
+      "KOGEN_CUCUMBER": "<home>/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/cucumber/node_modules",
+      "KOGEN_NODE": "<home>/.local/share/mise/installs/node/24.21.0/bin/node",
+      "KOGEN_QUINT": "<home>/Areas/Kogen/studio-work/post-go-roadmap-20261024/protected-harness-readiness-delivery/prefix/lib/kogen/lib/quint/node_modules/@informalsystems/quint/dist/src/cli.js",
       "KOGEN_TEST_PYTHON_BIN": null,
-      "PATH": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/bin:/Users/almirsarajcic/.local/share/mise/installs/elixir/1.20.4-otp-29/.mix/escripts:/Users/almirsarajcic/.local/share/mise/installs/erlang/29.1.1/bin:/Users/almirsarajcic/.local/share/mise/installs/go/1.27.2/bin:/Users/almirsarajcic/.local/share/mise/installs/node/24.21.0/bin:/Users/almirsarajcic/.local/share/mise/installs/python/3.13.16/bin:/Users/almirsarajcic/.local/share/mise/shims:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/homebrew/bin:/Users/almirsarajcic/.local/bin:/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/sbin:/Users/almirsarajcic/.codex/tmp/arg0-macos/codex-arg0Pp7UuP:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/almirsarajcic/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
-      "TMPDIR": "/var/folders/hh/nryjnbt50_7bntb4v7mkfp6h0000gn/T/"
+      "PATH": "<redacted local PATH>",
+      "TMPDIR": "<tmp>"
     },
     "startedAt": "2026-10-24T17:18:30.093767Z",
     "loadBefore": [
@@ -142,11 +142,11 @@
     ],
     "raw": {
       "stdout": {
-        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/final.stdout",
+        "path": "<home>/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/final.stdout",
         "sha256": "1d7fdf7ba23b46598e1f1ca39ec0cf525b67dba5363de2c2f2bf6c14e89b8d59"
       },
       "stderr": {
-        "path": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/final.stderr",
+        "path": "<home>/Areas/Kogen/source/kogen/.kogen/local/check-time-build/complete-pair/final.stderr",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       }
     },
