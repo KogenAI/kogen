@@ -41,6 +41,7 @@ type fakeProvider struct {
 	srv    *httptest.Server
 	mu     sync.Mutex
 	reqs   []map[string]any
+	bodies [][]byte // the raw bytes of each request, as received
 	script []handler
 	next   int
 	ids    atomic.Int64
@@ -55,7 +56,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 
 func (f *fakeProvider) serve(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	if r.URL.Path != "/v1/responses" && r.URL.Path != "/v1/messages" {
+	if r.URL.Path != "/v1/responses" && r.URL.Path != "/v1/messages" && r.URL.Path != "/inference/go/openai/v1/chat/completions" {
 		http.NotFound(w, r)
 		return
 	}
@@ -63,6 +64,7 @@ func (f *fakeProvider) serve(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(body, &req)
 	f.mu.Lock()
 	f.reqs = append(f.reqs, req)
+	f.bodies = append(f.bodies, body)
 	var h handler
 	if f.next < len(f.script) {
 		h = f.script[f.next]
@@ -95,6 +97,13 @@ func (f *fakeProvider) requests() []map[string]any {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]map[string]any(nil), f.reqs...)
+}
+
+// rawRequests are the request bodies exactly as the provider received them.
+func (f *fakeProvider) rawRequests() [][]byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([][]byte(nil), f.bodies...)
 }
 
 func (f *fakeProvider) count() int { return len(f.requests()) }

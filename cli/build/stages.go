@@ -377,7 +377,7 @@ func (s *State) phaseValid(phase string) bool {
 			return phase == phaseReview
 		}
 		return false
-	case StageReview, StageReviewVerify, StageReviewRetry, StageCommit:
+	case StageReview, StageReviewVerify, StageReviewRetry, StageReviewOnly, StageCommit:
 		return phase == phaseReview
 	case StageLanded:
 		return phase == phaseLanded

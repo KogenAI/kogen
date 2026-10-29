@@ -250,6 +250,19 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 		return refuse(id, "candidate contents/modes or unrelated paths changed: "+strings.Join(paths, ", "), "")
 	}
 
+	// A review-only checkpoint starts a fresh review of exactly the verified green tree: the
+	// saved pass must be the one the checkpointed candidate was verified as, and the candidate
+	// (as a review sees it, without other Intents' folders) must still be that tree.
+	if c := b.Continuation; c.Stage == StageReviewOnly {
+		tree, err := repo.Tree(b.Start, b.Excluded)
+		if err != nil {
+			return err
+		}
+		if tree != c.Pass.Tree || b.LastPass == nil || b.LastPass.Tree != c.Pass.Tree {
+			return refuse(id, "the candidate is not the verified green tree of the review-only checkpoint", "")
+		}
+	}
+
 	b.intent, err = b.State.intent()
 	if err != nil {
 		return err

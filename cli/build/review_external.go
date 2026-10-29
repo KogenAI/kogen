@@ -125,10 +125,16 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 		return Approved{}, executor.Fail(executor.ReasonProtocol, "the reviewer session is not distinct from the builder's")
 	}
 	caps, _ := x.desc.For(executor.RoleReview)
+	// A fresh review after one that ended without a verdict is its own session; the usage of
+	// the earlier sessions stays in the Build's known totals.
+	earlier := b.ReviewExecutor
 	b.ReviewExecutor = &ExecutorState{
 		Name: x.desc.Name, Version: h.Version, SessionID: h.SessionID,
 		Usage: ExecutorUsage{Input: count(0), Cached: count(0), Output: count(0), Reasoning: count(0), State: executor.UsageComplete,
 			Source: caps.Usage, CostUSD: new(float64)},
+	}
+	if earlier != nil {
+		b.ReviewExecutor.Usage = earlier.Usage
 	}
 	ev.Session = h.SessionID
 	if err := b.Track(); err != nil {
@@ -158,7 +164,7 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 			return Approved{}, executor.Fail(executor.ReasonProtocol, "executor "+x.desc.Name+" returned the unknown round ending "+inspectString(string(res.Ending)))
 		}
 		b.ReviewExecutor.Rounds = round
-		b.ReviewExecutor.Usage = b.ReviewExecutor.Usage.plus(res.Usage, round == 1)
+		b.ReviewExecutor.Usage = b.ReviewExecutor.Usage.plus(res.Usage, round == 1 && earlier == nil)
 		if res.Handle.Version != "" {
 			b.ReviewExecutor.Version = res.Handle.Version
 		}
@@ -184,11 +190,18 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 		}
 		if problems != nil {
 			if invalid >= 1 {
-				b.Run.Event(map[string]any{"event": "review", "review": b.Review, "verdict": "invalid", "problems": problems})
-				b.LastReview = &ReviewRecord{N: b.Review, Verdict: "invalid", Findings: []map[string]any{}}
-				return Approved{}, sys.Fail("candidate", "review_invalid", "the reviewer did not return a valid verdict; edits are left in place", 1)
+				r.sess.Rejected = invalid
+				return Approved{}, r.invalidStop(problems, "rejected_verdict_exhausted")
 			}
 			invalid++
+			r.sess.Rejected = invalid
+			r.allowance("rejected_verdict")
+			// An external executor's structured verdict has no API-level tool choice to force: the
+			// correction goes back as text only.
+			b.Run.Event(map[string]any{
+				"event": "review_tool_choice", "review": b.Review, "tool": agent.SubmitReviewTool, "mode": "text_fallback",
+				"executor": x.desc.Name, "rejected_verdicts": r.sess.Rejected, "no_tool_reminders": r.sess.NoTool,
+			})
 			feedback = "Not a valid verdict: " + strings.Join(problems, "; ") + ". Submit a corrected structured verdict."
 			continue
 		}
@@ -212,6 +225,8 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 		}
 		feedback = lastUserContent(r.sess.Input)
 		r.sess.Input = nil
+		// The reviewer's repairs changed the candidate: this review is no read-only boundary.
+		r.sess.Mutating = true
 		invalid = 0
 	}
 }

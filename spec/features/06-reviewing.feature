@@ -75,7 +75,7 @@ Feature: Reviewing
     And the new commit does not change "calc_config.py"
 
   @REV-4 @model:build
-  Scenario: Two invalid verdicts end the Build without a commit
+  Scenario: Reviews that never return a valid verdict end the Build without a commit
     Given the fake ChatGPT server plays script "build-review-invalid-twice"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1

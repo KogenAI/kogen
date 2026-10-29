@@ -171,7 +171,7 @@ func safeFile(path string) bool {
 // measure is the complete rendered request against the 524288-byte input budget.
 func (b *Attempt) bodyOf(role project.Role, instructions string, items, tools []any, owner string) map[string]any {
 	return b.deps.Client.Body(research.Request(provider.Request{
-		Role: providerRole(role), Instructions: instructions, Input: items, Tools: tools,
+		Role: providerRole(role), Instructions: instructions, Input: items, Tools: tools, ToolChoice: b.force,
 		CacheID: b.cacheID(owner), Cache: provider.NewCache(b.PromptCache),
 	}))
 }

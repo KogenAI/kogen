@@ -325,7 +325,7 @@ func (b *Attempt) verifyAndReview(ctx context.Context) (string, bool, error) {
 		b.Repairs++
 		return b.PassFeedback(pass, "finish"), false, nil
 	}
-	approved, err := b.deps.reviewer().Review(ctx, b, pass)
+	approved, err := b.reviewWithRetry(ctx, func() (Approved, error) { return b.deps.reviewer().Review(ctx, b, pass) })
 	if err != nil {
 		return "", false, err
 	}
@@ -358,8 +358,10 @@ func (b *Attempt) resumeStage(ctx context.Context) error {
 			return err
 		}
 		return b.drive(ctx, sess, executor.Input{Feedback: feedback}, true)
+	case StageReviewOnly:
+		return b.reviewOnlyResume(ctx)
 	default: // the review stages
-		approved, err := b.deps.reviewer().Resume(ctx, b)
+		approved, err := b.reviewWithRetry(ctx, func() (Approved, error) { return b.deps.reviewer().Resume(ctx, b) })
 		if err != nil {
 			return err
 		}

@@ -69,6 +69,20 @@ type reviewSession struct {
 	// Tools are the tool definitions the reviewer conversation was given; a continued
 	// conversation keeps them (empty: the current reviewer tools).
 	Tools []any `json:"tools,omitempty"`
+	// Rejected and NoTool are the allowances this conversation has consumed: one rejected
+	// submit_review (after the unread-progress exemption) and one prose-only turn (the
+	// reminder) are each sent back once, independently of each other. Remind marks the
+	// pending reminder: the next request requires submit_review where the route supports it.
+	// PrevUnread is the unread-part count of the last unread rejection (the progress
+	// exemption). Mutating is set once the conversation used any tool that could change the
+	// checkout; Reopened marks the reopened conversation of a blocked review. All of them
+	// travel with the checkpoint, so an interruption or a working-window reset keeps them.
+	Rejected   int  `json:"rejected_verdicts,omitempty"`
+	NoTool     int  `json:"no_tool_reminders,omitempty"`
+	Remind     bool `json:"remind,omitempty"`
+	PrevUnread int  `json:"prev_unread,omitempty"`
+	Mutating   bool `json:"mutating,omitempty"`
+	Reopened   bool `json:"reopened,omitempty"`
 }
 
 func (s reviewSession) encode() (json.RawMessage, error) {
@@ -143,6 +157,11 @@ func (reviewIndependent) Review(ctx context.Context, b *Attempt, pass verify.Pas
 	m, err := b.materialOf(pass)
 	if err != nil {
 		return Approved{}, err
+	}
+	// A review is a fresh conversation: the unfinished observations of an earlier review that
+	// ended without a verdict are not carried into it (its archives stay in custody).
+	if state := b.WorkingContext["review"]; state != nil {
+		state.Observations = []any{}
 	}
 	input, err := b.materialPrepare(pass.Tree, m, role, agent.Prompt(agent.Reviewer), tools, diagnostic, false)
 	if err != nil {
@@ -267,7 +286,7 @@ func (r *reviewRun) retry(ctx context.Context) (Approved, error) {
 		"edits still require ordinary external exact verification before commit.\n"
 	r.pass = pass
 	r.sess = reviewSession{
-		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts,
+		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts, Mutating: r.sess.Mutating, Reopened: true,
 		Input: slices.Concat(r.sess.Input, []any{map[string]any{"role": "user", "content": feedback}}),
 	}
 	return r.loop(ctx, nil, "")
@@ -364,21 +383,38 @@ func (r *reviewRun) evaluate(ctx context.Context, verdict reviewVerdict, tree st
 	}
 	r.pass = final
 	r.sess = reviewSession{
-		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts,
+		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts, Mutating: r.sess.Mutating, Reopened: r.sess.Reopened,
 		Input: slices.Concat(r.sess.Input, []any{map[string]any{"role": "user", "content": feedback}}),
 	}
 	return Approved{}, true, nil
 }
 
-// converse is the reviewer's requests and tool calls until it submits a valid verdict. One
-// invalid verdict is sent back with its problems; a second ends the Build.
+// converse is the reviewer's requests and tool calls until it submits a valid verdict. Two
+// allowances, spent independently and each once: a rejected submit_review is sent back with its
+// problems, and a prose-only turn is sent back with a reminder (the next request requires
+// submit_review where the route supports it). Spending an allowance a second time ends this
+// review without a verdict (reviewRun.invalidStop).
 func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 	b := r.b
-	invalid := 0
 	prevUnread := -1
+	if r.sess.PrevUnread > 0 {
+		prevUnread = r.sess.PrevUnread
+	}
 	for {
 		if err := r.save(StageReview); err != nil {
 			return reviewVerdict{}, err
+		}
+		force := ""
+		if r.sess.Remind {
+			mode := "text_fallback"
+			if provider.SupportsToolChoice(providerRole(r.sess.Role)) {
+				mode = "api_forced"
+				force = agent.SubmitReviewTool
+			}
+			b.Run.Event(map[string]any{
+				"event": "review_tool_choice", "review": b.Review, "tool": agent.SubmitReviewTool, "mode": mode,
+				"rejected_verdicts": r.sess.Rejected, "no_tool_reminders": r.sess.NoTool,
+			})
 		}
 		retain := func(c *Continuation, input []any) {
 			sent := r.sess
@@ -389,7 +425,7 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 		}
 		resp, active, err := b.Request(ctx, RequestSpec{
 			Owner: "review", Role: r.sess.Role, Instructions: agent.Prompt(agent.Reviewer),
-			Input: r.sess.Input, Tools: r.tools, Retain: retain,
+			Input: r.sess.Input, Tools: r.tools, Retain: retain, ForceTool: force,
 			Prefill: func(input []any) ([]any, error) {
 				return b.prefillSource(r.sess.Role, agent.Prompt(agent.Reviewer), r.tools, input)
 			},
@@ -397,6 +433,8 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 		if err != nil {
 			return reviewVerdict{}, err
 		}
+		// The reminder request is over: ordinary tool choice again.
+		r.sess.Remind = false
 		r.sess.Usage = r.sess.Usage.plus(responseTokens(r.sess.Role, resp))
 		if err := b.Track(); err != nil {
 			return reviewVerdict{}, err
@@ -441,6 +479,9 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 					outs = append(outs, call.Output("accepted"))
 				}
 			default:
+				if !slices.Contains(readOnlyReviewTools, call.Name) {
+					r.sess.Mutating = true
+				}
 				out, err := tl.Call(call)
 				if err != nil {
 					return reviewVerdict{}, err
@@ -477,25 +518,27 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 		exempt := false
 		if n := unreadProblemCount(problems); n > 0 {
 			exempt = prevUnread < 0 || n < prevUnread
-			prevUnread = n
+			prevUnread, r.sess.PrevUnread = n, n
 		}
 		switch {
 		case problems != nil && exempt:
-			if len(calls) == 0 {
-				input = append(input, map[string]any{"role": "user",
-					"content": "Not a valid verdict: " + strings.Join(problems, "; ") + ". Call submit_review."})
+			// Progress on unread parts spends neither allowance.
+			r.allowance("unread_progress_exempt")
+		case problems != nil && len(calls) == 0:
+			if r.sess.NoTool >= 1 {
+				return reviewVerdict{}, r.invalidStop(problems, "no_tool_reminder_exhausted")
 			}
-		case problems != nil && invalid >= 1:
-			b.Run.Event(map[string]any{"event": "review", "review": b.Review, "verdict": "invalid", "problems": problems})
-			b.LastReview = &ReviewRecord{N: b.Review, Verdict: "invalid", Findings: []map[string]any{}}
-			return reviewVerdict{}, sys.Fail("candidate", "review_invalid",
-				"the reviewer did not return a valid verdict; edits are left in place", 1)
+			input = append(input, map[string]any{"role": "user",
+				"content": "Not a valid verdict: " + strings.Join(problems, "; ") + ". Call submit_review."})
+			r.sess.NoTool++
+			r.sess.Remind = true
+			r.allowance("no_tool_turn")
 		case problems != nil:
-			if len(calls) == 0 {
-				input = append(input, map[string]any{"role": "user",
-					"content": "Not a valid verdict: " + strings.Join(problems, "; ") + ". Call submit_review."})
+			if r.sess.Rejected >= 1 {
+				return reviewVerdict{}, r.invalidStop(problems, "rejected_verdict_exhausted")
 			}
-			invalid++
+			r.sess.Rejected++
+			r.allowance("rejected_verdict")
 		case verdict != nil:
 			r.sess.Input = input
 			if !r.external {

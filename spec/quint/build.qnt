@@ -88,6 +88,9 @@ module build {
     move(phase, cand + 1, cleanPassVersion, reason),
   }
 
+  // An "invalid" verdict is a review that ended without a valid verdict. The first one of a
+  // candidate gets one automatic fresh review of the same candidate (the phase stays); the second
+  // ends the Build as review_invalid, with the green candidate kept for a review-only resume.
   action reviewWith(verdict: str): bool = all {
     Set(Reviewing, RepairingReview).contains(phase),
     stoppedPhase' = phase, phase' = if (verdict == "approve") {

@@ -139,10 +139,33 @@ func (b *Attempt) toolRecordFields(call tools.Call, out tools.Output, partID fun
 // reviewPartID is the number of the pinned review source part stored at path, if it is one
 // of the current review's.
 func (b *Attempt) reviewPartID(path string) (int, bool) {
-	c, err := b.reviewCustody(nil)
-	if err != nil || c == nil {
+	// Only an archive of the review's own history can be one of its parts: read that one file
+	// instead of every archive (reviewCustody reads them all, for every read_file call).
+	state := b.WorkingContext["review"]
+	if state == nil {
 		return 0, false
 	}
-	n, ok := c.numbers[filepath.Clean(path)]
-	return n, ok && n > 0
+	path = filepath.Clean(path)
+	for _, ref := range state.History {
+		if ref.Path != path {
+			continue
+		}
+		data, err := os.ReadFile(ref.Path)
+		if err != nil {
+			return 0, false
+		}
+		v, err := decodeJSONNumbers(data)
+		if err != nil {
+			return 0, false
+		}
+		doc, _ := v.(map[string]any)
+		source, ok := doc["review_source"].(map[string]any)
+		if !ok || display(source["review"]) != itoa(b.Review) {
+			return 0, false
+		}
+		part, _ := source["part"].(json.Number)
+		n, err := part.Int64()
+		return int(n), err == nil && n > 0
+	}
+	return 0, false
 }

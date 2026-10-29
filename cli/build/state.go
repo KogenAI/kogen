@@ -126,6 +126,10 @@ const (
 	StageReview        = "review"
 	StageReviewVerify  = "review_verify"
 	StageReviewRetry   = "review_retry_verify"
+	// StageReviewOnly is the review-only checkpoint of a green candidate whose independent
+	// reviews ended without a valid verdict: it holds the green pass and no reviewer
+	// conversation, so an explicit resume starts a fresh review of that exact tree.
+	StageReviewOnly = "review_only"
 )
 
 // Completed is a tool call that ran and the result it gave.
@@ -212,6 +216,10 @@ type State struct {
 	// BuildRequestBudget is the enabled total builder request budget and how many builder
 	// requests have been attempted against it; nil (and absent from the checkpoint) when off.
 	BuildRequestBudget *RequestBudget `json:"build_request_budget,omitempty"`
+	// ReviewRetry is the durable lineage of independent reviews that ended without a valid
+	// verdict for one exact green tree, and whether that tree's one automatic fresh review is
+	// spent. Absent until a review ends invalid, so other checkpoints keep their bytes.
+	ReviewRetry *ReviewRetry `json:"review_retry,omitempty"`
 }
 
 // RequestBudget is a Build's total builder request limit and its cumulative attempt count.
@@ -219,6 +227,27 @@ type State struct {
 type RequestBudget struct {
 	Limit int `json:"limit"`
 	Count int `json:"count"`
+}
+
+// ReviewRetry belongs to one exact green candidate tree. Automatic is true once the single
+// automatic fresh review of that tree was started: an interruption, a resume or a later
+// explicit review-only resume never resets it.
+type ReviewRetry struct {
+	Tree      string          `json:"tree"`
+	Automatic bool            `json:"automatic"`
+	Invalid   []InvalidReview `json:"invalid"`
+}
+
+// InvalidReview records one review that ended without a valid verdict: its number, why, how
+// much of each allowance it consumed, the run that stopped it and what followed ("automatic"
+// fresh review, "stop" for an explicit review-only resume).
+type InvalidReview struct {
+	Review          int    `json:"review"`
+	Reason          string `json:"reason"`
+	RejectedVerdict int    `json:"rejected_verdicts"`
+	NoToolReminder  int    `json:"no_tool_reminders"`
+	Run             string `json:"run"`
+	Next            string `json:"next"`
 }
 
 // ExecutorState is an external executor's identity and its running totals in a Build:
@@ -332,6 +361,8 @@ func (c *Continuation) valid() bool {
 		return validItems(c.Input)
 	case StageReview, StageReviewVerify, StageReviewRetry:
 		return c.Pass != nil && c.Pass.Valid() && len(c.Review) > 0
+	case StageReviewOnly:
+		return c.Pass != nil && c.Pass.Valid() && c.Pass.Green && len(c.Review) == 0
 	case StageLanded:
 		return c.Commit != ""
 	case StageStartup, StageTool, StageCommit:
@@ -395,6 +426,9 @@ func (s *State) valid(doc *Checkpoint) bool {
 		return false
 	}
 	if !s.stagesValid() {
+		return false
+	}
+	if r := s.ReviewRetry; r != nil && r.Tree == "" {
 		return false
 	}
 	if s.Baseline == nil || !slices.Contains(s.Baseline, project.ConfigPath) || s.BaselineDigests == nil {

@@ -66,6 +66,8 @@ type Reviewer interface {
 	Review(ctx context.Context, b *Attempt, pass verify.Pass) (Approved, error)
 	// Resume continues a Build whose checkpoint is in a review stage (b.Continuation.Stage is
 	// StageReview, StageReviewVerify or StageReviewRetry).
+	// A review-only checkpoint (StageReviewOnly) is not resumed through it: the Build starts a
+	// fresh Review of the saved green pass instead.
 	Resume(ctx context.Context, b *Attempt) (Approved, error)
 }
 

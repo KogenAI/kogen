@@ -57,6 +57,11 @@ type Attempt struct {
 	// watch is the no-progress evidence of the native builder's rounds (noprogress.go).
 	watch            progressWatch
 	nativeNoProgress *loop.NoProgressError
+	// invalid is the review that just ended without a valid verdict (review_retry.go).
+	invalid *invalidReview
+	// force is the tool the request being sent must call (RequestSpec.ForceTool), so that the
+	// size measured for it is that of the request actually sent.
+	force string
 }
 
 // noRunNotice follows a refusal that happened before any run was created (stdout, indented
@@ -514,6 +519,9 @@ type RequestSpec struct {
 	// prepared and before the request is checkpointed, so the checkpoint, the archive and the
 	// request all hold exactly what is sent.
 	Prefill func(input []any) ([]any, error)
+	// ForceTool names a tool this request alone must call, where the route supports named
+	// tool selection (provider.Request.ToolChoice); the next request is ordinary again.
+	ForceTool string
 }
 
 // Request sends one request of a conversation and returns the response and the input that
@@ -544,6 +552,8 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 			"the Build has used its budget of %d builder requests (%d sent); the candidate, checkpoint and approval are preserved and nothing was committed",
 			budget.Limit, budget.Count), 1)
 	}
+	b.force = sp.ForceTool
+	defer func() { b.force = "" }()
 	input, err := b.prepareContext(sp.Owner, sp.Role, sp.Instructions, sp.Input, sp.Tools)
 	if err != nil {
 		return nil, nil, err
@@ -577,7 +587,7 @@ func (b *Attempt) Request(ctx context.Context, sp RequestSpec) (*provider.Respon
 		parent = *b.RootRun
 	}
 	req := research.Request(provider.Request{
-		Role: providerRole(sp.Role), Instructions: sp.Instructions, Input: input, Tools: sp.Tools, CacheID: b.cacheID(sp.Owner), Cache: b.cache,
+		Role: providerRole(sp.Role), Instructions: sp.Instructions, Input: input, Tools: sp.Tools, ToolChoice: sp.ForceTool, CacheID: b.cacheID(sp.Owner), Cache: b.cache,
 		Context: map[string]any{
 			"phase": sp.Owner, "role": sp.Owner, "run_id": b.Run.ID, "slug": b.Slug, "lineage": parent,
 			"pass": b.Pass, "repair": b.Repairs,

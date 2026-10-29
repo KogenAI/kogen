@@ -333,13 +333,15 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 			})
 		}
 	})
-	t.Run("a reply without a verdict is invalid, twice ends the Build", func(t *testing.T) {
+	t.Run("a reply without a verdict is invalid, twice ends the review", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
 		say := sse(map[string]any{"type": "message", "id": "msg-1", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": "All good."}}})
-		f.then(say, say)
+		// A shell call keeps the review from the automatic fresh review (tested elsewhere): this
+		// is the stop of the review itself.
+		f.then(f.calls("shell", map[string]any{"command": "true"}), say, say)
 		start := e.head()
 		a := e.reviewed()
 		eq(t, "exit", a.exit, 1)
@@ -349,9 +351,10 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 		contains(t, "stdout", out, "  still failing: review\n")
 		eq(t, "head", e.head(), start)
 		reqs := f.reviewRequests()
-		eq(t, "review requests", len(reqs), 2)
-		contains(t, "retry", requestText(reqs[1]), "Not a valid verdict: the review ended without calling submit_review. Call submit_review.")
+		eq(t, "review requests", len(reqs), 3)
+		contains(t, "retry", requestText(reqs[2]), "Not a valid verdict: the review ended without calling submit_review. Call submit_review.")
 		eq(t, "outcome", e.result(id)["outcome"], any("review_invalid"))
+		eq(t, "reviews", e.result(id)["reviews"], any(float64(1)))
 	})
 }
 
@@ -1031,7 +1034,8 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 		// part is the one the first request cannot have carried (asserted below).
 		manual = parts[len(parts)-1]
 		// A read and an approval in one response deliver nothing.
-		f.calls("read_file", map[string]any{"path": manual}, "submit_review", map[string]any{"verdict": "approve", "findings": []any{}})(w, r)
+		// The shell call keeps this review from the automatic fresh review (tested elsewhere).
+		f.calls("shell", map[string]any{"command": "true"}, "read_file", map[string]any{"path": manual}, "submit_review", map[string]any{"verdict": "approve", "findings": []any{}})(w, r)
 	}, submit(f, "approve"))
 	start := e.head()
 	a := e.reviewed()
@@ -1102,7 +1106,9 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 	contains(t, "second", second, "invalid verdict:")
 	// The second approval, after one completed read, still names the remaining parts.
 	events := eventsNamed(e.events(id), "review")
-	last := events[len(events)-1]
+	eq(t, "invalid reviews", len(events), 1)
+	last := events[0]
+	eq(t, "review", last["review"], any(float64(1)))
 	eq(t, "verdict", last["verdict"], any("invalid"))
 	problems := last["problems"].([]any)
 	eq(t, "problem", problems[0].(string), problemFor(unread2))
@@ -1447,6 +1453,9 @@ func TestAReviewerThatNeverReadsIsStopped(t *testing.T) {
 	e := newEnv(t)
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
+	// A shell call makes this review no safe boundary for the automatic fresh review, so the
+	// stop is the one of the review itself (the retry has its own tests).
+	f.then(f.calls("shell", map[string]any{"command": "true"}))
 	for i := 0; i < 40; i++ {
 		f.then(submit(f, "changes", finding("blocking", "x")))
 	}
@@ -1455,8 +1464,8 @@ func TestAReviewerThatNeverReadsIsStopped(t *testing.T) {
 	eq(t, "exit", a.exit, 1)
 	eq(t, "head", e.head(), start)
 	// The first unread answer is the uncounted baseline; the next two, with an unread count
-	// that does not fall, are an ordinary invalid answer and then the limit.
-	eq(t, "review requests", len(f.reviewRequests()), 3)
+	// that does not fall, are an ordinary rejection and then the limit.
+	eq(t, "review requests", len(f.reviewRequests()), 4)
 	eq(t, "outcome", e.result(e.onlyRun())["outcome"], any("review_invalid"))
 }
 

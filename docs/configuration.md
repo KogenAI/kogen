@@ -165,6 +165,20 @@ counts remain reportable; no 12h setting, prewarm or paid baseline/benchmark cal
 is introduced. The GPT-5.6+ model split and the explicit cache-options fallback of
 earlier Kogen versions are gone; the exact body-key compatibility retry above remains.
 
+### Required tool choice on the reminder request
+
+An independent review that answers with prose only is sent one reminder to call `submit_review`.
+The request right after that reminder, and only that one, requires `submit_review` through the
+provider's named tool selection on routes that support it: ChatGPT and SuperGrok
+(Responses: `tool_choice: {"type":"function","name":"submit_review"}`) and OpenCode Go (Chat
+Completions: `{"type":"function","function":{"name":"submit_review"}}`). Anthropic's
+adaptive-thinking route, OpenAI-compatible hosts (their support is not assumed) and external
+executors keep today's reminder text with no forcing field, and the run log's `review_tool_choice`
+event says which was used (`api_forced` or `text_fallback`) with both allowance counters. Forcing is
+a request constraint only: a forced answer still goes through source delivery and verdict
+validation, the next request has ordinary tool choice again, a provider refusal is reported as it is
+today with no extra attempt, and no model, effort, thinking or tool definition changes.
+
 ## Declared shaping evidence
 
 Shape owns discovery and settlement of material technical questions. Shape finds and retrieves current authoritative documentation for material external facts. Declared shaping evidence is optional and selected by shaping judgment, not a universal registry or coverage claim. Before expensive implementation, identify genuinely uncertain outcome-critical dependencies. Probe the actual proposed request on its supported target route, authentication scope and model, or use a real relevant local fixture; a working old driver or exclusion-list silence does not prove a changed request. Distinguish observed support, explicit rejection and untested uncertainty. Unsupported requests need an honest supported outcome/fallback or clarification of a material UX choice. No blanket paid probes or endpoint sweep.

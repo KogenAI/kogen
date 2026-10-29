@@ -153,6 +153,10 @@ func (b *Attempt) details(reason string, report bool, providerFailure map[string
 		b.s.Puts("  Recovery preserves and clears only implementation; the builder-reported claim is unproven. " +
 			"Independently Refine, freshly approve and start a fresh Build; resume cannot override a protected blocker.")
 	}
+	if b.Continuation.Stage == StageReviewOnly {
+		b.s.Puts("  review-only checkpoint kept: kogen intent resume " + b.Run.ID + " --project " + shellQuote(b.Root) +
+			" starts one fresh review of this unchanged green candidate")
+	}
 	b.s.Puts("  kogen intent inspect " + b.Run.ID + " --project " + shellQuote(b.Root))
 	return nil
 }
