@@ -8,9 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
-	"kogen-loop/provider"
 	"kogen/internal/research"
 )
 
@@ -172,24 +170,6 @@ func TestLoopKnobsNativeBuilder(t *testing.T) {
 		eq(t, "runs", len(e.runIDs()), 0)
 	})
 
-	t.Run("response budget reaches the client and bounds the wait", func(t *testing.T) {
-		setKnobs(t, research.Settings{Client: research.ClientSettings{ResponseBudget: time.Second}})
-		e := newEnv(t)
-		opened := make(chan struct{})
-		e.prov.then(hang(opened))
-		t0 := time.Now()
-		var client *provider.Client
-		a := e.build(func(in *Input) { client = in.Deps.Client })
-		if a.exit == 0 {
-			t.Fatalf("a hung provider ended the Build with exit 0: %s", a.shown())
-		}
-		contains(t, "expiry", a.shown(), "response wait exceeded 1s")
-		if time.Since(t0) > 15*time.Second {
-			t.Fatalf("waited %s", time.Since(t0))
-		}
-		eq(t, "client response budget", client.ResponseBudget, time.Second)
-	})
-
 	t.Run("input budget", func(t *testing.T) {
 		t.Run("zero sends the request", func(t *testing.T) {
 			e := newEnv(t)
@@ -307,24 +287,6 @@ func TestLoopKnobsReview(t *testing.T) {
 			t.Fatalf("exit %d err %v: %s", a.exit, a.err, a.shown())
 		}
 		eq(t, "requests", f.count(), 0)
-	})
-
-	t.Run("response budget bounds the review's wait", func(t *testing.T) {
-		setKnobs(t, research.Settings{Client: research.ClientSettings{ResponseBudget: time.Second}})
-		e := newEnv(t)
-		f := e.prov
-		f.then(landScript(f)...)
-		f.then(hang(make(chan struct{})))
-		t0 := time.Now()
-		a := e.reviewed()
-		if a.exit == 0 {
-			t.Fatalf("a hung reviewer landed the Build: %s", a.shown())
-		}
-		contains(t, "expiry", a.shown(), "response wait exceeded 1s")
-		eq(t, "review requests", len(f.reviewRequests()), 1)
-		if time.Since(t0) > 20*time.Second {
-			t.Fatalf("waited %s", time.Since(t0))
-		}
 	})
 
 	t.Run("input budget", func(t *testing.T) {

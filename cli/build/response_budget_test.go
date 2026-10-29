@@ -10,8 +10,8 @@ import (
 	"kogen-loop/provider"
 )
 
-// These tests run the native builder and the independent reviewer with the production research
-// settings, never replacing the default: the budget each request is sent under is observed on
+// These tests run the native builder and the independent reviewer with the production settings:
+// Build and Review construct their client with the fixed ten-minute budget, which is observed on
 // the real client's transport deadline, and the run log and the expiry diagnostic are read as a
 // user sees them. They are serial because other tests change the process-wide settings.
 
@@ -109,20 +109,22 @@ func wantTenMinuteExpiry(t *testing.T, a *attempt) {
 	}
 }
 
-func TestResponseBudgetDefaultBuild(t *testing.T) {
+func TestShapeBudgetRolesBuild(t *testing.T) {
 	t.Run("the builder and the independent reviewer send under ten minutes and the run records it once", func(t *testing.T) {
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
 		f.then(submit(f, "approve"))
 		var obs *deadlineObserver
-		a := e.reviewed(func(in *Input) { obs = observeDeadlines(in.Deps.Client) })
+		var client *provider.Client
+		a := e.reviewed(func(in *Input) { client, obs = in.Deps.Client, observeDeadlines(in.Deps.Client) })
 		if a.exit != 0 || a.err != nil {
 			t.Fatalf("exit %d err %v\n%s", a.exit, a.err, a.shown())
 		}
 		eq(t, "review requests", len(f.reviewRequests()), 1)
 		eq(t, "builder requests", f.count()-1, 1)
 		obs.wantTenMinutes(t, f.count())
+		eq(t, "client response budget", client.ResponseBudget, 10*time.Minute)
 		wantBudgetRecord(t, e.events(e.onlyRun()))
 	})
 

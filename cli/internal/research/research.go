@@ -2,9 +2,13 @@
 // struct and the one zero-valued source (Current) that every production construction path
 // reads. There is no command-line flag, project.yaml key or environment variable; to try a
 // setting, change its line in Current. Zero means the loop's own default for a field. Every
-// field is zero except the provider response budget, which is ten minutes for every
-// provider-backed entry; with all fields zero the requests, tool definitions, results,
-// transcripts and checkpoints are exactly what the pinned loop produces without these options.
+// field is zero; the requests, tool definitions, results, transcripts and checkpoints are
+// exactly what the pinned loop produces without these options.
+//
+// The provider response budget is not a research setting: native Build and independent Review
+// construct their client with the fixed BuildReviewBudget (ApplyBuildReview), and Shape,
+// Refine and init leave it zero, so the pinned loop's 30-minute default applies per logical
+// Respond call.
 //
 // The loop validates the settings, not this package: Validate calls the loop's own checks
 // and returns their original errors.
@@ -34,22 +38,16 @@ type DocumentationSettings struct {
 	BodyBound   int
 }
 
-// ClientSettings are provider.Client.ResponseBudget.
-type ClientSettings struct {
-	ResponseBudget time.Duration
-}
-
 // Settings are all the research settings. InputBudgetBytes is loop.FailOverBudget's and
 // AuthorityBoundary is provider.Request's (nil: disabled).
 type Settings struct {
 	Tools             ToolSettings
 	Documentation     DocumentationSettings
-	Client            ClientSettings
 	InputBudgetBytes  int
 	AuthorityBoundary *int
 }
 
-// Current is the source of the settings: one line per setting, all zero but the response budget.
+// Current is the source of the settings: one line per setting, all zero.
 var Current = Settings{
 	Tools: ToolSettings{
 		ResultBound: 0,
@@ -58,9 +56,6 @@ var Current = Settings{
 	Documentation: DocumentationSettings{
 		ResultBound: 0,
 		BodyBound:   0,
-	},
-	Client: ClientSettings{
-		ResponseBudget: 10 * time.Minute,
 	},
 	InputBudgetBytes:  0,
 	AuthorityBoundary: nil,
@@ -94,11 +89,15 @@ func CutText(text string) string {
 	return Cut(tools.Output{Text: text}).Text
 }
 
-// ApplyClient lowers the client's response budget to the configured one; a zero setting, or
-// a budget the caller already built that is lower, leaves the client as it was.
-func ApplyClient(c *provider.Client) *provider.Client {
-	if b := Current.Client.ResponseBudget; c != nil && b != 0 && (c.ResponseBudget == 0 || b < c.ResponseBudget) {
-		c.ResponseBudget = b
+// BuildReviewBudget is the fixed provider response budget of native Build and independent
+// Review: one logical Respond call, absolute, shared by refresh, lock waits, retries and backoff.
+const BuildReviewBudget = 10 * time.Minute
+
+// ApplyBuildReview gives the client Build and Review use their fixed response budget. Shape,
+// Refine and init never call it: their clients keep the zero budget, the loop's 30 minutes.
+func ApplyBuildReview(c *provider.Client) *provider.Client {
+	if c != nil {
+		c.ResponseBudget = BuildReviewBudget
 	}
 	return c
 }
@@ -136,32 +135,37 @@ func Measure(body map[string]any, role provider.Role) (tools.Measurement, error)
 	return m, nil
 }
 
-// BudgetEvent is the run-log record of the effective response budget, which a run records
-// once when it starts, not per request. Nil without a configured budget: the library default
-// then applies and nothing is recorded.
-func BudgetEvent() map[string]any {
-	d := Current.Client.ResponseBudget
-	if d == 0 {
-		return nil
+// EffectiveBudget is the response budget c gives one logical Respond call: its own explicit
+// budget, or the loop's default when it is zero (or c is nil).
+func EffectiveBudget(c *provider.Client) time.Duration {
+	if c == nil || c.ResponseBudget == 0 {
+		return provider.ResponseBudget
 	}
+	return c.ResponseBudget
+}
+
+// BudgetEvent is the run-log record of the effective response budget of c, which a run
+// records once when it starts, not per request.
+func BudgetEvent(c *provider.Client) map[string]any {
+	d := EffectiveBudget(c)
 	return map[string]any{"event": "response_budget", "budget_ms": d.Milliseconds(), "budget": DescribeBudget(d)}
 }
 
-// DescribeBudget is how Kogen names a response budget: ten minutes as "10 minutes", the
-// library's own wording for its thirty-minute default, and any other duration as Go renders it.
+// DescribeBudget is how Kogen names a response budget: whole minutes as "10 minutes" or
+// "30 minutes", and any other duration as Go renders it.
 func DescribeBudget(d time.Duration) string {
-	if d == 10*time.Minute {
-		return "10 minutes"
+	if d == 10*time.Minute || d == 30*time.Minute {
+		return fmt.Sprintf("%d minutes", d/time.Minute)
 	}
 	return d.String()
 }
 
-// diagnostic renames the expiry of the client's configured budget in a provider failure. The
+// diagnostic renames the expiry of the client's explicit budget in a provider failure. The
 // pinned library renders an explicit budget as a Go duration ("10m0s") and its own default as
 // "30 minutes"; classification, exit code and every other message and duration are unchanged.
 func diagnostic(err error, budget time.Duration) error {
 	e, ok := err.(*sys.Error)
-	if !ok || budget != 10*time.Minute || e.Class != "provider" || e.Reason != "unavailable" {
+	if !ok || budget != BuildReviewBudget || e.Class != "provider" || e.Reason != "unavailable" {
 		return err
 	}
 	if rest, found := strings.CutSuffix(e.Detail, " response wait exceeded "+budget.String()); found {
@@ -193,7 +197,7 @@ func Respond(ctx context.Context, c *provider.Client, s *sys.Session, req provid
 
 // Validate runs the loop's own checks of the settings without credentials, network or
 // inference and returns the first original error: tools.New (Tools and Documentation),
-// loop.FailOverBudget's input budget, and the provider client's response budget. An
+// loop.FailOverBudget's input budget. An
 // authority boundary is checked against the request it belongs to, when that request is sent.
 func Validate(ctx context.Context, s *sys.Session) error {
 	c := Current
@@ -204,16 +208,6 @@ func Validate(ctx context.Context, s *sys.Session) error {
 		// An unknown provider has nothing to measure: Prepare validates the budget and returns.
 		budget := loop.FailOverBudget{InputBudgetBytes: c.InputBudgetBytes}
 		if _, err := budget.Prepare(ctx, loop.Request{Role: provider.Role{Provider: "research-preflight"}}); err != nil {
-			return err
-		}
-	}
-	if c.Client.ResponseBudget != 0 && s != nil {
-		// Respond validates the budget before it needs a credential, a base_url or the network. A
-		// role with no base_url ends there with the same refusal for any valid budget.
-		probe := provider.Request{Role: provider.Role{Provider: "openai-compatible"}}
-		_, valid := (&provider.Client{}).Respond(ctx, s, probe, nil)
-		_, err := (&provider.Client{ResponseBudget: c.Client.ResponseBudget}).Respond(ctx, s, probe, nil)
-		if err != nil && (valid == nil || err.Error() != valid.Error()) {
 			return err
 		}
 	}

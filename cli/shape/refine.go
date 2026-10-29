@@ -282,7 +282,6 @@ func refineLocked(ctx context.Context, s *sys.Session, in RefineInput, repo *git
 	if r.client == nil {
 		r.client = provider.NewClient("")
 	}
-	research.ApplyClient(r.client)
 	r.rd = &verify.Readiness{Root: root, Repo: repo, Config: cfg, Tools: tools, Evidence: ev}
 	r.scratchD = &verify.Readiness{Root: scratch, Repo: r.scratchR, Config: cfg, Tools: tools, Evidence: ev}
 	return r.run(ctx)
@@ -298,9 +297,7 @@ func (r *refine) run(ctx context.Context) (exit int, err error) {
 	if limit := submissionRetryLimit(r.in.SubmissionRetryLimit); limit != 3 {
 		r.ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
 	}
-	if e := research.BudgetEvent(); e != nil {
-		r.ev.Record(e)
-	}
+	r.ev.Record(research.BudgetEvent(r.client))
 	defer func() {
 		if err == nil {
 			return

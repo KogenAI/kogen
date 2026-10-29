@@ -88,7 +88,6 @@ func initRun(ctx context.Context, s *sys.Session, in InitInput) error {
 	if err := research.Validate(ctx, s); err != nil {
 		return err
 	}
-	research.ApplyClient(in.Client)
 	repo, err := git.Open(s.Cwd, s.Env)
 	if err != nil {
 		return err

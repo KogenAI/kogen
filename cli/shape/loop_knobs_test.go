@@ -212,32 +212,6 @@ func knobInput(t *testing.T, e knobEntry) {
 	})
 }
 
-// knobResponseBudget runs one entry against a provider that never answers.
-func knobResponseBudget(t *testing.T, e knobEntry) {
-	t.Run("ResponseBudget reaches the client and bounds the wait", func(t *testing.T) {
-		serialTmp(t)
-		setKnobs(t, research.Settings{Client: research.ClientSettings{ResponseBudget: time.Second}})
-		stall := shpStep{handler: func(w http.ResponseWriter, r *http.Request) {
-			select {
-			case <-r.Context().Done():
-			case <-time.After(10 * time.Second):
-			}
-		}}
-		t0 := time.Now()
-		r := e.run(t, stall, "Clarify the draft.")
-		if r.err == nil || r.exit == 0 {
-			t.Fatalf("exit %d err %v", r.exit, r.err)
-		}
-		shpContains(t, "expiry", r.stdout, "response wait exceeded 1s")
-		if time.Since(t0) > 8*time.Second {
-			t.Fatalf("waited %s", time.Since(t0))
-		}
-		if len(r.reqs) == 0 {
-			t.Fatal("the request was never sent")
-		}
-	})
-}
-
 // knobAuthority runs one entry on an Anthropic role.
 func knobAuthority(t *testing.T, name string) {
 	marks := func(body map[string]any) (n int, first bool) {
@@ -333,17 +307,15 @@ func TestLoopKnobsShape(t *testing.T) {
 	t.Run("tools", func(t *testing.T) { knobTools(t, e) })
 	t.Run("documentation", func(t *testing.T) { knobDocumentation(t, e) })
 	t.Run("input", func(t *testing.T) { knobInput(t, e) })
-	t.Run("response budget", func(t *testing.T) { knobResponseBudget(t, e) })
 	t.Run("authority", func(t *testing.T) { knobAuthority(t, "shape") })
-	t.Run("client", func(t *testing.T) {
+	t.Run("client keeps the loop's response budget", func(t *testing.T) {
 		serialTmp(t)
-		setKnobs(t, research.Settings{Client: research.ClientSettings{ResponseBudget: 90 * time.Second}})
 		f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 		f.newSession()
 		if _, err := Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client}); err != nil {
 			t.Fatal(err)
 		}
-		shpEq(t, "response budget", f.Client.ResponseBudget, 90*time.Second)
+		shpEq(t, "response budget", f.Client.ResponseBudget, time.Duration(0))
 	})
 	t.Run("zero leaves an injected client as it was", func(t *testing.T) {
 		serialTmp(t)
@@ -375,17 +347,15 @@ func TestLoopKnobsRefine(t *testing.T) {
 	t.Run("tools", func(t *testing.T) { knobTools(t, e) })
 	t.Run("documentation", func(t *testing.T) { knobDocumentation(t, e) })
 	t.Run("input", func(t *testing.T) { knobInput(t, e) })
-	t.Run("response budget", func(t *testing.T) { knobResponseBudget(t, e) })
 	t.Run("authority", func(t *testing.T) { knobAuthority(t, "refine") })
-	t.Run("client", func(t *testing.T) {
+	t.Run("client keeps the loop's response budget", func(t *testing.T) {
 		serialTmp(t)
-		setKnobs(t, research.Settings{Client: research.ClientSettings{ResponseBudget: 90 * time.Second}})
 		f := newRefFx(t, refOpts{red: true}, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), refSubmit("c1", refIntentPath, shpIntentMD))
 		f.remove(".kogen/local/readiness/is-even.json")
 		f.newSession()
 		if _, err := Refine(context.Background(), f.S, RefineInput{Project: f.Root, Slug: shpSlug, Hash: f.hash0, Request: "Clarify the draft.", Client: f.Client}); err != nil {
 			t.Fatal(err)
 		}
-		shpEq(t, "response budget", f.Client.ResponseBudget, 90*time.Second)
+		shpEq(t, "response budget", f.Client.ResponseBudget, time.Duration(0))
 	})
 }

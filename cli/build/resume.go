@@ -34,7 +34,7 @@ func resumeRun(ctx context.Context, s *sys.Session, in ResumeInput, out **Attemp
 	if err := research.Validate(ctx, s); err != nil {
 		return err
 	}
-	research.ApplyClient(in.Deps.Client)
+	research.ApplyBuildReview(in.Deps.Client)
 	repo, err := git.Open(in.Project, s.Env)
 	if err != nil {
 		return err
@@ -298,9 +298,7 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 		event["checkpoint_index_sha256"], event["index_sha256"] = hashHex(savedIndex), hashHex(currentIndex)
 	}
 	run.Event(event)
-	if e := research.BudgetEvent(); e != nil {
-		run.Event(e)
-	}
+	run.Event(research.BudgetEvent(in.Deps.Client))
 	if err := b.Save(b.Continuation); err != nil {
 		return err
 	}

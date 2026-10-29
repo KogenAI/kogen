@@ -12,10 +12,11 @@ import (
 	"kogen-loop/sys"
 )
 
-// These tests run the entries with the production research settings, never replacing the
-// default: the response budget each provider-backed entry sends with is observed on the real
-// client's transport deadline, and the run log and the expiry diagnostic are read as a user
-// sees them. They are serial because other tests change the process-wide settings.
+// These tests run Shape, Refine, the shape workers and the setup conversation of init with the
+// production settings: none of them configures a response budget, so each sends under the pinned
+// loop's 30 minutes. The budget is observed on the real client's transport deadline, and the run
+// log and the expiry diagnostic are read as a user sees them. They are serial because other
+// tests change the process-wide settings.
 
 // deadlineObserver records the time the client's transport had left for each exchange.
 type deadlineObserver struct {
@@ -41,9 +42,9 @@ func observeDeadlines(c *provider.Client) *deadlineObserver {
 	return o
 }
 
-// wantTenMinutes holds that all n exchanges were sent under the ten-minute budget: not the
-// library's thirty minutes, not a lower setting and not unbounded.
-func (o *deadlineObserver) wantTenMinutes(t *testing.T, n int) {
+// wantThirtyMinutes holds that all n exchanges were sent under the library's thirty-minute
+// budget: not Build's ten minutes, not a lower setting and not unbounded.
+func (o *deadlineObserver) wantThirtyMinutes(t *testing.T, n int) {
 	t.Helper()
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -51,8 +52,8 @@ func (o *deadlineObserver) wantTenMinutes(t *testing.T, n int) {
 		t.Fatalf("observed %d exchanges (%d without a deadline), want %d (at least 2)", len(o.remaining), o.missing, n)
 	}
 	for i, d := range o.remaining {
-		if d > 10*time.Minute || d < 10*time.Minute-time.Minute {
-			t.Fatalf("exchange %d had %s left, want about ten minutes", i, d)
+		if d > 30*time.Minute || d < 30*time.Minute-time.Minute {
+			t.Fatalf("exchange %d had %s left, want about thirty minutes", i, d)
 		}
 	}
 }
@@ -77,14 +78,14 @@ func (c *budgetClock) Advance(d time.Duration) {
 	c.mu.Unlock()
 }
 
-// stalledPastTen is a provider that takes a request, says nothing, and loses the connection
-// once more than ten minutes have passed on the clock: no wall-clock wait.
-func stalledPastTen(c *budgetClock) shpStep {
+// stalledPastThirty is a provider that takes a request, says nothing, and loses the connection
+// once more than thirty minutes have passed on the clock: no wall-clock wait.
+func stalledPastThirty(c *budgetClock) shpStep {
 	return shpStep{handler: func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		w.(http.Flusher).Flush()
-		c.Advance(10*time.Minute + time.Second)
+		c.Advance(30*time.Minute + time.Second)
 		panic(http.ErrAbortHandler)
 	}}
 }
@@ -100,21 +101,21 @@ func wantBudgetRecord(t *testing.T, events []map[string]any) {
 	if len(got) != 1 {
 		t.Fatalf("%d response_budget events, want exactly one: %v", len(got), got)
 	}
-	shpEq(t, "budget", got[0]["budget"], any("10 minutes"))
-	shpEq(t, "budget_ms", got[0]["budget_ms"], any(float64(600000)))
+	shpEq(t, "budget", got[0]["budget"], any("30 minutes"))
+	shpEq(t, "budget_ms", got[0]["budget_ms"], any(float64(1800000)))
 }
 
-// wantTenMinuteText holds that what the user saw reports the provider's unavailable failure of
-// a stalled wait, naming ten minutes in the library's Go duration form nowhere.
-func wantTenMinuteText(t *testing.T, text string) {
+// wantThirtyMinuteText holds that what the user saw reports the provider's unavailable failure of
+// a stalled wait, naming the loop's thirty minutes.
+func wantThirtyMinuteText(t *testing.T, text string) {
 	t.Helper()
-	if !strings.Contains(text, "provider/unavailable: ChatGPT response wait exceeded 10 minutes\n") || strings.Contains(text, "10m0s") {
+	if !strings.Contains(text, "provider/unavailable: ChatGPT response wait exceeded 30 minutes\n") || strings.Contains(text, "30m0s") {
 		t.Fatalf("the user saw %q", text)
 	}
 }
 
-func TestResponseBudgetDefaultShape(t *testing.T) {
-	t.Run("shape sends every request under ten minutes and records it once", func(t *testing.T) {
+func TestShapeBudgetRolesShape(t *testing.T) {
+	t.Run("shape sends every request under thirty minutes and records it once", func(t *testing.T) {
 		serialTmp(t)
 		f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 		obs := observeDeadlines(f.Client)
@@ -122,14 +123,15 @@ func TestResponseBudgetDefaultShape(t *testing.T) {
 		if _, err := Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client}); err != nil {
 			t.Fatalf("%v\n%s", err, f.Stdout)
 		}
-		obs.wantTenMinutes(t, len(f.Prov.requests()))
+		obs.wantThirtyMinutes(t, len(f.Prov.requests()))
+		shpEq(t, "client response budget", f.Client.ResponseBudget, time.Duration(0))
 		wantBudgetRecord(t, f.events())
 	})
 
-	t.Run("a stalled shape expires unavailable naming ten minutes, is not retried and records once", func(t *testing.T) {
+	t.Run("a stalled shape expires unavailable naming thirty minutes, is not retried and records once", func(t *testing.T) {
 		serialTmp(t)
 		clock := newBudgetClock()
-		f := newShpFx(t, stalledPastTen(clock), shpSubmit("c1", shpFiles()), shpAck("c2"))
+		f := newShpFx(t, stalledPastThirty(clock), shpSubmit("c1", shpFiles()), shpAck("c2"))
 		f.Client.Now = clock.Now
 		f.newSession()
 		exit, err := Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client})
@@ -137,7 +139,7 @@ func TestResponseBudgetDefaultShape(t *testing.T) {
 		if !ok || e.Class != "shape" || e.Reason != "provider_failed" || e.Exit != 4 || exit != 4 {
 			t.Fatalf("exit %d err %v", exit, err)
 		}
-		wantTenMinuteText(t, knobText(f, err))
+		wantThirtyMinuteText(t, knobText(f, err))
 		shpEq(t, "requests", len(f.Prov.requests()), 1)
 		wantBudgetRecord(t, f.events())
 
@@ -150,7 +152,7 @@ func TestResponseBudgetDefaultShape(t *testing.T) {
 		shpEq(t, "records after the rerun", len(budgetEvents(f.events())), 2)
 	})
 
-	t.Run("refine sends every request under ten minutes and records it once", func(t *testing.T) {
+	t.Run("refine sends every request under thirty minutes and records it once", func(t *testing.T) {
 		serialTmp(t)
 		f := newRefFx(t, refOpts{red: true}, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), refSubmit("c1", refIntentPath, shpIntentMD))
 		f.remove(".kogen/local/readiness/is-even.json")
@@ -159,14 +161,15 @@ func TestResponseBudgetDefaultShape(t *testing.T) {
 		if _, err := Refine(context.Background(), f.S, RefineInput{Project: f.Root, Slug: shpSlug, Hash: f.hash0, Request: "Clarify the draft.", Client: f.Client}); err != nil {
 			t.Fatal(err)
 		}
-		obs.wantTenMinutes(t, len(f.Prov.requests()))
+		obs.wantThirtyMinutes(t, len(f.Prov.requests()))
+		shpEq(t, "client response budget", f.Client.ResponseBudget, time.Duration(0))
 		wantBudgetRecord(t, f.evidenceEvents())
 	})
 
-	t.Run("a stalled refine expires unavailable naming ten minutes and records once", func(t *testing.T) {
+	t.Run("a stalled refine expires unavailable naming thirty minutes and records once", func(t *testing.T) {
 		serialTmp(t)
 		clock := newBudgetClock()
-		f := newRefFx(t, refOpts{red: true}, stalledPastTen(clock), refSubmit("c1", refIntentPath, shpIntentMD))
+		f := newRefFx(t, refOpts{red: true}, stalledPastThirty(clock), refSubmit("c1", refIntentPath, shpIntentMD))
 		f.remove(".kogen/local/readiness/is-even.json")
 		f.Client.Now = clock.Now
 		f.newSession()
@@ -174,12 +177,12 @@ func TestResponseBudgetDefaultShape(t *testing.T) {
 		if e, ok := sys.AsError(err); !ok || e.Class != "provider" || e.Reason != "unavailable" || e.Exit != 4 {
 			t.Fatalf("err %v, want provider/unavailable (exit 4)", err)
 		}
-		wantTenMinuteText(t, knobText(f.shpFx, err))
+		wantThirtyMinuteText(t, knobText(f.shpFx, err))
 		shpEq(t, "requests", len(f.Prov.requests()), 1)
 		wantBudgetRecord(t, f.evidenceEvents())
 	})
 
-	t.Run("shape workers send under the same ten minutes within the one record", func(t *testing.T) {
+	t.Run("shape workers send under the same thirty minutes within the one record", func(t *testing.T) {
 		serialTmp(t)
 		f := newShpFx(t)
 		f.withWorkers()
@@ -214,11 +217,12 @@ func TestResponseBudgetDefaultShape(t *testing.T) {
 			}
 		}
 		shpEq(t, "worker requests", workers, 2)
-		obs.wantTenMinutes(t, len(f.Prov.requests()))
+		obs.wantThirtyMinutes(t, len(f.Prov.requests()))
+		shpEq(t, "client response budget", f.Client.ResponseBudget, time.Duration(0))
 		wantBudgetRecord(t, f.events())
 	})
 
-	t.Run("the setup conversation of init sends under ten minutes", func(t *testing.T) {
+	t.Run("the setup conversation of init sends under thirty minutes", func(t *testing.T) {
 		serialTmp(t)
 		f := initNewFx(t, true, initNothing())
 		f.write("README.md", "x\n")
@@ -232,9 +236,10 @@ func TestResponseBudgetDefaultShape(t *testing.T) {
 			t.Fatalf("exit %d err %v", exit, err)
 		}
 		shpEq(t, "requests", len(f.requests()), 1)
+		shpEq(t, "client response budget", client.ResponseBudget, time.Duration(0))
 		obs.mu.Lock()
 		defer obs.mu.Unlock()
-		if len(obs.remaining) != 1 || obs.missing != 0 || obs.remaining[0] > 10*time.Minute || obs.remaining[0] < 9*time.Minute {
+		if len(obs.remaining) != 1 || obs.missing != 0 || obs.remaining[0] > 30*time.Minute || obs.remaining[0] < 29*time.Minute {
 			t.Fatalf("setup exchange deadlines %v (%d without one)", obs.remaining, obs.missing)
 		}
 	})

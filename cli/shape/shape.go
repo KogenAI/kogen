@@ -96,9 +96,7 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 	if limit := submissionRetryLimit(in.SubmissionRetryLimit); limit != 3 {
 		ev.Record(map[string]any{"event": "submission_retry_limit", "limit": limit})
 	}
-	if e := research.BudgetEvent(); e != nil {
-		ev.Record(e)
-	}
+	ev.Record(research.BudgetEvent(in.Client))
 
 	cfg, err := project.LoadConfig(root)
 	if err != nil {
@@ -171,7 +169,6 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 	if client == nil {
 		client = provider.NewClient("")
 	}
-	research.ApplyClient(client)
 	sh := &shaping{s: s, in: in, repo: repo, root: root, slug: slug, cfg: cfg, role: cfg.Models["shape"], ev: ev, ext: ext, extMax: extMax,
 		rd: rd, client: client, stateDir: stateDir, originals: map[string]original{}, proposed: map[string]string{}}
 	return sh.shape(ctx, st)

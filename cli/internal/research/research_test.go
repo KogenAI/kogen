@@ -155,16 +155,12 @@ func TestApplyReachesEveryOption(t *testing.T) {
 	set(t, Settings{
 		Tools:             ToolSettings{ResultBound: 2000, ResultHead: 500},
 		Documentation:     DocumentationSettings{ResultBound: 4096, BodyBound: 8192},
-		Client:            ClientSettings{ResponseBudget: time.Minute},
 		InputBudgetBytes:  100000,
 		AuthorityBoundary: &boundary,
 	})
 	tl := ApplyTools(&tools.Tools{Documentation: tools.Documentation{UserAgent: "kogen/x"}})
 	if tl.ResultBound != 2000 || tl.ResultHead != 500 || tl.Documentation.ResultBound != 4096 || tl.Documentation.BodyBound != 8192 || tl.Documentation.UserAgent != "kogen/x" {
 		t.Fatalf("%+v", tl)
-	}
-	if c := ApplyClient(provider.NewClient("")); c.ResponseBudget != time.Minute {
-		t.Fatalf("response budget %s", c.ResponseBudget)
 	}
 	r := Request(provider.Request{})
 	if r.AuthorityBoundary == nil || *r.AuthorityBoundary != 3 || r.AuthorityBoundary == &boundary {
@@ -178,34 +174,47 @@ func TestApplyReachesEveryOption(t *testing.T) {
 	}
 }
 
-// TestProductionResponseBudgetDefault holds the one tunable line: ten minutes, with every other
-// setting still the loop's own default.
+// TestProductionResponseBudgetDefault holds that research has no response budget: every setting
+// is the loop's own default and Validate accepts them.
 func TestProductionResponseBudgetDefault(t *testing.T) {
-	if want := (Settings{Client: ClientSettings{ResponseBudget: 10 * time.Minute}}); !reflect.DeepEqual(Current, want) {
+	if !reflect.DeepEqual(Current, Settings{}) {
 		t.Fatalf("Current = %+v", Current)
+	}
+	if _, ok := reflect.TypeOf(Settings{}).FieldByName("Client"); ok {
+		t.Fatal("research still has a client settings container")
 	}
 	if err := Validate(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if e := BudgetEvent(); e["event"] != "response_budget" || e["budget"] != "10 minutes" || e["budget_ms"] != int64(600000) || len(e) != 3 {
-		t.Fatalf("event %v", e)
-	}
-	set(t, Settings{})
-	if BudgetEvent() != nil {
-		t.Fatal("a zero budget is recorded")
-	}
 }
 
-// TestApplyClientKeepsALowerBudget holds that a client built with a lower budget is not raised
-// to the configured one.
-func TestApplyClientKeepsALowerBudget(t *testing.T) {
-	for _, c := range []struct{ client, want time.Duration }{
-		{0, 10 * time.Minute}, {time.Second, time.Second}, {10 * time.Minute, 10 * time.Minute}, {30 * time.Minute, 10 * time.Minute},
+// TestBudgetRoleConstants holds the response budget of each role: Build and Review get the
+// fixed ten minutes; a client nothing configured keeps zero and so the loop's thirty minutes.
+// The run record names the effective budget.
+func TestBudgetRoleConstants(t *testing.T) {
+	if BuildReviewBudget != 10*time.Minute {
+		t.Fatalf("Build/Review budget %s", BuildReviewBudget)
+	}
+	if got := ApplyBuildReview(provider.NewClient("")).ResponseBudget; got != 10*time.Minute {
+		t.Fatalf("Build/Review client %s", got)
+	}
+	if ApplyBuildReview(nil) != nil {
+		t.Fatal("nil client became a client")
+	}
+	if provider.NewClient("").ResponseBudget != 0 {
+		t.Fatal("a new client has a budget")
+	}
+	for _, c := range []struct {
+		client *provider.Client
+		ms     int64
+		text   string
+	}{
+		{nil, 1800000, "30 minutes"},
+		{provider.NewClient(""), 1800000, "30 minutes"},
+		{ApplyBuildReview(provider.NewClient("")), 600000, "10 minutes"},
 	} {
-		client := provider.NewClient("")
-		client.ResponseBudget = c.client
-		if got := ApplyClient(client).ResponseBudget; got != c.want {
-			t.Errorf("client %s: %s, want %s", c.client, got, c.want)
+		if e := BudgetEvent(c.client); e["event"] != "response_budget" || e["budget"] != c.text || e["budget_ms"] != c.ms || len(e) != 3 {
+			t.Errorf("event %v, want %d %s", e, c.ms, c.text)
 		}
 	}
 }
@@ -264,7 +273,7 @@ func TestRespondExpiryEndsUnavailableNamingTenMinutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := sys.NewWith([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "KOGEN_PROVIDER_URL=" + srv.URL, "KOGEN_AUTH_URL=" + srv.URL}, t.TempDir())
-	c := ApplyClient(newClient())
+	c := ApplyBuildReview(newClient())
 	c.Now = clock
 	_, err := Respond(context.Background(), c, s, request(10), nil)
 	e, ok := sys.AsError(err)

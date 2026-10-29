@@ -216,9 +216,6 @@ func TestLoopKnobsInvalidStartup(t *testing.T) {
 		return research.Settings{Documentation: research.DocumentationSettings{ResultBound: result, BodyBound: body}}
 	}
 	budget := func(n int) research.Settings { return research.Settings{InputBudgetBytes: n} }
-	response := func(d time.Duration) research.Settings {
-		return research.Settings{Client: research.ClientSettings{ResponseBudget: d}}
-	}
 	cases := []tc{
 		{"zero", research.Settings{}, ""},
 		// Tools.ResultBound and ResultHead: bound at least 128, head below it, 64 bytes left for the marker and tail.
@@ -255,13 +252,6 @@ func TestLoopKnobsInvalidStartup(t *testing.T) {
 		{"input budget at the ceiling", budget(524288), ""},
 		{"input budget below the ceiling", budget(524287), ""},
 		{"input budget above the ceiling", budget(524289), "InputBudgetBytes 524289 is invalid: must be 0 (default) or in [65536, 524288]"},
-		// Client.ResponseBudget: zero or [1s, 30m].
-		{"response budget negative", response(-time.Second), "response budget must be zero or between 1s and 30m0s"},
-		{"response budget one nanosecond", response(1), "response budget must be zero or between 1s and 30m0s"},
-		{"response budget below a second", response(999 * time.Millisecond), "response budget must be zero or between 1s and 30m0s"},
-		{"response budget a second", response(time.Second), ""},
-		{"response budget the default", response(30 * time.Minute), ""},
-		{"response budget above the default", response(30*time.Minute + 1), "response budget must be zero or between 1s and 30m0s"},
 		// AuthorityBoundary depends on its request: startup accepts any value.
 		{"authority boundary zero", research.Settings{AuthorityBoundary: knobInt(0)}, ""},
 		{"authority boundary negative", research.Settings{AuthorityBoundary: knobInt(-1)}, ""},
@@ -365,8 +355,8 @@ const priorDocumentation = `{"description":"Shape documentation lookup discovers
 // default byte for byte. The four entry paths (Shape, Refine, Review, native Build) run their
 // own unchanged golden, request and checkpoint tests with the zero source.
 func TestLoopKnobsZeroCompatibility(t *testing.T) {
-	t.Run("the source of the settings is zero but the response budget", func(t *testing.T) {
-		if want := (research.Settings{Client: research.ClientSettings{ResponseBudget: 10 * time.Minute}}); !reflect.DeepEqual(research.Current, want) {
+	t.Run("the source of the settings is zero", func(t *testing.T) {
+		if !reflect.DeepEqual(research.Current, research.Settings{}) {
 			t.Fatalf("research.Current = %+v", research.Current)
 		}
 		if research.Current.AuthorityBoundary != nil {
@@ -416,7 +406,6 @@ func TestLoopKnobsZeroCompatibility(t *testing.T) {
 			t.Fatal(err)
 		}
 		client := provider.NewClient("kogen dev+12345678 (test)")
-		research.ApplyClient(client)
 		got := knobNormalize(knobFixtureRequests(research.CutText, research.Request, func(r provider.Request) map[string]any { return client.Body(r) }))
 		if !reflect.DeepEqual(got, any(golden.Requests)) {
 			gotJSON, _ := json.Marshal(got)
@@ -453,11 +442,8 @@ func TestLoopKnobsZeroCompatibility(t *testing.T) {
 		if got := research.InputBudget(); got != tools.InputBudgetBytes {
 			t.Errorf("input budget %d", got)
 		}
-		client := provider.NewClient("kogen dev+12345678 (test)")
-		client.ResponseBudget = 42 * time.Second
-		setKnobs(t, research.Settings{})
-		if research.ApplyClient(client).ResponseBudget != 42*time.Second || research.ApplyClient(provider.NewClient("")).ResponseBudget != 0 {
-			t.Error("zero settings changed a client's response budget")
+		if provider.NewClient("kogen dev+12345678 (test)").ResponseBudget != 0 {
+			t.Error("a new client has a response budget")
 		}
 		for _, role := range knobFixtureRoles {
 			req := provider.Request{Role: role, Instructions: "policy", Input: knobFixtureInput(tools.Cut), Tools: agent.AsAny(agent.Defs(knobFixtureEveryTool...)), CacheID: "knob-fixture-cache"}

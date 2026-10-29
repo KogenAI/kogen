@@ -130,7 +130,7 @@ func buildRun(ctx context.Context, s *sys.Session, in Input, out **Attempt) erro
 	if err := research.Validate(ctx, s); err != nil {
 		return err
 	}
-	research.ApplyClient(in.Deps.Client)
+	research.ApplyBuildReview(in.Deps.Client)
 	if in.Context != nil {
 		if err := in.Context.Validate(); err != nil {
 			return err
@@ -329,9 +329,7 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 	}
 	*out = b
 	run.Event(map[string]any{"event": "start", "slug": slug, "start_head": start, "approved": approval.SHA256})
-	if e := research.BudgetEvent(); e != nil {
-		run.Event(e)
-	}
+	run.Event(research.BudgetEvent(in.Deps.Client))
 	if err := b.Save(b.Continuation); err != nil {
 		return err
 	}

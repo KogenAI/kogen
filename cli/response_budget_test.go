@@ -19,30 +19,30 @@ import (
 
 // responseBudgetSupport are the package-local tests that observe the real clients of every
 // provider-backed entry under the production settings, and the subtests each must pass.
-// TestResponseBudgetDefaultContract runs them and requires each named PASS, so a missing,
+// TestShapeBudgetRoleContract runs them and requires each named PASS, so a missing,
 // renamed or skipped test cannot pass silently.
 var responseBudgetSupport = []struct {
 	pkg   string
 	tests []string
 }{
 	{"./shape", []string{
-		"TestResponseBudgetDefaultShape",
-		"TestResponseBudgetDefaultShape/shape sends every request under ten minutes and records it once",
-		"TestResponseBudgetDefaultShape/a stalled shape expires unavailable naming ten minutes, is not retried and records once",
-		"TestResponseBudgetDefaultShape/refine sends every request under ten minutes and records it once",
-		"TestResponseBudgetDefaultShape/a stalled refine expires unavailable naming ten minutes and records once",
-		"TestResponseBudgetDefaultShape/shape workers send under the same ten minutes within the one record",
-		"TestResponseBudgetDefaultShape/the setup conversation of init sends under ten minutes",
+		"TestShapeBudgetRolesShape",
+		"TestShapeBudgetRolesShape/shape sends every request under thirty minutes and records it once",
+		"TestShapeBudgetRolesShape/a stalled shape expires unavailable naming thirty minutes, is not retried and records once",
+		"TestShapeBudgetRolesShape/refine sends every request under thirty minutes and records it once",
+		"TestShapeBudgetRolesShape/a stalled refine expires unavailable naming thirty minutes and records once",
+		"TestShapeBudgetRolesShape/shape workers send under the same thirty minutes within the one record",
+		"TestShapeBudgetRolesShape/the setup conversation of init sends under thirty minutes",
 	}},
 	{"./build", []string{
-		"TestResponseBudgetDefaultBuild",
-		"TestResponseBudgetDefaultBuild/the builder and the independent reviewer send under ten minutes and the run records it once",
-		"TestResponseBudgetDefaultBuild/a stalled builder expires unavailable naming ten minutes and its resume lands under a new budget",
-		"TestResponseBudgetDefaultBuild/a stalled review expires unavailable naming ten minutes and its resume answers it",
+		"TestShapeBudgetRolesBuild",
+		"TestShapeBudgetRolesBuild/the builder and the independent reviewer send under ten minutes and the run records it once",
+		"TestShapeBudgetRolesBuild/a stalled builder expires unavailable naming ten minutes and its resume lands under a new budget",
+		"TestShapeBudgetRolesBuild/a stalled review expires unavailable naming ten minutes and its resume answers it",
 	}},
 	{"./internal/research", []string{
 		"TestProductionResponseBudgetDefault",
-		"TestApplyClientKeepsALowerBudget",
+		"TestBudgetRoleConstants",
 		"TestRespondNamesTheTenMinuteExpiry",
 		"TestRespondExpiryEndsUnavailableNamingTenMinutes",
 	}},
@@ -53,16 +53,16 @@ var responseBudgetSupport = []struct {
 // environment, and the supporting tests need the one the suite was started in.
 var responseBudgetStartEnv = os.Environ()
 
-// TestResponseBudgetDefaultContract is the contract of the ten-minute provider response default:
-// every provider-backed entry (Shape, Refine, native Build, independent Review, associated
-// workers and the setup conversation) sends under it, the run log records it once, a stalled wait
-// expires unavailable naming ten minutes and the existing retry answers it, and requests and every
-// other setting stay as they were. It never replaces the production default.
+// TestResponseBudgetDefaultContract is the contract of what the response budget is not: research
+// has no response budget setting, and with it gone the requests and every other setting stay as
+// they were, byte for byte. Which role gets which budget is TestShapeBudgetRoleContract's.
 func TestResponseBudgetDefaultContract(t *testing.T) {
-	t.Run("the production source sets only the ten-minute response budget", func(t *testing.T) {
-		want := research.Settings{Client: research.ClientSettings{ResponseBudget: 10 * time.Minute}}
-		if !reflect.DeepEqual(research.Current, want) {
-			t.Fatalf("research.Current = %+v, want %+v", research.Current, want)
+	t.Run("the production source sets nothing and research has no response budget", func(t *testing.T) {
+		if !reflect.DeepEqual(research.Current, research.Settings{}) {
+			t.Fatalf("research.Current = %+v", research.Current)
+		}
+		if _, ok := reflect.TypeOf(research.Settings{}).FieldByName("Client"); ok {
+			t.Fatal("research still configures the client")
 		}
 		if research.Current.AuthorityBoundary != nil {
 			t.Fatal("the authority boundary is not disabled")
@@ -81,21 +81,75 @@ func TestResponseBudgetDefaultContract(t *testing.T) {
 				t.Errorf("cut %d: %d bytes, library %d", i, len(got), len(want))
 			}
 		}
-		// The library's own default is independent of Kogen's: a client nobody configured keeps
-		// its thirty minutes, and an explicit lower budget is not raised.
-		if provider.ResponseBudget != 30*time.Minute || provider.NewClient("").ResponseBudget != 0 {
-			t.Fatalf("library default %s / client %s", provider.ResponseBudget, provider.NewClient("").ResponseBudget)
+	})
+
+	t.Run("serialized requests equal the unconfigured client's", func(t *testing.T) {
+		render := func(client *provider.Client) any {
+			return knobNormalize(knobFixtureRequests(research.CutText, research.Request, func(r provider.Request) map[string]any { return client.Body(r) }))
 		}
-		low := provider.NewClient("")
-		low.ResponseBudget = 42 * time.Second
-		if research.ApplyClient(low).ResponseBudget != 42*time.Second || research.ApplyClient(provider.NewClient("")).ResponseBudget != 10*time.Minute {
-			t.Fatal("ApplyClient did not give ten minutes to an unconfigured client and keep a lower one")
+		build := research.ApplyBuildReview(provider.NewClient("kogen dev+12345678 (test)"))
+		if unconfigured := render(provider.NewClient("kogen dev+12345678 (test)")); !reflect.DeepEqual(render(build), unconfigured) {
+			t.Fatal("the fixed requests differ between a Build/Review client and an unconfigured one")
 		}
 	})
 
-	t.Run("every provider-backed entry is observed under ten minutes with exact execution checks", func(t *testing.T) {
+	t.Run("the request sent equals the unconfigured client's byte for byte", func(t *testing.T) {
+		role := provider.Role{Provider: "anthropic", Model: "claude-sonnet-5-5", Effort: "high"}
+		send := func(configure func(*provider.Client) *provider.Client) []byte {
+			k := newKnobServer(t)
+			sess := knobSession(t, k)
+			client := configure(provider.NewClient("kogen dev+12345678 (test)"))
+			client.Sleep = func(context.Context, time.Duration) error { return nil }
+			req := research.Request(provider.Request{Role: role, Instructions: "policy", Input: knobFixtureInput(research.CutText),
+				Tools: agent.AsAny(agent.Defs(knobFixtureEveryTool...)), CacheID: "knob-fixture-cache"})
+			research.Respond(context.Background(), client, sess, req, nil)
+			if len(k.bodies) == 0 {
+				t.Fatal("nothing was sent")
+			}
+			return k.bodies[0]
+		}
+		buildReview := send(research.ApplyBuildReview)
+		if plain := send(func(c *provider.Client) *provider.Client { return c }); !bytes.Equal(buildReview, plain) {
+			t.Fatalf("sent %d bytes under the Build/Review budget, %d under the library's", len(buildReview), len(plain))
+		}
+	})
+}
+
+// TestShapeBudgetRoleContract is the contract of the response budget per role: Shape, Refine,
+// the shape workers and init leave the client's budget zero and send under the pinned loop's 30
+// minutes; native Build (fresh and resumed) and independent Review use the fixed 10 minutes. The
+// run log records the effective budget once, a stalled Build or Review wait expires unavailable
+// naming ten minutes and the existing resume answers it. The real entries are observed by the
+// package-local tests below, each required by exact name to run and pass.
+func TestShapeBudgetRoleContract(t *testing.T) {
+	t.Run("wire identity and other settings", TestResponseBudgetDefaultContract)
+	t.Run("the role constants are Build and Review's ten minutes and the loop's thirty for the rest", func(t *testing.T) {
+		if research.BuildReviewBudget != 10*time.Minute {
+			t.Fatalf("Build/Review budget %s", research.BuildReviewBudget)
+		}
+		if provider.ResponseBudget != 30*time.Minute || provider.NewClient("").ResponseBudget != 0 {
+			t.Fatalf("library default %s / client %s", provider.ResponseBudget, provider.NewClient("").ResponseBudget)
+		}
+		if got := research.ApplyBuildReview(provider.NewClient("")).ResponseBudget; got != 10*time.Minute {
+			t.Fatalf("Build/Review client %s", got)
+		}
+		for _, c := range []struct {
+			client *provider.Client
+			ms     int64
+			text   string
+		}{
+			{provider.NewClient(""), 1800000, "30 minutes"},
+			{research.ApplyBuildReview(provider.NewClient("")), 600000, "10 minutes"},
+		} {
+			if e := research.BudgetEvent(c.client); e["budget_ms"] != c.ms || e["budget"] != c.text || e["event"] != "response_budget" || len(e) != 3 {
+				t.Errorf("event %v, want %d %s", e, c.ms, c.text)
+			}
+		}
+	})
+
+	t.Run("every role is observed under its budget with exact execution checks", func(t *testing.T) {
 		if testing.Short() {
-			t.Skip("runs the package-local observations")
+			t.Fatal("the role contract requires its package-local observations; do not use -short")
 		}
 		var names []string
 		var pkgs []string
@@ -126,51 +180,12 @@ func TestResponseBudgetDefaultContract(t *testing.T) {
 					marker = "    " + marker
 				}
 				if !strings.Contains(text, marker) {
-					t.Errorf("%s: required test did not execute and pass: %s", p.pkg, n)
+					t.Errorf("required test %s: go test -race %s: not executed with PASS", n, p.pkg)
 				}
 			}
 		}
 		if strings.Contains(text, "--- SKIP") || strings.Contains(text, "--- FAIL") {
 			t.Errorf("a required test skipped or failed:\n%s", text)
-		}
-	})
-
-	t.Run("serialized requests and every other setting equal the zero configuration's", func(t *testing.T) {
-		render := func() any {
-			client := provider.NewClient("kogen dev+12345678 (test)")
-			research.ApplyClient(client)
-			return knobNormalize(knobFixtureRequests(research.CutText, research.Request, func(r provider.Request) map[string]any { return client.Body(r) }))
-		}
-		production := render()
-		setKnobs(t, research.Settings{})
-		if zero := render(); !reflect.DeepEqual(production, zero) {
-			t.Fatal("the fixed requests differ between the ten-minute default and the zero configuration")
-		}
-		setKnobs(t, research.Settings{Client: research.ClientSettings{ResponseBudget: 10 * time.Minute}})
-		if explicit := render(); !reflect.DeepEqual(production, explicit) {
-			t.Fatal("the fixed requests differ under an explicit ten-minute configuration")
-		}
-	})
-
-	t.Run("the request sent equals the zero configuration's byte for byte", func(t *testing.T) {
-		role := provider.Role{Provider: "anthropic", Model: "claude-sonnet-5-5", Effort: "high"}
-		send := func(s research.Settings) []byte {
-			setKnobs(t, s)
-			k := newKnobServer(t)
-			sess := knobSession(t, k)
-			client := research.ApplyClient(provider.NewClient("kogen dev+12345678 (test)"))
-			client.Sleep = func(context.Context, time.Duration) error { return nil }
-			req := research.Request(provider.Request{Role: role, Instructions: "policy", Input: knobFixtureInput(research.CutText),
-				Tools: agent.AsAny(agent.Defs(knobFixtureEveryTool...)), CacheID: "knob-fixture-cache"})
-			research.Respond(context.Background(), client, sess, req, nil)
-			if len(k.bodies) == 0 {
-				t.Fatal("nothing was sent")
-			}
-			return k.bodies[0]
-		}
-		production := send(research.Current)
-		if zero := send(research.Settings{}); !bytes.Equal(production, zero) {
-			t.Fatalf("sent %d bytes under the default, %d under zero", len(production), len(zero))
 		}
 	})
 }
