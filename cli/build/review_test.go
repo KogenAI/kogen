@@ -339,9 +339,8 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 		f := e.prov
 		f.then(landScript(f)...)
 		say := sse(map[string]any{"type": "message", "id": "msg-1", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": "All good."}}})
-		// A shell call keeps the review from the automatic fresh review (tested elsewhere): this
-		// is the stop of the review itself.
-		f.then(f.calls("shell", map[string]any{"command": "true"}), say, say)
+		// Two replies end review 1; its one automatic fresh review (tested elsewhere) says the same.
+		f.then(say, say, say, say)
 		start := e.head()
 		a := e.reviewed()
 		eq(t, "exit", a.exit, 1)
@@ -351,10 +350,10 @@ func TestOneInvalidVerdictIsSentBackAndASecondEndsTheBuild(t *testing.T) {
 		contains(t, "stdout", out, "  still failing: review\n")
 		eq(t, "head", e.head(), start)
 		reqs := f.reviewRequests()
-		eq(t, "review requests", len(reqs), 3)
-		contains(t, "retry", requestText(reqs[2]), "Not a valid verdict: the review ended without calling submit_review. Call submit_review.")
+		eq(t, "review requests", len(reqs), 4)
+		contains(t, "retry", requestText(reqs[1]), "Not a valid verdict: the review ended without calling submit_review. Call submit_review.")
 		eq(t, "outcome", e.result(id)["outcome"], any("review_invalid"))
-		eq(t, "reviews", e.result(id)["reviews"], any(float64(1)))
+		eq(t, "reviews", e.result(id)["reviews"], any(float64(2)))
 	})
 }
 
@@ -1034,9 +1033,10 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 		// part is the one the first request cannot have carried (asserted below).
 		manual = parts[len(parts)-1]
 		// A read and an approval in one response deliver nothing.
-		// The shell call keeps this review from the automatic fresh review (tested elsewhere).
-		f.calls("shell", map[string]any{"command": "true"}, "read_file", map[string]any{"path": manual}, "submit_review", map[string]any{"verdict": "approve", "findings": []any{}})(w, r)
-	}, submit(f, "approve"))
+		f.calls("read_file", map[string]any{"path": manual}, "submit_review", map[string]any{"verdict": "approve", "findings": []any{}})(w, r)
+	}, submit(f, "approve"),
+		// The automatic fresh review (tested elsewhere) approves without reading as well.
+		submit(f, "approve"), submit(f, "approve"))
 	start := e.head()
 	a := e.reviewed()
 	eq(t, "exit", a.exit, 1)
@@ -1044,7 +1044,7 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 	contains(t, "stdout", a.out.String(), "failed fixture: review_invalid (Build "+id+")\ncandidate/review_invalid: the reviewer did not return a valid verdict; edits are left in place\n")
 	eq(t, "head", e.head(), start)
 	reqs := f.reviewRequests()
-	eq(t, "review requests", len(reqs), 2)
+	eq(t, "review requests: review 1 and its fresh review", len(reqs), 4)
 	parts := catalogParts(reviewCatalog(t, reqs[0]))
 	pinned := map[string]bool{}
 	for _, p := range parts {
@@ -1106,7 +1106,7 @@ func TestApprovalNeedsEveryPinnedPartDeliveredInACompletedContinuation(t *testin
 	contains(t, "second", second, "invalid verdict:")
 	// The second approval, after one completed read, still names the remaining parts.
 	events := eventsNamed(e.events(id), "review")
-	eq(t, "invalid reviews", len(events), 1)
+	eq(t, "invalid reviews", len(events), 2)
 	last := events[0]
 	eq(t, "review", last["review"], any(float64(1)))
 	eq(t, "verdict", last["verdict"], any("invalid"))
@@ -1453,9 +1453,6 @@ func TestAReviewerThatNeverReadsIsStopped(t *testing.T) {
 	e := newEnv(t)
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
-	// A shell call makes this review no safe boundary for the automatic fresh review, so the
-	// stop is the one of the review itself (the retry has its own tests).
-	f.then(f.calls("shell", map[string]any{"command": "true"}))
 	for i := 0; i < 40; i++ {
 		f.then(submit(f, "changes", finding("blocking", "x")))
 	}
@@ -1464,8 +1461,9 @@ func TestAReviewerThatNeverReadsIsStopped(t *testing.T) {
 	eq(t, "exit", a.exit, 1)
 	eq(t, "head", e.head(), start)
 	// The first unread answer is the uncounted baseline; the next two, with an unread count
-	// that does not fall, are an ordinary rejection and then the limit.
-	eq(t, "review requests", len(f.reviewRequests()), 4)
+	// that does not fall, are an ordinary rejection and then the limit. The one automatic
+	// fresh review (the retry has its own tests) never reads either and ends the same way.
+	eq(t, "review requests", len(f.reviewRequests()), 6)
 	eq(t, "outcome", e.result(e.onlyRun())["outcome"], any("review_invalid"))
 }
 

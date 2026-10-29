@@ -74,15 +74,16 @@ type reviewSession struct {
 	// reminder) are each sent back once, independently of each other. Remind marks the
 	// pending reminder: the next request requires submit_review where the route supports it.
 	// PrevUnread is the unread-part count of the last unread rejection (the progress
-	// exemption). Mutating is set once the conversation used any tool that could change the
-	// checkout; Reopened marks the reopened conversation of a blocked review. All of them
+	// exemption). Reopened marks the reopened conversation of a blocked review. All of them
 	// travel with the checkpoint, so an interruption or a working-window reset keeps them.
 	Rejected   int  `json:"rejected_verdicts,omitempty"`
 	NoTool     int  `json:"no_tool_reminders,omitempty"`
 	Remind     bool `json:"remind,omitempty"`
 	PrevUnread int  `json:"prev_unread,omitempty"`
-	Mutating   bool `json:"mutating,omitempty"`
 	Reopened   bool `json:"reopened,omitempty"`
+	// Repaired: a verdict of this review was already judged and sent back, so the pass it now
+	// works from may hold the reviewer's own verified edits rather than the builder's tree.
+	Repaired bool `json:"repaired,omitempty"`
 }
 
 func (s reviewSession) encode() (json.RawMessage, error) {
@@ -286,7 +287,7 @@ func (r *reviewRun) retry(ctx context.Context) (Approved, error) {
 		"edits still require ordinary external exact verification before commit.\n"
 	r.pass = pass
 	r.sess = reviewSession{
-		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts, Mutating: r.sess.Mutating, Reopened: true,
+		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts, Reopened: true, Repaired: r.sess.Repaired,
 		Input: slices.Concat(r.sess.Input, []any{map[string]any{"role": "user", "content": feedback}}),
 	}
 	return r.loop(ctx, nil, "")
@@ -383,7 +384,7 @@ func (r *reviewRun) evaluate(ctx context.Context, verdict reviewVerdict, tree st
 	}
 	r.pass = final
 	r.sess = reviewSession{
-		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts, Mutating: r.sess.Mutating, Reopened: r.sess.Reopened,
+		Role: r.sess.Role, Usage: r.sess.Usage, Attempts: attempts, Reopened: r.sess.Reopened, Repaired: true,
 		Input: slices.Concat(r.sess.Input, []any{map[string]any{"role": "user", "content": feedback}}),
 	}
 	return Approved{}, true, nil
@@ -479,9 +480,6 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 					outs = append(outs, call.Output("accepted"))
 				}
 			default:
-				if !slices.Contains(readOnlyReviewTools, call.Name) {
-					r.sess.Mutating = true
-				}
 				out, err := tl.Call(call)
 				if err != nil {
 					return reviewVerdict{}, err
@@ -513,6 +511,14 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 		input = slices.Concat(input, outs)
 		if len(calls) == 0 {
 			problems = []string{"the review ended without calling submit_review"}
+			if force != "" {
+				// The route was told to call submit_review and answered with text only: a fault of
+				// the provider, not unread-part progress. It is only a no-tool turn for the allowance.
+				b.Run.Event(map[string]any{
+					"event": "provider_fault", "fault": "forced_tool_not_called", "review": b.Review, "tool": force,
+					"mode": "api_forced", "route": provider.Name(providerRole(r.sess.Role)), "model": r.sess.Role.Model,
+				})
+			}
 		}
 
 		exempt := false

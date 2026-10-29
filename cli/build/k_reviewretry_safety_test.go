@@ -57,7 +57,7 @@ func (e *env) stopNatively() (string, *attempt) {
 
 // TestKReviewRetrySafetyBoundaries: retry consumption and the separate counters survive
 // checkpoints; native and external fresh reviews keep their delivery rules; only a completed
-// read-only review of the exact green tree gets the new treatment; blockers are not invalid
+// review of the exact green tree gets the new treatment; blockers are not invalid
 // reviews; and no limit, timeout or option was raised.
 func TestKReviewRetrySafetyBoundaries(t *testing.T) {
 	t.Run("consumption and counters survive a checkpoint", func(t *testing.T) {
@@ -112,43 +112,21 @@ func TestKReviewRetrySafetyBoundaries(t *testing.T) {
 		eq(t, "reviews", e.result(second)["reviews"], any(float64(2)))
 	})
 
-	t.Run("a completed read-only review resumes; one that changed anything does not", func(t *testing.T) {
-		for name, tc := range map[string]struct {
-			tools []any
-			why   string
-		}{
-			"shell": {[]any{"shell", map[string]any{"command": "true"}}, "the review used tools that can change the checkout"},
-		} {
-			t.Run(name+" disqualifies", func(t *testing.T) {
-				t.Parallel()
-				e := newEnv(t)
-				f := e.prov
-				f.then(landScript(f)...)
-				f.then(f.calls(tc.tools...), prose("a"), prose("b"))
-				a := e.reviewed()
-				wantStop(t, a, "candidate/review_invalid")
-				id := e.onlyRun()
-				eq(t, "review requests: no automatic retry", len(f.reviewRequests()), 3)
-				only := eventsNamed(e.events(id), "review_only")
-				eq(t, "review-only events", len(only), 1)
-				eq(t, "eligible", only[0]["eligible"], any(false))
-				eq(t, "why", only[0]["why"], any(tc.why))
-				if e.checkpointStage(id) == StageReviewOnly {
-					t.Fatal("a review that could have changed the checkout got a review-only checkpoint")
-				}
-				// Today's refusal of the uncertain tool boundary, with nothing touched.
-				before, requests := e.snapshot(), f.count()
-				r := e.resumeReviewed(id)
-				eq(t, "exit", r.exit, 1)
-				contains(t, "refusal", r.shown(), "uncertain tool boundary")
-				eq(t, "provider requests", f.count(), requests)
-				after := e.snapshot()
-				eq(t, "files", after.files, before.files)
-				eq(t, "index", after.index, before.index)
-				eq(t, "HEAD", after.head, before.head)
-				eq(t, "runs", after.runs, before.runs)
-			})
-		}
+	t.Run("a reviewer that used edit tools without changing anything still gets its one fresh review", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t)
+		f := e.prov
+		f.then(landScript(f)...)
+		f.then(f.calls("shell", map[string]any{"command": "true"}), prose("a"), prose("b"), submit(f, "approve"))
+		a := e.reviewed()
+		eq(t, "exit", a.exit, 0)
+		id := e.onlyRun()
+		eq(t, "review requests: the fresh review ran", len(f.reviewRequests()), 4)
+		only := eventsNamed(e.events(id), "review_only")
+		eq(t, "review-only events", len(only), 1)
+		eq(t, "eligible", only[0]["eligible"], any(true))
+		eq(t, "retry events", len(eventsNamed(e.events(id), "review_retry")), 1)
+		eq(t, "nothing to discard", len(eventsNamed(e.events(id), "review_edits_discarded")), 0)
 	})
 
 	t.Run("a review-only checkpoint refuses stale or drifted custody", func(t *testing.T) {

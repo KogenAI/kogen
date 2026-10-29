@@ -425,7 +425,9 @@ func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
 			return executor.RoundResult{Ending: executor.EndNoCall}, nil
 		}
 		a := e.build(withLineup(f))
-		wantStop(t, a, "executor/protocol")
+		wantStop(t, a, "candidate/review_invalid")
+		eq(t, "fresh sessions", len(f.starts[executor.RoleReview]), 2)
+		eq(t, "automatic retry", len(eventsNamed(e.events(e.onlyRun()), "review_retry")), 1)
 		raw, _ := os.ReadFile(filepath.Join(e.runPath(e.onlyRun(), "executor-review"), "review-1-material.json"))
 		if !strings.Contains(string(raw), `"delivered": false`) {
 			t.Fatalf("%s", raw)

@@ -182,7 +182,7 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 			return Approved{}, err
 		}
 		if res.Ending == executor.EndNoCall {
-			return Approved{}, executor.Fail(executor.ReasonProtocol, "the reviewer ended its round without a verdict")
+			return Approved{}, r.invalidStop([]string{"the reviewer ended its round without a verdict"}, "executor_no_call")
 		}
 		verdict, problems, err := x.verdictOf(r, res.Structured)
 		if err != nil {
@@ -225,8 +225,6 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 		}
 		feedback = lastUserContent(r.sess.Input)
 		r.sess.Input = nil
-		// The reviewer's repairs changed the candidate: this review is no read-only boundary.
-		r.sess.Mutating = true
 		invalid = 0
 	}
 }

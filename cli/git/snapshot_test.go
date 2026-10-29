@@ -292,3 +292,96 @@ func TestMaterializeIntoARelativeDirectoryAndMissingTree(t *testing.T) {
 		t.Fatal("materialized a tree that does not exist")
 	}
 }
+
+func TestRestoreTreePutsBackExactlyTheDifferingPaths(t *testing.T) {
+	f := newFixture(t)
+	f.write(t, ".gitignore", "*.log\n")
+	f.write(t, "keep.txt", "kept\n")
+	f.write(t, "dir/gone.txt", "gone\n")
+	f.write(t, "run.sh", "#!/bin/sh\n")
+	f.chmod(t, "run.sh", 0o755)
+	f.write(t, "swap", "was a file\n")
+	if err := os.Symlink("keep.txt", filepath.Join(f.Dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	f.git(t, "add", ".")
+	f.git(t, "commit", "-qm", "candidate")
+	green := must(f.Resolve("HEAD^{tree}"))
+
+	// Uncommitted edits: a modification, a mode change, a deletion that leaves a folder empty,
+	// a file replaced by a folder, a retargeted symlink, additions in new folders, an ignored file.
+	f.write(t, "README.md", "edited\n")
+	f.chmod(t, "run.sh", 0o644)
+	os.Remove(filepath.Join(f.Dir, "dir/gone.txt"))
+	os.Remove(filepath.Join(f.Dir, "swap"))
+	f.write(t, "swap/inside.txt", "now a folder\n")
+	os.Remove(filepath.Join(f.Dir, "link"))
+	if err := os.Symlink("elsewhere", filepath.Join(f.Dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "new/deep/added.txt", "added\n")
+	f.write(t, "build.log", "ignored output\n")
+	current := must(f.Tree(f.Head(), nil))
+	if current == green {
+		t.Fatal("the edits changed nothing")
+	}
+	head, index := f.Head(), must(f.IndexBytes())
+
+	got := must(f.RestoreTree(current, green))
+	changes := map[string]string{}
+	for _, r := range got {
+		changes[r.Path] = r.Change
+	}
+	want := map[string]string{
+		"README.md": "modified", "run.sh": "modified", "dir/gone.txt": "deleted", "swap": "deleted", "swap/inside.txt": "added",
+		"link": "modified", "new/deep/added.txt": "added",
+	}
+	if len(changes) != len(want) {
+		t.Fatalf("restored %v, want %v", changes, want)
+	}
+	for path, change := range want {
+		equal(t, "change of "+path, changes[path], change)
+	}
+	equal(t, "tree", must(f.Tree(f.Head(), nil)), green)
+	equal(t, "README", f.read(t, "README.md"), "readme\n")
+	equal(t, "swap", f.read(t, "swap"), "was a file\n")
+	equal(t, "deleted file", f.read(t, "dir/gone.txt"), "gone\n")
+	if st, err := os.Stat(filepath.Join(f.Dir, "run.sh")); err != nil || st.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("run.sh mode %v %v", st, err)
+	}
+	if target, err := os.Readlink(filepath.Join(f.Dir, "link")); err != nil || target != "keep.txt" {
+		t.Fatalf("link %q %v", target, err)
+	}
+	if _, err := os.Stat(filepath.Join(f.Dir, "new")); !os.IsNotExist(err) {
+		t.Fatalf("the folders of the added file stayed: %v", err)
+	}
+	equal(t, "ignored output", f.read(t, "build.log"), "ignored output\n")
+	equal(t, "HEAD", f.Head(), head)
+	if !bytes.Equal(must(f.IndexBytes()), index) {
+		t.Fatal("the index changed")
+	}
+	// Nothing differs any more: a second restore is a no-op.
+	equal(t, "second restore", len(must(f.RestoreTree(green, green))), 0)
+}
+
+func TestRestoreTreeRefusesAGitlinkAndUnsafePaths(t *testing.T) {
+	f := newFixture(t)
+	green := must(f.Resolve("HEAD^{tree}"))
+	f.git(t, "update-index", "--add", "--cacheinfo", "160000,"+f.Head()+",sub")
+	withLink := strings.TrimSpace(f.git(t, "write-tree"))
+	if _, err := f.RestoreTree(withLink, green); err == nil || !strings.Contains(err.Error(), "gitlink") {
+		t.Fatalf("gitlink: %v", err)
+	}
+	if _, err := f.RestoreTree("", green); err == nil {
+		t.Fatal("an empty revision was accepted")
+	}
+}
+
+func (f *fixture) read(t *testing.T, rel string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(f.Dir, rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}

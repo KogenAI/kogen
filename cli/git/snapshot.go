@@ -80,6 +80,101 @@ func (r *Repo) diff(a, b string, spec []string) (string, error) {
 	return r.ok(nil, args...)
 }
 
+// Restored is one path RestoreTree put back: "modified", "deleted" (the checkout lacked a
+// file of the target, now written) or "added" (the checkout had a file the target lacks,
+// now removed), each from the checkout's point of view.
+type Restored struct{ Path, Change string }
+
+// RestoreTree makes the working tree match the tree `to` at every path where it differs
+// from the tree `from` (the current candidate) and returns those paths. Files and symlinks
+// are written from the exact blobs and modes of `to`; files `to` lacks are removed with the
+// folders that thereby became empty. The index, HEAD and every other path stay as they are.
+// A path that names .git or passes through a symlink is refused, and so is a gitlink.
+func (r *Repo) RestoreTree(from, to string) ([]Restored, error) {
+	if err := errors.Join(checkRev(from), checkRev(to)); err != nil {
+		return nil, err
+	}
+	out, err := r.ok(nil, "diff-tree", "-r", "-z", "--raw", "--no-abbrev", "--no-renames", from, to)
+	if err != nil {
+		return nil, err
+	}
+	type delta struct{ mode, object, status, path string }
+	var deltas []delta
+	tokens := splitNUL(out)
+	for i := 0; i+1 < len(tokens); i += 2 {
+		f := strings.Fields(strings.TrimPrefix(tokens[i], ":"))
+		if len(f) != 5 {
+			return nil, fmt.Errorf("git diff-tree: unexpected entry %q", tokens[i])
+		}
+		if f[0] == "160000" || f[1] == "160000" {
+			return nil, fmt.Errorf("git diff-tree: a gitlink differs at %q", tokens[i+1])
+		}
+		if !slices.Contains([]string{"A", "D", "M", "T"}, f[4]) {
+			return nil, fmt.Errorf("git diff-tree: unsupported change %s at %q", f[4], tokens[i+1])
+		}
+		deltas = append(deltas, delta{mode: f[1], object: f[3], status: f[4], path: tokens[i+1]})
+	}
+	dir, err := filepath.Abs(r.Dir)
+	if err != nil {
+		return nil, err
+	}
+	// Removals first: a folder the checkout made where the target has a file must be gone
+	// before that file is written.
+	for _, d := range deltas {
+		if d.status != "D" {
+			continue
+		}
+		target, err := safeTarget(dir, d.path)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		for parent := filepath.Dir(target); strings.HasPrefix(parent, dir+string(filepath.Separator)); parent = filepath.Dir(parent) {
+			if os.Remove(parent) != nil {
+				break
+			}
+		}
+	}
+	blobs, err := r.openBlobs()
+	if err != nil {
+		return nil, err
+	}
+	defer blobs.close()
+	var restored []Restored
+	for _, d := range deltas {
+		if d.status == "D" {
+			restored = append(restored, Restored{Path: d.path, Change: "added"})
+			continue
+		}
+		target, err := safeTarget(dir, d.path)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		if d.mode == "120000" {
+			var link bytes.Buffer
+			if err := blobs.copy(d.object, &link); err != nil {
+				return nil, err
+			}
+			if err := os.Symlink(link.String(), target); err != nil {
+				return nil, err
+			}
+		} else if err := writeBlob(blobs, TreeEntry{Mode: d.mode, Type: "blob", Object: d.object, Path: d.path}, target); err != nil {
+			return nil, err
+		}
+		change := "modified"
+		if d.status == "A" {
+			change = "deleted"
+		}
+		restored = append(restored, Restored{Path: d.path, Change: change})
+	}
+	return restored, nil
+}
+
 // TreeEntry is one file of a tree listed with `ls-tree -r`.
 type TreeEntry struct{ Mode, Type, Object, Path string }
 
