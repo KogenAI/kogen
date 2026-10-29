@@ -6,7 +6,7 @@
     {
       "name": "setup-1",
       "command": "mix deps.get",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:03:32.125483Z",
       "finished_at": "2026-10-19T15:03:33.720675Z",
       "status": 0,
@@ -15,7 +15,7 @@
     {
       "name": "setup-2",
       "command": "(cd spec && npm ci)",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:03:33.721168Z",
       "finished_at": "2026-10-19T15:03:35.478418Z",
       "status": 0,
@@ -24,7 +24,7 @@
     {
       "name": "setup-3",
       "command": "(cd test/acceptance && npm ci)",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:03:35.478657Z",
       "finished_at": "2026-10-19T15:03:36.417445Z",
       "status": 0,
@@ -33,11 +33,11 @@
     {
       "name": "setup-4",
       "command": "sh packaging/package.sh",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:03:36.424195Z",
       "finished_at": "2026-10-19T15:03:51.079654Z",
       "status": 0,
-      "output": "Compiling 28 files (.ex)\nGenerated kogen app\n* skipping runtime configuration (config/runtime.exs not found)\n* creating dist/kogen-8cdfa50f-darwin-arm64/lib/release/releases/0.1.0/vm.args\n/private/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25/dist/kogen-8cdfa50f-darwin-arm64.tar.gz\n"
+      "output": "Compiling 28 files (.ex)\nGenerated kogen app\n* skipping runtime configuration (config/runtime.exs not found)\n* creating dist/kogen-8cdfa50f-darwin-arm64/lib/release/releases/0.1.0/vm.args\n<tmp>"
     },
     {
       "name": "acceptance",
@@ -51,7 +51,7 @@
     {
       "name": "format",
       "command": "mix format --check-formatted",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:04:14.351641Z",
       "finished_at": "2026-10-19T15:04:14.692192Z",
       "status": 0,
@@ -60,7 +60,7 @@
     {
       "name": "compile",
       "command": "mix compile --warnings-as-errors",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:04:14.692425Z",
       "finished_at": "2026-10-19T15:04:16.710704Z",
       "status": 0,
@@ -69,7 +69,7 @@
     {
       "name": "test",
       "command": "mix test",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:04:16.711263Z",
       "finished_at": "2026-10-19T15:07:23.482276Z",
       "status": 0,
@@ -78,7 +78,7 @@
     {
       "name": "go-test",
       "command": "(cd cli && go test -race ./...)",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:07:23.483004Z",
       "finished_at": "2026-10-19T15:07:38.050133Z",
       "status": 0,
@@ -87,7 +87,7 @@
     {
       "name": "cucumber",
       "command": "(cd test/acceptance && npx cucumber-js --strict --tags \"not @live\" --require \"steps/*.js\" --require \"support/*.js\" ../../spec/features/04-building.feature)",
-      "cwd": "/var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-verify-53ca20252af50a25",
+      "cwd": "<tmp>",
       "started_at": "2026-10-19T15:07:38.050560Z",
       "finished_at": "2026-10-19T15:09:20.690174Z",
       "status": 0,

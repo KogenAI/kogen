@@ -6,7 +6,7 @@
     "head": "b2c9876b27a99d19a82564821879dc42e83b03c1",
     "tree": "11c0fae04a2720a1b1f45a250b15fce366c612a8"
   },
-  "logical_root": "/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/faster-shaping-20261019/context-correction/qualification/frozen-b2-corpus",
+  "logical_root": "<home>/Areas/Kogen/studio-work/kogen-repairs/faster-shaping-20261019/context-correction/qualification/frozen-b2-corpus",
   "corpus_files": 254,
   "corpus_hashes_preserved": true,
   "index_signature_integrity": true,
@@ -1386,5 +1386,5 @@
     "Initial rendering only, not total conversation growth. Provider-known usage is unavailable: no provider call was made.",
     "Historical trial: first call 243677 provider input tokens / 888012 serialized input bytes; later token counts 248139/253150/255711 are per call, not cumulative. Static included/omitted selection recurred each call; not total prompt size or new savings."
   ],
-  "evidence": "/Users/almirsarajcic/Areas/Kogen/source/kogen/.kogen/local/compact-context/review-verification"
+  "evidence": "<home>/Areas/Kogen/source/kogen/.kogen/local/compact-context/review-verification"
 }

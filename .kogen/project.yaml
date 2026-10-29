@@ -18,7 +18,7 @@ commands:
     - name: go-test
       run: '(cd cli && GOFLAGS=-trimpath go test ./...)'
     - name: no-home-paths
-      run: 'test -z "$(find docs -name ''*measurements*.json'' -exec grep -lE ''/Users/[^/<]+/|/home/[^/<]+/|/var/folders/'' {} +)"'
+      run: 'test -z "$(grep -rIlE ''/Users/[^/<]+/|/home/[^/<]+/|/var/folders/'' docs)"'
     - name: spec
       run: '(cd spec && sh check.sh)'
     - name: cucumber

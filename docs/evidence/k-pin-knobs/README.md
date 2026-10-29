@@ -2,7 +2,7 @@
 
 `cli/third_party/kogen-loop` is now the clean kogen-loop commit
 `4afed06da64e348a5a65db6e550f81b65cbe0235`, replacing `c7e8331fd2b4dbf3ae716eba4d93aab792a8c9f6`.
-It was written only by `sh packaging/sync-kogen-loop.sh /Users/kogen-runner/src/loop-1b8ef1f`
+It was written only by `sh packaging/sync-kogen-loop.sh <home>/src/loop-1b8ef1f`
 (a clean, detached checkout of that commit); no vendored byte was edited by hand.
 `cli/loop-pin.json` records `module=kogen-loop`, `protocol=kogen-loop/v1`, `library=loop/v1`,
 `digest=abd53fa2b3d947b51f3f5dfe34169871605d1bc8d7be99f5eb4f01e0334c6567`, `files=123`,

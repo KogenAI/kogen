@@ -165,11 +165,11 @@ fixed in the drivers:
 - spec-vocabulary-integrity pins `spec/check.sh` by SHA-256 and by `scenarios 146`. The migration legitimately changed `spec/check.sh` (two
   `CoreCrash` lines became `InternalError`) and added scenarios. The step accepts the migrated digest only after checking that the file equals the
   pinned original apart from that rename, and treats `scenarios N` as a minimum (`requirements 102` stays exact). The feature file is untouched.
-- reopen-blocked-review "Reopen a real retained signed C3 checkpoint" needs `/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-dev/failfast-c3ee2a8e/bin/kogen`,
+- reopen-blocked-review "Reopen a real retained signed C3 checkpoint" needs `<home>/Areas/Kogen/studio-work/kogen-dev/failfast-c3ee2a8e/bin/kogen`,
   which is not on this machine. The step honours `KOGEN_REOPEN_OLD_BIN` (already supported) and, new, `KOGEN_REOPEN_OLD_VERSION`; the two scenarios were run with an
   Elixir release built from `main-cur` standing in for the retained executable (the Go program resumed its version-3 checkpoint in both modes).
   Without that variable they fail with "retained C3 qualification input missing".
-- `--retained-evidence` checks of native-image-evidence and supergrok read files under `/Users/almirsarajcic/Areas/Kogen/studio-work/...`, absent here; they are
+- `--retained-evidence` checks of native-image-evidence and supergrok read files under `<home>/Areas/Kogen/studio-work/...`, absent here; they are
   evidence commands, not acceptance scenarios, and were not run.
 
 ## Driver changes

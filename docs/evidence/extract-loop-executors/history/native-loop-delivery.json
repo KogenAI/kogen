@@ -6,9 +6,9 @@
   "approval_sha256": "c8d9f15da5805b119c662e44378e40ccf140e0cb5583ccea6fd002d6bde219ca",
   "signed_commit_verified": true,
   "clean": true,
-  "source_repository": "/Users/almirsarajcic/Areas/Kogen/source/kogen-loop",
-  "native_execution_checkout": "/Users/almirsarajcic/Areas/Kogen/worktrees/kogen-loop-bootstrap-20261026",
-  "external_candidate_preserved": "/Users/almirsarajcic/Areas/Kogen/worktrees/loop-external-candidate-preserved-20261026",
+  "source_repository": "<home>/Areas/Kogen/source/kogen-loop",
+  "native_execution_checkout": "<home>/Areas/Kogen/worktrees/kogen-loop-bootstrap-20261026",
+  "external_candidate_preserved": "<home>/Areas/Kogen/worktrees/loop-external-candidate-preserved-20261026",
   "origin": "local bootstrap repository; no public remote created or pushed",
-  "proof": "/Users/almirsarajcic/Areas/Kogen/worktrees/kogen-loop-bootstrap-20261026/.kogen/local/runs/e99deba1/result.json"
+  "proof": "<home>/Areas/Kogen/worktrees/kogen-loop-bootstrap-20261026/.kogen/local/runs/e99deba1/result.json"
 }

@@ -8,8 +8,8 @@
     "source_head": "bbf3fdd6d2e79b96eab6af23bcd6d66212893388",
     "source_state": "clean"
   },
-  "patch": "/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/integration-reference-v2.patch",
-  "archive": "/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/integration-new-files-v2.tar.gz",
+  "patch": "<home>/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/integration-reference-v2.patch",
+  "archive": "<home>/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/integration-new-files-v2.tar.gz",
   "patch_sha256": "572944499c6b86d3dee6b0f3cb2b12cfa6496abe96508dff703b4331e9ad1219",
   "archive_sha256": "7c9e49a61560ebdb6b2bfc1c9a4e6ab8e3333bc23c44357a88ac517e23ea84dd",
   "fixes": [

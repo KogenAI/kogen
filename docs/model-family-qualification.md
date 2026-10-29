@@ -123,7 +123,7 @@ not all-known usage, savings, every schema, limit stress, image approval or toda
 account availability.
 
 Shape inspected the selected receipt at
-`/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/go-core-migration-20261024/root-takeover-20261024/live-go-qualification/receipt.json`.
+`<home>/Areas/Kogen/studio-work/kogen-repairs/go-core-migration-20261024/root-takeover-20261024/live-go-qualification/receipt.json`.
 Its read-only comparison found no differences anywhere in `cli/provider` against
 installed baseline `f38e488778c198e57d90ca1fc17a13c664168919`. Reuse is based on
 this profile's unchanged wire/input policy described above, not on model naming.
@@ -147,7 +147,7 @@ Run logs show Build `chatgpt/gpt-6.1-sol/medium` with 18 and 13 completed attemp
 and fresh independent Review `chatgpt/gpt-6.1-sol/high` with 23 and 14 completed
 attempts, respectively. Builder/reviewer conversation identities are distinct;
 Review configured and effective model/effort agree. The launch records under
-`/Users/almirsarajcic/Areas/Kogen/studio-work/post-go-roadmap-20261024/{protected-harness-readiness-build,kogen-check-time-build}/launch.json`
+`<home>/Areas/Kogen/studio-work/post-go-roadmap-20261024/{protected-harness-readiness-build,kogen-check-time-build}/launch.json`
 select the Go and readiness delivery prefixes respectively. Retained binary hashes
 equal launch hashes: these are executing runtimes, not later landed versions.
 Readiness and check-time receipts establish subsequent lineage, not more model

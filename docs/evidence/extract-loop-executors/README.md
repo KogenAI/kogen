@@ -16,7 +16,7 @@ archive, independently SHA-256 checked before application:
 
 The generic source has its own prior native delivery: Build `e99deba1`, signed
 commit `bbf3fdd6d2e79b96eab6af23bcd6d66212893388` in the clean canonical
-`/Users/almirsarajcic/Areas/Kogen/source/kogen-loop`. This is not delivery of the
+`<home>/Areas/Kogen/source/kogen-loop`. This is not delivery of the
 Kogen integration. Its native receipt is retained separately in `history/`.
 The original bootstrap execution checkout and preserved external candidate were
 not modified or resumed by this adoption.

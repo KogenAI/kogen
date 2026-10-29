@@ -4,7 +4,7 @@
 
 The actual implementation baseline is HEAD `43c423fc3a1c27f809327fa1c0619fde62810ae1`, not preparation source `b2c9876b27a99d19a82564821879dc42e83b03c1`. [Baseline hashes](receipts/baseline.json) record the pre-change packaging and spec manifests/locks. The only production changes are an exact `adm-zip: 0.6.1` packaging override and the corresponding lock entry. Quint remains exactly 0.33.0; its upstream requirement is still ^0.5.16. This deliberately out-of-range override is locally compatibility-tested, not certified by upstream. No unrelated packages were upgraded. Spec manifests and lock are unchanged; no spec lock regeneration or spec dependency checks are needed.
 
-The read-only preparation at `/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/dependency-advisories-20261019/` was read (README, dependency graph, advisory summary, retrievals, official snapshots and tagged source). Original evidence was not modified and is not imported by the product. Refreshed exact responses are in [refresh](refresh/), with URL, SHA-256 and UTC retrieval timestamps in [retrievals.json](refresh/retrievals.json). These are evidence only, never runtime dependencies.
+The read-only preparation at `<home>/Areas/Kogen/studio-work/kogen-repairs/dependency-advisories-20261019/` was read (README, dependency graph, advisory summary, retrievals, official snapshots and tagged source). Original evidence was not modified and is not imported by the product. Refreshed exact responses are in [refresh](refresh/), with URL, SHA-256 and UTC retrieval timestamps in [retrievals.json](refresh/retrievals.json). These are evidence only, never runtime dependencies.
 
 ## Advisory readback
 
