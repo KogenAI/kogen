@@ -123,6 +123,11 @@ func (b *Attempt) startBuilder(ctx context.Context, brief executor.Brief) (execu
 		}
 		return nativeExecutor{b: b, tail: tail}.Start(ctx, task, nil)
 	}
+	if b.diag != nil {
+		// An external executor's first prompt is built from the brief alone: the frozen caller
+		// diagnostic follows the authority in it, exactly the message the native builder gets.
+		task.Brief.Stable += diagnosticText(b.diag.message())
+	}
 	task.Dir = filepath.Join(b.Run.Dir, "executor")
 	if err := os.MkdirAll(task.Dir, 0o700); err != nil {
 		return nil, err
@@ -141,6 +146,19 @@ func (b *Attempt) startBuilder(ctx context.Context, brief executor.Brief) (execu
 			Source: b.ext.desc.Capabilities.Usage, CostUSD: new(float64)},
 	}
 	return sess, nil
+}
+
+// diagnosticMessages are the messages that carry the frozen caller diagnostic to a reviewer,
+// whichever executor built the candidate. A Build that was given `--context` holds it; a
+// resumed native Build has only its saved builder window, whose opening is followed by it.
+func (b *Attempt) diagnosticMessages() []any {
+	if b.diag != nil {
+		return []any{b.diag.message()}
+	}
+	if oc := b.WorkingContext["build"]; oc != nil && len(oc.Mandatory) > 1 {
+		return oc.Mandatory[1:]
+	}
+	return nil
 }
 
 // runRound runs one builder round. An external round's context carries the Session's

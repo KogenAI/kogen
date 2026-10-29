@@ -131,7 +131,10 @@ and at most 262144 original bytes. It is read once and preserved exactly in priv
 local run custody (0700 directory, 0600 `diagnostic-context.json`), separate from
 approval and commits. Do not put credentials in it; this is not a credential store.
 The labelled lower-authority message does not replace the approved Intent or native
-protection, checks, review or commit rules. Old candidate observations are untrusted
+protection, checks, review or commit rules. The same message (label, source path,
+SHA-256 and text) reaches the builder's first prompt and either independent reviewer,
+whichever executors serve the build and review roles; the reviewer gets it from the
+frozen capture, never from the builder's conversation. Old candidate observations are untrusted
 data, not automatic reuse, import or proof. After a demonstrated protected fixture
 correction, obtain new exact approval before a fresh Build. `intent resume` accepts
 no `--context`: it uses its saved conversation even if the source changes or vanishes.

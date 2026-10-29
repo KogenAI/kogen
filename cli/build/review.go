@@ -141,12 +141,9 @@ func (reviewIndependent) Review(ctx context.Context, b *Attempt, pass verify.Pas
 	}
 	b.s.Progress(fmt.Sprintf("kogen: reviewing (review %d)", b.Review))
 	role := b.Config.Models["review"]
-	// Only the frozen caller diagnostic follows the builder's initial authority message
-	// here, never its replay, progress or reasoning.
-	var diagnostic []any
-	if oc := b.WorkingContext["build"]; oc != nil && len(oc.Mandatory) > 1 {
-		diagnostic = oc.Mandatory[1:]
-	}
+	// Only the frozen caller diagnostic follows the authority message here, never the
+	// builder's replay, progress or reasoning.
+	diagnostic := b.diagnosticMessages()
 	if nav := b.State.navigationIn(phaseReview); nav != "" {
 		// A staged Build's reviewer is told the plan's position and that stage evidence is
 		// historical: as its own leading message, so its instructions stay frozen.

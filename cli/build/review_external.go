@@ -78,10 +78,8 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 	// The caller's diagnostic data and the staged plan context follow the authority, exactly as
 	// the native reviewer receives them; never the builder's replay, progress or reasoning.
 	stable := m.Authority
-	if oc := b.WorkingContext["build"]; oc != nil && len(oc.Mandatory) > 1 {
-		for _, item := range oc.Mandatory[1:] {
-			stable += "\n" + diagnosticText(item) + "\n"
-		}
+	for _, item := range b.diagnosticMessages() {
+		stable += "\n" + diagnosticText(item) + "\n"
 	}
 	if nav := b.State.navigationIn(phaseReview); nav != "" {
 		stable += "\nStaged plan context for this independent review." + nav + "\n"
