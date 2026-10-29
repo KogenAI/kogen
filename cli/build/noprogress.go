@@ -3,9 +3,6 @@ package build
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-
-	"kogen-loop/tools"
 	"strings"
 
 	"kogen-loop/sys"
@@ -98,14 +95,4 @@ func (b *Attempt) stalled(stage string, pass verify.Pass) error {
 			b.Run.ID + "` to verify again and give the builder the feedback again.",
 	}
 	return e
-}
-
-// nativeFingerprint frames the ordered names and hashes of the exact argument strings.
-func nativeFingerprint(calls []tools.Call) string {
-	pairs := make([][2]string, 0, len(calls))
-	for _, call := range calls {
-		pairs = append(pairs, [2]string{call.Name, sha256Hex([]byte(call.Arguments))})
-	}
-	data, _ := json.Marshal(pairs)
-	return sha256Hex(data)
 }

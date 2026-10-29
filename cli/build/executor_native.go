@@ -124,7 +124,6 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 		Tools:       tl,
 		Terminal:    []string{agent.FinishTool},
 	}
-	var batch []tools.Call
 	var base []any // the round's input after replay, as the stage validation sees it
 	var usages []api.Usage
 	hooks := loop.Hooks{
@@ -137,9 +136,6 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 		AfterResponse: func(ctx context.Context, resp *provider.Response, sent []any) error {
 			if err := b.Track(); err != nil {
 				return err
-			}
-			if role.NoProgress {
-				batch = tools.Calls(resp.Items)
 			}
 			base = slices.Concat(sent, tools.Replay(resp.Items))
 			usages = append(usages, loop.UsageOf(resp))
@@ -204,19 +200,7 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 			return nil
 		},
 	}
-	if role.NoProgress {
-		hooks.Progress = func(_ context.Context, _ int) (string, error) {
-			fp := nativeFingerprint(batch)
-			batch = nil
-			return fp, nil
-		}
-	}
 	res, err := loop.Run(ctx, rd, input, attemptRequester{b, role}, hooks)
-	var noProgress *loop.NoProgressError
-	if errors.As(err, &noProgress) {
-		b.nativeNoProgress = noProgress
-		b.Run.Event(map[string]any{"event": "native_no_progress", "fingerprint": noProgress.Fingerprint, "count": len(noProgress.Rounds), "rounds": noProgress.Rounds})
-	}
 	if err != nil {
 		return executor.RoundResult{}, n.stop(ctx, err)
 	}

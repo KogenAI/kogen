@@ -577,9 +577,15 @@ models:
 
 **Resume.** A Build run by Claude Code cannot be resumed (its resume capability is none): `kogen intent resume` refuses its checkpoint with `candidate/resume_refused`. Inspect the preserved candidate, or start a fresh Build. The native builder's resume is unchanged, and so are its checkpoints.
 
-The internal programmatic `project.Role.NoProgress` option is supported only by
-native Build. Shape, Refine, Shape workers and independent Review ignore their
-role's setting; these roles are unsupported for now. It is not a YAML or CLI option.
+Removal note: the opt-in native tool-call fingerprint stop (`project.Role.NoProgress`
+and its `native_no_progress` outcome, added in 090f36b) was removed unused; it was
+never a YAML or CLI option. The legacy spellings `NoProgress` and `no_progress` are
+not supported settings and nothing reads them. Like any other unrecognized role key
+they are not applied: strict loading of `.kogen/project.yaml` reports them as before,
+and the lenient view used by `kogen doctor` leaves that role at its default. Default
+configuration is unchanged. The verification-level `no_progress` stop (a native builder
+answering without a tool call to the same red verification pass) and
+`executor_no_progress` remain.
 
 ## Native shell time bound
 

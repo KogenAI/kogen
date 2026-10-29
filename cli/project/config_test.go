@@ -757,3 +757,37 @@ func TestShellTimeoutConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyNoProgressKeysAreNotSettings(t *testing.T) {
+	// The removed native fingerprint option was never a YAML setting, and its two legacy
+	// spellings are not read: they are an unrecognized role key like any other. Strict loading
+	// keeps reporting that (unchanged), and the readable view leaves the role at its default,
+	// exactly as the same input without the key.
+	const plain = "version: 1\nmodels:\n  shape: {model: gpt-6.1-sol, effort: high}\n  build: {model: gpt-6.1-sol, effort: medium}\n  review: {model: gpt-6.1-sol, effort: high}\n"
+	want := ReadableConfig(plain)
+	if !maps.Equal(want.Models, DefaultModels()) {
+		t.Fatalf("control models %+v", want.Models)
+	}
+	for _, key := range []string{"No" + "Progress", "no_progress"} {
+		for _, role := range []string{"shape", "build", "review"} {
+			text := strings.Replace(plain, "  "+role+": {model", "  "+role+": {"+key+": true, model", 1)
+			if text == plain {
+				t.Fatalf("fixture did not add %s to %s", key, role)
+			}
+			got := ReadableConfig(text)
+			if !maps.Equal(got.Models, want.Models) || RenderConfig(got) != RenderConfig(want) {
+				t.Errorf("%s in %s: readable %+v, want %+v", key, role, got.Models, want.Models)
+			}
+			raw, _ := json.Marshal(got.Models)
+			wantRaw, _ := json.Marshal(want.Models)
+			if string(raw) != string(wantRaw) || strings.Contains(string(raw), "rogress") {
+				t.Errorf("%s in %s: role JSON %s, want %s", key, role, raw, wantRaw)
+			}
+			control := configError(t, strings.Replace(text, key+":", "unrelated_key:", 1), "/project/.kogen/project.yaml")
+			legacy := configError(t, text, "/project/.kogen/project.yaml")
+			if legacy.Reason != "project_config_invalid" || !slices.Equal(legacy.Lines, control.Lines) {
+				t.Errorf("%s in %s: strict loading %+v, an unrelated key gives %+v", key, role, legacy, control)
+			}
+		}
+	}
+}
