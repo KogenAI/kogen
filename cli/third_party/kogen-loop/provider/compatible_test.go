@@ -16,14 +16,16 @@ import (
 
 // compatibleEnv is a world whose only route is the fake at base_url <fake>/v1; key saves one
 // when set. KOGEN_PROVIDER_URL is deliberately absent: the base_url alone names the host.
+// A saved key belongs to its HTTPS origin, so a keyed world serves HTTPS and saves that origin.
 func compatibleEnv(t *testing.T, key string, h ...handler) (*env, *keyFake, Role) {
 	t.Helper()
-	f := newKeyFake(t, h...)
+	f := newKeyFakeTLS(t, key != "", h...)
 	e := newEnv(t, nil)
 	e.s = sys.NewWith([]string{"HOME=" + e.home, "PATH=" + os.Getenv("PATH")}, e.home)
 	e.s.Stdout, e.s.Stderr = e.out, e.errs
 	if key != "" {
-		e.saveCreds("openai-compatible", map[string]any{"provider": "openai-compatible", "api_key": key})
+		e.saveCreds("openai-compatible", map[string]any{"provider": "openai-compatible", "api_key": key, "origin": f.srv.URL})
+		e.c.HTTP = f.srv.Client()
 	}
 	return e, f, Role{Provider: "openai-compatible", Model: "qwen3-coder:30b", Effort: "default", BaseURL: f.srv.URL + "/v1"}
 }
@@ -88,7 +90,7 @@ func TestOpenAICompatibleNeedsNoLoginButShowsItsKeyState(t *testing.T) {
 		t.Fatalf("a keyless openai-compatible host is not listed: %q", got)
 	}
 	e := newEnv(t, nil)
-	e.saveCreds("openai-compatible", map[string]any{"provider": "openai-compatible", "api_key": testKey})
+	e.saveCreds("openai-compatible", map[string]any{"provider": "openai-compatible", "api_key": testKey, "origin": "https://models.example"})
 	if got := Status(e.home)[len(Catalog())-1]; got != "openai-compatible: key saved (not verified)" {
 		t.Fatalf("status %q", got)
 	}
@@ -101,7 +103,7 @@ func TestOpenAICompatibleNeedsNoLoginButShowsItsKeyState(t *testing.T) {
 func TestOpenAICompatibleKeyLoginSavesPrivately(t *testing.T) {
 	e := newEnv(t, nil)
 	e.c.Input = &Input{Reader: strings.NewReader("local-secret\n")}
-	if err := e.c.Login(context.Background(), e.s, "openai-compatible", nil); err != nil {
+	if err := e.c.LoginWithBaseURL(context.Background(), e.s, "openai-compatible", "https://models.example/v1", nil); err != nil {
 		t.Fatal(err)
 	}
 	if e.out.String() != "openai-compatible: key saved (not verified)\n" {

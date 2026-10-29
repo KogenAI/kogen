@@ -378,7 +378,7 @@ func (s *Session) next(text string) []any {
 	return append(input, map[string]any{"role": "user", "content": text})
 }
 
-// finalText is the assistant text of a response: its output_text parts, in order.
+// finalText is the assistant text of a response: its output_text and refusal parts, in order.
 func finalText(resp *provider.Response) string {
 	if resp == nil {
 		return ""
@@ -390,8 +390,17 @@ func finalText(resp *provider.Response) string {
 		}
 		content, _ := it["content"].([]any)
 		for _, c := range content {
-			if part, ok := c.(map[string]any); ok && part["type"] == "output_text" {
+			part, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch part["type"] {
+			case "output_text":
 				if t, ok := part["text"].(string); ok {
+					parts = append(parts, t)
+				}
+			case "refusal":
+				if t, ok := part["refusal"].(string); ok {
 					parts = append(parts, t)
 				}
 			}

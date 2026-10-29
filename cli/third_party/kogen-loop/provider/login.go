@@ -25,9 +25,24 @@ const RedirectWait = 300 * time.Second
 // Login signs in to the named provider (`kogen provider login <name>`): ChatGPT with the
 // browser PKCE flow (redirect supplies the redirect), SuperGrok with the device flow
 // (redirect is unused), OpenCode Go and Anthropic by saving the key read from Client.Input
-// (stdin by default; redirect is unused). Output lines go to s.Stdout; failures are
+// (stdin by default; redirect is unused). OpenAI-compatible needs LoginWithBaseURL. Output lines go to s.Stdout; failures are
 // *sys.Error provider/login_failed (provider/login for Anthropic), exit 4.
 func (c *Client) Login(ctx context.Context, s *sys.Session, name string, redirect RedirectFunc) error {
+	return c.login(ctx, s, name, "", redirect)
+}
+
+// LoginWithBaseURL is Login for a caller that knows the base URL the user is signing in
+// for. openai-compatible saves its key bound to that URL's origin (scheme, hostname and
+// effective port; the path, query and fragment are not part of it), and refuses an http
+// URL and a missing or invalid one without touching the saved credential; Login without a
+// URL refuses openai-compatible rather than save an unbound key. The base URL is ignored
+// for every other provider. The caller passes the URL the user supplied, never one taken
+// from a repository's inference roles. A key saved this way is sent only to its origin.
+func (c *Client) LoginWithBaseURL(ctx context.Context, s *sys.Session, name, baseURL string, redirect RedirectFunc) error {
+	return c.login(ctx, s, name, baseURL, redirect)
+}
+
+func (c *Client) login(ctx context.Context, s *sys.Session, name, baseURL string, redirect RedirectFunc) error {
 	info, ok := Lookup(name)
 	if name == ClaudeCodeName {
 		info, ok = claudeCodeInfo, true
@@ -37,6 +52,19 @@ func (c *Client) Login(ctx context.Context, s *sys.Session, name string, redirec
 	}
 	if err := CheckSeams(s); err != nil {
 		return err
+	}
+	origin := ""
+	if info.compatible() {
+		if baseURL == "" {
+			return loginFailed(info.Label + " login needs the base URL the key is for; use a login that supplies one (Client.LoginWithBaseURL); saved login unchanged")
+		}
+		var err error
+		if origin, err = originOf(baseURL); err != nil {
+			return loginFailed("invalid " + info.Label + " base URL; saved login unchanged")
+		}
+		if !strings.HasPrefix(origin, "https://") {
+			return loginFailed(info.Label + " key login needs an HTTPS base URL, not " + origin + "; saved login unchanged")
+		}
 	}
 	k := c.newCall(ctx, s, info, 0)
 	defer k.cancel()
@@ -48,7 +76,7 @@ func (c *Client) Login(ctx context.Context, s *sys.Session, name string, redirec
 		if info.Name == ClaudeCodeName {
 			return k.loginToken(in)
 		}
-		return k.loginKey(in)
+		return k.loginKey(in, origin)
 	}
 	if info.supergrok() {
 		return k.loginSuperGrok()

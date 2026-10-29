@@ -127,8 +127,8 @@ func loginReason(p Info) string {
 
 // loginKey saves the key read from the input privately (`kogen provider login
 // opencode-go|anthropic`): nothing is verified and no request is made. Whatever goes
-// wrong, the previous credential keeps its bytes.
-func (k *call) loginKey(in Input) error {
+// wrong, the previous credential keeps its bytes. A non-empty origin is saved with the key.
+func (k *call) loginKey(in Input, origin string) error {
 	p := k.info
 	fail := func(detail string) error { return providerFail(loginReason(p), detail) }
 	value, ok, err := in.secret(k.ctx)
@@ -153,7 +153,7 @@ func (k *call) loginKey(in Input) error {
 	if !validKey(key) {
 		return fail("invalid " + p.Label + " key input; saved login unchanged")
 	}
-	if err := k.saveKey(key); err != nil {
+	if err := k.saveKey(key, origin); err != nil {
 		var stop *sys.Interrupted
 		if errors.As(err, &stop) {
 			return err
@@ -167,7 +167,7 @@ func (k *call) loginKey(in Input) error {
 
 // saveKey replaces the credential file atomically under the provider's lock; a held lock
 // refuses instead of waiting.
-func (k *call) saveKey(key string) error {
+func (k *call) saveKey(key, origin string) error {
 	if err := privateDirs(k.home); err != nil {
 		return err
 	}
@@ -176,7 +176,11 @@ func (k *call) saveKey(key string) error {
 		return err
 	}
 	defer lock.Release()
-	return writePrivate(k.home, k.info, credentials{"provider": k.info.Name, "api_key": key}, k.interrupted)
+	saved := credentials{"provider": k.info.Name, "api_key": key}
+	if origin != "" {
+		saved["origin"] = origin
+	}
+	return writePrivate(k.home, k.info, saved, k.interrupted)
 }
 
 // ClaudeCodeName is the name `kogen provider login` accepts for the Claude Code executor's
@@ -228,7 +232,7 @@ func (k *call) loginToken(in Input) error {
 	if !validToken(token) {
 		return fail("invalid Claude Code token input: the token must be one line of letters, digits, dot, underscore and hyphen only")
 	}
-	if err := k.saveKey(token); err != nil {
+	if err := k.saveKey(token, ""); err != nil {
 		var stop *sys.Interrupted
 		if errors.As(err, &stop) {
 			return err

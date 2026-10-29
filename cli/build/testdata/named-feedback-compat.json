@@ -47,7 +47,7 @@
     "type": "function"
    },
    {
-    "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+    "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
     "name": "read_file",
     "parameters": {
      "additionalProperties": false,
@@ -71,7 +71,7 @@
     "type": "function"
    },
    {
-    "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+    "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048) inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
     "name": "view_image",
     "parameters": {
      "additionalProperties": false,

@@ -25,9 +25,16 @@ type keyFake struct {
 	next int
 }
 
-func newKeyFake(t *testing.T, h ...handler) *keyFake {
+func newKeyFake(t *testing.T, h ...handler) *keyFake { return newKeyFakeTLS(t, false, h...) }
+
+// newKeyFakeTLS is newKeyFake over HTTPS (a local certificate; use f.srv.Client()) when tls is set.
+func newKeyFakeTLS(t *testing.T, tls bool, h ...handler) *keyFake {
 	f := &keyFake{t: t, seq: h}
-	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	start := httptest.NewServer
+	if tls {
+		start = httptest.NewTLSServer
+	}
+	f.srv = start(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		rec := recorded{Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone(), Body: body}
 		if v, err := decodeJSON(body); err == nil {

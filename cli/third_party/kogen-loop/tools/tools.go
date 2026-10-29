@@ -140,6 +140,7 @@ func optionalPath(args map[string]any) string {
 }
 
 // expand is the absolute, cleaned form of path against root; a leading ~ is the home folder.
+// Only write_file uses it: the reading tools are confined to the root (see contain).
 func expand(path, root string) string {
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -212,11 +213,12 @@ func (t *Tools) readFile(args map[string]any) Output {
 	if msg != "" {
 		return Output{Text: msg}
 	}
-	abs, _ := t.resolve(path)
-	data, err := readFile(abs)
+	data, err := t.readContained(path)
 	switch {
 	case err == nil:
 		return Output{Text: numbered(string(data), args["start_line"], args["end_line"])}
+	case refusal(path, err) != "":
+		return Output{Text: refusal(path, err)}
 	case isErrno(err, syscall.ENOENT):
 		return Output{Text: "error: " + path + " does not exist"}
 	case isErrno(err, syscall.EISDIR):
@@ -301,13 +303,6 @@ func (t *Tools) writeFile(args map[string]any) string {
 // errBadArg is what a path with a NUL byte is: not a file name at all.
 var errBadArg = errors.New("badarg")
 
-func readFile(abs string) ([]byte, error) {
-	if strings.ContainsRune(abs, 0) {
-		return nil, errBadArg
-	}
-	return os.ReadFile(abs)
-}
-
 func writeFile(abs, content string) error {
 	if strings.ContainsRune(abs, 0) {
 		return errBadArg
@@ -358,13 +353,34 @@ func (t *Tools) session() *sys.Session {
 	return sys.NewWith(os.Environ(), t.Root)
 }
 
-// pathspec is the Git path restriction for a path argument: none for the root itself.
-func (t *Tools) pathspec(args map[string]any) []string {
-	_, rel := t.resolve(optionalPath(args))
-	if rel == "" || rel == "." {
-		return nil
+// pathspec is the Git path restriction for a path argument: none for the root itself. A path
+// that leaves the root, by name, home, `..` or a symlink, is refused with the error text.
+func (t *Tools) pathspec(args map[string]any) ([]string, string) {
+	path := cString(optionalPath(args)) // Git receives an argument only up to its first NUL
+	// Git top-anchored pathspecs are relative to the Git worktree, which can be
+	// an ancestor of Tools.Root. They must not bypass root containment.
+	if strings.HasPrefix(path, ":/") || strings.HasPrefix(path, ":(") && strings.Contains(strings.SplitN(path, ")", 2)[0], "top") {
+		return nil, refusal(path, errOutside)
 	}
-	return []string{cString(rel)}
+	physical, err := t.contain(path, true)
+	if err != nil {
+		if text := refusal(path, err); text != "" {
+			return nil, text
+		}
+		return nil, "error: " + path + ": " + reason(err)
+	}
+	// Git sees the path as written when that stays inside; the resolved one otherwise.
+	_, rel := t.resolve(path)
+	if root, err := t.canonicalRoot(); err == nil && filepath.IsAbs(rel) {
+		rel = relativeTo(rel, root)
+	}
+	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, "../") {
+		rel = physical
+	}
+	if rel == "" || rel == "." {
+		return nil, ""
+	}
+	return []string{cString(rel)}, ""
 }
 
 // cString is s up to its first NUL byte: what a program receives of an argument.
@@ -381,7 +397,11 @@ func gitFailure(res GitResult) string {
 }
 
 func (t *Tools) listFiles(args map[string]any) string {
-	argv := append([]string{"ls-files", "--cached", "--others", "--exclude-standard", "--deduplicate", "--"}, t.pathspec(args)...)
+	spec, text := t.pathspec(args)
+	if text != "" {
+		return text
+	}
+	argv := append([]string{"ls-files", "--cached", "--others", "--exclude-standard", "--deduplicate", "--"}, spec...)
 	res, err := t.repo().Run(argv...)
 	switch {
 	case err != nil:
@@ -399,7 +419,11 @@ func (t *Tools) searchText(args map[string]any) string {
 	if msg != "" {
 		return msg
 	}
-	argv := append([]string{"grep", "-n", "-I", "-E", "--untracked", "-e", cString(pattern), "--"}, t.pathspec(args)...)
+	spec, text := t.pathspec(args)
+	if text != "" {
+		return text
+	}
+	argv := append([]string{"grep", "-n", "-I", "-E", "--untracked", "-e", cString(pattern), "--"}, spec...)
 	res, err := t.repo().Run(argv...)
 	switch {
 	case err != nil:

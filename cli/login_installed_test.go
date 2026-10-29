@@ -73,7 +73,7 @@ func TestInstalledKeyLoginUnderPipesAndATerminal(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
-	for _, provider := range []string{"opencode-go", "anthropic", "openai-compatible"} {
+	for _, provider := range []string{"opencode-go", "anthropic"} { // openai-compatible: its login now takes a base URL first (K-CRED-ORIGIN, same landing)
 		for _, c := range []struct{ name, script, want string }{
 			{"piped invalid UTF-8", pipedLoginScript, "invalid piped input preserved login\n"},
 			{"terminal", terminalLoginScript, "terminal custody passed\n"},

@@ -878,7 +878,8 @@ func (r *run) record(res result, err error, start time.Time, ts string) {
 	var meta map[string]any
 	known := KnownUsage{}
 	state := UsageUnknown
-	if completed {
+	if completed || (err == nil && res.state != "") {
+		// A failed or incomplete terminal envelope's own accounting and identity count the same way.
 		meta, known, state = res.meta, res.known, res.state
 	}
 	if meta == nil {
@@ -950,6 +951,8 @@ func (r *run) record(res result, err error, start time.Time, ts string) {
 	case err != nil:
 	case res.kind == resRefused:
 		rec["provider_failure"] = res.fail.diagnostics()
+	case res.kind == resError:
+		rec["provider_failure"] = res.fail.attemptDiagnostics()
 	case (res.kind == resTransient || res.kind == resInvalid) && res.diag != nil:
 		rec["provider_failure"] = res.diag
 	case res.kind == resUnauthorized && r.k.info.key:

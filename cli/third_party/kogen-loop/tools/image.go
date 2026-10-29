@@ -11,10 +11,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"unicode/utf8"
 
 	"kogen-loop/provider"
@@ -45,6 +43,11 @@ func (t *Tools) viewImage(args map[string]any) Output {
 	if err == nil {
 		return Output{Parts: parts}
 	}
+	if isString {
+		if text := refusal(path, err); text != "" {
+			return Output{Text: text}
+		}
+	}
 	selected := "(no selected path)"
 	if isString {
 		selected = firstRunes(path, 512)
@@ -52,13 +55,6 @@ func (t *Tools) viewImage(args map[string]any) Output {
 	return Output{Text: "error: " + selected + ": unreadable/nonregular artifact or invalid PNG: " +
 		firstRunes(err.Error(), 512) + ". Limits: " + imageLimits +
 		". Prepare/export a supported image with an ordinary external image preparation/capture tool and select it again."}
-}
-
-func stat(abs string) (os.FileInfo, error) {
-	if strings.ContainsRune(abs, 0) {
-		return nil, errBadArg
-	}
-	return os.Stat(abs)
 }
 
 func firstRunes(s string, n int) string {
@@ -75,20 +71,28 @@ func (t *Tools) readImage(path string, isString bool) ([]any, error) {
 	if !isString {
 		return nil, errors.New("path must be a string")
 	}
-	abs := expand(path, t.Root)
-	st, err := stat(abs)
+	root, rel, err := t.openRoot(path)
+	var ce containError
+	switch {
+	case errors.As(err, &ce):
+		return nil, err
+	case err != nil:
+		return nil, errors.New("cannot stat artifact: " + reason(err))
+	}
+	defer root.Close()
+	st, err := root.Stat(rel)
 	switch {
 	case err != nil:
 		return nil, errors.New("cannot stat artifact: " + reason(err))
 	case !st.Mode().IsRegular():
 		return nil, errors.New("artifact is not a regular file")
 	}
-	f, err := os.Open(abs) // abs has no NUL: stat accepted it
+	f, err := root.Open(rel)
 	if err != nil {
 		return nil, errors.New("no match of right hand side value: {:error, :" + reason(err) + "}")
 	}
+	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxImageBytes+1))
-	f.Close()
 	if err != nil || len(data) < 1 || len(data) > maxImageBytes {
 		return nil, errors.New("original byte limit exceeded or empty/unreadable artifact")
 	}

@@ -264,18 +264,19 @@ func TestWriteFileRefusesProtectedPathsHoweverTheyAreSpelled(t *testing.T) {
 	}
 }
 
-func TestTildeIsTheHomeFolder(t *testing.T) {
+func TestTildeIsNotTheHomeFolderForReads(t *testing.T) {
 	home, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("HOME", home)
 	os.WriteFile(filepath.Join(home, "note.txt"), []byte("home\n"), 0o644)
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	tools := newTools(root, ReadFileTool)
-	if got := run(t, tools, ReadFileTool, map[string]any{"path": "~/note.txt"}); got != "1\thome" {
-		t.Errorf("%q", got)
+	for _, path := range []string{"~/note.txt", "~"} {
+		got := run(t, tools, ReadFileTool, map[string]any{"path": path})
+		if got != "error: "+path+": "+string(errHome) {
+			t.Errorf("%s: %q", path, got)
+		}
 	}
-	if got := run(t, tools, ReadFileTool, map[string]any{"path": "~"}); got != "error: ~ is a folder; use list_files" {
-		t.Errorf("%q", got)
-	}
+	// Only a bare ~ or ~/ is the home folder; ~note.txt is an ordinary name.
 	if got := run(t, tools, ReadFileTool, map[string]any{"path": "~note.txt"}); got != "error: ~note.txt does not exist" {
 		t.Errorf("%q", got)
 	}

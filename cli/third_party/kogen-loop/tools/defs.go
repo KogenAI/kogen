@@ -74,11 +74,11 @@ func Definition(name string) (map[string]any, bool) {
 			map[string]any{"command": str()}, "command"), true
 	case ViewImageTool:
 		return fun(name,
-			"View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+			"View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048) inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
 			map[string]any{"path": str()}, "path"), true
 	case ReadFileTool:
 		return fun(name,
-			"Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+			"Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
 			map[string]any{"path": str(), "start_line": integer(), "end_line": integer()}, "path"), true
 	case WriteFileTool:
 		return fun(name,
@@ -86,11 +86,11 @@ func Definition(name string) (map[string]any, bool) {
 			map[string]any{"path": str(), "content": str()}, "path", "content"), true
 	case ListFilesTool:
 		return fun(name,
-			"List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+			"List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
 			map[string]any{"path": str()}), true
 	case SearchTextTool:
 		return fun(name,
-			"Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+			"Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
 			map[string]any{"pattern": str(), "path": str()}, "pattern"), true
 	case DocumentationTool:
 		return fun(name,

@@ -91,6 +91,8 @@ func Status(home string) []string {
 			continue
 		case c == nil:
 			state = "not signed in"
+		case p.compatible() && c.usable(p) && c["origin"] == nil:
+			state = "saved key has no origin; log in again"
 		case p.key && c.usable(p):
 			state = "key saved (not verified)"
 		case p.Name == "anthropic" || p.optionalKey:

@@ -42,6 +42,11 @@ type result struct {
 type streamFailure struct {
 	body any
 	kind string
+	// response is the terminal envelope of a response.failed or response.incomplete event
+	// (nil for other failures); only its identity and usage are read.
+	response map[string]any
+	// incomplete is the allowlisted incomplete_details.reason ("" when none was reported).
+	incomplete string
 }
 
 // accumulator folds SSE events into validated output items (GPT-7).
@@ -152,13 +157,20 @@ func (a *accumulator) apply(ev map[string]any) {
 	case "response.completed":
 		a.completed(ev)
 	case "response.incomplete":
-		a.failure = &streamFailure{map[string]any{"code": "incomplete", "message": inspectTerm(dig(ev, "response", "incomplete_details"))}, "response.incomplete"}
+		response, _ := asMap(ev["response"])
+		a.failure = &streamFailure{
+			body:       map[string]any{"code": "incomplete", "message": inspectTerm(dig(ev, "response", "incomplete_details"))},
+			kind:       "response.incomplete",
+			response:   response,
+			incomplete: incompleteReason(dig(ev, "response", "incomplete_details", "reason")),
+		}
 	case "response.failed":
 		var body any = map[string]any{}
 		if e := dig(ev, "response", "error"); truthy(e) {
 			body = e
 		}
-		a.failure = &streamFailure{body, "response.failed"}
+		response, _ := asMap(ev["response"])
+		a.failure = &streamFailure{body: body, kind: "response.failed", response: response}
 	case "error":
 		var body any
 		if e := ev["error"]; truthy(e) {
@@ -172,8 +184,17 @@ func (a *accumulator) apply(ev map[string]any) {
 			}
 			body = rest
 		}
-		a.failure = &streamFailure{body, "error"}
+		a.failure = &streamFailure{body: body, kind: "error"}
 	}
+}
+
+// incompleteReason is the reported reason of an incomplete response as a fixed category:
+// a known reason as received, any other string "other", a non-string "unknown", none "".
+func incompleteReason(v any) string {
+	if v == nil {
+		return ""
+	}
+	return category(v, "max_output_tokens", "content_filter")
 }
 
 func truthy(v any) bool {
@@ -330,6 +351,25 @@ func validItem(item any) bool {
 	return false
 }
 
+// duplicateCallID reports a call_id shared by two function_call items of the effective output.
+func duplicateCallID(items []any) bool {
+	seen := map[string]bool{}
+	for _, it := range items {
+		if itemField(it, "type") != "function_call" {
+			continue
+		}
+		id, ok := itemField(it, "call_id").(string)
+		if !ok {
+			continue
+		}
+		if seen[id] {
+			return true
+		}
+		seen[id] = true
+	}
+	return false
+}
+
 func argumentsObject(args string) string {
 	v, err := decodeJSON([]byte(args))
 	if _, ok := asMap(v); err == nil && ok {
@@ -421,6 +461,7 @@ func (a *accumulator) finish(supergrok bool) result {
 	}
 	flag(badStatus, "item_status")
 	flag(badShape, "item_shape")
+	flag(duplicateCallID(items), "duplicate_call_id")
 
 	if len(reasons) == 0 {
 		var u map[string]any
@@ -488,9 +529,9 @@ func (a *accumulator) finish(supergrok bool) result {
 			return argumentsObject(args)
 		}),
 	}
-	detail := "the completed response has invalid or unfinished output; validation=" +
-		string(mustEncode(map[string]any{"reasons": reasonList, "facts": facts}))
-	return result{kind: resInvalid, detail: detail}
+	evidence := map[string]any{"reasons": reasonList, "facts": facts}
+	detail := "the completed response has invalid or unfinished output; validation=" + string(mustEncode(evidence))
+	return result{kind: resInvalid, detail: detail, diag: map[string]any{"validation": evidence}}
 }
 
 // streamFailureResult classifies a failure event: the transient provider codes retry, and
@@ -500,24 +541,48 @@ func (a *accumulator) finish(supergrok bool) result {
 func streamFailureResult(sf streamFailure, supergrok bool) result {
 	body, _ := asMap(sf.body)
 	f := failure{
-		status:    "stream",
-		code:      body["code"],
-		typ:       body["type"],
-		eventKind: sf.kind,
-		param:     body["param"],
-		message:   text(body["message"]),
-		resetsAt:  body["resets_at"],
+		status:     "stream",
+		code:       body["code"],
+		typ:        body["type"],
+		eventKind:  sf.kind,
+		param:      body["param"],
+		message:    text(body["message"]),
+		resetsAt:   body["resets_at"],
+		incomplete: sf.incomplete,
 	}
+	res := terminalAccounting(sf.response)
 	switch f.code {
 	case "server_error", "server_is_overloaded", "rate_limit_exceeded", "subscription_sharing_usage_unavailable", "subscription_sharing_user_unavailable":
-		return result{kind: resTransient, detail: f.code.(string) + ": " + text(body["message"]), diag: f.diagnostics()}
+		res.kind, res.detail, res.diag = resTransient, f.code.(string)+": "+text(body["message"]), f.diagnostics()
+		return res
 	}
 	absent := func(v any) bool { return v == nil || v == "" }
 	if supergrok && absent(f.code) && absent(f.typ) && body["message"] == "Internal error during token generation" &&
 		(sf.kind == "error" || sf.kind == "response.failed") {
-		return result{kind: resTransient, detail: f.message, diag: f.diagnostics()}
+		res.kind, res.detail, res.diag = resTransient, f.message, f.diagnostics()
+		return res
 	}
-	return result{kind: resError, fail: f}
+	res.kind, res.fail = resError, f
+	return res
+}
+
+// terminalAccounting is the identity and usage a failed or incomplete terminal envelope
+// reported, normalized like a completed response's whatever its output: a result carrying only
+// meta, known and state. With no envelope (a stream cut short, an error event) it carries
+// nothing and the attempt's usage stays unknown.
+func terminalAccounting(response map[string]any) result {
+	if response == nil {
+		return result{}
+	}
+	meta := map[string]any{}
+	for _, k := range []string{"id", "model", "service_tier", "reasoning"} {
+		if v, has := response[k]; has {
+			meta[k] = v
+		}
+	}
+	u, _ := asMap(response["usage"])
+	raw := rawFrom(u)
+	return result{meta: meta, known: raw.known(), state: raw.state()}
 }
 
 // httpFailure classifies a non-streaming HTTP error answer.

@@ -32,6 +32,8 @@ import (
 type exchange struct {
 	// Items are the response's output items (messages and function calls) in Responses form.
 	Items []map[string]any `json:"items"`
+	// Output, when set, is also the terminal envelope's authoritative output list.
+	Output []map[string]any `json:"output"`
 	// Usage is the response's usage object as the wire carries it; absent or null: none.
 	Usage map[string]any `json:"usage"`
 	// ID is the response id ("" = none reported).
@@ -125,6 +127,9 @@ func (f *fakeProvider) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if ex.Usage != nil {
 		response["usage"] = ex.Usage
+	}
+	if ex.Output != nil {
+		response["output"] = ex.Output
 	}
 	frame(map[string]any{"type": "response.completed", "response": response})
 }

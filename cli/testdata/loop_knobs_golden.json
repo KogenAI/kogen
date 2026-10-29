@@ -86,7 +86,7 @@
       "type": "function"
      },
      {
-      "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+      "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
       "name": "view_image",
       "parameters": {
        "additionalProperties": false,
@@ -104,7 +104,7 @@
       "type": "function"
      },
      {
-      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
       "name": "read_file",
       "parameters": {
        "additionalProperties": false,
@@ -197,7 +197,7 @@
       "type": "function"
      },
      {
-      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
       "name": "list_files",
       "parameters": {
        "additionalProperties": false,
@@ -213,7 +213,7 @@
       "type": "function"
      },
      {
-      "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+      "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
       "name": "search_text",
       "parameters": {
        "additionalProperties": false,
@@ -616,7 +616,7 @@
       "type": "function"
      },
      {
-      "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+      "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
       "name": "view_image",
       "parameters": {
        "additionalProperties": false,
@@ -634,7 +634,7 @@
       "type": "function"
      },
      {
-      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
       "name": "read_file",
       "parameters": {
        "additionalProperties": false,
@@ -727,7 +727,7 @@
       "type": "function"
      },
      {
-      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
       "name": "list_files",
       "parameters": {
        "additionalProperties": false,
@@ -743,7 +743,7 @@
       "type": "function"
      },
      {
-      "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+      "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
       "name": "search_text",
       "parameters": {
        "additionalProperties": false,
@@ -1128,7 +1128,7 @@
      },
      {
       "function": {
-       "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+       "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
        "name": "view_image",
        "parameters": {
         "additionalProperties": false,
@@ -1148,7 +1148,7 @@
      },
      {
       "function": {
-       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
        "name": "read_file",
        "parameters": {
         "additionalProperties": false,
@@ -1249,7 +1249,7 @@
      },
      {
       "function": {
-       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
        "name": "list_files",
        "parameters": {
         "additionalProperties": false,
@@ -1267,7 +1267,7 @@
      },
      {
       "function": {
-       "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+       "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
        "name": "search_text",
        "parameters": {
         "additionalProperties": false,
@@ -1690,7 +1690,7 @@
       "name": "shell"
      },
      {
-      "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+      "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
       "input_schema": {
        "additionalProperties": false,
        "properties": {
@@ -1706,7 +1706,7 @@
       "name": "view_image"
      },
      {
-      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
       "input_schema": {
        "additionalProperties": false,
        "properties": {
@@ -1791,7 +1791,7 @@
       "name": "finish"
      },
      {
-      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
       "input_schema": {
        "additionalProperties": false,
        "properties": {
@@ -1805,7 +1805,7 @@
       "name": "list_files"
      },
      {
-      "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+      "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
       "input_schema": {
        "additionalProperties": false,
        "properties": {
@@ -2179,7 +2179,7 @@
      },
      {
       "function": {
-       "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048). Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
+       "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
        "name": "view_image",
        "parameters": {
         "additionalProperties": false,
@@ -2199,7 +2199,7 @@
      },
      {
       "function": {
-       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root.",
+       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
        "name": "read_file",
        "parameters": {
         "additionalProperties": false,
@@ -2300,7 +2300,7 @@
      },
      {
       "function": {
-       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder.",
+       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
        "name": "list_files",
        "parameters": {
         "additionalProperties": false,
@@ -2318,7 +2318,7 @@
      },
      {
       "function": {
-       "description": "Search the repository's files for a regular expression (git grep syntax). Returns path:line:text matches.",
+       "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
        "name": "search_text",
        "parameters": {
         "additionalProperties": false,

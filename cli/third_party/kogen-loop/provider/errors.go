@@ -18,6 +18,9 @@ type failure struct {
 	eventKind string
 	message   string
 	resetsAt  any
+	// incomplete is an incomplete response's allowlisted reason category; it is kept in the
+	// attempt record only (attemptDiagnostics), not in the typed error.
+	incomplete string
 }
 
 // diagnostics is the allowlisted provider_failure map: string code and type, the SSE event
@@ -38,6 +41,15 @@ func (f failure) diagnostics() map[string]any {
 	}
 	if n, ok := asInt(f.status); ok {
 		d["http_status"] = n
+	}
+	return d
+}
+
+// attemptDiagnostics is diagnostics plus the incomplete reason, which is not a provider code.
+func (f failure) attemptDiagnostics() map[string]any {
+	d := f.diagnostics()
+	if f.incomplete != "" {
+		d["incomplete_reason"] = f.incomplete
 	}
 	return d
 }
