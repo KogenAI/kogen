@@ -517,7 +517,7 @@ func TestOnDemandManifestHasDiffStatHunksAndCovers(t *testing.T) {
 		{"path": "gone.txt", "status": "deleted", "mode": "100644"},
 	}
 	texts := []materialFileText{{"app.txt", "--- app.txt\n", app}, {"extra.txt", "--- extra.txt (added; mode 100644)\n", "one\ntwo\nthree\n"}}
-	manifest, segments, err := b.materialManifest(tree, catalog, texts, source)
+	manifest, segments, _, err := b.materialManifest(tree, catalog, texts, source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +578,7 @@ func TestOnDemandManifestCoversADeletedPathsDiffBlock(t *testing.T) {
 	source := "# Diff of existing/deleted paths against start HEAD\n\n" + diff +
 		"\n# Full text of every changed or added file\n\n--- app.txt (deleted)\n"
 	catalog := []map[string]any{{"path": "app.txt", "status": "deleted", "mode": "100644"}}
-	manifest, segments, err := b.materialManifest(tree, catalog, nil, source)
+	manifest, segments, _, err := b.materialManifest(tree, catalog, nil, source)
 	if err != nil {
 		t.Fatal(err)
 	}

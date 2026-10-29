@@ -72,7 +72,8 @@ type Audit struct{ Enabled bool }
 type DecisionCheck struct{ Enabled bool }
 
 // ReviewMaterial is `review_material`: how a review that overflows its window reads the
-// pinned source, `parts` (every part must be read) or `on_demand` (a manifest, read what is needed).
+// pinned source, `parts` (every part must be read) or `on_demand` (a manifest; every part covering
+// a changed hunk must be read, others by id as needed).
 type ReviewMaterial struct{ Mode string }
 
 // Config is a validated `.kogen/project.yaml` (SET-8).

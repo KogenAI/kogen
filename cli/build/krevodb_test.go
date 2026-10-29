@@ -32,13 +32,11 @@ func krevodbReset(t *testing.T, onDemand bool) {
 	for i := 0; i < 3; i++ {
 		f.then(f.calls("write_file", map[string]any{"path": ".kogen/local/padding", "content": strings.Repeat("x", 190_000)}))
 	}
-	if onDemand {
-		f.then(submit(f, "approve"))
-	} else {
-		reader := confirmingReviewer(t, f, nil)
-		for i := 0; i < 40; i++ {
-			f.then(reader)
-		}
+	// Every line of app.txt changes, so every pinned part covers a changed hunk and is read in
+	// both modes (in on_demand by the reviewer itself, from the reset's delivery facts).
+	reader := confirmingReviewer(t, f, nil)
+	for i := 0; i < 40; i++ {
+		f.then(reader)
 	}
 	start := e.head()
 	a := e.reviewed()
@@ -68,7 +66,8 @@ func krevodbReset(t *testing.T, onDemand bool) {
 	contains(t, "authority", authority, "# Project instructions (README.md)")
 	contains(t, "guidance", guidance, "not new authority")
 	if onDemand {
-		contains(t, "guidance", guidance, "no part is required before a verdict")
+		contains(t, "guidance", guidance, "Read every required\npart completely with read_file before any verdict")
+		lacks(t, "guidance", guidance, "no part is required before a verdict")
 	} else {
 		contains(t, "guidance", guidance, "Read EVERY part")
 	}
@@ -91,17 +90,22 @@ func krevodbReset(t *testing.T, onDemand bool) {
 		eq(t, "frozen note", note, frozenPartsResetNote)
 		return
 	}
-	for _, s := range []string{"manifest/catalog lists parts and files", "part id", "path and line range", "Read only the parts you need; no part is required before a verdict.", "Nothing is appended automatically.", "Native delivery facts, not findings, judgments, approval or proof.", "approval check across working-window resets", "images not in_window", "not current"} {
+	for _, s := range []string{"manifest/catalog lists parts and files", "part id", "path and line range",
+		"Read every part in required_parts (the parts covering changed hunks) completely before any verdict",
+		"request any other part by id when a claim depends on it", "Nothing is appended automatically.",
+		"Native delivery facts, not findings, judgments, approval or proof.", "approval check across working-window resets", "images not in_window", "not current"} {
 		contains(t, "note", note, s)
 	}
-	for _, s := range []string{"appends unread", "batches", "must be read again"} {
+	for _, s := range []string{"appends unread", "batches", "must be read again", "no part is required before a verdict"} {
 		lacks(t, "note", note, s)
 	}
-	if source["delivered"] != float64(0) || len(source["unread"].([]any)) != int(source["parts"].(float64)) {
+	parts := int(source["parts"].(float64))
+	if source["delivered"] != float64(0) || len(source["unread"].([]any)) != parts ||
+		len(source["required_parts"].([]any)) != parts || len(source["required_unread"].([]any)) != parts {
 		t.Fatalf("delivery %v", source)
 	}
 	events := eventsNamed(e.events(e.onlyRun()), "review_material")
-	if len(events) != 1 || events[0]["parts_read"] != float64(0) {
+	if len(events) != 1 || events[0]["parts_read"] != float64(parts) || len(events[0]["required_parts"].([]any)) != parts {
 		t.Fatalf("events %v", events)
 	}
 	eq(t, "verdict", e.jsonFile(e.runPath(e.onlyRun(), "review-1.json"))["verdict"], any("approve"))

@@ -48,7 +48,7 @@ func (e *env) startReviewed() (*attempt, <-chan struct{}) {
 func (f *fakeProvider) reviewRequests() []map[string]any {
 	var out []map[string]any
 	for _, req := range f.requests() {
-		if requestInstructions(req) == agent.Prompt(agent.Reviewer) {
+		if text := requestInstructions(req); text == agent.Prompt(agent.Reviewer) || text == reviewerPrompt(true) {
 			out = append(out, req)
 		}
 	}
@@ -1480,7 +1480,7 @@ func TestChangesAfterEveryPartWasReadStaysBlocked(t *testing.T) {
 	contains(t, "stdout", a.out.String(), "review_blocked")
 }
 
-func TestOnDemandReviewApprovesWithoutReadingPartsAndRecordsTheMode(t *testing.T) {
+func TestOnDemandReviewReadsEveryHunkPartAndRecordsTheMode(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	e.write(".kogen/project.yaml", e.read(".kogen/project.yaml")+"review_material:\n  mode: on_demand\n")
@@ -1489,7 +1489,12 @@ func TestOnDemandReviewApprovesWithoutReadingPartsAndRecordsTheMode(t *testing.T
 	e.approve()
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
-	f.then(submit(f, "approve"))
+	// Every line of app.txt (and the added Intent files) changes: every part covers a changed
+	// hunk, so the reviewer reads them all before approving.
+	reader := readThen(f, "approve")
+	for i := 0; i < 30; i++ {
+		f.then(reader)
+	}
 	start := e.head()
 	a := e.reviewed()
 	if a.exit != 0 || e.head() == start {
@@ -1497,15 +1502,16 @@ func TestOnDemandReviewApprovesWithoutReadingPartsAndRecordsTheMode(t *testing.T
 	}
 	reqs := f.reviewRequests()
 	catalog := reviewCatalog(t, reqs[0])
-	if catalog["mode"] != "on_demand" || len(catalog["parts"].([]any)) < 2 {
+	parts := len(catalog["parts"].([]any))
+	if catalog["mode"] != "on_demand" || parts < 2 || len(catalogRequired(catalog)) != parts {
 		t.Fatalf("catalog %v", catalog)
 	}
 	if strings.Contains(requestText(reqs[0]), "0123456789abcdef-line") {
 		t.Error("the opening carries a part body")
 	}
 	events := eventsNamed(e.events(e.onlyRun()), "review_material")
-	if len(events) != 1 || events[0]["mode"] != "on_demand" || events[0]["parts_read"] != float64(0) ||
-		events[0]["parts"] != float64(len(catalog["parts"].([]any))) {
+	if len(events) != 1 || events[0]["mode"] != "on_demand" || events[0]["parts_read"] != float64(parts) ||
+		events[0]["parts"] != float64(parts) || len(events[0]["read_parts"].([]any)) != parts {
 		t.Fatalf("events %v", events)
 	}
 }

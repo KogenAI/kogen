@@ -1,0 +1,30 @@
+[
+  {
+    "bytes": 450675,
+    "sha256": "cb5b7848076eb71b08f0bbbe9fa79928a9faa6911b5256dad7dd3b002f76fcc4",
+    "prefill": true,
+    "reset": false,
+    "read_file_calls": 1
+  },
+  {
+    "bytes": 454739,
+    "sha256": "09810aa51b1743cd3c7b361ded7a4f16feaab169fde4f2757d524f8bc5b0cb04",
+    "prefill": true,
+    "reset": true,
+    "read_file_calls": 1
+  },
+  {
+    "bytes": 397682,
+    "sha256": "d8d475a461085a10263fe8176a90bdd45d312f61aa817cc88074b063aa33e5cc",
+    "prefill": true,
+    "reset": true,
+    "read_file_calls": 1
+  },
+  {
+    "bytes": 241498,
+    "sha256": "24daba4c45496a823821eebd05b986aeb687c7a6e1b4080c175b3057105e0ea6",
+    "prefill": false,
+    "reset": true,
+    "read_file_calls": 1
+  }
+]

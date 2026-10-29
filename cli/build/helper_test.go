@@ -213,9 +213,16 @@ func physical(t *testing.T, dir string) string {
 // file) written but not committed, and approved.
 func newEnv(t *testing.T, mutate ...func(*project.Config)) *env {
 	t.Helper()
-	e := &env{t: t, root: physical(t, t.TempDir()), home: physical(t, t.TempDir()), aux: physical(t, t.TempDir()), prov: newFakeProvider(t)}
+	return newEnvIn(t, physical(t, t.TempDir()), physical(t, t.TempDir()), physical(t, t.TempDir()), nil, mutate...)
+}
+
+// newEnvIn is newEnv in the given repository, home and auxiliary folders, with extra Git
+// environment (such as fixed commit dates).
+func newEnvIn(t *testing.T, root, home, aux string, gitEnv []string, mutate ...func(*project.Config)) *env {
+	t.Helper()
+	e := &env{t: t, root: root, home: home, aux: aux, prov: newFakeProvider(t)}
 	e.hooks = t.TempDir()
-	e.git = isolatedEnv()
+	e.git = isolatedEnv(gitEnv...)
 	e.run("git", "init", "-q", "--initial-branch=main")
 	for k, v := range map[string]string{"user.name": "Kogen Integration", "user.email": "kogen-integration@example.invalid",
 		"commit.gpgsign": "false", "core.hooksPath": e.hooks} {
