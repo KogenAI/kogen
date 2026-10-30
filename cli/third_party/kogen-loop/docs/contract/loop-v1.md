@@ -130,7 +130,7 @@ The complete rendered request (instructions, tools, cache placement) is measured
 
 - The effective logical-call budget is the client value, or 30 minutes for zero; nothing else selects it.
 - The budget stays absolute: it covers credential waits, refresh, transport, stream reads, retry backoff and retries; bytes and heartbeats never renew it. No retry is added.
-- Every transport attempt also has default silence timeouts, for everyone and without a caller-facing option; they end only that attempt and never renew or extend the absolute budget. The first byte must arrive within 90 s for ChatGPT and 45 s for Anthropic Messages and every other provider; after that no more than 180 s may pass between bytes. For streams (Responses, Messages) the first-byte clock starts at request dispatch, response headers are not a stream byte, and any actual body byte, a heartbeat or a partial frame included, renews the idle clock (a read of zero bytes does not). For non-streaming Chat Completions the headers are the first byte, idle starts at the headers and body bytes renew it. Elapsed time is read from `Client.Now`; a blocked header wait or body read is cancelled when its limit passes rather than waiting for another byte. A byte arriving strictly before the limit is valid; at the limit the attempt has expired.
+- Every transport attempt also has default silence timeouts, for everyone and without a caller-facing option; they end only that attempt and never renew or extend the absolute budget. The first response progress must arrive within 90 s for ChatGPT and 45 s for Anthropic Messages and every other provider; after that no more than 180 s may pass between progress reads. Only response progress counts, not every byte. For streams (Responses, Messages) the first-progress clock starts at request dispatch and response headers do not meet it. A body read is progress when it completes at least one SSE event (a block ending in a blank line, LF or CRLF) that has a `data:` field and is not a keep-alive; an unfinished event counts in the read that completes it. Keep-alives are blocks made only of comment lines (`: keepalive`, `: ping`, ...) and blank lines and, on Messages, `ping` events (`event: ping` or a data object whose `type` is `ping`); they neither meet the first-progress limit nor renew the idle clock. Every other data event is progress, including Responses `response.created` and `response.in_progress`, error events and Messages events the parser ignores. A read of zero bytes is never progress. For a body read whole (non-streaming Chat Completions and every HTTP error body, on any route) the headers are the first progress and start the idle clock, and a body read renews it only when it has a byte other than JSON whitespace (space, tab, LF, CR). Elapsed time is read from `Client.Now`; a blocked header wait or body read is cancelled when its limit passes rather than waiting for another byte. Progress strictly before the limit is valid; at the limit the attempt has expired.
 - An expired attempt is a transient failure (outcome `failed`, `end_reason` `idle`, also on Chat Completions) whose detail is `no first byte within 90 s`, `no first byte within 45 s` or `stream idle for 180 s`. It is retried by the existing attempt policy with unchanged count and 2 s/8 s backoff, and is single-shot with `Request.Single` on ChatGPT. The absolute budget and caller cancellation take precedence over an overlapping timeout. Request bytes are unchanged.
 - Expiry uses the existing path: `provider/unavailable`, exit 4, provider-labelled. With `ResponseBudget` zero the detail is exactly `response wait exceeded 30 minutes`. With a nonzero value the detail is `response wait exceeded ` plus the budget as `time.Duration.String()`: for example `response wait exceeded 10m0s`, `30m0s` for an explicit 30 minutes, `2s`.
 
@@ -365,8 +365,11 @@ Typed `sys.Error{Class, Reason, Detail, Exit}`. Provider errors keep their exist
   the cause. Diagnostics do not change retry or validity decisions.
 - Every provider attempt record also carries stream observations, in integer
   milliseconds relative to that attempt's own start and reset on each retry:
-  `headers_ms` (after the client's successful Do), `first_byte_ms`, `last_byte_ms`,
-  `ttft_ms` (the first parsed Responses `*.delta` or Messages `content_block_delta` /
+  `headers_ms` (after the client's successful Do), `first_byte_ms`, `last_byte_ms`
+  (the latest positive read of any bytes, keep-alives included), `last_progress_ms` (the
+  latest progress read of a stream, or the headers or latest read with a non-whitespace
+  byte of a body read whole; null when none came, so on a streaming route null means no
+  first progress), `ttft_ms` (the first parsed Responses `*.delta` or Messages `content_block_delta` /
   `message_delta` event), `max_gap_ms`, `gap_hist` (six counts of gaps between
   consecutive positive-byte reads: [0,1s], (1s,10s], (10s,30s], (30s,60s], (60s,120s],
   over 120s), `stream_bytes` and `end_reason` (`complete`, `transport`, `cancel`,
@@ -374,7 +377,9 @@ Typed `sys.Error{Class, Reason, Detail, Exit}`. Provider errors keep their exist
   before its completion is `transport` even where the parser reads EOF as the end).
   `idle` marks an attempt ended by the first-byte or idle timeout (see Client response
   budget), on every route including Chat Completions. Missing observations are null.
-  Chat Completions and error-body reads set only `headers_ms` and `last_byte_ms`. The
+  Chat Completions and error-body reads set only `headers_ms`, `last_byte_ms` and
+  `last_progress_ms`. An attempt ended by silence shows `end_reason` `idle` with
+  `last_byte_ms` and `last_progress_ms`. `stream_bytes` still counts every byte. The
   observations themselves change nothing; the only enforcement is the per-attempt
   first-byte and idle timeout above, and requests, budgets and results are unchanged.
 - **Breaking changes** (removed or renamed field, changed meaning, changed engine order, changed default behavior) need `kogen-loop/v2` and `loop/v2`, and consumers must migrate deliberately.

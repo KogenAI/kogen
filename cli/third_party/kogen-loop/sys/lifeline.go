@@ -31,18 +31,30 @@ func groupOthers(pgid, self int) (bool, error) {
 	if data, err := os.ReadFile("/proc/self/stat"); err == nil && len(data) > 0 {
 		return procGroupOthers(pgid, self)
 	}
-	out, err := exec.Command("ps", "-A", "-o", "pid=,pgid=,stat=").Output()
-	if err != nil {
+	return psGroupOthers(pgid, self)
+}
+
+// psGroupOthers is groupOthers without /proc. The ps process it starts stays in the
+// caller's group, so its own row never counts as a member.
+func psGroupOthers(pgid, self int) (bool, error) {
+	cmd := exec.Command("ps", "-A", "-o", "pid=,pgid=,stat=")
+	var out strings.Builder
+	cmd.Stdout = &out
+	if err := cmd.Start(); err != nil {
 		return false, err
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	psPid := cmd.Process.Pid
+	if err := cmd.Wait(); err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(out.String(), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 3 {
 			continue
 		}
 		pid, e1 := strconv.Atoi(f[0])
 		group, e2 := strconv.Atoi(f[1])
-		if e1 == nil && e2 == nil && group == pgid && pid != self && !strings.HasPrefix(f[2], "Z") {
+		if e1 == nil && e2 == nil && group == pgid && pid != self && pid != psPid && !strings.HasPrefix(f[2], "Z") {
 			return true, nil
 		}
 	}

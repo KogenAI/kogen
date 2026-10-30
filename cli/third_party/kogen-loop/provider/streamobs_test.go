@@ -578,7 +578,7 @@ func TestStreamObsCompatibility(t *testing.T) {
 	old := []string{"provider", "compatibility", "operation_id", "attempt_id", "timestamp", "provider_response_id", "provider_request_id",
 		"configured_model", "configured_effort", "effective_model", "effective_effort", "requested_service_tier", "effective_service_tier",
 		"requested_reasoning_context", "effective_reasoning_context", "cache", "usage", "usage_state", "wall_ms", "ttft_ms", "outcome", "error"}
-	added := []string{"headers_ms", "first_byte_ms", "last_byte_ms", "max_gap_ms", "gap_hist", "stream_bytes", "end_reason"}
+	added := []string{"headers_ms", "first_byte_ms", "last_byte_ms", "last_progress_ms", "max_gap_ms", "gap_hist", "stream_bytes", "end_reason"}
 	for _, wire := range []string{"chatgpt", "anthropic", "opencode-go"} {
 		t.Run(wire, func(t *testing.T) {
 			var steps []obsStep

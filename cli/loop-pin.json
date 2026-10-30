@@ -2,8 +2,8 @@
   "module": "kogen-loop",
   "protocol": "kogen-loop/v1",
   "library": "loop/v1",
-  "digest": "5b18e5b0226b9c80bffad57e8d56597220f20ee8d862a7cfd09c49a01326f37e",
-  "files": 145,
-  "source_head": "16f89745ca6a93101b89ab8af7d20c3a85f65b69",
+  "digest": "89467b8bf5e737e3c9edcb9f8888f277dc4662c6e1e8f7b74e3fa40bdc2666f3",
+  "files": 149,
+  "source_head": "8a2fcdaefb6b6d40308c88da83b5d18cebd686ad",
   "source_state": "clean"
 }

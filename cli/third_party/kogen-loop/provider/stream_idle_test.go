@@ -62,6 +62,14 @@ func idleBeat(wire string) string {
 	return ": keepalive\n\n"
 }
 
+// idleProgress is a data event that is response progress but no answer: it renews the idle clock.
+func idleProgress(wire string) string {
+	if wire == "anthropic" {
+		return sse(ev("message_note"))
+	}
+	return frame(map[string]any{"type": "response.in_progress"})
+}
+
 func idleText(err error) string {
 	if err == nil {
 		return ""
@@ -170,10 +178,14 @@ func TestStreamIdleGap(t *testing.T) {
 		if w.stream {
 			cases = []gap{
 				{"bytes before the limit", []obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: tail}}, []obsStep{{advance: ms1, data: head}, {advance: idleLimit, data: tail}}},
-				{"heartbeats", []obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: beat}, {advance: idleLimit - ms1, data: beat}, {advance: idleLimit - ms1, data: tail}},
-					[]obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: beat}, {advance: idleLimit, data: tail}}},
-				{"partial frames", []obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: tail[:5]}, {advance: idleLimit - ms1, data: tail[5:]}},
-					[]obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: tail[:5]}, {advance: idleLimit, data: tail[5:]}}},
+				// keep-alives between progress neither renew the clock nor meet the limit
+				{"keep-alives", []obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: beat}, {advance: 79 * time.Second, data: tail}},
+					[]obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: beat}, {advance: 80 * time.Second, data: tail}}},
+				// an unfinished event renews the clock in the read that completes it
+				{"partial frames", []obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: tail[:5]}, {advance: 79 * time.Second, data: tail[5:]}},
+					[]obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: tail[:5]}, {advance: 80 * time.Second, data: tail[5:]}}},
+				{"progress renews", []obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: idleProgress(w.name)}, {advance: idleLimit - ms1, data: tail}},
+					[]obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: idleProgress(w.name)}, {advance: idleLimit, data: tail}}},
 				// a read of no bytes is neither progress nor a reset
 				{"zero reads", []obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second}, {advance: 79 * time.Second, data: tail}},
 					[]obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second}, {advance: 80 * time.Second, data: tail}}},
@@ -228,14 +240,12 @@ func TestStreamIdleLongStream(t *testing.T) {
 		t.Run(wire, func(t *testing.T) {
 			head, tail := idleAnswer(wire)
 			beat := idleBeat(wire)
-			// content-free heartbeats before the first delta, then bytes through 880 simulated seconds
+			// progress events with keep-alives between them, through 880 simulated seconds
 			var steps []obsStep
-			for i := 0; i < 5; i++ {
-				steps = append(steps, obsStep{advance: 40 * time.Second, data: beat})
-			}
+			steps = append(steps, obsStep{advance: 20 * time.Second, data: beat}, obsStep{advance: 20 * time.Second, data: idleProgress(wire)})
 			steps = append(steps, obsStep{advance: ms1, data: head})
 			for i := 0; i < 4; i++ {
-				steps = append(steps, obsStep{advance: 170 * time.Second, data: beat})
+				steps = append(steps, obsStep{advance: 85 * time.Second, data: beat}, obsStep{advance: 85 * time.Second, data: idleProgress(wire)})
 			}
 			steps = append(steps, obsStep{advance: 170 * time.Second, data: tail})
 			e, tr, req := idleEnv(t, wire, obsAttempt{steps: steps})
@@ -253,12 +263,12 @@ func TestStreamIdleLongStream(t *testing.T) {
 }
 
 func TestStreamIdleAbsoluteBudget(t *testing.T) {
-	// streamingFor is an answer that keeps sending bytes every 100 s and never completes
+	// streamingFor is an answer that keeps sending progress every 100 s and never completes
 	streamingFor := func(wire string, n int) []obsStep {
 		head, _ := idleAnswer(wire)
 		steps := []obsStep{{advance: ms1, data: head}}
 		for i := 0; i < n; i++ {
-			steps = append(steps, obsStep{advance: 100 * time.Second, data: idleBeat(wire)})
+			steps = append(steps, obsStep{advance: 100 * time.Second, data: idleProgress(wire)})
 		}
 		return steps
 	}
@@ -382,7 +392,7 @@ func TestStreamIdleCompatibility(t *testing.T) {
 		if _, err := respondIdle(t, e, req, obs); err != nil {
 			t.Fatal(err)
 		}
-		wantFields(t, "chat", attemptRecords(t, obs, 1)[0], map[string]any{"outcome": "completed", "end_reason": nil, "first_byte_ms": nil, "stream_bytes": nil, "headers_ms": int64(20), "last_byte_ms": int64(50)})
+		wantFields(t, "chat", attemptRecords(t, obs, 1)[0], map[string]any{"outcome": "completed", "end_reason": nil, "first_byte_ms": nil, "stream_bytes": nil, "headers_ms": int64(20), "last_byte_ms": int64(50), "last_progress_ms": int64(50)})
 	})
 
 	t.Run("budget ceiling and public options are unchanged", func(t *testing.T) {

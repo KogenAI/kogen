@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-// Default per-attempt silence limits. The first byte must come within firstByteChatGPT (ChatGPT) or
-// firstByteDefault (every other provider) of the request's dispatch; afterwards no more than
-// streamIdle may pass between bytes. They are absolute within an attempt and never renew the
-// call's budget.
+// Default per-attempt silence limits. The first response progress must come within firstByteChatGPT
+// (ChatGPT) or firstByteDefault (every other provider) of the request's dispatch; afterwards no
+// more than streamIdle may pass between progress reads. Keep-alive bytes are not progress. The
+// limits are absolute within an attempt and never renew the call's budget.
 const (
 	firstByteChatGPT = 90 * time.Second
 	firstByteDefault = 45 * time.Second
@@ -30,8 +30,8 @@ var liveWatches atomic.Int64
 var errIdle = errors.New("idle timeout")
 
 // idleWatch is one attempt's first-byte and idle timer. All elapsed-time decisions use now
-// (Client.Now): a byte at or after the limit is too late, a byte strictly before it renews the
-// idle clock. When the limit passes while the attempt is blocked, the watchdog cancels the
+// (Client.Now): a read at or after the limit is too late, a progress read strictly before it renews
+// the idle clock. When the limit passes while the attempt is blocked, the watchdog cancels the
 // request and closes the body so the blocked call returns.
 type idleWatch struct {
 	now    func() time.Time
@@ -40,7 +40,7 @@ type idleWatch struct {
 	mu       sync.Mutex
 	last     time.Time
 	limit    time.Duration
-	idle     bool // a byte has arrived: the limit is the idle one
+	idle     bool // progress has arrived: the limit is the idle one
 	timedOut bool
 	body     io.Closer
 
@@ -113,9 +113,10 @@ func (w *idleWatch) attach(body io.Closer) {
 	}
 }
 
-// observe reports whether the silence ended the attempt by at. Bytes (n > 0) strictly inside the
-// limit start or renew the idle clock; a read at or past it, or without bytes, does not.
-func (w *idleWatch) observe(at time.Time, n int) bool {
+// observe reports whether the silence ended the attempt by at. A progress read strictly inside the
+// limit starts or renews the idle clock; a read at or past it, or one that is not progress
+// (no bytes, keep-alive bytes), does not.
+func (w *idleWatch) observe(at time.Time, progress bool) bool {
 	if w == nil {
 		return false
 	}
@@ -125,7 +126,7 @@ func (w *idleWatch) observe(at time.Time, n int) bool {
 		w.timedOut = true
 		return true
 	}
-	if n > 0 {
+	if progress {
 		w.last, w.limit, w.idle = at, streamIdle, true
 	}
 	return false
@@ -136,7 +137,7 @@ func (w *idleWatch) expired() bool {
 	if w == nil {
 		return false
 	}
-	return w.observe(w.now(), 0)
+	return w.observe(w.now(), false)
 }
 
 // detail is the transient failure text of the phase that timed out.

@@ -575,13 +575,19 @@ func (r *run) exchangeResponses(token string) (result, error) {
 	}
 	defer resp.Body.Close()
 	w.attach(resp.Body)
-	r.so.gotHeaders(k.c.now())
+	hat := k.c.now()
+	r.so.gotHeaders(hat)
 	r.requestID = identifier(resp.Header.Get("X-Request-Id"))
 	if w.expired() {
 		return r.idleStop(ctx, w)
 	}
 	if resp.StatusCode != 200 && resp.StatusCode != 206 {
 		r.so.endTracked = false
+		// A body read whole: the headers are the first byte and start the idle clock.
+		if w.observe(hat, true) {
+			return r.idleStop(ctx, w)
+		}
+		r.so.progress(hat)
 		body, rerr := io.ReadAll(io.LimitReader(r.whole(resp.Body), 4<<20))
 		if rerr != nil {
 			return r.transportFailure(ctx, rerr)
@@ -592,6 +598,7 @@ func (r *run) exchangeResponses(token string) (result, error) {
 		return httpFailure(resp.StatusCode, body, k.info.supergrok(), token), nil
 	}
 	r.so.beginStream()
+	scan := &sseProgress{}
 	acc := newAccumulator()
 	buf := make([]byte, 32<<10)
 	total := 0
@@ -603,8 +610,12 @@ func (r *run) exchangeResponses(token string) (result, error) {
 		n, rerr := resp.Body.Read(buf)
 		at := k.c.now()
 		r.so.read(at, n)
-		if w.observe(at, n) {
+		progress := n > 0 && scan.feed(buf[:n])
+		if w.observe(at, progress) {
 			return r.idleStop(ctx, w)
+		}
+		if progress {
+			r.so.progress(at)
 		}
 		if total += n; total > streamLimit {
 			return r.overflow(), nil
@@ -687,9 +698,10 @@ func (r *run) exchangeChat(key string) (result, error) {
 	r.so.gotHeaders(at)
 	r.requestID = identifier(resp.Header.Get("X-Request-Id"))
 	// A body read whole has no stream: its headers are the first byte and idle starts there.
-	if w.observe(at, 1) {
+	if w.observe(at, true) {
 		return r.idleStop(ctx, w)
 	}
+	r.so.progress(at)
 	body, rerr := io.ReadAll(io.LimitReader(r.whole(resp.Body), 64<<20))
 	if rerr != nil {
 		return r.transportFailure(ctx, rerr)
@@ -751,7 +763,8 @@ func (r *run) exchangeMessages(key string) (result, error) {
 	}
 	defer resp.Body.Close()
 	w.attach(resp.Body)
-	r.so.gotHeaders(k.c.now())
+	hat := k.c.now()
+	r.so.gotHeaders(hat)
 	for _, name := range []string{"Request-Id", "X-Request-Id"} {
 		if id := safeIdentifier(resp.Header.Get(name), key); id != nil {
 			r.requestID = id.(string)
@@ -763,6 +776,11 @@ func (r *run) exchangeMessages(key string) (result, error) {
 	}
 	if resp.StatusCode != 200 && resp.StatusCode != 206 {
 		r.so.endTracked = false
+		// A body read whole: the headers are the first byte and start the idle clock.
+		if w.observe(hat, true) {
+			return r.idleStop(ctx, w)
+		}
+		r.so.progress(hat)
 		body, rerr := io.ReadAll(io.LimitReader(r.whole(resp.Body), 4<<20))
 		if rerr != nil {
 			return r.transportFailure(ctx, rerr)
@@ -773,6 +791,7 @@ func (r *run) exchangeMessages(key string) (result, error) {
 		return messagesFailure(resp.StatusCode, body, key), nil
 	}
 	r.so.beginStream()
+	scan := &sseProgress{messages: true}
 	var all strings.Builder
 	tail := ""
 	buf := make([]byte, 32<<10)
@@ -785,8 +804,12 @@ func (r *run) exchangeMessages(key string) (result, error) {
 		n, rerr := resp.Body.Read(buf)
 		at := k.c.now()
 		r.so.read(at, n)
-		if w.observe(at, n) {
+		progress := n > 0 && scan.feed(buf[:n])
+		if w.observe(at, progress) {
 			return r.idleStop(ctx, w)
+		}
+		if progress {
+			r.so.progress(at)
 		}
 		if total += n; total > streamLimit {
 			return r.overflow(), nil

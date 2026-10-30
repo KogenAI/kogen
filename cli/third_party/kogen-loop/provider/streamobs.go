@@ -18,6 +18,9 @@ type streamObs struct {
 	first, last time.Duration
 	prev        time.Time
 
+	hasProgress bool
+	progressAt  time.Duration
+
 	stream  bool // the streaming read loop ran: the stream-only fields are reported
 	bytes   int64
 	reads   int
@@ -100,6 +103,15 @@ func (o *streamObs) read(at time.Time, n int) {
 	o.prev = at
 }
 
+// progress records the time of a read that was response progress (see sseProgress), or of the
+// headers of a body read whole.
+func (o *streamObs) progress(at time.Time) {
+	if o == nil {
+		return
+	}
+	o.hasProgress, o.progressAt = true, o.rel(at)
+}
+
 // firstDelta records the read completion that carried the first parsed delta event.
 func (o *streamObs) firstDelta(at time.Time) {
 	if o == nil || o.hasTTFT {
@@ -153,7 +165,7 @@ func ms(d time.Duration) int64 { return d.Milliseconds() }
 // fields are the observations as record fields; missing ones are explicit null.
 func (o *streamObs) fields() map[string]any {
 	f := map[string]any{
-		"headers_ms": nil, "first_byte_ms": nil, "last_byte_ms": nil, "ttft_ms": nil,
+		"headers_ms": nil, "first_byte_ms": nil, "last_byte_ms": nil, "last_progress_ms": nil, "ttft_ms": nil,
 		"max_gap_ms": nil, "gap_hist": nil, "stream_bytes": nil, "end_reason": nil,
 	}
 	if o == nil {
@@ -164,6 +176,9 @@ func (o *streamObs) fields() map[string]any {
 	}
 	if o.hasRead {
 		f["last_byte_ms"] = ms(o.last)
+	}
+	if o.hasProgress {
+		f["last_progress_ms"] = ms(o.progressAt)
 	}
 	if o.end != "" {
 		f["end_reason"] = o.end
@@ -187,7 +202,8 @@ func (o *streamObs) fields() map[string]any {
 	return f
 }
 
-// obsBody notes the completion time of every positive read of a body read whole.
+// obsBody notes the completion time of every positive read of a body read whole; only a read with
+// a byte other than JSON whitespace is progress.
 type obsBody struct {
 	r   io.Reader
 	o   *streamObs
@@ -202,8 +218,12 @@ func (b obsBody) Read(p []byte) (int, error) {
 	if n > 0 {
 		b.o.read(at, n)
 	}
-	if b.w.observe(at, n) {
+	progress := n > 0 && hasContent(p[:n])
+	if b.w.observe(at, progress) {
 		return n, errIdle
+	}
+	if progress {
+		b.o.progress(at)
 	}
 	return n, err
 }
