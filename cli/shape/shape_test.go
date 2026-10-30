@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -983,13 +985,48 @@ func TestShapeShortensATooLongTitleOnlyOnTheLastAttempt(t *testing.T) {
 	})
 }
 
+var probeHomeCount = regexp.MustCompile(`(?m)^home-count-begin\n[ \t]*(\d+)[ \t]*\nhome-count-end$`)
+
+// probeHomeEmpty reports whether the delimited ls -A "$HOME" | wc -l count in a probe result is zero,
+// whether wc pads it (BSD) or not (GNU).
+func probeHomeEmpty(out string) bool {
+	m := probeHomeCount.FindStringSubmatch(out)
+	if m == nil {
+		return false
+	}
+	n, err := strconv.Atoi(m[1])
+	return err == nil && n == 0
+}
+
+func TestShapeProbeHomeEmptinessRegression(t *testing.T) {
+	for _, c := range []struct {
+		name, count string
+		empty       bool
+	}{
+		{"unpadded-zero", "0", true},
+		{"padded-zero", "       0", true},
+		{"unpadded-one", "1", false},
+		{"padded-one", "       1", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out := "exit status: 0\ntimed_out: false\nwall: 0.1 s\nlc=C\nhome=/tmp/kogen-probe1\nhome-count-begin\n" + c.count + "\nhome-count-end\nLC_ALL=C\n"
+			if !c.empty {
+				out += "0\nunrelated=0\n"
+			}
+			if got := probeHomeEmpty(out); got != c.empty {
+				t.Errorf("probeHomeEmpty = %v, want %v for count %q", got, c.empty, c.count)
+			}
+		})
+	}
+}
+
 // The native probe tool reaches the probe boundary: an ordinary command still sees its overlay,
 // PATH, locale and the explicit tools, while the caller's secrets and saved logins never reach
 // the command, the model's tool result or the retained probe_result evidence.
 func TestShapeProbeMinimalEnvironmentWiring(t *testing.T) {
 	serialTmp(t)
 	probe := shpCall("p1", "probe", map[string]any{
-		"command": `cat extra.txt; "$KOGEN_NODE"; echo "lc=$LC_ALL"; command -v sh >/dev/null && echo path-ok; echo "home=$HOME"; ls -A "$HOME" | wc -l; env`,
+		"command": `cat extra.txt; "$KOGEN_NODE"; echo "lc=$LC_ALL"; command -v sh >/dev/null && echo path-ok; echo "home=$HOME"; echo home-count-begin; ls -A "$HOME" | wc -l; echo home-count-end; env`,
 		"files":   []any{map[string]any{"path": "extra.txt", "content": "overlay\n"}},
 	})
 	f := newShpFx(t, shpAnswer(probe), shpSubmit("q", map[string]any{"questions": []any{shpQuestion("Q?")}}))
@@ -1006,7 +1043,9 @@ func TestShapeProbeMinimalEnvironmentWiring(t *testing.T) {
 	}
 	out := shpOutputs(f.Prov.requests()[1])["p1"]
 	shpMatch(t, "probe result", out, `^exit status: 0\ntimed_out: false\nwall: \d+\.\d s\noverlay\nnode-ran\nlc=C\npath-ok\nhome=`)
-	shpContains(t, "probe result", out, "\n0\n")
+	if !probeHomeEmpty(out) {
+		t.Errorf("probe home is not reported empty:\n%s", out)
+	}
 	retained, _ := json.Marshal(shpNamed(f.events(), "probe_result"))
 	for what, text := range map[string]string{"tool result": out, "probe_result evidence": string(retained)} {
 		for _, secret := range []string{"studio-secret", "STUDIO_TOKEN", "openai-secret", "OPENAI_API_KEY", "unrelated-secret", "UNRELATED_SECRET", "BASH_ENV", f.Home, store} {
