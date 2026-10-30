@@ -2,13 +2,17 @@ package claudecode
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"kogen/executor"
 )
@@ -27,6 +31,7 @@ type roundRun struct {
 
 	toolNames map[string]string // tool_use_id -> tool name
 	guarded   map[string]string // tool_use_id -> tool name, guarded tools only
+	targets   map[string]target // tool_use_id -> the guarded call's target as of its tool_use line
 
 	lines  int
 	result map[string]any // the result event, once seen
@@ -113,11 +118,15 @@ func (r *roundRun) toolUses(ev map[string]any) {
 			continue
 		}
 		if r.toolNames == nil {
-			r.toolNames, r.guarded = map[string]string{}, map[string]string{}
+			r.toolNames, r.guarded, r.targets = map[string]string{}, map[string]string{}, map[string]target{}
 		}
 		r.toolNames[id] = name
 		if guardedTools[name] {
 			r.guarded[id] = name
+			if _, seen := r.targets[id]; !seen {
+				input, _ := c["input"].(map[string]any)
+				r.targets[id] = observeTarget(r.s.root, input)
+			}
 		}
 	}
 }
@@ -157,6 +166,11 @@ func (r *roundRun) toolResults(ev map[string]any) error {
 				r.s.emit(map[string]any{"event": "executor_tool", "round": r.n, "name": name, "tool_use_id": id, "denied": true})
 				continue
 			}
+			if !ok && isErr && r.targets[id].unchanged() {
+				// Claude Code refused the call before the hook and nothing was written.
+				r.s.emit(map[string]any{"event": "executor_tool", "round": r.n, "name": name, "tool_use_id": id, "denied": false, "rejected_before_hook": true})
+				continue
+			}
 			if !ok {
 				return executor.Fail(executor.ReasonProtocol, "hook did not run for the "+name+" call "+quoteBound(id)+"; the round was stopped")
 			}
@@ -171,6 +185,69 @@ func (r *roundRun) toolResults(ev map[string]any) error {
 		r.s.emit(map[string]any{"event": "executor_tool", "round": r.n, "name": name, "tool_use_id": id, "denied": denied})
 	}
 	return nil
+}
+
+// target is the file-system state of a guarded call's target path: observable (absent, or a
+// regular file with its mode, size, modification time and content digest) or not.
+type target struct {
+	path       string // absolute; empty when the call named no path
+	observable bool
+	absent     bool
+	mode       fs.FileMode
+	size       int64
+	mtime      time.Time
+	sum        [sha256.Size]byte
+}
+
+// observeTarget records the state of the input's file_path, else notebook_path (the keys the
+// hook reads); a relative path is resolved against the checkout root.
+func observeTarget(root string, input map[string]any) target {
+	for _, k := range []string{"file_path", "notebook_path"} {
+		if p, ok := input[k].(string); ok && p != "" {
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(root, p)
+			}
+			return observePath(p)
+		}
+	}
+	return target{}
+}
+
+func observePath(p string) target {
+	t := target{path: p}
+	fi, err := os.Stat(p) // follows symlinks, as a write does
+	if errors.Is(err, fs.ErrNotExist) {
+		t.observable, t.absent = true, true
+		return t
+	}
+	if err != nil || !fi.Mode().IsRegular() {
+		return target{path: p}
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return target{path: p}
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return target{path: p}
+	}
+	t.observable, t.mode, t.size, t.mtime = true, fi.Mode(), fi.Size(), fi.ModTime()
+	copy(t.sum[:], h.Sum(nil))
+	return t
+}
+
+// unchanged reports whether the recorded state was observable and a fresh observation of the
+// same path is identical.
+func (t target) unchanged() bool {
+	if !t.observable {
+		return false
+	}
+	now := observePath(t.path)
+	if !now.observable || now.absent != t.absent {
+		return false
+	}
+	return t.absent || (now.mode == t.mode && now.size == t.size && now.mtime.Equal(t.mtime) && now.sum == t.sum)
 }
 
 // finish turns the seen result event and the process exit into the round's claim or error.

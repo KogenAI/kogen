@@ -25,6 +25,8 @@ v2 executors may serve the **shape** (including Refine), **build** and **review*
   - *Detection* is Kogen-owned and executor-independent: `BaselineIntact` and `headIntact` after every native shell call and after every executor round.
   - *Final verification* is Kogen's exact-tree verification, review and commit.
 
+  A Claude Code guarded call without a PreToolUse record whose `tool_result` is an error and whose target (`file_path`, else `notebook_path`) is absent or byte-, mode-, size- and mtime-identical to its state when Kogen read the `tool_use` line was refused before the hook: it is an ordinary failed tool call (`executor_tool` with `rejected_before_hook: true`) and the round continues, while any other hookless guarded call stops the round as `executor/protocol`.
+
   Prevention never substitutes for detection or verification. A worktree or permission mode is not process isolation.
 - **E4 Honest capability.** Each executor declares its capabilities (§3). A missing capability is refused or reported as unsupported, never imitated. For example, Claude Code has no exact resume in v1, so `kogen intent resume` refuses its checkpoints with `candidate/resume_refused`.
 - **E5 Native compatibility.** With no `executor` configured, or `executor: native`, behavior is unchanged:

@@ -562,6 +562,89 @@ func TestLivenessFailure(t *testing.T) {
 	wantError(t, err, "executor/failed")
 }
 
+// preHookRun feeds a guarded tool_use for path, runs change on the file system, then feeds an
+// is_error result with no hook sentinel and returns the events and the line error.
+func preHookRun(t *testing.T, root, tool, input string, isErr bool, change func()) ([]map[string]any, error) {
+	t.Helper()
+	var events []map[string]any
+	r := &roundRun{n: 1, init: true, s: &session{root: root, sessionID: "s", pol: policy{Log: filepath.Join(t.TempDir(), "log"), Nonce: "mine"}, emit: func(e map[string]any) { events = append(events, e) }}}
+	if err := r.line([]byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"` + tool + `","input":` + input + `}]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if change != nil {
+		change()
+	}
+	flag := "false"
+	if isErr {
+		flag = "true"
+	}
+	err := r.line([]byte(`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":` + flag + `}]}}`))
+	return events, err
+}
+
+func TestRejectedBeforeHookContinues(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	file := filepath.Join(root, "a.txt")
+	os.WriteFile(file, []byte("old\n"), 0o644)
+	cases := []struct {
+		name, tool, input string
+	}{
+		{"existing absolute", "Write", `{"file_path":"` + file + `"}`},
+		{"existing relative", "Edit", `{"file_path":"a.txt"}`},
+		{"absent", "MultiEdit", `{"file_path":"missing.txt"}`},
+		{"absent notebook", "NotebookEdit", `{"notebook_path":"missing.ipynb"}`},
+	}
+	for _, c := range cases {
+		events, err := preHookRun(t, root, c.tool, c.input, true, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if len(events) != 1 || events[0]["event"] != "executor_tool" || events[0]["rejected_before_hook"] != true || events[0]["denied"] != false || events[0]["name"] != c.tool {
+			t.Fatalf("%s: events %v", c.name, events)
+		}
+	}
+}
+
+func TestHooklessCallStillStops(t *testing.T) {
+	t.Parallel()
+	const detail = `hook did not run for the Write call "t1"; the round was stopped`
+	root := t.TempDir()
+	file := filepath.Join(root, "a.txt")
+	reset := func() {
+		os.WriteFile(file, []byte("old\n"), 0o644)
+		os.Chtimes(file, time.Unix(1e9, 0), time.Unix(1e9, 0))
+	}
+	cases := []struct {
+		name, input string
+		isErr       bool
+		setup       func()
+		change      func()
+	}{
+		{"content changed", `{"file_path":"a.txt"}`, true, reset, func() {
+			os.WriteFile(file, []byte("new\n"), 0o644)
+			os.Chtimes(file, time.Unix(1e9, 0), time.Unix(1e9, 0))
+		}},
+		{"only mtime changed", `{"file_path":"a.txt"}`, true, reset, func() { os.Chtimes(file, time.Unix(2e9, 0), time.Unix(2e9, 0)) }},
+		{"mode changed", `{"file_path":"a.txt"}`, true, reset, func() { os.Chmod(file, 0o600) }},
+		{"deleted", `{"file_path":"a.txt"}`, true, reset, func() { os.Remove(file) }},
+		{"created", `{"file_path":"b.txt"}`, true, nil, func() { os.WriteFile(filepath.Join(root, "b.txt"), []byte("x"), 0o644) }},
+		{"success result", `{"file_path":"a.txt"}`, false, reset, nil},
+		{"no path", `{}`, true, nil, nil},
+		{"directory", `{"file_path":"."}`, true, nil, nil},
+	}
+	for _, c := range cases {
+		if c.setup != nil {
+			c.setup()
+		}
+		events, err := preHookRun(t, root, "Write", c.input, c.isErr, c.change)
+		e := wantError(t, err, "executor/protocol")
+		if e.Detail != detail || len(events) != 0 {
+			t.Fatalf("%s: detail %q events %v", c.name, e.Detail, events)
+		}
+	}
+}
+
 func TestDeniedWriteThatRanIsProtocolFailure(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, fakeConfig{IgnoreDeny: true, Script: oneRound(conformance.RoundScript{
