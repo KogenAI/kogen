@@ -602,7 +602,7 @@ not supported settings and nothing reads them. Like any other unrecognized role 
 they are not applied: strict loading of `.kogen/project.yaml` reports them as before,
 and the lenient view used by `kogen doctor` leaves that role at its default. Default
 configuration is unchanged. The verification-level `no_progress` stop (a native builder
-answering without a tool call to the same red verification pass) and
+answering without a tool call to the same red verification pass; when acceptance scenarios are still not passing it first gets one notice naming them, and the stop comes only if the same red repeats after that notice) and
 `executor_no_progress` remain.
 
 ## Removed shell time limit

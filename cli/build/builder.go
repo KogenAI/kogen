@@ -256,7 +256,8 @@ func (b *Attempt) stageGate(ctx context.Context) (string, bool, error) {
 	} else {
 		b.s.Progress("kogen: stage " + stage.ID + " gate failed")
 	}
-	if err := b.stalled(stage.ID, pass); err != nil {
+	notice, err := b.stalled(stage.ID, pass)
+	if err != nil {
 		return "", false, err
 	}
 	if !pass.Green {
@@ -264,7 +265,7 @@ func (b *Attempt) stageGate(ctx context.Context) (string, bool, error) {
 		if err := b.Track(); err != nil {
 			return "", false, err
 		}
-		return "Stage " + stage.ID + " failed; remain at this stage.\n" + b.PassFeedback(pass, "finish"), false, nil
+		return withNotice(notice, "Stage "+stage.ID+" failed; remain at this stage.\n"+b.PassFeedback(pass, "finish")), false, nil
 	}
 	p.Completed = append(p.Completed, stage.ID)
 	p.Active, p.Phase = nil, phaseFinal
@@ -312,17 +313,26 @@ func (b *Attempt) verifyStage(ctx context.Context, stage stageDef) (verify.Pass,
 	return pass, b.Track()
 }
 
+// withNotice puts a missing-items notice, when there is one, and a blank line before feedback.
+func withNotice(notice, feedback string) string {
+	if notice == "" {
+		return feedback
+	}
+	return notice + "\n\n" + feedback
+}
+
 func (b *Attempt) verifyAndReview(ctx context.Context) (string, bool, error) {
 	pass, err := b.Verify(ctx)
 	if err != nil {
 		return "", false, err
 	}
-	if err := b.stalled("", pass); err != nil {
+	notice, err := b.stalled("", pass)
+	if err != nil {
 		return "", false, err
 	}
 	if !pass.Green {
 		b.Repairs++
-		return b.PassFeedback(pass, "finish"), false, nil
+		return withNotice(notice, b.PassFeedback(pass, "finish")), false, nil
 	}
 	approved, err := b.reviewWithRetry(ctx, func() (Approved, error) { return b.deps.reviewer().Review(ctx, b, pass) })
 	if err != nil {
