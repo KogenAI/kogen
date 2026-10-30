@@ -33,6 +33,11 @@ func Excerpt(output string) string {
 	return strings.Join(out, "\n")
 }
 
+// Diagnostic is the excerpt of a command's output that a refusal shows and a diagnostic
+// keeps: the Excerpt line policy, then the 16 KiB bound of Cut, so one enormous line cannot
+// grow it. Redact first: a cut must never split a secret.
+func Diagnostic(output string) string { return Cut(Excerpt(output)) }
+
 // Tail is the last n lines of command output.
 func Tail(output string, n int) string {
 	lines := strings.Split(trimTrailing(output), "\n")

@@ -80,7 +80,7 @@ func Account(root, feature string, expected []project.Scenario, report string, s
 	base := Acceptance{Status: status, Output: output, Scenarios: []ScenarioResult{}, Problems: []string{}, BindingProblems: []string{}}
 	cases, problem := readReport(root, report)
 	if problem != "" {
-		base.Problems = []string{problem + ": the acceptance command exited " + itoa(status) + "; its output:\n" + Excerpt(output)}
+		base.Problems = []string{problem + ": the acceptance command exited " + itoa(status) + "; its output:\n" + Diagnostic(output)}
 		for _, e := range expected {
 			base.Scenarios = append(base.Scenarios, withResult(e, problem, nil))
 		}

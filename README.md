@@ -410,6 +410,34 @@ approval, protected contracts, failed/stale/unknown checks, blockers or exact-fi
 commit eligibility. Local scripted-provider tests establish plumbing/custody, not
 actual visual interpretation or automatic design approval.
 
+## Approval step limits and refusal diagnostics
+
+`kogen intent approve <slug>` bounds each command it executes during a fresh readiness
+check (each setup command, each model check step and the acceptance command) by its own
+120 seconds. The bound is per step, never shared and not a setting: there is no retry, option
+or environment knob, and individually timely steps may take longer than 120 seconds overall.
+A step over its bound is stopped with its process group and refused as `environment/step_timeout`,
+naming that step, its elapsed wall time, the steps that ran before it with their wall times
+and statuses, and the steps never reached. Elapsed time alone cannot tell host contention from a
+hang, so Kogen names no cause. The Git phases (`snapshot`, `materialize`) are timed and recorded but not
+separately bounded.
+
+Every refusal after a command ran shows that command's own combined stdout and stderr (the
+Excerpt line policy within the 16384-byte display bound) and retains it, up to 1 MiB, in private local
+evidence: `.kogen/local/readiness/attempts/<slug>-<time>-<id>/attempt.json` (0700/0600), with each
+executed step's name, kind, status, exit, `timed_out`, start and duration in milliseconds, and
+`not_run` names. The path is printed. It is diagnostic custody only: not readiness evidence
+(`<slug>.json` is unchanged and never written for a refusal), not approval, and never reused.
+Interrupts keep their signal exit codes and retain nothing.
+
+Secrets are masked before any excerpt or byte bound is applied: the values of nonempty environment
+variables whose names contain TOKEN, KEY, PASSWORD or SECRET, the string
+fields named like a secret in Kogen's own `~/.kogen/credentials/*.json`, Authorization header
+values and `Bearer` values, and values assigned to names containing token, key, secret, password or
+passwd (`name=value`, `name: value`, `--name value`). An unlabeled secret Kogen was never given
+cannot be detected. A secret straddling the command runner's own 512 KiB head/tail capture of one
+command's output, or a command line the caller asks the runner to trace with `KOGEN_LOG_LEVEL=debug`, is outside this masking.
+
 ## Recovering stale approval cards
 
 `kogen intent approve <slug>` checks current readiness and prints the full lowercase

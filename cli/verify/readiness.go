@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"kogen-loop/sys"
 	"kogen/git"
@@ -35,6 +36,9 @@ type Readiness struct {
 	// unchanged, right before the evidence is recorded; its error stops the check with
 	// nothing recorded (a conversation validates its private custody here).
 	BeforeRecord func() error
+	// Attempt, when set (an approval), bounds every executed command step by StepTimeout,
+	// records the steps that ran and keeps private evidence of a refusal.
+	Attempt *Attempt
 }
 
 func (r *Readiness) repo(s *sys.Session) *git.Repo {
@@ -292,19 +296,33 @@ func (r *Readiness) RecordPass(s *sys.Session, slug string, ready *Ready) error 
 // is ready, publishes the evidence. A failing assertion that the dry run accounts for is
 // valid readiness. Problems are intent/parse, intent/lint or intent/not_ready; interrupts
 // are *sys.Interrupted. The scratch directory is removed whatever happens.
-func (r *Readiness) Check(ctx context.Context, s *sys.Session, slug string) (*Ready, error) {
+func (r *Readiness) Check(ctx context.Context, s *sys.Session, slug string) (ready *Ready, err error) {
+	if a := r.Attempt; a != nil {
+		ctx = a.Into(ctx)
+		defer func() {
+			if err != nil {
+				err = a.Refuse(err)
+			}
+		}()
+	}
 	os.Remove(readinessPath(r.Root, slug))
-	in, err := r.inputs(s, slug)
-	if err != nil {
+	var in inputs
+	if err := r.Attempt.Observe("snapshot", "git", func() (err error) {
+		in, err = r.inputs(s, slug)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	scratch := sys.TmpPath("kogen-readiness")
 	defer os.RemoveAll(scratch)
-	mat, err := r.repo(s).Materialize(in.tree, scratch)
-	if err != nil {
+	var mat *git.Materialized
+	if err := r.Attempt.Observe("materialize", "git", func() (err error) {
+		mat, err = r.repo(s).Materialize(in.tree, scratch)
+		return err
+	}); err != nil {
 		return nil, err
 	}
-	ready, err := r.checkClean(ctx, s, scratch, slug, in)
+	ready, err = r.checkClean(ctx, s, scratch, slug, in)
 	if err != nil {
 		return nil, err
 	}
@@ -333,10 +351,28 @@ func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug st
 	if err != nil {
 		return nil, err
 	}
+	if a := r.Attempt; a != nil {
+		var plan []string
+		for i := range r.Config.Setup {
+			plan = append(plan, fmt.Sprintf("setup-%d", i+1))
+		}
+		if m := intent.Model; m != nil && !m.None {
+			plan = append(plan, "model")
+		}
+		a.Plan(append(plan, "acceptance")...)
+	}
 	if err := r.Setup(ctx, s, dir, false); err != nil {
 		return nil, err
 	}
-	proof, err := Execute(ctx, s, r.Tools, dir, intent, r.Root, r.Evidence)
+	var proof []Obligation
+	if declarations, _ := Declarations(intent); len(declarations) > 0 {
+		err = r.Attempt.Observe("feasibility", "feasibility", func() (err error) {
+			proof, err = Execute(ctx, s, r.Tools, dir, intent, r.Root, r.Evidence)
+			return err
+		})
+	} else {
+		proof, err = Execute(ctx, s, r.Tools, dir, intent, r.Root, r.Evidence)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -350,6 +386,9 @@ func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug st
 			return nil, err
 		}
 		modelProblems = res.Problems
+		if len(modelProblems) > 0 {
+			r.Attempt.blame("model")
+		}
 	}
 	reportDir := sys.TmpPath("kogen-dry-run")
 	defer os.RemoveAll(reportDir)
@@ -361,7 +400,11 @@ func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug st
 	if err != nil {
 		return nil, err
 	}
-	problems := slices.Concat(modelProblems, dryRunProblems(acc), stepProblems)
+	dryProblems := dryRunProblems(acc)
+	if len(dryProblems) > 0 {
+		r.Attempt.blame("acceptance")
+	}
+	problems := slices.Concat(modelProblems, dryProblems, stepProblems)
 	if len(problems) > 0 {
 		e := sys.Fail("intent", "not_ready", "the Intent is not ready to build", 1)
 		for _, p := range problems {
@@ -393,7 +436,12 @@ func (r *Readiness) stepAnalysis(ctx context.Context, s *sys.Session, dir string
 	if len(own) == 0 || node == "" || cucumber == "" {
 		return nil, nil, nil
 	}
+	began := time.Now()
 	raw, loaded, err := RunStepScript(ctx, node, cucumber, dir, s.Env, files, texts)
+	if loaded || err != nil {
+		// A check that could not even load did not run: it is not a step.
+		r.Attempt.record("step-analysis", "check", began, err)
+	}
 	if err != nil || !loaded {
 		return nil, nil, err
 	}
@@ -401,6 +449,7 @@ func (r *Readiness) stepAnalysis(ctx context.Context, s *sys.Session, dir string
 	for _, it := range items {
 		if it.Check == "exit_code" && !it.OK {
 			problems = append(problems, it.Check+" "+it.Target+": "+it.Detail)
+			r.Attempt.blame("step-analysis")
 		}
 	}
 	return problems, StepWarnings(items), nil
@@ -443,7 +492,7 @@ func dryRunProblems(acc Acceptance) []string {
 	for _, p := range acc.Problems {
 		switch {
 		case strings.HasPrefix(p, "exit "):
-			out = append(out, p+"; its output:\n"+Excerpt(acc.Output))
+			out = append(out, p+"; its output:\n"+Diagnostic(acc.Output))
 		case strings.HasPrefix(p, "report_"), strings.HasPrefix(p, "unexpected"):
 			out = append(out, p)
 		}
@@ -529,13 +578,13 @@ func (r *Readiness) Setup(ctx context.Context, s *sys.Session, root string, reus
 	}
 	for i, cmd := range r.Config.Setup {
 		name := fmt.Sprintf("setup-%d", i+1)
-		s.Progress(fmt.Sprintf("kogen: running %s: %s", name, cmd))
-		logEvent(r.Log, map[string]any{"event": "command", "name": name, "command": cmd})
+		s.Progress(fmt.Sprintf("kogen: running %s: %s", name, r.Attempt.Redact(cmd)))
+		logEvent(r.Log, map[string]any{"event": "command", "name": name, "command": r.Attempt.Redact(cmd)})
 		count(r.Evidence, "setup")
 		var res sys.Result
 		err := timed(r.Evidence, "setup", func() error {
 			var err error
-			res, err = run(ctx, s, r.Tools, cmd, root, nil)
+			res, err = run(withStep(ctx, name, "setup"), s, r.Tools, cmd, root, nil)
 			return err
 		})
 		if err != nil {
@@ -544,7 +593,12 @@ func (r *Readiness) Setup(ctx context.Context, s *sys.Session, root string, reus
 		logEvent(r.Log, map[string]any{"event": "command_result", "name": name, "status": res.Status, "output": Cap(res.Output)})
 		if res.Status != 0 {
 			e := sys.Fail("environment", "setup_failed", fmt.Sprintf("Setup %s failed (status=%d).", name, res.Status), 3)
-			e.Lines = strings.Split(Tail(res.Output, 20), "\n")
+			if r.Attempt != nil {
+				r.Attempt.blame(name)
+				e.Lines = strings.Split(Diagnostic(res.Output), "\n")
+			} else {
+				e.Lines = strings.Split(Tail(res.Output, 20), "\n")
+			}
 			return e
 		}
 	}

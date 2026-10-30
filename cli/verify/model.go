@@ -62,7 +62,11 @@ func CheckModel(ctx context.Context, s *sys.Session, dir string, tools Tools, m 
 		for _, a := range st.args {
 			words = append(words, shellQuote(a))
 		}
-		r, err := run(ctx, s, tools, strings.Join(words, " "), dir, nil)
+		name := "model-" + st.what
+		if st.invariant != "" {
+			name += "-" + st.invariant
+		}
+		r, err := run(withStep(ctx, name, "model"), s, tools, strings.Join(words, " "), dir, nil)
 		if err != nil {
 			return ModelResult{}, err
 		}
@@ -70,9 +74,9 @@ func CheckModel(ctx context.Context, s *sys.Session, dir string, tools Tools, m 
 		switch {
 		case r.Status == 0:
 		case st.invariant != "" && strings.Contains(r.Output, "[violation]"):
-			problems = append(problems, "model.qnt: invariant "+st.invariant+" violated (seed "+m.Seed+")\n"+Excerpt(r.Output))
+			problems = append(problems, "model.qnt: invariant "+st.invariant+" violated (seed "+m.Seed+")\n"+Diagnostic(r.Output))
 		default:
-			problems = append(problems, "model.qnt: quint "+st.what+" failed (status "+itoa(r.Status)+")\n"+Excerpt(r.Output))
+			problems = append(problems, "model.qnt: quint "+st.what+" failed (status "+itoa(r.Status)+")\n"+Diagnostic(r.Output))
 		}
 	}
 	if len(problems) == 0 {

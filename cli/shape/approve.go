@@ -124,7 +124,12 @@ func approveLocked(ctx context.Context, s *sys.Session, in ApproveInput, repo *g
 	if err != nil {
 		return 0, err
 	}
-	rd := &verify.Readiness{Root: root, Repo: repo, Config: cfg, Tools: in.Tools, Log: in.Log, Evidence: in.Evidence}
+	home := s.Getenv("HOME")
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	rd := &verify.Readiness{Root: root, Repo: repo, Config: cfg, Tools: in.Tools, Log: in.Log, Evidence: in.Evidence,
+		Attempt: verify.NewAttempt(root, slug, verify.NewRedactor(s.Env, home))}
 	ready := rd.Cached(s, slug)
 	if ready == nil {
 		if ready, err = rd.Check(ctx, s, slug); err != nil {

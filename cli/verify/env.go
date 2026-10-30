@@ -109,7 +109,7 @@ func record(e Evidence, event map[string]any) {
 }
 
 // run runs one command with the tools' environment next to the caller's and stops when ctx
-// is done.
+// is done. Under an Attempt (an approval check) the command is also one bounded, recorded step.
 func run(ctx context.Context, s *sys.Session, tools Tools, command, dir string, extra map[string]string) (sys.Result, error) {
 	if err := ctx.Err(); err != nil {
 		// The caller's interrupt is the error, so it exits with its signal code (LOOP-5).
@@ -121,6 +121,9 @@ func run(ctx context.Context, s *sys.Session, tools Tools, command, dir string, 
 	env := tools.env()
 	for k, v := range extra {
 		env[k] = v
+	}
+	if a := attemptFrom(ctx); a != nil {
+		return a.run(ctx, s, command, dir, env)
 	}
 	return s.Run(command, dir, sys.Options{Env: env, KillGroupOnExit: true})
 }

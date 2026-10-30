@@ -270,7 +270,7 @@ func RunAcceptance(ctx context.Context, s *sys.Session, root string, tools Tools
 		return Acceptance{}, err
 	}
 	logEvent(log, map[string]any{"event": "command", "name": "acceptance", "command": command})
-	r, err := run(ctx, s, tools, command, root, map[string]string{
+	r, err := run(withStep(ctx, "acceptance", "acceptance"), s, tools, command, root, map[string]string{
 		"KOGEN_ACCEPTANCE_FEATURES": feature,
 		"KOGEN_ACCEPTANCE_REPORT":   report,
 	})
