@@ -215,7 +215,7 @@ func TestPinExecutableConfiguration(t *testing.T) {
 		cond := filepath.Join(t.TempDir(), "cond.gitconfig")
 		writeFile(t, cond, "[core]\n\tpager = one\n", 0o644)
 		f.git(t, "config", "--add", "include.path", inc)
-		f.git(t, "config", "--add", "includeIf.gitdir:"+f.Dir+"/.git.path", cond)
+		f.git(t, "config", "--add", conditionalIncludeKey(t, f.Dir), cond)
 		base := mustPin(t, f.Repo)
 		writeFile(t, inc, "[core]\n\teditor = two\n", 0o644)
 		wantChanges(t, base, f.Repo, "core.editor")
@@ -223,6 +223,37 @@ func TestPinExecutableConfiguration(t *testing.T) {
 		writeFile(t, cond, "[core]\n\tpager = two\n", 0o644)
 		wantChanges(t, base, f.Repo, "core.pager")
 	})
+}
+
+// conditionalIncludeKey is the key of an includeIf that matches the Git directory of the repository
+// at dir. Git matches a gitdir: pattern against the Git directory as given and with symlinks
+// resolved, but never resolves symlinks in the pattern, so the pattern names the resolved directory.
+func conditionalIncludeKey(t *testing.T, dir string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "includeIf.gitdir:" + filepath.Join(resolved, ".git") + ".path"
+}
+
+// TestPinConditionalIncludeThroughSymlinkedCheckout: a pin of a checkout reached through a symlink
+// still detects a change in a conditionally included file.
+func TestPinConditionalIncludeThroughSymlinkedCheckout(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "checkout")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	env := testEnv()
+	run(t, link, env, "init", "-q")
+	cond := filepath.Join(t.TempDir(), "cond.gitconfig")
+	writeFile(t, cond, "[core]\n\tpager = one\n", 0o644)
+	run(t, link, env, "config", "--add", conditionalIncludeKey(t, link), cond)
+	r := New(link, env)
+	base := mustPin(t, r)
+	writeFile(t, cond, "[core]\n\tpager = two\n", 0o644)
+	wantChanges(t, base, r, "core.pager")
 }
 
 // TestPinReadsDefaultConfigurationLocations: when the environment hides the user's configuration,
