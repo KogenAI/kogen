@@ -131,6 +131,9 @@ func Classify(req Request, s *sys.Session) Compatibility {
 		return c
 	}
 	for _, name := range []string{"KOGEN_PROVIDER_URL", "KOGEN_AUTH_URL"} {
+		if s == nil {
+			break
+		}
 		if _, ok := s.LookupEnv(name); ok {
 			return c
 		}

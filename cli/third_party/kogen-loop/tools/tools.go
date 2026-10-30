@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -307,7 +308,105 @@ func writeFile(abs, content string) error {
 	if strings.ContainsRune(abs, 0) {
 		return errBadArg
 	}
-	return os.WriteFile(abs, []byte(content), 0o666)
+	target, mode, err := replacementTarget(abs)
+	if err != nil {
+		return err
+	}
+	tmp, err := createSibling(target, mode)
+	if err != nil {
+		return err
+	}
+	_, err = tmp.WriteString(content)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), target)
+	}
+	if err != nil {
+		os.Remove(tmp.Name())
+	}
+	return err
+}
+
+// replacementTarget is the file a write replaces and the permission bits its replacement
+// takes: an existing symlink is followed (the link itself stays), an existing regular file
+// keeps its bits and must be writable, a missing file is created with 0666 subject to the
+// umask (mode -1). Anything else that exists is refused without a change.
+func replacementTarget(abs string) (string, int, error) {
+	target := abs
+	for hops := 0; ; hops++ {
+		// Resolve parent components before cleaning: a symlink followed by .. is
+		// relative to the symlink's destination, not its containing directory.
+		if i := strings.LastIndexByte(target, byte(os.PathSeparator)); i >= 0 {
+			parent := target[:i]
+			if parent == "" {
+				parent = string(os.PathSeparator)
+			}
+			resolved, err := filepath.EvalSymlinks(parent)
+			if err != nil {
+				return "", 0, err
+			}
+			target = filepath.Join(resolved, target[i+1:])
+		}
+		st, err := os.Lstat(target)
+		if isErrno(err, syscall.ENOENT) {
+			return target, -1, nil
+		}
+		if err != nil {
+			return "", 0, err
+		}
+		switch {
+		case st.Mode()&os.ModeSymlink != 0:
+			if hops >= 40 {
+				return "", 0, syscall.ELOOP
+			}
+			link, err := os.Readlink(target)
+			if err != nil {
+				return "", 0, err
+			}
+			if !filepath.IsAbs(link) {
+				link = filepath.Dir(target) + string(os.PathSeparator) + link
+			}
+			target = link
+		case st.IsDir():
+			return "", 0, syscall.EISDIR
+		case !st.Mode().IsRegular():
+			return "", 0, syscall.EINVAL
+		default:
+			// A read-only file stays unwritten although its folder is writable.
+			f, err := os.OpenFile(target, os.O_WRONLY, 0)
+			if err != nil {
+				return "", 0, err
+			}
+			f.Close()
+			return target, int(st.Mode().Perm()), nil
+		}
+	}
+}
+
+// createSibling creates an exclusive temporary file next to target. A mode below zero (the
+// umask decides) is left as created; any other mode is set exactly.
+func createSibling(target string, mode int) (*os.File, error) {
+	dir := filepath.Dir(target)
+	for try := 0; ; try++ {
+		name := filepath.Join(dir, ".kogen-write-"+strconv.FormatUint(rand.Uint64(), 36))
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
+		if isErrno(err, syscall.EEXIST) && try < 100 {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if mode >= 0 {
+			if err := f.Chmod(os.FileMode(mode)); err != nil {
+				f.Close()
+				os.Remove(name)
+				return nil, err
+			}
+		}
+		return f, nil
+	}
 }
 
 // mkdirAll creates dir and its missing parents. What exists there as anything but a folder

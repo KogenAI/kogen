@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -52,7 +51,8 @@ type streamFailure struct {
 // accumulator folds SSE events into validated output items (GPT-7).
 type accumulator struct {
 	meta                                                     map[string]any
-	buf                                                      string
+	buf                                                      []byte
+	scan                                                     int // bytes of buf, from its start, already searched for an event break
 	items                                                    map[int]any
 	pending                                                  map[int]bool
 	usage                                                    any
@@ -68,30 +68,64 @@ func newAccumulator() *accumulator {
 	return &accumulator{meta: map[string]any{}, items: map[int]any{}, pending: map[int]bool{}, reasons: map[string]bool{}}
 }
 
-var eventBreak = regexp.MustCompile(`\r?\n\r?\n`)
-var lineBreak = regexp.MustCompile(`\r?\n`)
+// eventBreak finds the first `\r?\n\r?\n` of b at or after from: its start and end, or -1.
+func eventBreak(b []byte, from int) (start, end int) {
+	for i := from; i < len(b); i++ {
+		if b[i] != '\n' {
+			continue
+		}
+		next := i + 1
+		if next < len(b) && b[next] == '\r' {
+			next++
+		}
+		if next < len(b) && b[next] == '\n' {
+			start = i
+			if i > 0 && b[i-1] == '\r' {
+				start--
+			}
+			return start, next + 1
+		}
+	}
+	return -1, -1
+}
 
 // feed adds a chunk of the stream. A non-empty detail means an event was not JSON (the
 // response is unreadable).
 func (a *accumulator) feed(chunk string) (invalid string) {
-	buf := a.buf + chunk
+	a.buf = append(a.buf, chunk...)
+	start := 0
 	for {
-		loc := eventBreak.FindStringIndex(buf)
-		if loc == nil {
-			a.buf = buf
+		from, to := eventBreak(a.buf, start+a.scan)
+		if from < 0 {
+			// A break needs four bytes; only its last three can still be incomplete.
+			a.scan = max(0, len(a.buf)-start-3)
+			a.drop(start)
 			return ""
 		}
-		event, rest := buf[:loc[0]], buf[loc[1]:]
+		event := string(a.buf[start:from])
+		start, a.scan = to, 0
 		if d := a.event(event); d != "" {
+			a.drop(start)
 			return d
 		}
-		buf = rest
+	}
+}
+
+// drop discards the first n bytes of the buffer, which hold events already handled.
+func (a *accumulator) drop(n int) {
+	if n > 0 {
+		a.buf = a.buf[:copy(a.buf, a.buf[n:])]
 	}
 }
 
 func (a *accumulator) event(text string) string {
 	var data []string
-	for _, line := range lineBreak.Split(text, -1) {
+	for more := true; more; {
+		var line string
+		line, text, more = strings.Cut(text, "\n")
+		if more {
+			line = strings.TrimSuffix(line, "\r")
+		}
 		if rest, ok := strings.CutPrefix(line, "data:"); ok {
 			data = append(data, strings.TrimLeftFunc(rest, unicode.IsSpace))
 		}

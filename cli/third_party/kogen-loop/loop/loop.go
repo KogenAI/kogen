@@ -93,6 +93,9 @@ type Direct struct {
 // Request refuses an over-budget request, then sends it with provider.Client.Respond. It
 // returns the response and the input it sent.
 func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []any, error) {
+	if d.Session == nil {
+		return nil, nil, provider.ErrMissingSession()
+	}
 	sent, err := FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID}.Prepare(ctx, r)
 	if err != nil {
 		return nil, nil, err

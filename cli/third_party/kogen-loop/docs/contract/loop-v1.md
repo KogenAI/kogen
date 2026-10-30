@@ -307,6 +307,14 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 - `deadline_seconds` > 0 bounds the whole round. Expiry is `error` `loop/deadline` with exit 1.
 - stdin carries only the task (`--task -`). There's no interactive control channel in v1.
 
+### Atomic `write_file`
+
+`write_file` writes a temporary file next to the target (mode 0666 for a new file, subject to the umask; an existing regular file keeps its permission bits), checks the write and the close, and only then renames it over the target. A failed write leaves the previous bytes and removes the temporary file; the result is `error: <path>: <reason>`. An existing symlink is followed and remains a link. Nonregular targets (`eisdir`, `einval`) and files the caller cannot write (`eacces`) are refused without a change, as are protected paths. Because the replacement is a new inode, a hardlink alias keeps the previous bytes; this is not a filesystem sandbox, and no multi-file transaction or directory-fsync durability is promised. A file in a folder the caller cannot write to can no longer be replaced in place.
+
+### Missing session
+
+`loop.Direct.Request` and `provider.Client.Respond` refuse a nil `*sys.Session` with a `*sys.Error` of class `validation`, reason `missing_session` and detail `Session is required` (`validation/missing_session: Session is required`), before any credential is read or request is sent.
+
 ### Session resume (capability `session_resume: "transcript"`)
 
 With `session.dir`, the loop writes `session.json` atomically (0600, directory 0700) **after each completed round**:
