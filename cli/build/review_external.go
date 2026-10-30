@@ -98,7 +98,7 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 	if cur, err := b.repo.Tree(b.Start, b.Excluded); err != nil {
 		return Approved{}, err
 	} else if cur != pass.Tree {
-		return Approved{}, custodyInvalid("the candidate changed after its green pass and before the review was sent")
+		return Approved{}, custodyInvalid("the candidate changed after its green pass and before the review was sent: " + b.treeDrift(cur, pass.Tree))
 	}
 
 	task := executor.Task{

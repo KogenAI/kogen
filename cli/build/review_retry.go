@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"kogen-loop/sys"
 	"kogen/git"
@@ -155,17 +156,19 @@ func (b *Attempt) reviewOnlyBlocked(inv *invalidReview, discard bool) string {
 	case !inv.Pass.Green || !b.completePass(&inv.Pass, b.model):
 		return "the verified pass is not complete green evidence"
 	}
-	tree, err := b.repo.Tree(b.Start, b.Excluded)
-	if err != nil {
-		return "the candidate tree cannot be read"
-	}
-	if tree != inv.Pass.Tree && !discard {
-		return "the candidate changed after its green pass"
-	}
+	// Higher-priority causes first: a moved HEAD, a changed approval, baseline or index is
+	// reported as itself, never as drift of the candidate's contents.
 	for _, check := range []func() error{b.headIntact, b.BaselineIntact, b.approvalIntact, b.indexIntact} {
 		if err := check(); err != nil {
 			return err.Error()
 		}
+	}
+	tree, err := b.repo.Tree(b.Start, b.Excluded)
+	if err != nil {
+		return "the candidate tree cannot be read: " + err.Error()
+	}
+	if tree != inv.Pass.Tree && !discard {
+		return "the candidate changed after its green pass: " + b.treeDrift(tree, inv.Pass.Tree)
 	}
 	if tree != inv.Pass.Tree {
 		if err := b.discardReviewEdits(inv, tree); err != nil {
@@ -173,6 +176,21 @@ func (b *Attempt) reviewOnlyBlocked(inv *invalidReview, discard bool) string {
 		}
 	}
 	return ""
+}
+
+// treeDrift states, from observation, how the candidate tree differs from the green tree of
+// its pass: both identities and the changed paths, or the concrete reason the paths cannot be
+// listed.
+func (b *Attempt) treeDrift(observed, green string) string {
+	fact := fmt.Sprintf("observed tree %s, green tree %s", short(observed), short(green))
+	paths, err := b.repo.Changed(green, observed)
+	if err != nil {
+		return fact + "; the changed paths cannot be inspected: " + err.Error()
+	}
+	if len(paths) == 0 {
+		return fact + "; no path differs in the compared trees"
+	}
+	return fact + "; changed paths: " + strings.Join(paths, ", ")
 }
 
 // discardReviewEdits puts the checkout back to the green tree of the review's pass: the
@@ -244,7 +262,10 @@ func (b *Attempt) reviewOnlyResume(ctx context.Context) error {
 		return err
 	}
 	if tree != pass.Tree || b.LastPass == nil || b.LastPass.Tree != pass.Tree || !pass.Green {
-		return resumeRefused("the candidate is not the verified green tree of the saved review-only checkpoint")
+		if tree != pass.Tree {
+			return resumeRefused("the candidate is not the green tree of the saved review-only pass: " + b.treeDrift(tree, pass.Tree))
+		}
+		return resumeRefused("the saved review-only pass is not the checkpoint's own complete green pass, although the candidate tree equals its tree")
 	}
 	rr := b.reviewRetryOf(pass.Tree)
 	rr.Automatic = true

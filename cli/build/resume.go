@@ -244,7 +244,16 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 		if err != nil {
 			return err
 		}
-		return refuse(id, "candidate contents/modes or unrelated paths changed: "+strings.Join(paths, ", "), "")
+		detail := "candidate contents/modes or unrelated paths changed: " + strings.Join(paths, ", ")
+		if c := b.Continuation; c.Stage == StageReviewOnly {
+			tree, err := repo.Tree(b.Start, b.Excluded)
+			if err != nil {
+				detail += "; the candidate review tree cannot be inspected: " + err.Error()
+			} else if tree != c.Pass.Tree {
+				detail += "; " + b.treeDrift(tree, c.Pass.Tree)
+			}
+		}
+		return refuse(id, detail, "")
 	}
 
 	// A review-only checkpoint starts a fresh review of exactly the verified green tree: the
@@ -255,8 +264,11 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 		if err != nil {
 			return err
 		}
-		if tree != c.Pass.Tree || b.LastPass == nil || b.LastPass.Tree != c.Pass.Tree {
-			return refuse(id, "the candidate is not the verified green tree of the review-only checkpoint", "")
+		if tree != c.Pass.Tree {
+			return refuse(id, "the candidate is not the green tree of the saved review-only pass: "+b.treeDrift(tree, c.Pass.Tree), "")
+		}
+		if b.LastPass == nil || b.LastPass.Tree != c.Pass.Tree {
+			return refuse(id, "the checkpoint's last verified pass is not the saved review-only pass, although the candidate tree equals its green tree", "")
 		}
 	}
 
