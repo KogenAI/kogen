@@ -63,9 +63,11 @@ func selectExternal(ext External, role project.Role) (executor.Executor, int, er
 }
 
 // extSession is one external Shape or Refine invocation's session: a fresh Claude Code session
-// whose every round is bracketed by Kogen's own comparison of the checkout, the raw index and HEAD.
+// whose startup and every round are bracketed by Kogen's own comparison of the Git execution
+// state (hooks and executable-selecting configuration) and of the checkout, the raw index and HEAD.
 type extSession struct {
 	repo      *git.Repo
+	pin       *git.Pin
 	root      string
 	home      string
 	model     project.Role
@@ -82,6 +84,10 @@ func startExternal(ctx context.Context, ex executor.Executor, max int, repo *git
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	pin, err := repo.TakePin()
+	if err != nil {
+		return nil, pinUnreadable(err)
+	}
 	task := executor.Task{
 		Role: executor.RoleShape, Root: root, Brief: executor.Brief{Stable: stable, Dynamic: dynamic},
 		Model: role.Model, Effort: role.Effort, RunID: run, Home: home, MaxRounds: max, Schema: schema, Dir: dir,
@@ -93,10 +99,48 @@ func startExternal(ctx context.Context, ex executor.Executor, max int, repo *git
 		}
 	}
 	sess, err := ex.Start(ctx, task, rec)
+	x := &extSession{repo: repo, pin: pin, root: root, home: home, model: role, max: max, sess: sess, record: rec}
+	// Startup runs the executor too: its changes are refused before any trusted Git command, and
+	// before a startup failure is reported.
+	if perr := x.comparePin(); perr != nil {
+		x.close()
+		return nil, perr
+	}
 	if err != nil {
 		return nil, err
 	}
-	return &extSession{repo: repo, root: root, home: home, model: role, max: max, sess: sess, record: rec}, nil
+	return x, nil
+}
+
+// pinUnreadable is the refusal for Git execution state that cannot be read: never accepted as
+// unchanged.
+func pinUnreadable(err error) error {
+	return sys.Fail("candidate", "execution_state_unreadable",
+		"the Git hooks and executable-selecting configuration could not be pinned or compared, so nothing was published: "+err.Error(), 1)
+}
+
+// comparePin is nil while the Git execution state equals the pin taken before the executor was
+// started; otherwise the refusal naming each changed hook path or configuration key (never a value).
+// It runs no hook and no configured program, and precedes every other Git command after the executor.
+func (x *extSession) comparePin() error {
+	now, err := x.repo.TakePin()
+	if err != nil {
+		return pinUnreadable(err)
+	}
+	changed := x.pin.Changes(now)
+	if len(changed) == 0 {
+		return nil
+	}
+	shown := changed[:min(len(changed), 20)]
+	e := sys.Fail("candidate", "execution_state_changed",
+		"the external session changed Git execution state (hooks or executable-selecting configuration), which it may only inspect; nothing was published and the change is left as it is: "+strings.Join(shown, ", "), 1)
+	if len(changed) > len(shown) {
+		e.Detail += fmt.Sprintf(" (and %d more)", len(changed)-len(shown))
+	}
+	for _, c := range changed[:min(len(changed), 20)] {
+		e.Lines = append(e.Lines, "changed: "+c)
+	}
+	return e
 }
 
 func (x *extSession) close() {
@@ -105,12 +149,16 @@ func (x *extSession) close() {
 	}
 }
 
-// round runs one round. The checkout, raw index and HEAD are compared with their identity
-// before the round, before and after, whether or not the round succeeded; a difference is an
+// round runs one round. The Git execution state is compared with its pin, then the checkout, raw
+// index and HEAD with their identity, before and after the round, whether or not the round
+// succeeded; a difference is an
 // unauthorized mutation, reported with the existing custody reasons and never reverted.
 func (x *extSession) round(ctx context.Context, feedback string) (executor.RoundResult, error) {
 	if x.rounds >= x.max {
 		return executor.RoundResult{}, executor.RoundLimit(x.max)
+	}
+	if err := x.comparePin(); err != nil {
+		return executor.RoundResult{}, err
 	}
 	before, err := checkoutIdentity(x.repo, x.root)
 	if err != nil {
@@ -118,6 +166,10 @@ func (x *extSession) round(ctx context.Context, feedback string) (executor.Round
 	}
 	x.rounds++
 	res, rerr := x.sess.Round(ctx, executor.Input{Feedback: feedback})
+	// Before any Git command that could obey a newly selected hook, filter or monitor.
+	if err := x.comparePin(); err != nil {
+		return res, err
+	}
 	after, err := checkoutIdentity(x.repo, x.root)
 	if err != nil {
 		return res, err
@@ -236,6 +288,7 @@ type identity struct {
 }
 
 func checkoutIdentity(repo *git.Repo, root string) (identity, error) {
+	repo = repo.Observing() // no configured fsmonitor runs while observing
 	id := identity{head: repo.Head(), files: map[string]string{}, untracked: map[string]bool{}}
 	listing, err := repo.OK("ls-files", "-s", "-z")
 	if err != nil {
