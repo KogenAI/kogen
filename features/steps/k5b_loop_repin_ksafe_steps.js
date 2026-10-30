@@ -167,7 +167,8 @@ When('Kogen runs the configured check {string} through cli\\/build', function (c
 });
 
 Then('the check is reported failing with status {int}', function (status) {
-  assert.ok(this.k5bCheck.error.includes(`check bg fails before the Build changes anything (status=${status})`), `unexpected result: ${this.k5bCheck.error}`);
+  assert.equal(this.k5bCheck.error, '', `unexpected result: ${this.k5bCheck.error}`);
+  assert.equal(this.k5bCheck.status, status, `unexpected baseline status: ${JSON.stringify(this.k5bCheck)}`);
 });
 
 // ---------------------------------------------------------------- sources, specification and evidence

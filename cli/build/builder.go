@@ -77,7 +77,7 @@ func (b *Attempt) brief() (executor.Brief, error) {
 	if err != nil {
 		return executor.Brief{}, err
 	}
-	return executor.Brief{Stable: stable, Dynamic: "# Files\n\n" + files}, nil
+	return executor.Brief{Stable: stable, Dynamic: b.baselineText() + "# Files\n\n" + files}, nil
 }
 
 // drive is the builder's conversation (LOOP-1..7), whichever executor runs it: a round (the

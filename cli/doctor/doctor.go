@@ -333,8 +333,8 @@ func checkCommands(ctx context.Context, s *sys.Session, in Input, repo *git.Repo
 				return Check{}, err
 			}
 			if !passed {
-				failing = append(failing, "Build would stop with check_failing ("+c.Name+")")
-				fixes = append(fixes, "fix the check "+c.Name+" or remove it from commands.checks")
+				failing = append(failing, "Build would record "+c.Name+" as a baseline failure and could not land until it passes")
+				fixes = append(fixes, "make the check "+c.Name+" pass on the committed tree, or repair it in a Build; every configured check must pass before a Build lands")
 			}
 		}
 		if cfg.Acceptance != nil && cfg.Acceptance.Run != "" {

@@ -21,14 +21,14 @@ Feature: kogen doctor says what is ready and how to fix what is not
     And no doctor line is "fail"
     And the "commands" line is "ok"
 
-  Scenario: A check that fails on the unchanged tree is reported with its status and the Build hint, and --quick skips it
+  Scenario: A check that fails on the unchanged tree is reported with its status and the baseline-failure hint, and --quick skips it
     Given a doctor fixture repository with an identity and a ChatGPT login whose committed check "broken" runs "touch ran-marker; exit 7"
     When I run kogen doctor
     Then the doctor exits with status 1
     And the "commands" line is "fail"
     And the "commands" detail contains "broken"
     And the "commands" detail contains "status=7"
-    And the "commands" detail contains "check_failing"
+    And the "commands" detail contains "baseline failure"
     And the "commands" line mentions a duration
     And the "install" line is "ok"
     And the "git" line is "ok"

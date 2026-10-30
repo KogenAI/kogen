@@ -236,13 +236,28 @@ Feature: Approval and starting a Build
     And HEAD is unchanged
 
   @AUT-5
-  Scenario: A check that already fails on the unchanged tree stops the Build before any model request
+  Scenario: A check that already fails on the unchanged tree is recorded as a baseline and the Build repairs it
+    Given the project config sets "commands.checks" to "[{name: has-is-even, run: 'grep -q is_even calc.py'}]"
+    And the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-correct-first-try"
+    When the caller runs "kogen intent build is-even"
+    Then the exit code is 0
+    And stdout contains "baseline: 1 of 1 configured check(s) fail before the Build changes anything"
+    And stdout contains "check has-is-even (grep -q is_even calc.py) failed (status=1)"
+    And stdout contains "landed is-even "
+    And stdout contains "1. has-is-even: failed (status=1) → passed"
+    And HEAD has 1 new commit
+
+  @AUT-5
+  Scenario: A baseline failure is never a waiver and an unverified check is not run
     Given the project config sets "commands.checks" to "[{name: broken, run: 'false'}]"
     And the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-then-500-always"
     When the caller runs "kogen intent build is-even"
-    Then the exit code is 3
-    And stdout contains "environment/check_failing: check broken fails before the Build changes anything (status=1)"
-    And the fake ChatGPT server received 0 requests
+    Then the exit code is 4
+    And stdout contains "check broken (false) failed (status=1)"
+    And stdout contains "1. broken: failed (status=1) → not run"
+    And stdout does not contain "landed is-even"
     And HEAD is unchanged
 
   @AUT-6 @GIT-1

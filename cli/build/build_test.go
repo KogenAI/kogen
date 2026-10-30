@@ -233,9 +233,9 @@ func TestRedVerificationIsFedBackToTheSameBuilderAndRepaired(t *testing.T) {
 	contains(t, "stdout", a.out.String(), "  repairs: 1 ")
 }
 
-func TestFixersRunOncePerRoundAndChecksFailBeforeAnyChange(t *testing.T) {
+func TestFixersRunOncePerRound(t *testing.T) {
 	t.Parallel()
-	// ExUnit: test/integration/builder_blocker_test.exs: configure! (fixers and checks) / AUT-5 already failing check
+	// ExUnit: test/integration/builder_blocker_test.exs: configure! (fixers and checks); a check that already fails is TestFailingCheckBuild*
 	marker := filepath.Join(t.TempDir(), "fixer-runs")
 	e := newEnv(t, func(c *project.Config) {
 		c.Fix = []string{"printf 'fix\\n' >> " + marker}
@@ -247,21 +247,6 @@ func TestFixersRunOncePerRoundAndChecksFailBeforeAnyChange(t *testing.T) {
 	}
 	b, _ := os.ReadFile(marker)
 	eq(t, "fixer runs", string(b), "fix\n")
-
-	failing := newEnv(t, func(c *project.Config) { c.Checks = []project.Check{{Name: "broken", Run: "echo boom; exit 7"}} })
-	a := failing.build()
-	if a.exit != 3 {
-		t.Fatalf("exit %d\n%s", a.exit, a.shown())
-	}
-	out := a.out.String()
-	contains(t, "stdout", out, "environment/check_failing: check broken fails before the Build changes anything (status=7); fix it or remove it from commands.checks\n  boom\n")
-	lacks(t, "stdout", out, "failed fixture:")
-	contains(t, "stdout", out, "stopped in startup: check_failing;")
-	if failing.prov.count() != 0 {
-		t.Fatal("a request was sent")
-	}
-	// The index is as the Build found it.
-	eq(t, "no commits", failing.gitOut("rev-list", "--count", "HEAD"), "1")
 }
 
 func TestStartRefusals(t *testing.T) {

@@ -156,8 +156,8 @@ func TestCommandsChecksAndAcceptanceRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.Status != "fail" || !strings.Contains(c.Detail, "broken status=7 in ") || !strings.Contains(c.Detail, "fine status=0 in ") ||
-		!strings.Contains(c.Detail, "check_failing (broken)") || !strings.Contains(c.Detail, "bundled Cucumber does not run") ||
-		c.Fix != "fix the check broken or remove it from commands.checks; "+reinstall {
+		!strings.Contains(c.Detail, "Build would record broken as a baseline failure and could not land until it passes") || strings.Contains(c.Detail, "check_failing") || !strings.Contains(c.Detail, "bundled Cucumber does not run") ||
+		c.Fix != "make the check broken pass on the committed tree, or repair it in a Build; every configured check must pass before a Build lands; "+reinstall {
 		t.Fatalf("%+v", c)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "marker")); err == nil {

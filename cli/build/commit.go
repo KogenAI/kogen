@@ -68,6 +68,9 @@ func (b *Attempt) commit(ctx context.Context, ap Approved) (feedback string, lan
 	}
 	b.s.Puts(fmt.Sprintf("landed %s %s (Build %s)", b.Slug, short(commit), b.Run.ID))
 	b.s.Puts("  checks: " + pass.ChecksLine())
+	for _, line := range b.comparisonLines() {
+		b.s.Puts(line)
+	}
 	line := "  review: approved"
 	if len(notes) > 0 {
 		line += fmt.Sprintf(", %d note(s)", len(notes))

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"kogen-loop/sys"
@@ -78,7 +79,7 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 	// The caller's diagnostic data and the staged plan context follow the authority, exactly as
 	// the native reviewer receives them; never the builder's replay, progress or reasoning.
 	stable := m.Authority
-	for _, item := range b.diagnosticMessages() {
+	for _, item := range slices.Concat(b.diagnosticMessages(), b.reviewBaselineMessage(pass)) {
 		stable += "\n" + diagnosticText(item) + "\n"
 	}
 	if nav := b.State.navigationIn(phaseReview); nav != "" {

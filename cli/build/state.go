@@ -220,6 +220,10 @@ type State struct {
 	// verdict for one exact green tree, and whether that tree's one automatic fresh review is
 	// spent. Absent until a review ends invalid, so other checkpoints keep their bytes.
 	ReviewRetry *ReviewRetry `json:"review_retry,omitempty"`
+	// CheckBaseline is the result of every configured check, in configured order, on the
+	// unchanged tree before the builder edited anything (AUT-5): diagnostic evidence kept
+	// through every checkpoint, never a waiver. Absent for a Build that collected none.
+	CheckBaseline []verify.CommandResult `json:"check_baseline,omitempty"`
 }
 
 // RequestBudget is a Build's total builder request limit and its cumulative attempt count.
@@ -429,6 +433,9 @@ func (s *State) valid(doc *Checkpoint) bool {
 		return false
 	}
 	if r := s.ReviewRetry; r != nil && r.Tree == "" {
+		return false
+	}
+	if !s.validBaseline() {
 		return false
 	}
 	if s.Baseline == nil || !slices.Contains(s.Baseline, project.ConfigPath) || s.BaselineDigests == nil {

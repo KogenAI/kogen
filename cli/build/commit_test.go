@@ -210,10 +210,12 @@ func TestAnInterruptedStartupRestoresTheIndexAndCannotResume(t *testing.T) {
 
 func TestStartupStagesThatFailRestoreTheIndex(t *testing.T) {
 	t.Parallel()
-	// ExUnit: test/integration/build_boundaries_test.exs: GIT-8 restores the saved index when startup setup/checks fails
+	// ExUnit: test/integration/build_boundaries_test.exs: GIT-8 restores the saved index when startup setup/tools fails
 	for name, mutate := range map[string]func(c *project.Config){
 		"setup": func(c *project.Config) { c.Setup = []string{"echo setup-broke; exit 4"} },
-		"check": func(c *project.Config) { c.Checks = []project.Check{{Name: "broken", Run: "exit 5"}} },
+		"tool": func(c *project.Config) {
+			c.Checks = []project.Check{{Name: "missing", Run: "kogen-no-such-tool-fixture"}}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -223,8 +225,11 @@ func TestStartupStagesThatFailRestoreTheIndex(t *testing.T) {
 			a := e.build()
 			eq(t, "exit", a.exit, 3)
 			eq(t, "index", e.state()["index"], index)
-			if name == "setup" {
+			switch name {
+			case "setup":
 				contains(t, "stdout", a.out.String(), "environment/setup_failed: Setup setup-1 failed (status=4).\n  setup-broke\n")
+			case "tool":
+				contains(t, "stdout", a.out.String(), "environment/tool_missing: kogen-no-such-tool-fixture is not available")
 			}
 			eq(t, "requests", e.prov.count(), 0)
 		})

@@ -138,8 +138,10 @@ ${lines}
 `;
 }
 async function configure(c, mode) {
-  const check = mode === 'startup-stop' ? 'exit 1' : "printf 'check\\n' >> .kogen/local/check-trace; test -f app.txt";
-  H.configure(c, { setup: ["mkdir -p .kogen/local; printf 'setup\\n' >> .kogen/local/setup-trace"], fix: [], checks: [{ name: 'fixture-check', run: check }], protect: [] });
+  // A failing check no longer stops a Build at startup (it is recorded as a baseline), so the
+  // startup stop is a setup command that fails only in the checkout, where the marker below is.
+  const setup = "mkdir -p .kogen/local; printf 'setup\\n' >> .kogen/local/setup-trace; test ! -e .kogen/local/fail-setup";
+  H.configure(c, { setup: [setup], fix: [], checks: [{ name: 'fixture-check', run: "printf 'check\\n' >> .kogen/local/check-trace; test -f app.txt" }], protect: [] });
   put(c.repo, 'binary file', Buffer.from([0, 1, 255, 10]));
   put(c.repo, 'deleted.txt', 'original deleted file\n');
   put(c.repo, 'executable.sh', '#!/bin/sh\nexit 0\n');
@@ -149,6 +151,10 @@ async function configure(c, mode) {
   put(c.repo, 'features/steps/integration_steps.js', step(false));
   const r = await invoke(c, ['intent', 'approve', 'fixture', await contract(c)]);
   assert.equal(r.code, 0, r.out);
+  if (mode === 'startup-stop') {
+    fs.mkdirSync(path.join(c.repo, '.kogen/local'), { recursive: true });
+    fs.writeFileSync(path.join(c.repo, '.kogen/local/fail-setup'), 'x\n');
+  }
 }
 
 // ------------------------------------------------------------------ the exercise, per mode
@@ -312,7 +318,7 @@ async function recovery(c, mode) {
     if (stopping) {
       const before = await custody(c), n = count(c);
       const { out, code: k } = await invoke(c, ['intent', 'recover', id, '--output', archive]);
-      const reason = { 'startup-stop': 'environment/check_failing', 'login-stop': 'provider/login' }[mode] || 'provider/';
+      const reason = { 'startup-stop': 'environment/setup_failed', 'login-stop': 'provider/login' }[mode] || 'provider/';
       return {
         'recovery exit': k,
         'no archive published': !fs.existsSync(path.join(archive, 'manifest.json')),

@@ -28,7 +28,7 @@ It prints one line per check, with the exact fix under each `fail`:
 - `git`: you are inside a Git repository and Git has a `user.name` and `user.email`. Fix for a missing identity: run `git config user.name "<name>"` and `git config user.email "<email>"`.
 - `config`: `.kogen/project.yaml` exists and is valid. Fix for a missing file: run `kogen init` (step 4). For an invalid file, correct the key doctor names in `.kogen/project.yaml`.
 - `models`: every role (shape, build, review) has a stored login for its provider. Fix: `kogen provider login <provider>` (step 3).
-- `commands`: the project's checks and the acceptance runner pass on your unchanged tree. If a check fails there, fix the project or remove that check from `commands.checks` in `.kogen/project.yaml`; Kogen cannot build on a tree that is already red.
+- `commands`: the project's checks and the acceptance runner pass on your unchanged tree. If a check fails there, a Build still starts and records the failure as a baseline, but it can only land when every configured check passes, so the Intent has to repair that check as well (or you fix the project first).
 
 Run from your home directory, doctor shows what a wrong place looks like: outside a repository there is no Git and no configuration, so `git` and `config` fail; `models` fails only when you are not logged in; and `commands` is skipped because the configuration is not valid:
 

@@ -51,6 +51,9 @@ func (b *Attempt) result(outcome string, extra map[string]any) map[string]any {
 	if b.StageProgress != nil {
 		m["stage_progress"] = b.StageProgress.value()
 	}
+	if c := b.comparisonRecord(); c != nil {
+		m["check_comparison"] = c
+	}
 	return m
 }
 
@@ -117,6 +120,9 @@ func (b *Attempt) details(reason string, report bool, providerFailure map[string
 		}
 		if len(still) > 0 {
 			b.s.Puts("  still failing: " + strings.Join(still, ", "))
+		}
+		for _, line := range b.comparisonLines() {
+			b.s.Puts(line)
 		}
 		if len(edited) > 0 {
 			b.s.Puts("  edited: " + strings.Join(edited, ", "))

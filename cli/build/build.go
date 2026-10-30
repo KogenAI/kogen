@@ -345,7 +345,7 @@ func (b *Attempt) begin(ctx context.Context) error {
 	if err := b.BaselineIntact(); err != nil {
 		return err
 	}
-	if err := b.alreadyFailing(ctx); err != nil {
+	if err := b.recordBaseline(ctx); err != nil {
 		return err
 	}
 	b.s.Puts("building " + b.Slug)
@@ -370,27 +370,6 @@ func (b *Attempt) begin(ctx context.Context) error {
 
 func (b *Attempt) readiness() *verify.Readiness {
 	return &verify.Readiness{Root: b.Root, Repo: b.repo, Config: b.Config, Tools: b.deps.Tools, Log: b.Run}
-}
-
-// alreadyFailing refuses when a check fails before any change, which could never turn
-// green (AUT-5).
-func (b *Attempt) alreadyFailing(ctx context.Context) error {
-	for _, c := range b.Config.Checks {
-		b.s.Progress("kogen: checking " + c.Name + " before the Build changes anything")
-		b.Run.Event(map[string]any{"event": "command", "name": c.Name, "command": c.Run, "before_change": true})
-		r, err := b.s.Run(c.Run, b.Root, sys.Options{KillGroupOnExit: true})
-		if err != nil {
-			return err
-		}
-		b.Run.Event(map[string]any{"event": "command_result", "name": c.Name, "status": r.Status, "output": Cap(r.Output)})
-		if r.Status != 0 {
-			e := sys.Fail("environment", "check_failing", fmt.Sprintf(
-				"check %s fails before the Build changes anything (status=%d); fix it or remove it from commands.checks", c.Name, r.Status), 3)
-			e.Lines = strings.Split(verify.Tail(r.Output, 20), "\n")
-			return e
-		}
-	}
-	return nil
 }
 
 // ---- state, facts and checkpoints ----

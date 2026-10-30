@@ -143,7 +143,7 @@ func (reviewIndependent) Review(ctx context.Context, b *Attempt, pass verify.Pas
 	role := b.Config.Models["review"]
 	// Only the frozen caller diagnostic follows the authority message here, never the
 	// builder's replay, progress or reasoning.
-	diagnostic := b.diagnosticMessages()
+	diagnostic := slices.Concat(b.diagnosticMessages(), b.reviewBaselineMessage(pass))
 	if nav := b.State.navigationIn(phaseReview); nav != "" {
 		// A staged Build's reviewer is told the plan's position and that stage evidence is
 		// historical: as its own leading message, so its instructions stay frozen.
@@ -272,6 +272,9 @@ func (r *reviewRun) retry(ctx context.Context) (Approved, error) {
 	evidence := pass.Results()
 	if !pass.Green {
 		evidence = b.PassFeedback(pass, "submit_review")
+	}
+	if len(b.baselineFailures()) > 0 {
+		evidence += "\n" + strings.Join(b.comparisonLines(), "\n")
 	}
 	feedback := "The caller explicitly resumed this blocked Build. Continue as the same independent\n" +
 		"reviewer for targeted clearance or scoped repair, not a new whole-change critique.\n" +
