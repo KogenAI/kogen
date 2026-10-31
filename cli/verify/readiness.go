@@ -584,7 +584,7 @@ func (r *Readiness) Setup(ctx context.Context, s *sys.Session, root string, reus
 		var res sys.Result
 		err := timed(r.Evidence, "setup", func() error {
 			var err error
-			res, err = run(withStep(ctx, name, "setup"), s, r.Tools, cmd, root, nil)
+			res, err = runStep(withStep(ctx, name, "setup"), s, r.Tools, name, r.Log, cmd, root, nil)
 			return err
 		})
 		if err != nil {
@@ -650,7 +650,7 @@ func RunnerCheck(ctx context.Context, s *sys.Session, tools Tools, dir, command 
 	if err := os.WriteFile(feature, []byte("Feature: Kogen acceptance runner check\n"), 0o666); err != nil {
 		return "", "", err
 	}
-	res, err := run(ctx, s, tools, command, dir, map[string]string{"KOGEN_ACCEPTANCE_FEATURES": feature, "KOGEN_ACCEPTANCE_REPORT": report})
+	res, err := runStep(ctx, s, tools, "runner-check", nil, command, dir, map[string]string{"KOGEN_ACCEPTANCE_FEATURES": feature, "KOGEN_ACCEPTANCE_REPORT": report})
 	if err != nil {
 		return "", "", err
 	}

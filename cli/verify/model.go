@@ -66,7 +66,7 @@ func CheckModel(ctx context.Context, s *sys.Session, dir string, tools Tools, m 
 		if st.invariant != "" {
 			name += "-" + st.invariant
 		}
-		r, err := run(withStep(ctx, name, "model"), s, tools, strings.Join(words, " "), dir, nil)
+		r, err := runStep(withStep(ctx, name, "model"), s, tools, name, log, strings.Join(words, " "), dir, nil)
 		if err != nil {
 			return ModelResult{}, err
 		}

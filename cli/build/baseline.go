@@ -54,7 +54,9 @@ func (b *Attempt) recordBaseline(ctx context.Context) error {
 	for _, c := range b.Config.Checks {
 		b.s.Progress("kogen: checking " + c.Name + " before the Build changes anything")
 		b.Run.Event(map[string]any{"event": "command", "name": c.Name, "command": c.Run, "before_change": true})
-		r, err := b.s.Run(c.Run, b.Root, sys.Options{KillGroupOnExit: true})
+		r, err := verify.RunWatched(b.s, c.Name, c.Run, b.Run, func() (sys.Result, error) {
+			return b.s.Run(c.Run, b.Root, sys.Options{KillGroupOnExit: true})
+		})
 		if err != nil {
 			return err
 		}

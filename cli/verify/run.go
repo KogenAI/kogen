@@ -81,7 +81,7 @@ func Fix(ctx context.Context, s *sys.Session, in Input) error {
 	for i, cmd := range in.Config.Fix {
 		name := fmt.Sprintf("fix-%d", i+1)
 		logEvent(in.Log, map[string]any{"event": "command", "name": name, "command": cmd})
-		r, err := run(ctx, s, in.Tools, cmd, in.Root, nil)
+		r, err := runStep(ctx, s, in.Tools, name, in.Log, cmd, in.Root, nil)
 		if err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func unique(paths []string) []string {
 
 func runLogged(ctx context.Context, s *sys.Session, in Input, dir, name, command string) (CommandResult, error) {
 	logEvent(in.Log, map[string]any{"event": "command", "name": name, "command": command, "cwd": dir})
-	r, err := run(ctx, s, in.Tools, command, dir, nil)
+	r, err := runStep(ctx, s, in.Tools, name, in.Log, command, dir, nil)
 	if err != nil {
 		return CommandResult{}, err
 	}
@@ -270,7 +270,7 @@ func RunAcceptance(ctx context.Context, s *sys.Session, root string, tools Tools
 		return Acceptance{}, err
 	}
 	logEvent(log, map[string]any{"event": "command", "name": "acceptance", "command": command})
-	r, err := run(withStep(ctx, "acceptance", "acceptance"), s, tools, command, root, map[string]string{
+	r, err := runStep(withStep(ctx, "acceptance", "acceptance"), s, tools, "acceptance", log, command, root, map[string]string{
 		"KOGEN_ACCEPTANCE_FEATURES": feature,
 		"KOGEN_ACCEPTANCE_REPORT":   report,
 	})

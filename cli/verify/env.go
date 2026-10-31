@@ -111,6 +111,13 @@ func record(e Evidence, event map[string]any) {
 // run runs one command with the tools' environment next to the caller's and stops when ctx
 // is done. Under an Attempt (an approval check) the command is also one bounded, recorded step.
 func run(ctx context.Context, s *sys.Session, tools Tools, command, dir string, extra map[string]string) (sys.Result, error) {
+	return runStep(ctx, s, tools, "command", nil, command, dir, extra)
+}
+
+// runStep is run for a named step. Without an approval Attempt the command is also watched
+// (RunWatched): name and l are how the stop of a command that ended without a result is
+// reported.
+func runStep(ctx context.Context, s *sys.Session, tools Tools, name string, l Logger, command, dir string, extra map[string]string) (sys.Result, error) {
 	if err := ctx.Err(); err != nil {
 		// The caller's interrupt is the error, so it exits with its signal code (LOOP-5).
 		if ie := s.Err(); ie != nil {
@@ -125,5 +132,7 @@ func run(ctx context.Context, s *sys.Session, tools Tools, command, dir string, 
 	if a := attemptFrom(ctx); a != nil {
 		return a.run(ctx, s, command, dir, env)
 	}
-	return s.Run(command, dir, sys.Options{Env: env, KillGroupOnExit: true})
+	return RunWatched(s, name, command, l, func() (sys.Result, error) {
+		return s.Run(command, dir, sys.Options{Env: env, KillGroupOnExit: true})
+	})
 }
