@@ -1,0 +1,36 @@
+Feature: Preserve the targeted-test research gate
+  Scenario: Retain the existing evidence without promotion
+    When I read the targeted-test research record
+    Then the record contains "buildspeed-screen-20261030"
+    And the record contains "bss1"
+    And the record contains "d42f6ccc"
+    And the record contains "19.8"
+    And the record contains "34%"
+    And the record contains "76%"
+    And the record contains "0fe59528"
+    And the record contains "416c6a6c"
+    And the record contains "f942dd77"
+    And the record contains "d84e3244"
+    And the record contains "312149a3"
+    And the record contains "461"
+    And the record contains "474"
+    And the record contains "50%"
+    And the record contains "f877f021"
+    And the record contains "test-authoring-guidance-20261031"
+    And the record contains "K-GO-TEST-CRITICAL-PATH"
+    And the record contains "K-ROUND-FULL-SUITE"
+    And the record contains "go test ./..."
+    And the record contains "go test ./build"
+    And the record contains "No adoption"
+    And the record contains "No measured speedup"
+
+  Scenario: Compare both rendered builder paths
+    When I read the targeted-test research record
+    Then the record contains "Use focused tests or fail-fast runs while debugging."
+    And the record contains "avoid duplicating that whole gate in shell"
+    And the record contains "do not poll them through repeated sleep/tail/ps calls"
+    And the record contains "Kogen will independently run the configured checks, an independent review and the single commit."
+    And the record contains "--append-system-prompt"
+    And the record contains "Constraints"
+    And the record contains "Rendered capture provenance"
+    And the record contains "Before/after measurement gate"
