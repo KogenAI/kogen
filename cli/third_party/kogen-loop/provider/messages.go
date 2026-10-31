@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"kogen-loop/internal/delivery"
 )
 
 // Anthropic speaks the streamed Messages API at /v1/messages with an API key. The complete
@@ -508,7 +510,7 @@ func (s *messageState) result() result {
 		"anthropic_message": map[string]any{"role": "assistant", "content": content},
 	}}
 	for _, c := range calls {
-		items = append(items, map[string]any{"type": "function_call", "call_id": c["id"], "name": c["name"], "arguments": string(mustEncode(c["input"]))})
+		items = append(items, callItem(c))
 	}
 	known, inconsistent := anthropicUsage(s.usage)
 	state := known.State()
@@ -518,6 +520,61 @@ func (s *messageState) result() result {
 	s.meta["anthropic_stop_reason"] = s.stop
 	s.meta["anthropic_end_turn_tool_use"] = s.stop == "end_turn" && len(calls) > 0
 	return result{kind: resOK, items: items, usage: toUsage(known, state), known: known, state: state, meta: s.meta}
+}
+
+// callItem is the function_call item of a valid tool_use block.
+func callItem(b map[string]any) map[string]any {
+	return map[string]any{"type": "function_call", "call_id": b["id"], "name": b["name"], "arguments": string(mustEncode(b["input"]))}
+}
+
+// earlyCalls follows a Messages stream frame by frame beside the assembly that judges it
+// whole, and delivers each block to the sink when its content_block_stop completes it: a
+// tool_use only with its input assembled, a valid name and a fresh id. Anything it cannot
+// follow stops delivery for the rest of the attempt; the final judgment is unchanged.
+type earlyCalls struct {
+	sink delivery.Sink
+	s    messageState
+	ids  map[string]bool
+	dead bool
+}
+
+func newEarlyCalls(sink delivery.Sink) *earlyCalls {
+	return &earlyCalls{sink: sink, s: messageState{usage: map[string]any{}, meta: map[string]any{}}, ids: map[string]bool{}}
+}
+
+func (e *earlyCalls) frame(f sseFrame) {
+	if f.invalid {
+		e.dead = true
+		return
+	}
+	if e.dead || f.event == nil {
+		return
+	}
+	typ, _ := f.event["type"].(string)
+	n := len(e.s.blocks)
+	if err := e.s.apply(f.event); err != nil {
+		e.dead = true
+		return
+	}
+	if typ != "content_block_stop" || len(e.s.blocks) != n+1 {
+		return
+	}
+	b := e.s.blocks[n]
+	switch b["type"] {
+	case "tool_use":
+		_, isObj := asMap(b["input"])
+		id, _ := b["id"].(string)
+		if !isObj || !validName(b["id"]) || !validName(b["name"]) || blank(b["id"]) || blank(b["name"]) || e.ids[id] {
+			e.dead = true
+			return
+		}
+		e.ids[id] = true
+		e.sink.Done(n, callItem(b))
+	case "text", "thinking", "redacted_thinking":
+		e.sink.Done(n, nil)
+	default:
+		e.dead = true
+	}
 }
 
 // anthropicUsage normalizes the cumulative usage: total input is input + cache creation +

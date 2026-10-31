@@ -70,8 +70,8 @@ func Definition(name string) (map[string]any, bool) {
 	switch name {
 	case ShellTool:
 		return fun(name,
-			"Run a command with /bin/sh -c in the repository root. stdin is closed. Returns the exit status and the combined stdout and stderr. Commands have no time limit. Run finite commands, including tests and browser suites, in the foreground until completion; do not poll them through repeated sleep/tail/ps calls. Only persistent commands (dev servers, watch modes) belong in the background with output to a log file; read their logs and stop them yourself.",
-			map[string]any{"command": str()}, "command"), true
+			"Run a command with /bin/sh -c in the repository root, or retrieve it using its handle. Supply exactly one of command or handle. Each call waits up to one second; running commands continue and return JSON with status, handle and cumulative output. Retrieval returns running or completed JSON with exit_status and cumulative output. Commands are stopped at round end. stdin is closed; stdout and stderr are combined.",
+			map[string]any{"command": str(), "handle": str()}), true
 	case ViewImageTool:
 		return fun(name,
 			"View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048) inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",

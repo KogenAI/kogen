@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +14,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -72,6 +76,7 @@ type Tools struct {
 	Probe func(command string, files any) (string, error)
 	// Documentation is the shaper's documentation tool (user-agent, timeout).
 	Documentation Documentation
+	shells        *shellRegistry
 }
 
 const (
@@ -535,24 +540,159 @@ func (t *Tools) searchText(args map[string]any) string {
 	return gitFailure(res)
 }
 
-// shell runs /bin/sh -c in the repository root with stdin closed and no time limit.
-// A command that would stop processes this run did not start is refused with
-// sys.RefusalText as ordinary tool text. KillGroupOnExit stays off: background servers
-// outlive a call, and the round's custody ends them with the round, whatever its outcome.
-func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string, error) {
-	command, msg := stringArg(args, "command")
-	if msg != "" {
-		return msg, "", nil
+type shellJob struct {
+	cmd    *sys.CapturedCommand
+	cancel context.CancelFunc
+}
+type shellRegistry struct {
+	mu   sync.Mutex
+	jobs map[string]*shellJob
+}
+
+var shellRegistryInit sync.Mutex
+
+func (t *Tools) registry() *shellRegistry {
+	shellRegistryInit.Lock()
+	defer shellRegistryInit.Unlock()
+	if t.shells == nil {
+		t.shells = &shellRegistry{jobs: map[string]*shellJob{}}
 	}
-	res, err := t.session().RunContext(ctx, command, t.Root, sys.Options{RefuseForeignKill: true})
+	return t.shells
+}
+
+// EndShellRound cancels and joins outstanding commands and expires their handles.
+func (t *Tools) EndShellRound() {
+	r := t.registry()
+	r.mu.Lock()
+	jobs := r.jobs
+	r.jobs = map[string]*shellJob{}
+	r.mu.Unlock()
+	for _, j := range jobs {
+		j.cancel()
+	}
+	for _, j := range jobs {
+		<-j.cmd.Done()
+	}
+}
+
+// CancelShellHandle stops a yielded command whose staged result was discarded.
+func (t *Tools) CancelShellHandle(id string) {
+	r := t.registry()
+	r.mu.Lock()
+	j := r.jobs[id]
+	delete(r.jobs, id)
+	r.mu.Unlock()
+	if j != nil {
+		j.cancel()
+		<-j.cmd.Done()
+	}
+}
+func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string, error) {
+	command, hasCommand := args["command"]
+	handle, hasHandle := args["handle"]
+	if hasCommand == hasHandle {
+		return "error: supply exactly one of command or handle", "", nil
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return "", "", ctx.Err()
+	}
+	r := t.registry()
+	var j *shellJob
+	var id string
+	if hasHandle {
+		var ok bool
+		id, ok = handle.(string)
+		if !ok || id == "" {
+			return "error: handle must be a nonempty string", "", nil
+		}
+		r.mu.Lock()
+		j = r.jobs[id]
+		r.mu.Unlock()
+		if j == nil {
+			return "error: unknown shell handle", "", nil
+		}
+	} else {
+		cmd, ok := command.(string)
+		if !ok {
+			return "error: argument command must be a string", "", nil
+		}
+		var token [16]byte
+		if _, err := crand.Read(token[:]); err != nil {
+			return "", "", err
+		}
+		id = hex.EncodeToString(token[:])
+		jobctx, cancel := context.WithCancel(context.Background())
+		r.mu.Lock()
+		j = &shellJob{cmd: t.session().StartCaptured(jobctx, cmd, t.Root), cancel: cancel}
+		r.jobs[id] = j
+		r.mu.Unlock()
+	}
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	var done <-chan struct{}
+	if ctx != nil {
+		done = ctx.Done()
+	}
+	select {
+	case <-j.cmd.Done():
+	case <-timer.C:
+	case <-done:
+		j.cancel()
+		<-j.cmd.Done()
+		if t.Session != nil && t.Session.Err() != nil {
+			return "", "", t.Session.Err()
+		}
+		return "", "", ctx.Err()
+	}
+	if ctx != nil && ctx.Err() != nil {
+		j.cancel()
+		<-j.cmd.Done()
+		if t.Session != nil && t.Session.Err() != nil {
+			return "", "", t.Session.Err()
+		}
+		return "", "", ctx.Err()
+	}
+	res, completed, err := j.cmd.Snapshot()
 	if err != nil {
 		return "", "", err
 	}
-	if res.Rule != "" {
-		return res.Output, res.Rule, nil
+	if !hasHandle && completed {
+		r.mu.Lock()
+		delete(r.jobs, id)
+		r.mu.Unlock()
+		j.cancel()
+		if res.Rule != "" {
+			return res.Output, res.Rule, nil
+		}
+		return "exit status: " + strconv.Itoa(res.Status) + "\n" + res.Output, "", nil
 	}
-	text := "exit status: " + strconv.Itoa(res.Status) + "\n" + res.Output
-	return text, "", nil
+	output := res.Output
+	if !utf8.ValidString(output) {
+		output = string([]rune(output))
+	}
+	envelope := map[string]any{"status": "running", "handle": id, "output": output}
+	if completed {
+		envelope["status"] = "completed"
+		envelope["exit_status"] = res.Status
+	}
+	raw, _ := json.Marshal(envelope)
+	if len(raw) > maxResult {
+		// JSON escaping expands some bytes. Cut output, never the envelope.
+		lo, hi := 100, min(len(output), maxResult)
+		for lo < hi {
+			mid := (lo + hi + 1) / 2
+			envelope["output"] = cutText(output, mid, mid/4)
+			b, _ := json.Marshal(envelope)
+			if len(b) <= maxResult {
+				lo = mid
+			} else {
+				hi = mid - 1
+			}
+		}
+		envelope["output"] = cutText(output, lo, lo/4)
+		raw, _ = json.Marshal(envelope)
+	}
+	return string(raw), "", nil
 }
 
 func (t *Tools) probe(args map[string]any) (string, error) {
@@ -569,13 +709,18 @@ func (t *Tools) probe(args map[string]any) (string, error) {
 // ---- cut ----
 
 // Cut bounds model-facing text to 16384 UTF-8 bytes including the omission marker (LOOP-8).
-// Fitting text is unchanged. Longer text keeps its first 4096 bytes and a suffix, each
+// Invalid UTF-8 bytes are replaced before bounding. Valid fitting text is unchanged. Longer text keeps its first 4096 bytes and a suffix, each
 // backing off an incomplete UTF-8 character, around a marker that counts the bytes actually
 // absent; reserving the marker's width for the whole text's digit count is conservative and
 // may leave a few unused bytes. Cutting a cut text changes nothing. Typed image results
 // (Output.Cut) pass unchanged and the private originals a result was read from are never
 // transformed: the bound applies once, where a result is delivered.
-func Cut(text string) string { return cutText(text, maxResult, defaultResultHead) }
+func Cut(text string) string {
+	if !utf8.ValidString(text) {
+		text = string([]rune(text))
+	}
+	return cutText(text, maxResult, defaultResultHead)
+}
 
 func cutText(text string, bound, headSize int) string {
 	if len(text) <= bound {

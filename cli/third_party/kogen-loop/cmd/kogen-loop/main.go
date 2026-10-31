@@ -88,8 +88,8 @@ func capabilities() api.Capabilities {
 	return api.Capabilities{
 		Protocol: api.Protocol, Library: api.Library, Version: version,
 		Providers: providers, Tools: genericTools, TerminalDefault: loop.DefaultTerminal,
-		SessionResume: "transcript", ContextPolicies: []string{"fail_over_budget"},
-		Usage: "provider", Images: true, Subagents: false, Compaction: false,
+		SessionResume: "transcript", ContextPolicies: []string{"condense_over_budget"},
+		Usage: "provider", Images: true, Subagents: false, Compaction: true,
 	}
 }
 
@@ -104,7 +104,7 @@ var provided = map[string]bool{
 	api.CapSessionResume: true,
 	api.CapImages:        true,
 	api.CapSubagents:     false,
-	api.CapCompaction:    false,
+	api.CapCompaction:    true,
 }
 
 // emitter writes the JSON Lines events: one write per event, a gapless sequence, UTC time.

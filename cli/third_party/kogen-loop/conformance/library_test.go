@@ -376,7 +376,7 @@ func TestContextEndTerminatesTheShellGroupBeforeRunReturns(t *testing.T) {
 	rq := &scripted{responses: []*provider.Response{
 		respond("r1", fakeCall("c1", "shell", fmt.Sprintf(`{"command":%q}`, sleeper))),
 	}}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
@@ -700,6 +700,14 @@ func TestSessionDefaultsAreTheGenericTools(t *testing.T) {
 	}
 	if !strings.Contains(loop.DefaultInstructions, "finish") || !strings.Contains(loop.DefaultInstructions, "claim") {
 		t.Error("default instructions")
+	}
+	const want = "You are a coding agent. Work in the working directory with the tools you are given. " +
+		"Read what you need, make the changes the task asks for and check your work with the available tools. " +
+		"When you are done, call the finish tool with a summary of what you did. " +
+		"Your finish is a claim: the caller verifies the work independently, so say plainly what you did not check or could not do. " +
+		"When your checks pass, call finish right away: no extra re-reads, re-runs or polishing after a pass."
+	if loop.DefaultInstructions != want {
+		t.Errorf("default instructions %q", loop.DefaultInstructions)
 	}
 }
 

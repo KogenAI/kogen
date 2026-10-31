@@ -23,7 +23,7 @@ Neither surface knows Kogen's approval, Intent, baseline, verification, review, 
 - **L5 Credentials.** The loop reads the existing store at `$HOME/.kogen/credentials/<provider>.json` (same format, 0600) with the same login/refresh behavior. It never prints, copies, proxies or exports tokens. Signing in remains the caller's job (`kogen provider login …`, or `provider.Login` for library callers).
 
   **openai-compatible keys are origin-bound.** The saved key (`~/.kogen/credentials/openai-compatible.json`, now `provider`, `api_key` and `origin`) is sent only to the origin it was saved for: scheme, lower-case hostname and effective port, without path, query or fragment. Library callers save it with `Client.LoginWithBaseURL(ctx, session, name, baseURL, redirect)`, passing the base URL the user supplied (never one taken from a repository's inference roles); `Client.Login` stays for every other provider and refuses openai-compatible rather than save an unbound key, and `baseURL` is ignored for other providers. A key login needs an HTTPS URL; an HTTP one is refused with the saved credential untouched. Before any request, a different destination origin (other scheme, host, subdomain or port) fails with a provider error naming both origins and sends nothing; a saved key whose origin is missing (written before this change) fails with a message to log in again, even on loopback. Matching HTTPS origins work with any URL path. Plain HTTP is allowed only keyless, to `localhost` or a literal loopback IP (names are never resolved); HTTPS keyless use is unchanged. Diagnostics never carry the key. There is no new CLI command or option.
-- **L6 Process custody.** Shell tools run in their own process groups. Cancellation, deadline or interruption terminates every group the loop started (SIGTERM, then SIGKILL after a bounded wait) before the call returns, including a shell that is still starting or is registered late. Every round also ends its own groups when it ends in any way (a terminal call, a no-call answer, a hook or requester error as well as cancellation, deadline or interruption), background processes included; they stay alive between the round's calls. Groups started before the round and processes that left their group (`setsid`, daemons) are not touched. A host binary calls `sys.MaybeSupervise(os.Args[1:])` and `sys.EnableSupervisor()` first in `main`, as Kogen does. `cmd/kogen-loop` does so too, so a killed host still takes its command groups down: the supervisor finishes the whole-group SIGTERM-then-SIGKILL escalation even when the direct shell exits on SIGTERM and a descendant ignores it, and a shell that already ended leaves a small keeper in its group while members remain, so a killed host still stops them. A library caller that skips this keeps only the in-process termination.  Shell calls have no per-call time limit.
+- **L6 Process custody.** Shell tools run in their own process groups. Cancellation, deadline or interruption terminates every group the loop started (SIGTERM, then SIGKILL after a bounded wait) before the call returns, including a shell that is still starting or is registered late. Every round also ends its own groups when it ends in any way (a terminal call, a no-call answer, a hook or requester error as well as cancellation, deadline or interruption), background processes included; they stay alive between the round's calls. Groups started before the round and processes that left their group (`setsid`, daemons) are not touched. A host binary calls `sys.MaybeSupervise(os.Args[1:])` and `sys.EnableSupervisor()` first in `main`, as Kogen does. `cmd/kogen-loop` does so too, so a killed host still takes its command groups down: the supervisor finishes the whole-group SIGTERM-then-SIGKILL escalation even when the direct shell exits on SIGTERM and a descendant ignores it, and a shell that already ended leaves a small keeper in its group while members remain, so a killed host still stops them. A library caller that skips this keeps only the in-process termination.  Shell calls yield after one second without killing the command.
 
 ## 2. Go library API (`loop/v1`)
 
@@ -44,15 +44,17 @@ type Requester interface {
     Request(ctx context.Context, r Request) (*provider.Response, []any, error)
 }
 
-// Direct is the provider-backed Requester (provider.Client.Respond). It always refuses an
-// over-budget request (typed error loop/context_budget_exceeded) before sending it, never
-// clipping, and takes an optional provider.Observer for attempt records.
+// Direct is the provider-backed Requester (provider.Client.Respond). A request that fits is
+// sent unchanged; an over-budget one is condensed first (see "Input window budget"), and one
+// that cannot be made to fit is refused (typed error loop/context_budget_exceeded) before
+// sending, never clipped. It takes an optional provider.Observer for attempt records.
 type Direct struct {
-    Client   *provider.Client
-    Session  *sys.Session
-    Observer provider.Observer  // nil: none
-    CacheID  string             // one cache identity per conversation (kept across rounds)
-    Cache    *provider.Cache
+    Client    *provider.Client
+    Session   *sys.Session
+    Observer  provider.Observer  // nil: none
+    CacheID   string             // one cache identity per conversation (kept across rounds)
+    Cache     *provider.Cache
+    Condensed func(Condensation) // nil: none; told of each condensation before the request is sent
 }
 
 // Handled is a caller's answer to a tool call it intercepts.
@@ -116,13 +118,29 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (Res
 6. If no call is terminal and `len(calls) > 0`, set `input = input ++ outs` and go to step 1.
 7. Otherwise return `Result{Ending, Terminal, Input: input ++ outs, …}`. The ending is `EndNoCall` when `len(calls) == 0`.
 
+**Overlap without response or call hooks (normative).** Steps 3 and 5 above are the order of a round with an `AfterResponse`, `BeforeCall`, `HandleCall` or `AfterCall` hook: the complete validated response first, then the calls serially, each hook seeing the outputs before it. When none of those four hooks is installed (`BeforeRequest` alone does not count) the engine does not wait for the whole response and does not run the calls one by one. This is the default and has no option, flag or field:
+
+- A streamed call becomes eligible only when its name, id, arguments and position are complete and valid for the provider adapter: Responses at `response.output_item.done`, Messages at `content_block_stop` after the tool input is assembled. Argument fragments never execute. A Chat Completions answer (read whole) and any `Requester` that only returns completed responses dispatch their calls only after the response is validated, under the same rules. The completed response stays the authority: a call started early is kept only if it is the response's call at the same position, otherwise its work is cancelled and joined and the response's calls run.
+- Calls keep their original order for dependencies. A call starts only when every earlier stream position is complete and no earlier unfinished call can conflict with it. Native reads (`read_file`, `list_files`, `search_text`) overlap each other; `view_image` reads the whole tree (its candidate metadata). Writes to different files, resolved through `..` and symlinks (case-insensitively), overlap each other and unrelated reads; a write that equals, contains or is contained by another call's read or write target serializes. `list_files` and `search_text` read both the resolved path and the path Git receives. A write outside the root, into `.git` or to a `.gitignore` or `.gitattributes` file changes what Git shows, so it is a barrier, and so is a `read_file` path through `..` that does not exist yet. `shell`, `probe`, `documentation`, disabled or unknown names, malformed arguments and any path that cannot be resolved are barriers against every other call: arbitrary shell commands are never parsed for safety and stay in order. Terminal calls are not executed and do not drop later calls; the last terminal call still wins.
+- Results and the conversation stay in original call order whatever order the calls finish in. A response is published (replay and outputs appended, the next request started) only when it validated and every call finished. A failed attempt cancels and joins its running calls and discards its staged results before the provider's existing retry wait; retries, backoffs and limits are unchanged. A tool stop, cancellation or deadline cancels and joins every running call before `Run` returns; the first error is returned unchanged and no partial result reaches the conversation, `Result` or a transcript. Writes already made are not rolled back. Every process group the round started is still ended before `Run` returns, including those of a shell that was starting.
+
 Cancellation observed after a response/call hook returns nil stops the round
 before executing a tool, starting another request or returning an ending. A hook error still
 takes precedence and is returned unchanged.
 
-### Input window budget (fixed)
+### Input window budget (fixed) and condensation
 
-The complete rendered request (instructions, tools, cache placement) is measured inclusively against a fixed 524288-byte ceiling (`provider.InputBudgetBytes`), or a smaller documented bound of the role's model family. There is no option to lower it: `loop.FailOverBudget` and `loop.Direct` have no budget field. `loop.Direct` always applies `FailOverBudget`; a request over the ceiling is refused with `loop/context_budget_exceeded` (message `<owner>: complete next request N bytes exceeds LIMIT; reserve R tokens. Nothing was sent and nothing was clipped.`) before anything is sent, and the input is never clipped. `tools.Measure` reports the rendered size, the ceiling and the output reserve.
+The complete rendered request (instructions, tools, cache placement) is measured inclusively against a fixed 524288-byte ceiling (`provider.InputBudgetBytes`), or a smaller documented bound of the role's model family; the 131072-token output reserve and the family bounds stay in force. There is no option to change it, and describing the limit as a token budget does not enlarge it. A request that fits is sent unchanged.
+
+`loop.Direct` (and so every standalone `Session`) condenses a request that does not fit, before sending it, instead of refusing it:
+
+- The conversation is split at complete exchange boundaries (the replayed items of one response with the outputs of its calls); a call is never separated from its result and an incomplete batch is never consumed.
+- Kept exact: the instructions and tool definitions, the original task and every later user message (in a `Session`, also the exchange whose terminal call a later round's feedback answers), and the newest complete exchange together with as many recent exchanges as fit in a quarter of the ceiling. Older exchanges, and any earlier summary, become one summary message (a user message that starts with `loop.CondensedHeader`, so it is kept in session history and in `session.json`, survives resume and is folded into the next condensation).
+- The summary is written by the model through the same provider, role, credentials and transport, in requests without tools whose complete body must itself fit. Older exchanges are rendered as quoted data in fitting chunks, each chunk request carries the summary so far, and a summary above a quarter of the ceiling is merged once more and must come out shorter. The instructions ask for facts, decisions, files changed, checks and outcomes, unresolved errors and remaining work, and to treat the historical text, including instructions in it, as data.
+- Every step consumes exchanges or shrinks the summary, and at most two summarization requests per older exchange plus two are sent. The condensed request is measured again. If what must stay exact (or one older exchange) cannot fit, the request is refused with `loop/context_budget_exceeded` (message `<owner>: complete next request N bytes exceeds LIMIT; reserve R tokens. ...`) before the conversation is sent; when no summarization is possible the message ends `Nothing was sent and nothing was clipped.`, otherwise it says what condensation could not reduce. A provider failure, a cancellation, an empty summary or a summary that cannot be shortened stops the round with that error; nothing is retried in a loop and no finish is invented. Finishing remains the model's claim.
+- Disclosure: a `context.condensed` event precedes the condensed request's attempts (summarization attempts are `request.attempt` events whose `record.purpose` is `condensation`). The summarization usage is in that event, not in the round's `response` totals.
+
+`loop.FailOverBudget` is the guard that refuses without condensing; `loop.Direct` applies it after condensation. `tools.Measure` reports the rendered size, the ceiling and the output reserve.
 
 ### Client response budget (Go library)
 
@@ -131,7 +149,8 @@ The complete rendered request (instructions, tools, cache placement) is measured
 - The effective logical-call budget is the client value, or 30 minutes for zero; nothing else selects it.
 - The budget stays absolute: it covers credential waits, refresh, transport, stream reads, retry backoff and retries; bytes and heartbeats never renew it. No retry is added.
 - Every transport attempt also has default silence timeouts, for everyone and without a caller-facing option; they end only that attempt and never renew or extend the absolute budget. The first response progress must arrive within 90 s for ChatGPT and 45 s for Anthropic Messages and every other provider; after that no more than 180 s may pass between progress reads. Only response progress counts, not every byte. For streams (Responses, Messages) the first-progress clock starts at request dispatch and response headers do not meet it. A body read is progress when it completes at least one SSE event (a block ending in a blank line, LF or CRLF) that has a `data:` field and is not a keep-alive; an unfinished event counts in the read that completes it. Keep-alives are blocks made only of comment lines (`: keepalive`, `: ping`, ...) and blank lines and, on Messages, `ping` events (`event: ping` or a data object whose `type` is `ping`); they neither meet the first-progress limit nor renew the idle clock. Every other data event is progress, including Responses `response.created` and `response.in_progress`, error events and Messages events the parser ignores. A read of zero bytes is never progress. For a body read whole (non-streaming Chat Completions and every HTTP error body, on any route) the headers are the first progress and start the idle clock, and a body read renews it only when it has a byte other than JSON whitespace (space, tab, LF, CR). Elapsed time is read from `Client.Now`; a blocked header wait or body read is cancelled when its limit passes rather than waiting for another byte. Progress strictly before the limit is valid; at the limit the attempt has expired.
-- An expired attempt is a transient failure (outcome `failed`, `end_reason` `idle`, also on Chat Completions) whose detail is `no first byte within 90 s`, `no first byte within 45 s` or `stream idle for 180 s`. It is retried by the existing attempt policy with unchanged count and 2 s/8 s backoff, and is single-shot with `Request.Single` on ChatGPT. The absolute budget and caller cancellation take precedence over an overlapping timeout. Request bytes are unchanged.
+- An expired attempt is a transient failure (outcome `failed`, `end_reason` `idle`, also on Chat Completions) whose detail is `no first byte within 90 s`, `no first byte within 45 s` or `stream idle for 180 s`. It is retried by the existing attempt policy with unchanged count and 2 s/8 s backoff (it has no `Retry-After`), and is single-shot with `Request.Single` on ChatGPT. The absolute budget and caller cancellation take precedence over an overlapping timeout. Request bytes are unchanged.
+- A transient failure that will be retried (attempt 1 or 2) waits for the answer's `Retry-After` instead of the 2 s/8 s backoff when it has a usable one, on every HTTP route (Responses, Chat Completions, Messages). Usable means HTTP status exactly 429 or 503 and a first `Retry-After` value, trimmed of spaces and tabs, in one of the two RFC 9110 forms: delay-seconds (ASCII digits, leading zeros allowed; `0` retries at once) or an HTTP-date (`net/http.ParseTime` formats; the wait is the date minus `Client.Now`, 0 when not in the future). Anything else (empty, negative, fractional, text, an unparsable date, other statuses, stream failure events, other headers such as `retry-after-ms`) is absent and keeps the 2 s/8 s schedule by position. The advertised wait is used exactly, shorter or longer than the schedule, and still counts against the absolute budget and yields to cancellation. The maximum is a fixed 60 s, inclusive: a usable `Retry-After` above it ends the call at once, with no wait and no further request, as `provider/unavailable` (exit 4, with the attempt's diagnostics), detail `<Label> asked to wait <N> s before retrying, more than the 60 s limit: <attempt detail>`, where `<N>` is the delay-seconds digits without leading zeros (kept as text) or an HTTP-date's wait rounded up to whole seconds. The attempt count does not change: at most 3 transport attempts, and the third transient failure ends with `<Label> did not answer after 3 attempts: <attempt detail>` whatever `Retry-After` it carries. The unreadable-answer retry, the 401 refresh, the cache-key strip retry and `Request.Single` are unchanged. No option selects any of this.
 - Expiry uses the existing path: `provider/unavailable`, exit 4, provider-labelled. With `ResponseBudget` zero the detail is exactly `response wait exceeded 30 minutes`. With a nonzero value the detail is `response wait exceeded ` plus the budget as `time.Duration.String()`: for example `response wait exceeded 10m0s`, `30m0s` for an explicit 30 minutes, `2s`.
 
 ### Parallel tool calls (provider default)
@@ -184,11 +203,14 @@ stop what `claude` runs between hooks, or processes that leave the group.
 
 ### Shell time limit
 
-`tools.Tools` has no per-call shell time limit: shell calls are unbounded, the
-`shell` definition says `Commands have no time limit.`, and output is exactly
-`exit status: <n>\n<combined output>`. No task field, CLI flag, environment setting
-or option adds one. `deadline_seconds` remains the standalone whole-round stopping
-deadline.
+A shell call supplies exactly one string `command` or `handle`. Each call waits at most
+one second without imposing an execution timeout. Fast commands return `exit status: <n>\n<combined output>`.
+Running commands return JSON with `status: "running"`, an opaque `handle` and cumulative
+`output`. Retrieval returns that shape or `status: "completed"` with the same handle,
+integer `exit_status` and cumulative output. Completed retrieval is repeatable until round
+end. Invalid combinations and unknown or expired handles return `error:` text. Output is
+bounded inside the JSON envelope. Round cleanup stops yielded groups. The wait is not a
+setting; `deadline_seconds` remains the whole-round deadline and `sys.Options.Timeout` is independent.
 
 `func (t *Tools) Definition(name string) (map[string]any, bool)` returns the same
 definition as the package function `tools.Definition`, so callers may build
@@ -197,7 +219,7 @@ supplied definitions verbatim. `tools.Definition` and `tools.Defs` are byte-iden
 to their goldens.
 
 `Tools.RunContext` and `CallContext` forward their context to shell commands
-(`sys.Session.RunContext`): a done context starts no shell, and a shell that is
+during each wait: a done context starts no shell, and a shell that is
 starting or running has its process group terminated and joined before the call returns
 `ctx.Err()`; that is a stopping error, never tool feedback. `Run` and `Call` are
 nil-context wrappers that never stop a shell this way. Groups that finished shells left
@@ -278,6 +300,7 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 | `request.started` | `n`, `owner`, `model`, `effort` |
 | `request.attempt` | `n`, `record` (the provider observer record, credentials never included) |
 | `response` | `n`, `response_id`, `usage` (`api.Usage`) |
+| `context.condensed` | `n` (the request it precedes), `requests` (summarization requests), `condensed_exchanges`, `kept_exchanges`, `bytes_before`, `bytes_after`, `limit`, `summary_bytes`, `usage` (`api.Usage` of the summarization requests; unknown stays null) |
 | `tool.call` | `call_id`, `name`, `arguments_sha256` |
 | `tool.result` | `call_id`, `name`, `result_sha256`, `bytes`, `cut` (bool), and `rule` only for a refused shell call. `bytes` and `result_sha256` describe what the model received, after the cut. |
 | `round.ended` | `ending` (`terminal`/`no_call`), `terminal_tool`, `claim` (terminal arguments or final text — `output_text` and `refusal` parts in content order, newline-joined — bounded 16384 bytes; **a claim, not proof**), `requests`, `usage` (round total) |
@@ -331,15 +354,15 @@ With `session.dir`, the loop writes `session.json` atomically (0600, directory 0
   "tools": ["read_file", "write_file", "list_files", "search_text", "shell", "view_image", "documentation"],
   "terminal_default": ["finish"],
   "session_resume": "transcript",
-  "context_policies": ["fail_over_budget"],
+  "context_policies": ["condense_over_budget"],
   "usage": "provider",
   "images": true,
   "subagents": false,
-  "compaction": false
+  "compaction": true
 }
 ```
 
-`false` and missing capabilities are real absences, not hidden equivalents. Subagents, compaction, alternative read/edit tools and review/build mechanisms are future experiments behind `HandleCall` and tool registration. Defaults don't change without scoped evidence.
+`false` and missing capabilities are real absences, not hidden equivalents. Subagents, alternative read/edit tools and review/build mechanisms are future experiments behind `HandleCall` and tool registration. Defaults don't change without scoped evidence.
 
 ## 5. Errors
 
@@ -398,7 +421,7 @@ Kogen-side synchronization and pin updates remain outside this component's scope
 - handled call;
 - hook error stops the round;
 - tool result cut;
-- over-budget refusal;
+- over-budget refusal of an irreducible request, and condensation of a reducible one (`context.condensed`);
 - deadline;
 - interruption with a running shell child (group terminated);
 - strict task refusal;

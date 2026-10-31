@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"kogen-loop/internal/delivery"
 )
 
 // resultKind is how one transport attempt ended.
@@ -33,6 +35,7 @@ type result struct {
 	detail string
 	reason string         // resRefused
 	diag   map[string]any // transient: allowlisted failure fields
+	after  *retryAfter    // transient: the answer's usable Retry-After
 	// resError, resUnauthorized and resRefused
 	fail failure
 }
@@ -61,7 +64,9 @@ type accumulator struct {
 	reasons                                                  map[string]bool
 	terminalResponse, terminalOutput, terminalOutputReplaced bool
 	observed                                                 int
-	delta                                                    bool // a parsed *.delta event was seen
+	delta                                                    bool            // a parsed *.delta event was seen
+	sink                                                     delivery.Sink   // nil: completed items are not delivered early
+	delivered                                                map[string]bool // call_ids already delivered to sink
 }
 
 func newAccumulator() *accumulator {
@@ -185,6 +190,9 @@ func (a *accumulator) apply(ev map[string]any) {
 		if ok && has {
 			a.items[i] = item
 			delete(a.pending, i)
+			if a.sink != nil {
+				a.deliver(i, item)
+			}
 			return
 		}
 		a.reason("item_event_shape")
@@ -220,6 +228,33 @@ func (a *accumulator) apply(ev map[string]any) {
 		}
 		a.failure = &streamFailure{body: body, kind: "error"}
 	}
+}
+
+// deliver hands a completed item to the sink. Only an item the final validation would accept
+// settles its position, and a repeated call_id (which makes the response invalid) is never
+// delivered. The completed response remains the authority: the sink checks what it started
+// against it.
+func (a *accumulator) deliver(i int, item any) {
+	m, ok := asMap(item)
+	if !ok || !validItem(item) {
+		return
+	}
+	if s := m["status"]; s != nil && s != "completed" {
+		return
+	}
+	if m["type"] != "function_call" {
+		a.sink.Done(i, nil)
+		return
+	}
+	id, ok := m["call_id"].(string)
+	if !ok || a.delivered[id] {
+		return
+	}
+	if a.delivered == nil {
+		a.delivered = map[string]bool{}
+	}
+	a.delivered[id] = true
+	a.sink.Done(i, m)
 }
 
 // incompleteReason is the reported reason of an incomplete response as a fixed category:

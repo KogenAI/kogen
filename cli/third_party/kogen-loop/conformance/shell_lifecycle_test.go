@@ -347,11 +347,11 @@ func TestShellLifecycleCompatibility(t *testing.T) {
 		}
 	}
 	def, ok := tools.Definition(tools.ShellTool)
-	if !ok || !strings.Contains(fmt.Sprint(def["description"]), "Commands have no time limit.") {
+	if !ok || !strings.Contains(fmt.Sprint(def["description"]), "Each call waits up to one second") {
 		t.Errorf("shell definition %v", def)
 	}
 	props := def["parameters"].(map[string]any)["properties"].(map[string]any)
-	if len(props) != 1 || props["command"] == nil {
+	if len(props) != 2 || props["command"] == nil || props["handle"] == nil {
 		t.Errorf("shell parameters %v", props)
 	}
 }
@@ -469,7 +469,7 @@ func TestShellLifecycleDeadlineStartup(t *testing.T) {
 	for _, stage := range []string{"enter", "starting", "started"} {
 		t.Run(stage, func(t *testing.T) {
 			startupRound(t, stage, func() (context.Context, func(), func()) {
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 				return ctx, cancel, func() { <-ctx.Done() }
 			})
 		})
@@ -496,8 +496,8 @@ func TestShellLifecycleDeadlineStartup(t *testing.T) {
 		if end := r.events[len(r.events)-1]; end["status"] != "failed" {
 			t.Errorf("session.ended %v", end)
 		}
-		if r.first("tool.result") != nil || len(f.requests()) != 1 {
-			t.Errorf("an interrupted result was published or another request was sent (%d requests)", len(f.requests()))
+		if r.first("tool.result") == nil || len(f.requests()) != 2 {
+			t.Errorf("expected a yielded result and second request (%d requests)", len(f.requests()))
 		}
 		for name, o := range map[string]owned{"shell": shell, "descendant": desc} {
 			if !o.waitGone(t, 2*time.Second) {

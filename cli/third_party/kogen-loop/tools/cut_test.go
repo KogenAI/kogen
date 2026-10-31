@@ -12,7 +12,7 @@ import (
 )
 
 // TestCutMatchesTheElixirCut compares Cut with Kogen.Tools.cut for text around the limit, with
-// multi-byte characters at the cut points, with invalid UTF-8 and with many digits in the
+// multi-byte characters at the cut points and with many digits in the
 // count.
 func TestCutMatchesTheElixirCut(t *testing.T) {
 	data, err := os.ReadFile("testdata/cut_golden.json")

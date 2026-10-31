@@ -238,7 +238,7 @@ func TestUnsupportedProtocolIsRefusedBeforeItsFieldsAreJudged(t *testing.T) {
 }
 
 func TestRequiresRefusal(t *testing.T) {
-	for _, name := range []string{"subagents", "compaction", "telepathy"} {
+	for _, name := range []string{"subagents", "telepathy"} {
 		t.Run(name, func(t *testing.T) {
 			w := newWorld(t).signIn()
 			f := newFakeProvider(t, nil)
@@ -252,7 +252,7 @@ func TestRequiresRefusal(t *testing.T) {
 	t.Run("provided capabilities are accepted", func(t *testing.T) {
 		w := newWorld(t).signIn()
 		f := newFakeProvider(t, []exchange{{Items: []map[string]any{message("ok")}}})
-		r := runCLI(t, w, f, w.task(map[string]any{"requires": []any{"session_resume", "images"}}))
+		r := runCLI(t, w, f, w.task(map[string]any{"requires": []any{"session_resume", "images", "compaction"}}))
 		if r.exit != 0 {
 			t.Errorf("exit %d: %v", r.exit, r.events)
 		}
@@ -362,7 +362,7 @@ func TestDeadlineEndsAHangingRequest(t *testing.T) {
 
 func TestDeadlineTerminatesARunningShellGroup(t *testing.T) {
 	w := newWorld(t).signIn()
-	f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "shell", map[string]any{"command": sleeper})}}})
+	f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "shell", map[string]any{"command": sleeper})}}, {Hang: true}})
 	p := startCLI(t, w, f, mustJSON(t, w.task(map[string]any{"deadline_seconds": 3})), "run", "--task", "-")
 	pidSh := readPid(t, filepath.Join(w.root, "pid-sh"))
 	pidSleep := readPid(t, filepath.Join(w.root, "pid-sleep"))
@@ -633,7 +633,7 @@ func TestCapabilitiesNeedNoNetworkOrCredentials(t *testing.T) {
 		t.Errorf("capabilities is not one object: %q", out)
 	}
 	if caps["protocol"] != "kogen-loop/v1" || caps["library"] != "loop/v1" || caps["session_resume"] != "transcript" ||
-		caps["usage"] != "provider" || caps["images"] != true || caps["subagents"] != false || caps["compaction"] != false {
+		caps["usage"] != "provider" || caps["images"] != true || caps["subagents"] != false || caps["compaction"] != true {
 		t.Errorf("capabilities %v", caps)
 	}
 	if got := caps["terminal_default"]; !match([]any{"finish"}, got) {
@@ -645,7 +645,7 @@ func TestCapabilitiesNeedNoNetworkOrCredentials(t *testing.T) {
 	if got := caps["tools"]; !match([]any{"read_file", "write_file", "list_files", "search_text", "shell", "view_image", "documentation"}, got) {
 		t.Errorf("tools %v", got)
 	}
-	if got := caps["context_policies"]; !match([]any{"fail_over_budget"}, got) {
+	if got := caps["context_policies"]; !match([]any{"condense_over_budget"}, got) {
 		t.Errorf("context_policies %v", got)
 	}
 }

@@ -91,3 +91,23 @@ func TestANumberedSingleLineCustodyReadIsBoundedOnlyAtDelivery(t *testing.T) {
 		t.Fatal("the private original changed")
 	}
 }
+
+func TestLShellUTF8DeliveryCases(t *testing.T) {
+	checkDelivery(t, "")
+	for _, size := range []int{16383, 16384, 16385} {
+		for _, unit := range []string{"x", "Δ🙂"} {
+			text := strings.Repeat(unit, size/len(unit)) + strings.Repeat("z", size%len(unit))
+			checkDelivery(t, text)
+		}
+		raw := strings.Repeat("a", size-3) + "\xff" + "Δ"
+		normalized := strings.Repeat("a", size-3) + "�Δ"
+		got := Cut(raw)
+		if got != Cut(normalized) || !utf8.ValidString(got) || len(got) > 16384 || Cut(got) != got {
+			t.Fatalf("malformed size %d: invalid delivery", size)
+		}
+		checkDelivery(t, normalized)
+	}
+	if got := Cut("Δ\xff🙂\xfe"); got != "Δ�🙂�" {
+		t.Fatalf("replacement: %q", got)
+	}
+}

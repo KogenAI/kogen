@@ -14,6 +14,7 @@ import (
 	"slices"
 
 	"kogen-loop/api"
+	"kogen-loop/internal/delivery"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
@@ -36,7 +37,7 @@ type Requester interface {
 // FailOverBudget measures the complete rendered request and
 // refuses one that exceeds the role's input budget (provider.InputBudgetBytes, or a smaller
 // documented bound of the model family) with loop/context_budget_exceeded, before anything is
-// sent. It never clips the input. Direct always applies it.
+// sent. It never clips the input. Direct applies it to what remains after condensation.
 //
 // Client, Cache and CacheID only make the measured body the body that will be sent (cache
 // identity placement); Direct fills them in. The zero value works on its own.
@@ -80,23 +81,33 @@ func ownerLabel(owner string) string {
 	return owner
 }
 
-// Direct is the provider-backed Requester (provider.Client.Respond) that refuses an
-// over-budget request before sending it, with an optional provider.Observer for attempt records.
+// Direct is the provider-backed Requester (provider.Client.Respond). A request that fits is sent
+// unchanged. An over-budget request is first condensed: older complete exchanges are summarized
+// with bounded summarization requests (same provider, role, credentials and transport, no tools)
+// while instructions, the original task, the user's messages and the recent exchanges stay
+// exact. A request that still cannot fit is refused before sending (FailOverBudget). It takes an
+// optional provider.Observer for attempt records.
 type Direct struct {
 	Client   *provider.Client
 	Session  *sys.Session
 	Observer provider.Observer // nil: none
 	CacheID  string            // one cache identity per conversation (kept across rounds)
 	Cache    *provider.Cache
+	// Condensed, when set, is told about each condensation before the condensed request is sent.
+	Condensed func(Condensation)
+
+	// terminal names the calls whose outputs are the caller's feedback (Session sets it);
+	// condensation keeps those exchanges exact.
+	terminal []string
 }
 
-// Request refuses an over-budget request, then sends it with provider.Client.Respond. It
-// returns the response and the input it sent.
+// Request condenses an over-budget request when it can, refuses one that cannot fit, then
+// sends it with provider.Client.Respond. It returns the response and the input it sent.
 func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []any, error) {
 	if d.Session == nil {
 		return nil, nil, provider.ErrMissingSession()
 	}
-	sent, err := FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID}.Prepare(ctx, r)
+	sent, err := d.prepare(ctx, r)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -112,6 +123,36 @@ func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []
 		return nil, nil, err
 	}
 	return resp, sent, nil
+}
+
+// prepare returns the input to send: r.Input when it fits, else its condensation.
+func (d *Direct) prepare(ctx context.Context, r Request) ([]any, error) {
+	guard := FailOverBudget{Client: d.Client, Cache: d.Cache, CacheID: d.CacheID}
+	if _, ok := provider.Lookup(r.Role.Provider); !ok {
+		return guard.Prepare(ctx, r)
+	}
+	client := d.Client
+	if client == nil {
+		client = provider.NewClient("")
+	}
+	c := &condenser{d: d, client: client, r: r}
+	m, err := c.fits(r.Input)
+	if err != nil {
+		return nil, err
+	}
+	c.limit, c.reserve = m.InputBudgetBytes, m.OutputReserveTokens
+	if m.Fits {
+		return r.Input, nil
+	}
+	if countWork(split(r.Input, d.terminal)) == 0 {
+		return guard.Prepare(ctx, r)
+	}
+	input, err := c.condense(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	r.Input = input
+	return guard.Prepare(ctx, r)
 }
 
 // Handled is a caller's answer to a tool call it intercepts.
@@ -174,6 +215,12 @@ var DefaultTerminal = []string{"finish"}
 //  6. No terminal call and at least one call: input = input ++ outs and go to 1.
 //  7. Otherwise return the Result.
 //
+// Without AfterResponse, BeforeCall, HandleCall and AfterCall hooks (BeforeRequest alone does
+// not count) steps 2 to 5 overlap: a complete streamed call starts as soon as no earlier call
+// can conflict with it, independent calls run concurrently and the response is published
+// only when it validated and every call finished, in original call order (see stage). With
+// any of those hooks the order above holds exactly.
+//
 // Calls after a terminal call in the same batch still run. A hook error, a tool interrupt
 // (a shell stopped by the caller), timeout observation failure or a cancelled context
 // stops the round; the error is
@@ -197,7 +244,9 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 			rd.Tools = &t
 		}
 		defer custody(rd.Tools.Session)()
+		defer rd.Tools.EndShellRound()
 	}
+	unhooked := h.AfterResponse == nil && h.BeforeCall == nil && h.HandleCall == nil && h.AfterCall == nil
 	requests := 0
 	for {
 		if h.BeforeRequest != nil {
@@ -206,10 +255,20 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 			}
 		}
 		requests++
-		resp, sent, err := rq.Request(ctx, Request{
+		// Without response or call hooks the response's calls run while it streams.
+		var st *stage
+		rctx := ctx
+		if unhooked {
+			st = newStage(ctx, rd.Tools, terminal)
+			rctx = delivery.With(ctx, st)
+		}
+		resp, sent, err := rq.Request(rctx, Request{
 			Owner: rd.Owner, Role: rd.Role, Instructions: rd.Instructions, Input: input, Tools: rd.Definitions,
 		})
 		if err != nil {
+			if st != nil {
+				st.close()
+			}
 			return Result{}, err
 		}
 		if h.AfterResponse != nil {
@@ -221,7 +280,21 @@ func Run(ctx context.Context, rd Round, input []any, rq Requester, h Hooks) (res
 		calls := tools.Calls(resp.Items)
 		var outs []any
 		var last *tools.Call
-		for i := range calls {
+		if st != nil {
+			results, err := st.finish(calls)
+			if err != nil {
+				return Result{}, err
+			}
+			for i, call := range calls {
+				if slices.Contains(terminal, call.Name) {
+					last = &calls[i]
+				} else {
+					outs = append(outs, call.Output(results[i]))
+				}
+			}
+		}
+		// Hooked rounds replay the validated response first, then run the calls serially.
+		for i := 0; st == nil && i < len(calls); i++ {
 			call := calls[i]
 			if err := ctx.Err(); err != nil {
 				return Result{}, err

@@ -203,6 +203,10 @@ func hookStart(stage string) {
 // group keeps its group until the caller stops it (Terminate, then Retire); groups left
 // behind are not stopped by RunContext returning.
 func (s *Session) RunContext(ctx context.Context, command, dir string, opts Options) (Result, error) {
+	return s.runCaptured(ctx, command, dir, opts, &capBuffer{})
+}
+
+func (s *Session) runCaptured(ctx context.Context, command, dir string, opts Options, buf *capBuffer) (Result, error) {
 	hookStart("enter")
 	if opts.RefuseForeignKill {
 		if rule, refused := ForeignKill(command, s.Owned); refused {
@@ -221,7 +225,6 @@ func (s *Session) RunContext(ctx context.Context, command, dir string, opts Opti
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	buf := &capBuffer{}
 	cmd.Stdout, cmd.Stderr = buf, buf
 	cmd.WaitDelay = time.Second
 
@@ -309,6 +312,33 @@ func (s *Session) RunContext(ctx context.Context, command, dir string, opts Opti
 	}
 	s.afterCommand(pgid, lifeline)
 	return Result{Status: exitStatus(cmd.ProcessState), Output: buf.String(), TimedOut: timedOut}, nil
+}
+
+// CapturedCommand provides bounded snapshots of a supervised command.
+type CapturedCommand struct {
+	buf    *capBuffer
+	done   chan struct{}
+	result Result
+	err    error
+}
+
+// StartCaptured launches a shell with the normal foreign-kill policy.
+func (s *Session) StartCaptured(ctx context.Context, command, dir string) *CapturedCommand {
+	c := &CapturedCommand{buf: &capBuffer{}, done: make(chan struct{})}
+	go func() {
+		c.result, c.err = s.runCaptured(ctx, command, dir, Options{RefuseForeignKill: true}, c.buf)
+		close(c.done)
+	}()
+	return c
+}
+func (c *CapturedCommand) Done() <-chan struct{} { return c.done }
+func (c *CapturedCommand) Snapshot() (Result, bool, error) {
+	select {
+	case <-c.done:
+		return c.result, true, c.err
+	default:
+		return Result{Output: c.buf.String()}, false, nil
+	}
 }
 
 // afterCommand records what an ended command left. A group that is already empty is

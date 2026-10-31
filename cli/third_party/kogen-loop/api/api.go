@@ -94,11 +94,13 @@ const (
 	EventRequestStarted = "request.started"
 	EventRequestAttempt = "request.attempt"
 	EventResponse       = "response"
-	EventToolCall       = "tool.call"
-	EventToolResult     = "tool.result"
-	EventRoundEnded     = "round.ended"
-	EventError          = "error"
-	EventSessionEnded   = "session.ended"
+	// EventContextCondensed discloses that older history was condensed into a summary.
+	EventContextCondensed = "context.condensed"
+	EventToolCall         = "tool.call"
+	EventToolResult       = "tool.result"
+	EventRoundEnded       = "round.ended"
+	EventError            = "error"
+	EventSessionEnded     = "session.ended"
 )
 
 // Endings of a round (round.ended "ending"): model claims, not completion.
