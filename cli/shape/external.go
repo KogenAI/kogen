@@ -28,7 +28,7 @@ type External func(role project.Role) (executor.Executor, error)
 // claims no Kogen capability for the harness's own tools.
 const externalNote = "# This session\n\n" +
 	"You are a read-only external session. You may inspect the checkout with your own tools, but you must not change any file, the Git index or HEAD, including the files you propose: they are submitted in your final structured result and Kogen checks and publishes them.\n" +
-	"The native tools named in the rules above (probe, view_image, documentation records, shape_batch) are not available here. Kogen's own scratch checking, readiness, Feasibility checks and documentation records are not produced by your research; what you fetch or run with your tools is observed by the harness only, not retained by Kogen as a documentation event.\n" +
+	"The native tools named in the rules above (probe, view_image, documentation records, shape_batch, propose_files) are not available here. Kogen's own scratch checking, readiness, Feasibility checks and documentation records are not produced by your research; what you fetch or run with your tools is observed by the harness only, not retained by Kogen as a documentation event.\n" +
 	"The final structured result is the arguments of the submission described above (for Shape `submit`; for Refine `submit_refinement`). Kogen returns its actual feedback to this same session."
 
 // selectExternal is the executor a Shape or Refine role selects, validated for the shape role.

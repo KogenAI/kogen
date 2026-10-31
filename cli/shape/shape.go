@@ -518,7 +518,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	role := sh.role
 
 	defs := agent.Defs(sh.mainTools()...)
-	defs = append(defs, agent.Defs(agent.SubmitTool)...)
+	defs = append(defs, agent.Defs(agent.ProposeFilesTool, agent.SubmitTool)...)
 	if sh.cfg.ShapeWorkers.Enabled {
 		defs = append(defs, agent.Defs(agent.ShapeBatchTool)...)
 	}
@@ -642,6 +642,12 @@ func questionList(qs []map[string]any) []any {
 func (sh *shaping) providerFailed(e *sys.Error) error {
 	e = agent.WithOriginHint(e)
 	sh.s.Out(e.Render())
+	if kept := sortedKeys(sh.proposed); len(kept) > 0 {
+		if err := sh.keepProposals(); err != nil {
+			return err
+		}
+		sh.s.Puts(fmt.Sprintf("kogen: shaping kept %d proposed file(s) under %s: %s", len(kept), proposedDir(sh.slug), strings.Join(kept, ", ")))
+	}
 	var retry string
 	if sh.in.RequestPath == "" {
 		retry = "kogen intent shape " + sh.slug + " - with the original request on stdin (or the same answers if questions are pending)"
@@ -746,6 +752,12 @@ func (sh *shaping) converse(ctx context.Context, input []any) (outcome, provider
 				}
 				sh.batchUsed = true
 				outputs = append(outputs, toolOutput(c, string(text)))
+			case c.Name == agent.ProposeFilesTool:
+				text, err := sh.proposeFiles(c.Args())
+				if err != nil {
+					return outcome{}, usage, err
+				}
+				outputs = append(outputs, toolOutput(c, text))
 			case c.Name == agent.SubmitTool:
 				sh.priorInvalid = turns.invalid
 				text, r, err := sh.submit(ctx, c.Args())
@@ -878,6 +890,55 @@ func (sh *shaping) noteTool(name string, out tools.Output) {
 			sh.window.documentation = sh.docs
 		}
 	}
+}
+
+// proposedDir is the private custody folder of a shaping's proposals, relative to the checkout.
+func proposedDir(slug string) string {
+	return ".kogen/local/shaping/" + slug + "/proposed/"
+}
+
+// keepProposals writes every proposal, with its exact bytes, under the custody folder.
+func (sh *shaping) keepProposals() error {
+	for _, p := range sortedKeys(sh.proposed) {
+		dest := filepath.Join(sh.root, ".kogen/local/shaping", sh.slug, "proposed", p)
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(dest, []byte(sh.proposed[p]), 0o666); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// proposeFiles is the propose_files tool: well-formed files join the accumulated proposals and
+// are kept at once; a malformed or unsafe call retains nothing. It is not a submission.
+func (sh *shaping) proposeFiles(args map[string]any) (string, error) {
+	list, _ := args["files"].([]any)
+	var sub submission
+	problems := []string{"propose_files takes a non-empty files list"}
+	if len(list) > 0 {
+		var err error
+		if sub, problems, err = sh.validateFiles(list); err != nil {
+			return "", err
+		}
+	}
+	if problems != nil {
+		return "invalid proposal:\n" + strings.Join(problems, "\n") +
+			"\nNo files from this call were retained; earlier proposals are unchanged.", nil
+	}
+	paths := make([]string, len(sub.files))
+	for i, f := range sub.files {
+		sh.proposed[f.path] = f.content
+		paths[i] = f.path
+	}
+	if err := sh.keepProposals(); err != nil {
+		return "", err
+	}
+	joined := strings.Join(paths, ", ")
+	sh.ev.Record(map[string]any{"event": "proposal_retained", "paths": paths, "proposed": len(sh.proposed)})
+	sh.progress(fmt.Sprintf("kogen: shape proposal retained: %s (%d proposed file(s))", joined, len(sh.proposed)))
+	return fmt.Sprintf("retained: %s; %d proposed file(s) in all. Nothing was checked: submit to check the complete package.", joined, len(sh.proposed)), nil
 }
 
 // writeManifest keeps the proposals and the originals they replace under the shaping folder

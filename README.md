@@ -308,6 +308,8 @@ exactly unsent with `candidate/context_budget_exceeded`: a fresh identical retry
 recovery; correct the request/scope or prepare images externally. There is no summarizer,
 automatic splitting or persistent Shape resume, and not every large request fits.
 
+Native Shape can retain files in bounded pieces with `propose_files` before one `submit` checks the complete package: a long package is written one long file or a few short ones per reply instead of in one very long reply, and a cut-off reply loses only itself. Proposals are kept privately under `.kogen/local/shaping/<slug>/proposed/` and are named when a provider failure stops Shape. A proposal runs no checks and is not an invalid submission. No reply size limit, option, timeout or retry is added.
+
 Shape and Refine reset handoffs carry only `history: {head: {path, sha256}, count}`
 and `documentation: {path, sha256, count, format: "ndjson"}` evidence references.
 Each numbered version-1 archive binds its immutable sibling `<n>-documentation.ndjson`

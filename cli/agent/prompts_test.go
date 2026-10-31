@@ -175,7 +175,7 @@ func TestReviewerBatchPromptBytesAndUnchangedSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(defs)); got != "b921e44cb5f52d493169809ee8374164d94fa5071c7c811b41cc416a1476b3d1" {
+	if got := fmt.Sprintf("%x", sha256.Sum256(defs)); got != "a97c1d79eedef5a705a82e06221729374c2fee783f960754c302ec200895bc10" {
 		t.Fatalf("schema source hash = %s", got)
 	}
 }

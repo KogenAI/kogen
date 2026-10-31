@@ -9,9 +9,9 @@ import (
 	"kogen-loop/tools"
 )
 
-// everyTool is the sixteen definitions: kogen-loop's generic tools and Kogen's own.
+// everyTool is the seventeen definitions: kogen-loop's generic tools and Kogen's own.
 var everyTool = []string{tools.ShellTool, tools.ViewImageTool, tools.ReadFileTool, tools.WriteFileTool, ReportBlockerTool, FinishTool,
-	tools.ListFilesTool, tools.SearchTextTool, ProbeTool, tools.DocumentationTool, SubmitTool, SubmitReviewTool, SubmitRefinementTool,
+	tools.ListFilesTool, tools.SearchTextTool, ProbeTool, tools.DocumentationTool, ProposeFilesTool, SubmitTool, SubmitReviewTool, SubmitRefinementTool,
 	SubmitConfigurationTool, ShapeBatchTool, WorkerResultTool}
 
 // TestDefinitionsMatchTheElixirDefinitions compares every tool definition (Kogen.Tools.defs/1,

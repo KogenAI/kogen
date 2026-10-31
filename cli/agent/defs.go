@@ -13,6 +13,7 @@ const (
 	FinishTool        = "finish"
 	ReportBlockerTool = "report_blocker"
 
+	ProposeFilesTool        = "propose_files"
 	SubmitTool              = "submit"
 	SubmitReviewTool        = "submit_review"
 	SubmitRefinementTool    = "submit_refinement"
@@ -104,6 +105,10 @@ func definition(name string) map[string]any {
 					},
 				},
 			}, "command")
+	case ProposeFilesTool:
+		return fun(name,
+			"Retain Intent files without checking them yet, so a large package is written in bounded pieces across several replies: put one long file, or a few short ones, in each call and make one call per reply. Same path rules as submit's files; well-formed proposals accumulate (latest content for a path wins) and are kept privately under .kogen/local/shaping/<slug>/proposed/ as soon as they are accepted; a malformed or unsafe call retains nothing. A proposal is not a submission: it runs no checks and never counts as an invalid submission. End with submit, whose files (at least one, for example the last file) complete the package Kogen checks; a reply cut off before its tool call loses only that reply.",
+			map[string]any{"files": pathAndContent(true)}, "files")
 	case SubmitTool:
 		return submitDef()
 	case SubmitReviewTool:

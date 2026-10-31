@@ -153,7 +153,7 @@ func TestShapeBatchRunsWorkersAndReturnsTheirResults(t *testing.T) {
 	}
 	shpEq(t, "main requests", len(main), 2)
 	shpEq(t, "worker requests", len(workers), 3)
-	shpEq(t, "main tools", strings.Join(shpToolNames(main[0]), ", "), "read_file, view_image, list_files, search_text, probe, documentation, submit, shape_batch")
+	shpEq(t, "main tools", strings.Join(shpToolNames(main[0]), ", "), "read_file, view_image, list_files, search_text, probe, documentation, propose_files, submit, shape_batch")
 
 	result := batchResult(t, main[1], "b1")
 	shpEq(t, "status", result["status"], any("completed"))

@@ -73,7 +73,7 @@ func TestShapeOneShotWritesThePackageAndPrintsTheLines(t *testing.T) {
 	}
 	shpContains(t, "request 1", body, "Cumulative proposal manifest: ")
 	shpContains(t, "request 1", body, "Use focused scratch probes")
-	shpEq(t, "tools", strings.Join(shpToolNames(reqs[0]), ", "), "read_file, view_image, list_files, search_text, probe, documentation, submit")
+	shpEq(t, "tools", strings.Join(shpToolNames(reqs[0]), ", "), "read_file, view_image, list_files, search_text, probe, documentation, propose_files, submit")
 	shpEq(t, "provider request model", reqs[0]["model"], any("gpt-6.1-sol"))
 }
 
@@ -617,7 +617,7 @@ func TestShapeBlockedReportIsPrintedAndWritesNothing(t *testing.T) {
 	for _, want := range []string{"configured protect patterns", "paths currently matched by those patterns", "automatic baseline", "Approval freezes this baseline"} {
 		shpContains(t, "request 1", body, want)
 	}
-	shpEq(t, "tools", strings.Join(shpToolNames(f.Prov.requests()[0]), ", "), "read_file, view_image, list_files, search_text, probe, documentation, submit")
+	shpEq(t, "tools", strings.Join(shpToolNames(f.Prov.requests()[0]), ", "), "read_file, view_image, list_files, search_text, probe, documentation, propose_files, submit")
 }
 
 func TestShapeBlockedPathsMayBeConfiguredGlobs(t *testing.T) {
