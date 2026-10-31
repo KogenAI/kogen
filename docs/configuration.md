@@ -610,4 +610,4 @@ answering without a tool call to the same red verification pass; when acceptance
 The opt-in `tool_shell_timeout_seconds` option was removed. Native Build and
 independent Review shell calls have no time limit, and no setting adds one. A
 `.kogen/project.yaml` that still names the key is refused as an unknown key, not
-ignored or migrated; delete the line. There is no per-call model-shell limit. One fixed stop is not a setting: a native shell call that writes no new output byte for 10 minutes is stopped with its process group, its result names the command, and the round continues; a call that keeps writing output is never stopped.
+ignored or migrated; delete the line. There is no per-call model-shell limit.

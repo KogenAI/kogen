@@ -480,10 +480,7 @@ func (r *reviewRun) converse(ctx context.Context) (reviewVerdict, error) {
 					outs = append(outs, call.Output("accepted"))
 				}
 			default:
-				out, handled, err := b.watchedShell(ctx, tl, call, "review")
-				if !handled && err == nil {
-					out, err = tl.Call(call)
-				}
+				out, err := tl.Call(call)
 				if err != nil {
 					return reviewVerdict{}, err
 				}

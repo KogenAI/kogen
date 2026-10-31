@@ -156,10 +156,6 @@ func (n *nativeSession) Round(ctx context.Context, in executor.Input) (executor.
 			return b.Save(Continuation{Stage: StageTool, Owner: "build", Input: input})
 		},
 		HandleCall: func(ctx context.Context, call tools.Call) (loop.Handled, error) {
-			if call.Name == tools.ShellTool {
-				out, handled, err := b.watchedShell(ctx, tl, call, "build")
-				return loop.Handled{Handled: handled, Output: out}, err
-			}
 			if call.Name != agent.ReportBlockerTool {
 				return loop.Handled{}, nil
 			}
