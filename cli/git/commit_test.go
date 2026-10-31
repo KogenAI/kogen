@@ -293,6 +293,18 @@ func waitFile(t *testing.T, path string) {
 	t.Fatalf("timed out waiting for %s", path)
 }
 
+// releaseOnCleanup releases the held hook or git wrapper and joins the background commit when
+// an assertion ends the test before the commit was released and received.
+func releaseOnCleanup(t *testing.T, dir string, done <-chan commitResult, received *bool) {
+	t.Helper()
+	t.Cleanup(func() {
+		os.WriteFile(filepath.Join(dir, "release"), nil, 0o644)
+		if !*received {
+			<-done
+		}
+	})
+}
+
 type commitResult struct {
 	head string
 	err  error
@@ -305,6 +317,8 @@ func TestInterruptDuringCommitWaitsForGitAndUndoesALandedCommit(t *testing.T) {
 	s, _ := f.session()
 	done := make(chan commitResult, 1)
 	go func() { head, err := f.Commit(s, spec); done <- commitResult{head, err} }()
+	received := false
+	releaseOnCleanup(t, dir, done, &received)
 
 	waitFile(t, filepath.Join(dir, "started"))
 	if f.Head() == spec.Start {
@@ -313,11 +327,13 @@ func TestInterruptDuringCommitWaitsForGitAndUndoesALandedCommit(t *testing.T) {
 	s.Interrupt("SIGINT")
 	select {
 	case r := <-done:
+		received = true
 		t.Fatalf("Commit returned %+v while git commit was still running", r)
 	case <-time.After(300 * time.Millisecond):
 	}
 	os.WriteFile(filepath.Join(dir, "release"), nil, 0o644)
 	r := <-done
+	received = true
 	if _, ok := r.err.(*sys.Interrupted); !ok {
 		t.Fatalf("error = %v, want *sys.Interrupted", r.err)
 	}
@@ -354,12 +370,15 @@ exec '%[2]s' "$@"
 	s := sys.NewWith(env, f.Dir)
 	done := make(chan commitResult, 1)
 	go func() { head, err := f.Commit(s, spec); done <- commitResult{head, err} }()
+	received := false
+	releaseOnCleanup(t, dir, done, &received)
 
 	waitFile(t, filepath.Join(dir, "waiting"))
 	s.Interrupt("SIGINT")
 	time.Sleep(100 * time.Millisecond)
 	os.WriteFile(filepath.Join(dir, "release"), nil, 0o644)
 	r := <-done
+	received = true
 	if _, ok := r.err.(*sys.Interrupted); !ok {
 		t.Fatalf("error = %v, want *sys.Interrupted", r.err)
 	}

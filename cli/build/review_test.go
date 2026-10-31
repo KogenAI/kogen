@@ -27,8 +27,6 @@ import (
 func useRealReviewer(in *Input)               { in.Reviewer = nil }
 func useRealReviewerOnResume(in *ResumeInput) { in.Reviewer = nil }
 
-func sleepBriefly() { time.Sleep(50 * time.Millisecond) }
-
 func (e *env) reviewed(mutate ...func(*Input)) *attempt {
 	e.t.Helper()
 	return e.build(append([]func(*Input){useRealReviewer}, mutate...)...)
@@ -454,12 +452,8 @@ func TestAnInterruptedTargetedRepairReportsPendingReviewAndChangedVerification(t
 		f.calls("shell", map[string]any{"command": "touch '" + waiting + "'; sleep 600"}),
 	)
 	a, done := e.startReviewed()
-	for i := 0; i < 600; i++ {
-		if _, err := os.Stat(waiting); err == nil {
-			break
-		}
-		sleepBriefly()
-	}
+	t.Cleanup(func() { a.s.Interrupt("SIGINT"); <-done })
+	waitForRunning(t, waiting, done, a, 30*time.Second)
 	a.s.Interrupt("SIGINT")
 	<-done
 	eq(t, "exit", a.exit, 130)
@@ -1187,12 +1181,8 @@ func TestAnInterruptedVerificationOfAReviewerRepairResumesWithoutANewRequest(t *
 	f.then(landScript(f)...)
 	f.then(f.calls(append(writeApp("reviewer repair\n"), "submit_review", map[string]any{"verdict": "approve", "findings": []any{}})...))
 	a, done := e.startReviewed()
-	for i := 0; i < 600; i++ {
-		if _, err := os.Stat(paused); err == nil {
-			break
-		}
-		sleepBriefly()
-	}
+	t.Cleanup(func() { a.s.Interrupt("SIGINT"); <-done })
+	waitForRunning(t, paused, done, a, 30*time.Second)
 	a.s.Interrupt("SIGINT")
 	<-done
 	eq(t, "exit", a.exit, 130)

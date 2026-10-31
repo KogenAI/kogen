@@ -253,13 +253,8 @@ func TestResumeRefusesAnUncertainToolBoundary(t *testing.T) {
 	f := e.prov
 	f.then(f.calls("shell", map[string]any{"command": "touch waiting; sleep 600"}))
 	a, done := e.start()
-	waiting := filepath.Join(e.root, "waiting")
-	for i := 0; i < 500; i++ {
-		if _, err := os.Stat(waiting); err == nil {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	t.Cleanup(func() { a.s.Interrupt("SIGINT"); <-done })
+	waitForRunning(t, filepath.Join(e.root, "waiting"), done, a, 10*time.Second)
 	a.s.Interrupt("SIGINT")
 	<-done
 	eq(t, "exit", a.exit, 130)

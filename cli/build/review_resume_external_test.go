@@ -190,15 +190,8 @@ func TestExternalBuilderReviewStageResumes(t *testing.T) {
 		in.External = func(project.Role) (executor.Executor, error) { return fx, nil }
 		in.Reviewer = nil
 	})
-	for i := 0; i < 2400; i++ {
-		if _, err := os.Stat(paused); err == nil {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if _, err := os.Stat(paused); err != nil {
-		t.Fatal("the final verification never started")
-	}
+	t.Cleanup(func() { a.s.Interrupt("SIGTERM"); <-done })
+	waitForRunning(t, paused, done, a, 120*time.Second)
 	a.s.Interrupt("SIGTERM")
 	<-done
 	id := e.onlyRun()

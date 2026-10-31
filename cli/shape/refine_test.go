@@ -180,6 +180,45 @@ func refWaitFile(t *testing.T, path string) {
 	t.Fatalf("%s never appeared", path)
 }
 
+// refHeldProbe holds the real probe until the test releases it, instead of a fixed pad after
+// its marker: the test observes or changes the checkout while the probe is running.
+func refHeldProbe(marker string) string {
+	return "touch '" + marker + "' && while ! test -f '" + marker + ".release'; do sleep 0.01; done"
+}
+
+func refRelease(t *testing.T, marker string) {
+	t.Helper()
+	if err := os.WriteFile(marker+".release", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// refineHeldAsync is refineAsync for a probe held by refHeldProbe. Cleanup releases the probe
+// and joins the refinement before the fixture is removed, also when an assertion ends the test
+// early; a refinement that still does not finish is interrupted.
+func (f *refFx) refineHeldAsync(hash, marker string) <-chan refResult {
+	f.t.Helper()
+	original := f.refineAsync(hash)
+	result := make(chan refResult, 1)
+	finished := make(chan struct{})
+	session := f.S
+	go func() { r := <-original; result <- r; close(finished) }()
+	f.t.Cleanup(func() {
+		if err := os.WriteFile(marker+".release", nil, 0o600); err != nil {
+			f.t.Errorf("release probe: %v", err)
+			session.Interrupt("SIGTERM")
+		}
+		select {
+		case <-finished:
+		case <-time.After(60 * time.Second):
+			session.Interrupt("SIGTERM")
+			<-finished
+			f.t.Error("refinement did not finish during cleanup")
+		}
+	})
+	return result
+}
+
 // refEvidence is the one refinement evidence folder.
 func (f *refFx) evidence() string {
 	f.t.Helper()
@@ -667,7 +706,7 @@ func TestRefineCumulativeRedProposalsStayUnpublishedUntilTheirObservationsAreAck
 	step := shpSteps + "// observed red\n"
 	f := newRefFx(t, refOpts{approved: true},
 		refSubmit("c1", refIntentPath, updated, refFeaturePath, refFeatured, refStepPath, step),
-		refProbe("c2", "touch '"+marker+"' && sleep 1"),
+		refProbe("c2", refHeldProbe(marker)),
 		refSubmit("c3", refIntentPath, corrected),
 		refMessage("The remaining red is legitimate missing-feature behavior."),
 		shpAnswer(shpCall("c4", "submit_refinement", map[string]any{"files": []any{}})),
@@ -677,11 +716,12 @@ func TestRefineCumulativeRedProposalsStayUnpublishedUntilTheirObservationsAreAck
 	before := f.pkg()
 	index := f.index()
 	runs := f.runs()
-	done := f.refineAsync(f.hash0)
+	done := f.refineHeldAsync(f.hash0, marker)
 	refWaitFile(t, marker)
 	refEqual(t, "package during the run", f.pkg(), before)
 	refText(t, "approval during the run", f.read(".kogen/local/approvals/is-even.json"), f.approval)
 	shpEq(t, "index during the run", f.index() == index, true)
+	refRelease(t, marker)
 	r := refWait(t, done)
 	if r.err != nil || r.exit != 0 {
 		t.Fatalf("exit %d, err %v\n%s", r.exit, r.err, f.Stderr)
@@ -781,16 +821,17 @@ func TestRefineNarrowRetryPreservesAllEarlierProposalsUntilMergedReadiness(t *te
 	step := shpSteps + "// corrected\n"
 	f := newRefFx(t, refOpts{approved: true},
 		refSubmit("c1", refIntentPath, pending, refFeaturePath, refFeatured, refStepPath, step),
-		refProbe("c2", "touch '"+marker+"' && sleep 1"),
+		refProbe("c2", refHeldProbe(marker)),
 		refSubmit("c3", refIntentPath, corrected),
 	)
 	before := f.pkg()
 	index := f.index()
-	done := f.refineAsync(f.hash0)
+	done := f.refineHeldAsync(f.hash0, marker)
 	refWaitFile(t, marker)
 	refEqual(t, "package during the run", f.pkg(), before)
 	refText(t, "approval during the run", f.read(".kogen/local/approvals/is-even.json"), f.approval)
 	shpEq(t, "index during the run", f.index() == index, true)
+	refRelease(t, marker)
 	r := refWait(t, done)
 	if r.err != nil || r.exit != 0 {
 		t.Fatalf("exit %d, err %v\n%s", r.exit, r.err, f.Stderr)
@@ -1395,6 +1436,13 @@ func TestRefineFailedAndCancelledApprovedCorrectionsPreservePackageRawApprovalAn
 			receipt := f.read(".kogen/local/provenance/is-even/current.json")
 			if kind == "cancel" {
 				done := f.refineAsync(f.hash0)
+				finished := false
+				t.Cleanup(func() {
+					if !finished {
+						f.S.Interrupt("SIGINT")
+						refWait(t, done)
+					}
+				})
 				refWaitFile(t, marker)
 				// approval takes the Build lock too: refused while the refinement runs
 				f2 := f.S
@@ -1406,6 +1454,7 @@ func TestRefineFailedAndCancelledApprovedCorrectionsPreservePackageRawApprovalAn
 				shpEq(t, "approve exit", exit, 3)
 				f2.Interrupt("SIGINT")
 				r := refWait(t, done)
+				finished = true
 				var i *sys.Interrupted
 				if !errors.As(r.err, &i) || i.Signal != "SIGINT" || r.exit != 130 {
 					t.Fatalf("exit %d, err %v", r.exit, r.err)
@@ -1429,12 +1478,12 @@ func TestRefineFailedApprovalRevocationRestoresAReadOnlyArtifactAndRetainsApprov
 	parallel(t)
 	marker := filepath.Join(t.TempDir(), "probe-started")
 	f := newRefFx(t, refOpts{approved: true},
-		refProbe("c1", "touch '"+marker+"' && sleep 1"),
+		refProbe("c1", refHeldProbe(marker)),
 		refSubmit("c2", refIntentPath, refTitled),
 	)
 	before := f.pkg()
 	index := f.index()
-	done := f.refineAsync(f.hash0)
+	done := f.refineHeldAsync(f.hash0, marker)
 	refWaitFile(t, marker)
 	// The scratch candidate is already copied; the live destination becomes read-only before
 	// publication, which can still replace it through its writable directory.
@@ -1448,6 +1497,7 @@ func TestRefineFailedApprovalRevocationRestoresAReadOnlyArtifactAndRetainsApprov
 	if err := os.Mkdir(filepath.Join(f.evidence(), "revoked-approval.json"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	refRelease(t, marker)
 	r := refWait(t, done)
 	if r.err == nil || r.exit == 0 {
 		t.Fatalf("exit %d, err %v", r.exit, r.err)
@@ -1469,11 +1519,11 @@ func TestRefineChangesToHeadRawApprovalOrIndexPreventApprovedPublication(t *test
 			parallel(t)
 			marker := filepath.Join(t.TempDir(), "probe-started")
 			f := newRefFx(t, refOpts{approved: true},
-				refProbe("c1", "touch '"+marker+"' && sleep 1"),
+				refProbe("c1", refHeldProbe(marker)),
 				refSubmit("c2", refIntentPath, refTitled),
 			)
 			before := f.pkg()
-			done := f.refineAsync(f.hash0)
+			done := f.refineHeldAsync(f.hash0, marker)
 			refWaitFile(t, marker)
 			switch kind {
 			case "head":
@@ -1485,6 +1535,7 @@ func TestRefineChangesToHeadRawApprovalOrIndexPreventApprovedPublication(t *test
 			}
 			approval := f.read(".kogen/local/approvals/is-even.json")
 			index := f.index()
+			refRelease(t, marker)
 			r := refWait(t, done)
 			shpWantError(t, r.err, "intent", "refinement_stale", "", 1)
 			shpEq(t, "exit", r.exit, 1)
@@ -1499,11 +1550,11 @@ func TestRefineAnExternalEditWhileRefiningIsPreservedAndPreventsPublication(t *t
 	parallel(t)
 	marker := filepath.Join(t.TempDir(), "probe-started")
 	f := newRefFx(t, refOpts{},
-		refProbe("c1", "touch '"+marker+"' && sleep 1"),
+		refProbe("c1", refHeldProbe(marker)),
 		refSubmit("c2", refIntentPath, refTitled),
 	)
 	before := f.pkg()
-	done := f.refineAsync(f.hash0)
+	done := f.refineHeldAsync(f.hash0, marker)
 	refWaitFile(t, marker)
 	// approval is refused while the refinement holds the Build lock
 	asession := sys.NewWith(f.Env, f.Root)
@@ -1516,6 +1567,7 @@ func TestRefineAnExternalEditWhileRefiningIsPreservedAndPreventsPublication(t *t
 	}
 	external := before[refFeaturePath] + "\n# external edit\n"
 	f.write(refFeaturePath, external)
+	refRelease(t, marker)
 	r := refWait(t, done)
 	shpWantError(t, r.err, "intent", "refinement_stale", "", 1)
 	shpEq(t, "exit", r.exit, 1)
@@ -1533,9 +1585,17 @@ func TestRefineInterruptionDuringAProbePreservesThePackageAndRetainsEvidence(t *
 			f := newRefFx(t, refOpts{approved: true}, refProbe("c1", "touch '"+marker+"' && sleep 10"))
 			before := f.pkg()
 			done := f.refineAsync(f.hash0)
+			finished := false
+			t.Cleanup(func() {
+				if !finished {
+					f.S.Interrupt(c.signal)
+					refWait(t, done)
+				}
+			})
 			refWaitFile(t, marker)
 			f.S.Interrupt(c.signal)
 			r := refWait(t, done)
+			finished = true
 			var i *sys.Interrupted
 			if !errors.As(r.err, &i) || i.Signal != c.signal || r.exit != c.exit {
 				t.Fatalf("exit %d, err %v", r.exit, r.err)
@@ -1820,16 +1880,17 @@ func TestRefineRollsBackItsReceiptWhenTheCheckoutChangesDuringPublication(t *tes
 	parallel(t)
 	marker := filepath.Join(t.TempDir(), "probe-started")
 	f := newRefFx(t, refOpts{approved: true, source: true},
-		refProbe("c1", "touch '"+marker+"' && sleep 1"),
+		refProbe("c1", refHeldProbe(marker)),
 		refSubmit("c2", refIntentPath, refTitled))
 	original := receiptOf(f)
 	before := f.pkg()
-	done := f.refineAsync(f.hash0)
+	done := f.refineHeldAsync(f.hash0, marker)
 	refWaitFile(t, marker)
 	// An unrelated committed change moves HEAD before publication: nothing may publish.
 	f.write("other.txt", "moved\n")
 	f.git("add", "other.txt")
 	f.git("commit", "-qm", "move head")
+	refRelease(t, marker)
 	r := refWait(t, done)
 	if r.err == nil || r.exit == 0 {
 		t.Fatalf("exit %d, err %v", r.exit, r.err)
@@ -1890,4 +1951,37 @@ func TestRefineAnthropicInvalidProviderFailureReachesTheResult(t *testing.T) {
 		}
 	}
 	refEqual(t, "package", f.pkg(), before)
+}
+
+// TestChecktimeClockReadiness proves the readiness the held-probe tests use instead of a fixed
+// pad: the real probe is observed running, the refinement is still unpublished while it is
+// held, and cleanup releases and joins it when an assertion ends the test early.
+func TestChecktimeClockReadiness(t *testing.T) {
+	for _, early := range []bool{false, true} {
+		name := "release"
+		if early {
+			name = "early-exit"
+		}
+		t.Run(name, func(t *testing.T) {
+			marker := filepath.Join(t.TempDir(), "ready")
+			f := newRefFx(t, refOpts{approved: true}, refProbe("c1", refHeldProbe(marker)), refSubmit("c2", refIntentPath, refTitled))
+			before := f.pkg()
+			done := f.refineHeldAsync(f.hash0, marker)
+			refWaitFile(t, marker)
+			refEqual(t, "unpublished while held", f.pkg(), before)
+			refText(t, "approval while held", f.read(".kogen/local/approvals/is-even.json"), f.approval)
+			select {
+			case r := <-done:
+				t.Fatalf("the probe did not hold the refinement: %+v", r)
+			default:
+			}
+			if early {
+				return
+			}
+			refRelease(t, marker)
+			if r := refWait(t, done); r.err != nil || r.exit != 0 {
+				t.Fatalf("exit %d, err %v\n%s", r.exit, r.err, f.Stderr)
+			}
+		})
+	}
 }

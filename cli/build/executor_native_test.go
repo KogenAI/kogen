@@ -386,18 +386,25 @@ func TestNativeRoundMapsCancellationButKeepsTheSessionsInterrupt(t *testing.T) {
 	home := physical(t, t.TempDir())
 	seedLogin(t, home)
 	prov := newFakeProvider(t)
-	prov.then(respondWith([]map[string]any{prov.call("shell", map[string]any{"command": "sleep 30"}), prov.call("finish", map[string]any{"summary": "x"})}, nil))
+	marker := filepath.Join(t.TempDir(), "started")
+	prov.then(respondWith([]map[string]any{prov.call("shell", map[string]any{"command": "touch '" + marker + "'; sleep 30"}), prov.call("finish", map[string]any{"summary": "x"})}, nil))
 	b := newConformanceAttempt(t, root, home, prov, true)
 	sess, _ := nativeExecutor{b: b}.Start(context.Background(), executor.Task{Brief: executor.Brief{Stable: "s", Dynamic: "d"}}, nil)
-	// The caller interrupts the Session: the round returns the interrupt, exit code intact.
-	go func() {
-		for prov.count() == 0 {
-			time.Sleep(10 * time.Millisecond)
+	// The caller interrupts the Session once the shell child is running: the round returns the
+	// interrupt, exit code intact.
+	done := make(chan error, 1)
+	go func() { _, err := sess.Round(context.Background(), executor.Input{}); done <- err }()
+	finished := false
+	t.Cleanup(func() {
+		if !finished {
+			b.s.Interrupt("SIGTERM")
+			<-done
 		}
-		time.Sleep(300 * time.Millisecond)
-		b.s.Interrupt("SIGTERM")
-	}()
-	_, err := sess.Round(context.Background(), executor.Input{})
+	})
+	waitFor(t, marker)
+	b.s.Interrupt("SIGTERM")
+	err := <-done
+	finished = true
 	var in *sys.Interrupted
 	if !errors.As(err, &in) || in.Signal != "SIGTERM" {
 		t.Fatalf("error %v", err)
@@ -418,6 +425,13 @@ func TestNativeShellContextCancellationStops(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { _, err := sess.Round(ctx, executor.Input{}); done <- err }()
+	finished := false
+	t.Cleanup(func() {
+		if !finished {
+			cancel()
+			<-done
+		}
+	})
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		if _, err := os.Stat(marker); err == nil {
@@ -431,6 +445,7 @@ func TestNativeShellContextCancellationStops(t *testing.T) {
 	}
 	cancel()
 	err := <-done
+	finished = true
 	if err == nil {
 		t.Fatal("cancellation returned success")
 	}
@@ -440,5 +455,57 @@ func TestNativeShellContextCancellationStops(t *testing.T) {
 				t.Fatal("cancellation returned timeout feedback")
 			}
 		}
+	}
+}
+
+// TestChecktimeClockReadiness proves the readiness the held-child tests now use instead of a
+// start delay: the shell child is observed running before the round is released, the round is
+// still held while it is observed, and cleanup interrupts and joins it on an early exit.
+func TestChecktimeClockReadiness(t *testing.T) {
+	for _, early := range []bool{false, true} {
+		name := "interrupt"
+		if early {
+			name = "early-exit"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := conformance.NewCheckout(t)
+			home := physical(t, t.TempDir())
+			seedLogin(t, home)
+			prov := newFakeProvider(t)
+			marker := filepath.Join(t.TempDir(), "started")
+			prov.then(respondWith([]map[string]any{prov.call("shell", map[string]any{"command": "touch '" + marker + "'; sleep 30"})}, nil))
+			b := newConformanceAttempt(t, root, home, prov, true)
+			sess, _ := nativeExecutor{b: b}.Start(context.Background(), executor.Task{Brief: executor.Brief{Stable: "s", Dynamic: "d"}}, nil)
+			done := make(chan error, 1)
+			go func() { _, err := sess.Round(context.Background(), executor.Input{}); done <- err }()
+			finished := false
+			t.Cleanup(func() {
+				if finished {
+					return
+				}
+				b.s.Interrupt("SIGTERM")
+				var in *sys.Interrupted
+				if err := <-done; !errors.As(err, &in) || in.Signal != "SIGTERM" {
+					t.Errorf("cleanup did not end the held round with the interrupt: %v", err)
+				}
+			})
+			waitFor(t, marker)
+			select {
+			case err := <-done:
+				finished = true
+				t.Fatalf("the shell child was not held: %v", err)
+			default:
+			}
+			if early {
+				return
+			}
+			b.s.Interrupt("SIGTERM")
+			err := <-done
+			finished = true
+			var in *sys.Interrupted
+			if !errors.As(err, &in) || in.Signal != "SIGTERM" {
+				t.Fatalf("error %v", err)
+			}
+		})
 	}
 }

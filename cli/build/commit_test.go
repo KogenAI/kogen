@@ -34,6 +34,24 @@ func waitFor(t *testing.T, path string) {
 	t.Fatalf("timed out waiting for %s", path)
 }
 
+// waitForRunning waits up to limit (each caller's unchanged failure deadline) for the marker of
+// a background Build's held child; a Build that ends first is a failure, and the caller's
+// cleanup interrupts and joins one that is still held.
+func waitForRunning(t *testing.T, path string, done <-chan struct{}, a *attempt, limit time.Duration) {
+	t.Helper()
+	for deadline := time.Now().Add(limit); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		select {
+		case <-done:
+			t.Fatalf("build ended before %s appeared: %s", path, a.shown())
+		default:
+		}
+	}
+	t.Fatalf("timed out waiting for %s", path)
+}
+
 func TestACommitHookThatRejectsLeavesEditsAndRestoresTheStagedIntentIndex(t *testing.T) {
 	t.Parallel()
 	// ExUnit: test/integration/release_behavior_test.exs: GIT-5/GIT-8 a rejecting commit hook leaves edits and restores the staged Intent index
@@ -196,7 +214,8 @@ func TestAnInterruptedStartupRestoresTheIndexAndCannotResume(t *testing.T) {
 	e.stageOtherIntent()
 	index := e.state()["index"]
 	a, done := e.start()
-	waitFor(t, marker)
+	t.Cleanup(func() { a.s.Interrupt("SIGINT"); <-done })
+	waitForRunning(t, marker, done, a, 15*time.Second)
 	a.s.Interrupt("SIGINT")
 	<-done
 	eq(t, "exit", a.exit, 130)
@@ -256,7 +275,8 @@ func TestACommitInterruptedDuringPostcommitIsUndone(t *testing.T) {
 	e.prov.then(landScript(e.prov)...)
 	start := e.head()
 	a, done := e.start()
-	waitFor(t, marker)
+	t.Cleanup(func() { a.s.Interrupt("SIGINT"); <-done })
+	waitForRunning(t, marker, done, a, 15*time.Second)
 	a.s.Interrupt("SIGINT")
 	<-done
 	eq(t, "exit", a.exit, 130)
