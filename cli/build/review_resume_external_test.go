@@ -48,16 +48,20 @@ func TestExternalReviewCheckpointsRecordTheGreenBase(t *testing.T) {
 			t.Fatalf("the current pass is not a later red pass: base %v pass %v", base, pass)
 		}
 	})
-	t.Run("a native review has no base", func(t *testing.T) {
+	t.Run("a native review records the green base", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
 		f.then(submit(f, "changes", finding("blocking", "app.txt is wrong")))
 		wantStop(t, e.reviewed(), "candidate/review_blocked")
-		if _, ok := cpContinuation(e, e.onlyRun())["base"]; ok {
-			t.Fatal("a native review checkpoint carries a base")
+		c := cpContinuation(e, e.onlyRun())
+		eq(t, "stage", c["stage"], any("review_verify"))
+		base, ok := c["base"].(map[string]any)
+		if !ok || base["green"] != true {
+			t.Fatalf("a native review checkpoint carries no green base: %v", c)
 		}
+		eq(t, "the base is the pass under review", jsonOf(base), jsonOf(c["pass"]))
 	})
 }
 

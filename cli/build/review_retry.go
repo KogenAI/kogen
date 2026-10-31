@@ -22,9 +22,12 @@ import (
 // review-only checkpoint starts one more fresh review per resume. Neither reuses the invalid
 // conversation, replays the builder, or reruns completed verification. A substantive blocker
 // is a valid verdict and never goes through here. Any ending without a valid verdict qualifies,
-// whatever its reason. A reviewer that edited the checkout without committing is no obstacle:
-// its uncommitted edits are discarded (and logged) so that the fresh review starts from the
-// exact green candidate tree.
+// whatever its reason, native or external reviewer. The green candidate is the base of the
+// review session: the complete green pass it was started from, which stays the same through the
+// session's repairs. A reviewer that edited the checkout without committing is no obstacle: at
+// the automatic retry its uncommitted edits are discarded (and logged) so that the fresh review
+// starts from the exact green candidate tree; at the review-only stop they are left in place
+// and an explicit resume discards and logs them before its fresh review.
 
 // invalidReview is what a review that ended without a valid verdict leaves for the Build: the
 // reason, the consumed allowances and what the review did to the checkout.
@@ -35,10 +38,22 @@ type invalidReview struct {
 	RejectedVerdict int
 	NoToolReminder  int
 	Pass            verify.Pass
+	// Base is the green pass the review session was started from (nil: see base).
+	Base *verify.Pass
 	// Reopened: it was the reopened conversation of a blocked review, whose blocker only a
 	// new explicit decision of that reviewer can clear. Repaired: it had already judged and
 	// sent back a verdict, so its pass may hold its own verified edits.
 	Reopened, Repaired bool
+}
+
+// base is the green pass the review session was started from. A session that has not repaired
+// still works from the pass it was given; a repaired one without a recorded base has none.
+func (inv *invalidReview) base() *verify.Pass {
+	if inv.Base == nil && !inv.Repaired {
+		pass := inv.Pass
+		return &pass
+	}
+	return inv.Base
 }
 
 // allowance records a consumption of the review's allowances in the run log.
@@ -61,7 +76,7 @@ func (r *reviewRun) invalidStop(problems []string, reason string) error {
 	b.LastReview = &ReviewRecord{N: b.Review, Verdict: "invalid", Findings: []map[string]any{}}
 	b.invalid = &invalidReview{
 		Review: b.Review, Reason: reason, Problems: problems, RejectedVerdict: r.sess.Rejected, NoToolReminder: r.sess.NoTool,
-		Pass: r.pass, Reopened: r.sess.Reopened, Repaired: r.sess.Repaired,
+		Pass: r.pass, Base: r.base, Reopened: r.sess.Reopened, Repaired: r.sess.Repaired,
 	}
 	return reviewInvalidError()
 }
@@ -82,10 +97,11 @@ func (b *Attempt) takeInvalid(err error) *invalidReview {
 }
 
 // reviewWithRetry runs first, the Build's ordinary review (or the resume of a saved one), and
-// handles a review that ended without a valid verdict. At a safe boundary of an unchanged
-// green candidate the review-only checkpoint is saved; if the candidate's one automatic retry
-// is still unspent it is recorded as spent first and a fresh review follows at once. Any other
-// ending, and an invalid review at an unsafe boundary, is returned unchanged.
+// handles a review that ended without a valid verdict. At a safe boundary of a green candidate
+// (the base of the review) the review-only checkpoint is saved; if the candidate's one automatic
+// retry is still unspent and the review had not repaired, it is recorded as spent first, the
+// reviewer's edits are discarded and a fresh review follows at once. Any other ending, and an
+// invalid review at an unsafe boundary, is returned unchanged.
 func (b *Attempt) reviewWithRetry(ctx context.Context, first func() (Approved, error)) (Approved, error) {
 	run := first
 	for {
@@ -98,12 +114,14 @@ func (b *Attempt) reviewWithRetry(ctx context.Context, first func() (Approved, e
 		if inv == nil {
 			return Approved{}, err
 		}
-		pass := inv.Pass
-		automatic := b.ReviewRetry == nil || b.ReviewRetry.Tree != pass.Tree || !b.ReviewRetry.Automatic
+		inv.Base = inv.base()
+		automatic := inv.Base != nil && !inv.Repaired &&
+			(b.ReviewRetry == nil || b.ReviewRetry.Tree != inv.Base.Tree || !b.ReviewRetry.Automatic)
 		if why := b.reviewOnlyBlocked(inv, automatic); why != "" {
 			b.Run.Event(map[string]any{"event": "review_only", "review": inv.Review, "eligible": false, "why": why})
 			return Approved{}, err
 		}
+		pass := *inv.Base
 		rr := b.reviewRetryOf(pass.Tree)
 		next := "stop"
 		if automatic {
@@ -141,20 +159,21 @@ func (b *Attempt) reviewRetryOf(tree string) *ReviewRetry {
 	return b.ReviewRetry
 }
 
-// reviewOnlyBlocked says why the review that ended invalid is not a safe boundary for a fresh
-// review of the same candidate ("" when it is): the candidate must be exactly the tree of its
-// complete green pass with every ordinary precondition of the checkout intact (HEAD, index,
-// approval, baseline and configuration, custody). Tools the reviewer used are no obstacle: when
-// the fresh review is starting at once (discard) and the checkout holds only uncommitted edits
-// of the reviewer, they are discarded and logged first, so that the review starts from the exact
-// green tree. A committed change moved HEAD and never qualifies.
+// reviewOnlyBlocked says why the review that ended invalid is not a safe boundary for a
+// review-only checkpoint of its green candidate ("" when it is): the review must have a base,
+// the complete green pass it was started from, with every ordinary precondition of the checkout
+// intact (HEAD, index, approval, baseline and configuration, custody). Tools the reviewer used
+// are no obstacle: when the fresh review is starting at once (discard) and the checkout holds
+// only uncommitted edits of the reviewer, they are discarded and logged first, so that the review
+// starts from the exact green tree; otherwise they are left in place for the resume to discard.
+// A committed change moved HEAD and never qualifies.
 func (b *Attempt) reviewOnlyBlocked(inv *invalidReview, discard bool) string {
 	switch {
 	case inv.Reopened:
 		return "the review reopened a blocked review; only its own new decision clears the blocker"
-	case inv.Repaired:
+	case inv.Base == nil && inv.Repaired:
 		return "the review already had a verdict judged and its verified edits are part of the pass"
-	case !inv.Pass.Green || !b.completePass(&inv.Pass, b.model):
+	case inv.Base == nil || !inv.Base.Green || !b.completePass(inv.Base, b.model):
 		return "the verified pass is not complete green evidence"
 	}
 	// Higher-priority causes first: a moved HEAD, a changed approval, baseline or index is
@@ -164,15 +183,15 @@ func (b *Attempt) reviewOnlyBlocked(inv *invalidReview, discard bool) string {
 			return err.Error()
 		}
 	}
+	if !discard {
+		return ""
+	}
 	tree, err := b.repo.Tree(b.Start, b.Excluded)
 	if err != nil {
 		return "the candidate tree cannot be read: " + err.Error()
 	}
-	if tree != inv.Pass.Tree && !discard {
-		return "the candidate changed after its green pass: " + b.treeDrift(tree, inv.Pass.Tree)
-	}
-	if tree != inv.Pass.Tree {
-		if _, err := b.discardReviewEdits(inv, tree); err != nil {
+	if tree != inv.Base.Tree {
+		if _, err := b.discardReviewEdits(&invalidReview{Review: inv.Review, Pass: *inv.Base}, tree); err != nil {
 			return "the reviewer's uncommitted edits could not be discarded: " + err.Error()
 		}
 	}
@@ -253,10 +272,31 @@ func (b *Attempt) indexIntact() error {
 	return nil
 }
 
-// reviewOnlyResume is the explicit resume of a review-only checkpoint: the candidate must be
-// exactly the tree of the saved green pass (after the ordinary custody checks of Resume), then
-// one fresh review starts, with no builder round and no verification rerun. The automatic
-// retry of this tree is recorded as spent, so a resume never grants another one.
+// reviewOnlyRefusal is why the review-only checkpoint cannot start its fresh review ("" when it
+// can): the saved pass must be complete green evidence and its tree the one the checkpoint's
+// retry record concerns. The checkout may differ from that tree only by the stopped reviewer's
+// edits, which the resume discards.
+func (b *Attempt) reviewOnlyRefusal() (string, error) {
+	pass := b.Continuation.Pass
+	if pass != nil && pass.Green && b.completePass(pass, b.model) && b.ReviewRetry != nil && b.ReviewRetry.Tree == pass.Tree {
+		return "", nil
+	}
+	tree, err := b.repo.Tree(b.Start, b.Excluded)
+	if err != nil {
+		return "", err
+	}
+	green := ""
+	if pass != nil {
+		green = pass.Tree
+	}
+	return "the candidate is not the green tree of the saved review-only pass: " + b.treeDrift(tree, green), nil
+}
+
+// reviewOnlyResume is the explicit resume of a review-only checkpoint: after the ordinary
+// custody checks of Resume (and a saved pass that is the green tree of the retry record), the
+// stopped reviewer's uncommitted edits are discarded and logged, then one fresh review of the
+// saved green pass starts, with no builder round and no verification rerun. The automatic retry
+// of this tree is recorded as spent, so a resume never grants another one.
 func (b *Attempt) reviewOnlyResume(ctx context.Context) error {
 	c := b.Continuation
 	pass := *c.Pass
@@ -264,11 +304,18 @@ func (b *Attempt) reviewOnlyResume(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if tree != pass.Tree || b.LastPass == nil || b.LastPass.Tree != pass.Tree || !pass.Green {
-		if tree != pass.Tree {
-			return resumeRefused("the candidate is not the green tree of the saved review-only pass: " + b.treeDrift(tree, pass.Tree))
+	if tree != pass.Tree {
+		paths, err := b.discardReviewEdits(&invalidReview{Review: b.Review, Pass: pass}, tree)
+		if err != nil {
+			return resumeRefused("review " + fmt.Sprint(b.Review) + "'s uncommitted edits could not be discarded: " + err.Error())
 		}
-		return resumeRefused("the saved review-only pass is not the checkpoint's own complete green pass, although the candidate tree equals its tree")
+		b.s.Puts(fmt.Sprintf("discarded review %d's uncommitted edits, which are not part of that green candidate: %s", b.Review, strings.Join(paths, ", ")))
+	}
+	// The fresh review judges the saved green pass, as an ordinary Build's review follows its
+	// green pass; the checkpoint's last pass may be a later one of the stopped review's repairs.
+	b.LastPass = &pass
+	if err := b.Track(); err != nil {
+		return err
 	}
 	rr := b.reviewRetryOf(pass.Tree)
 	rr.Automatic = true

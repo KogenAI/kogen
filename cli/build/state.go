@@ -160,11 +160,11 @@ type Continuation struct {
 	// reviewer's own session state, which only the review code interprets.
 	Pass   *verify.Pass    `json:"pass,omitempty"`
 	Review json.RawMessage `json:"review,omitempty"`
-	// Base belongs to the review stages of an external reviewer only: the green pass that
-	// reviewer's current session was started from (the pass its Review call was given). It
-	// stays the same through the session's rounds and failed repairs, while Pass may become a
-	// later red pass, and it is what a fresh review resumes from, since the session itself
-	// cannot be resumed.
+	// Base belongs to the review stages: the green pass that reviewer's current session was
+	// started from (the pass its Review call was given). It stays the same through the
+	// session's rounds and repairs, while Pass may become a later red pass, and it is what a
+	// fresh review resumes from when the session itself cannot be resumed (an external
+	// reviewer) or ends without a valid verdict.
 	Base *verify.Pass `json:"base,omitempty"`
 }
 

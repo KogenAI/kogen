@@ -249,27 +249,24 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 		return refuse(id, detail, "")
 	}
 
-	// A review-only checkpoint starts a fresh review of exactly the verified green tree: the
-	// saved pass must be the one the checkpointed candidate was verified as, and the candidate
-	// (as a review sees it, without other Intents' folders) must still be that tree.
-	if c := b.Continuation; c.Stage == StageReviewOnly {
-		tree, err := repo.Tree(b.Start, b.Excluded)
-		if err != nil {
-			return err
-		}
-		if tree != c.Pass.Tree {
-			return refuse(id, "the candidate is not the green tree of the saved review-only pass: "+b.treeDrift(tree, c.Pass.Tree), "")
-		}
-		if b.LastPass == nil || b.LastPass.Tree != c.Pass.Tree {
-			return refuse(id, "the checkpoint's last verified pass is not the saved review-only pass, although the candidate tree equals its green tree", "")
-		}
-	}
-
 	b.intent, err = b.State.intent()
 	if err != nil {
 		return err
 	}
 	b.model = b.intent.Model
+	// A review-only checkpoint starts a fresh review of its saved green pass: before any new
+	// run, that pass must be complete green evidence of the tree its retry record concerns. The
+	// checkout is the checkpoint's candidate, which differs from that tree only by the stopped
+	// reviewer's edits.
+	if b.Continuation.Stage == StageReviewOnly {
+		why, err := b.reviewOnlyRefusal()
+		if err != nil {
+			return err
+		}
+		if why != "" {
+			return refuse(id, why, "")
+		}
+	}
 	// An external review cannot be continued: before any new run, say whether a fresh review
 	// of its recorded green base can start.
 	if why := b.externalReviewRefusal(); why != "" {

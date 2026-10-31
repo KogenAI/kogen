@@ -123,8 +123,8 @@ type reviewRun struct {
 	// external: the reviewer is an external executor; its source is delivered as complete
 	// Kogen-owned prompt data (review_external.go), not as pinned parts it must read.
 	external bool
-	// base is the green pass an external review session was started from (nil for a native
-	// review); it is recorded in every checkpoint of the session (Continuation.Base).
+	// base is the green pass the review session was started from (nil when a resumed native
+	// session has none); it is recorded in every checkpoint of the session (Continuation.Base).
 	base *verify.Pass
 }
 
@@ -168,7 +168,8 @@ func (reviewIndependent) Review(ctx context.Context, b *Attempt, pass verify.Pas
 	if err != nil {
 		return Approved{}, err
 	}
-	r := &reviewRun{b: b, pass: pass, tools: tools, nativeTools: nativeTools, sess: reviewSession{Role: role, Input: input, Usage: zeroTokens()}}
+	base := pass
+	r := &reviewRun{b: b, pass: pass, base: &base, tools: tools, nativeTools: nativeTools, sess: reviewSession{Role: role, Input: input, Usage: zeroTokens()}}
 	return r.loop(ctx, nil, "")
 }
 
@@ -186,7 +187,7 @@ func (reviewIndependent) Resume(ctx context.Context, b *Attempt) (Approved, erro
 	if len(sess.Tools) > 0 {
 		tools = sess.Tools
 	}
-	r := &reviewRun{b: b, pass: *c.Pass, sess: sess, tools: tools, nativeTools: nativeTools}
+	r := &reviewRun{b: b, pass: *c.Pass, base: nativeResumeBase(c, sess), sess: sess, tools: tools, nativeTools: nativeTools}
 	verdicts := c.Stage != StageReview
 	if verdicts && (sess.Verdict == nil || sess.Tree == "") {
 		return Approved{}, resumeRefused("the saved review state has no verdict")
@@ -213,6 +214,21 @@ func (reviewIndependent) Resume(ctx context.Context, b *Attempt) (Approved, erro
 		return r.loop(ctx, sess.Verdict, sess.Tree)
 	}
 	return r.loop(ctx, nil, "")
+}
+
+// nativeResumeBase is the green base of a native session continued from a checkpoint: the one
+// the checkpoint records, else (written before it was recorded) the checkpoint's pass while the
+// session has not repaired, else none.
+func nativeResumeBase(c Continuation, sess reviewSession) *verify.Pass {
+	switch {
+	case c.Base != nil:
+		base := *c.Base
+		return &base
+	case !sess.Repaired && c.Pass != nil:
+		base := *c.Pass
+		return &base
+	}
+	return nil
 }
 
 // save checkpoints the review at stage.

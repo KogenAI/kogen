@@ -317,14 +317,15 @@ func TestKReviewRetry2DiscardEdits(t *testing.T) {
 		eq(t, "reviews", e.result(id)["reviews"], any(float64(2)))
 	})
 
-	t.Run("a second failure stops with the checkout as it is", func(t *testing.T) {
+	t.Run("a second failure stops with a review-only checkpoint and the edits left in place", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
 		// Review 2 edits as well and fails as well: the allowance is spent and nothing more is
-		// discarded or started.
+		// discarded or started; the green candidate is a review-only checkpoint.
 		f.then(prose("a"), prose("b"), edits(f), prose("c"), prose("d"))
+		start := e.head()
 		a := e.reviewed()
 		wantStop(t, a, "candidate/review_invalid")
 		id := e.onlyRun()
@@ -332,8 +333,32 @@ func TestKReviewRetry2DiscardEdits(t *testing.T) {
 		eq(t, "discard events", len(eventsNamed(e.events(id), "review_edits_discarded")), 0)
 		eq(t, "retry events", len(eventsNamed(e.events(id), "review_retry")), 1)
 		only := eventsNamed(e.events(id), "review_only")
-		eq(t, "last review-only", only[len(only)-1]["eligible"], any(false))
+		last := only[len(only)-1]
+		eq(t, "last review-only", last["eligible"], any(true))
+		eq(t, "last next", last["next"], any("stop"))
+		eq(t, "stage", e.checkpointStage(id), StageReviewOnly)
 		eq(t, "the second reviewer's edit is left in place", e.read("app.txt"), "reviewer edit\n")
+		eq(t, "head", e.head(), start)
+
+		// An explicit resume discards the edits and starts one fresh review of the green tree.
+		f.then(submit(f, "approve", finding("note", "fine")))
+		r := e.resumeReviewed(id)
+		if r.exit != 0 {
+			t.Fatalf("resume exit %d\n%s", r.exit, r.shown())
+		}
+		contains(t, "stdout", r.shown(), "discarded review 2's uncommitted edits, which are not part of that green candidate:")
+		eq(t, "review requests", len(f.reviewRequests()), 6)
+		child := ""
+		for _, other := range e.runIDs() {
+			if other != id {
+				child = other
+			}
+		}
+		discarded := eventsNamed(e.events(child), "review_edits_discarded")
+		eq(t, "discard events", len(discarded), 1)
+		eq(t, "discarded review", discarded[0]["review"], any(float64(2)))
+		eq(t, "committed app.txt", e.gitOut("show", "HEAD:app.txt"), "candidate")
+		eq(t, "passes: no completed check was rerun", e.result(child)["passes"], any(float64(1)))
 	})
 
 	t.Run("a committed reviewer change is not undone and not retried", func(t *testing.T) {

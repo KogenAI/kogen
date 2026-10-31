@@ -315,19 +315,17 @@ func TestKReviewVerdictStrandSafety(t *testing.T) {
 		}
 	})
 
-	t.Run("an edited candidate is refused as drift, naming trees and paths, and is not restored", func(t *testing.T) {
+	t.Run("a later invalid review's edits are left in place and a resume discards them", func(t *testing.T) {
 		t.Parallel()
 		e, id, start := stopWith(t, nil, func(f *fakeProvider) handler {
 			return f.calls("write_file", map[string]any{"path": "app.txt", "content": "reviewer edit\n"})
 		})
 		only := lastOnly(e, id)
-		eq(t, "eligible", only["eligible"], any(false))
-		why := only["why"].(string)
 		green := eventsNamed(e.events(id), "review_only")[0]["tree"].(string)
-		contains(t, "why", why, "the candidate changed after its green pass")
-		contains(t, "why", why, "changed paths: app.txt")
-		contains(t, "why: green tree", why, "green tree "+short(green))
-		lacks(t, "why", why, "HEAD")
+		eq(t, "eligible", only["eligible"], any(true))
+		eq(t, "tree is the green tree", only["tree"], any(green))
+		eq(t, "next", only["next"], any("stop"))
+		eq(t, "stage", e.checkpointStage(id), StageReviewOnly)
 		if treeOfCandidate(e) == green {
 			t.Fatal("the stopped candidate is not the edited one")
 		}
@@ -340,6 +338,32 @@ func TestKReviewVerdictStrandSafety(t *testing.T) {
 		if _, err := os.Stat(project.ApprovalPath(e.root, testSlug)); err != nil {
 			t.Fatal("approval was not preserved")
 		}
+
+		// A change after the stop is still refused as drift, naming trees and paths, and is not
+		// restored.
+		e.write("app.txt", "drifted\n")
+		observed := treeOfCandidate(e)
+		requests := e.prov.count()
+		r := e.resumeReviewed(id)
+		if r.exit != 1 {
+			t.Fatalf("resume exit %d\n%s", r.exit, r.shown())
+		}
+		contains(t, "drift", r.shown(), "candidate contents/modes or unrelated paths changed: app.txt")
+		contains(t, "drift", r.shown(), "observed tree "+short(observed))
+		contains(t, "drift", r.shown(), "green tree "+short(green))
+		eq(t, "the drifted candidate is not restored", e.read("app.txt"), "drifted\n")
+		eq(t, "provider requests", e.prov.count(), requests)
+		e.write("app.txt", "reviewer edit\n")
+
+		// The unchanged stopped candidate resumes: the edits are discarded and one fresh review
+		// of the green tree approves it.
+		e.prov.then(submit(e.prov, "approve"))
+		r = e.resumeReviewed(id)
+		if r.exit != 0 {
+			t.Fatalf("resume exit %d\n%s", r.exit, r.shown())
+		}
+		contains(t, "stdout", r.shown(), "discarded review 2's uncommitted edits, which are not part of that green candidate: app.txt")
+		eq(t, "committed app.txt", e.gitOut("show", "HEAD:app.txt"), "candidate")
 	})
 
 	t.Run("a moved HEAD is reported as HEAD, not as drift of contents", func(t *testing.T) {
