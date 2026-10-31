@@ -17,7 +17,13 @@ const Constraints = "You are implementing one requested feature in this Git chec
 	"Do not change production semantics solely to accommodate a demonstrated bad fixture. " +
 	"A valid report stops as BUILDER-REPORTED build_blocked with candidate/index/approval preserved; it is not independently proven and grants no protected edits, automatic refinement or approval. " +
 	"Plain blocked text does not stop the Build.\n" +
+	"Scheduled wakeups are unavailable; await commands and their completion within the current round.\n" +
 	"When you believe the work is complete, stop and summarize what you changed."
+
+// wakeupTool is the Claude Code tool a Build session may not use: a scheduled wakeup would continue
+// the work after the round's result, which the strict stream protocol refuses. Commands are awaited
+// within the round instead.
+const wakeupTool = "ScheduleWakeup"
 
 // BuildSchema is the --json-schema of the Build role: an optional summary and an optional blocker.
 const BuildSchema = `{"type":"object","properties":{"summary":{"type":"string"},"blocker":{"type":"object","properties":{"paths":{"type":"array","items":{"type":"string"}},"reason":{"type":"string"},"evidence":{"type":"string"}},"required":["paths","reason","evidence"],"additionalProperties":false}},"additionalProperties":false}`
@@ -148,7 +154,7 @@ func roundArgs(o Options, sessionID string, n int, model, effort, settingsPath s
 func roleRoundArgs(o Options, role, schema, sessionID string, n int, model, effort, settingsPath string, maxTurns int) []string {
 	args := roundArgs(o, sessionID, n, model, effort, settingsPath, maxTurns)
 	if role == "" || role == "build" {
-		return append(args, "--json-schema", schema)
+		return append(args, "--disallowedTools", wakeupTool, "--json-schema", schema)
 	}
 	for i, a := range args {
 		if a == "--append-system-prompt" && i+1 < len(args) {

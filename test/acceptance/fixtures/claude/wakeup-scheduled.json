@@ -1,0 +1,53 @@
+{
+  "roles": {
+    "build": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "write": {
+                "path": "calc.py",
+                "content_from": "calc-correct.py"
+              }
+            },
+            {
+              "write": {
+                "path": "tests/test_calc.py",
+                "content_from": "test-calc-correct.py"
+              }
+            },
+            {
+              "background": "sleep 0.3; printf 'full mix test output\\n' | tee mu-full.log"
+            },
+            {
+              "schedule_wakeup": {
+                "delaySeconds": 600,
+                "prompt": "check mu-full.log for failures",
+                "reason": "waiting for full mix test run"
+              }
+            },
+            {
+              "structured_output": true
+            }
+          ],
+          "claim": "WAKEUP-BUILDER-CLAIM implemented is_even."
+        }
+      ]
+    },
+    "review": {
+      "rounds": [
+        {
+          "structured": {
+            "verdict": "approve",
+            "findings": []
+          },
+          "actions": [
+            {
+              "read": "calc.py"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -57,6 +57,14 @@ type fakeConfig struct {
 	ExitCode int  `json:"exit_code"`
 	// TrailingEvent emits one more event after the result.
 	TrailingEvent bool `json:"trailing_event"`
+	// TrailingKind emits one more protocol violation after the result: "malformed" (a line that is
+	// not JSON), "duplicate" (a second result) or "assistant" (an ordinary assistant event).
+	TrailingKind string `json:"trailing_kind"`
+	// WakeupAttempt makes the session try ScheduleWakeup after its actions and before its result.
+	// It honors the --disallowedTools it received: denied, the tool is reported unavailable;
+	// otherwise the wakeup is scheduled and the session's next event after the result is
+	// the loop_wakeup command lifecycle that continues the stream.
+	WakeupAttempt bool `json:"wakeup_attempt"`
 	// LingerSeconds keeps the process alive after the result (background work).
 	LingerSeconds float64 `json:"linger_seconds"`
 	// ExitBeforeStdin exits with ExitCode without reading the prompt or emitting any event.
@@ -287,11 +295,30 @@ func fakeClaude(cfgPath string, args []string) int {
 			toolUse(id, "Bash", map[string]any{"command": command})
 			cmd := exec.Command("/bin/sh", "-c", command)
 			cmd.Dir = cwd
-			co, _ := cmd.CombinedOutput()
+			co, err := cmd.CombinedOutput()
+			content, failed := string(co), false
+			if ee, ok := err.(*exec.ExitError); ok {
+				content, failed = fmt.Sprintf("Exit code %d\n%s", ee.ExitCode(), co), true
+			}
 			runHook("PostToolUse", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": command}, "tool_response": map[string]any{"stdout": string(co)}, "tool_use_id": id})
-			toolResult(id, string(co), false, "accept")
+			toolResult(id, content, failed, "accept")
 		case a.SleepSeconds > 0:
 			time.Sleep(time.Duration(a.SleepSeconds * float64(time.Second)))
+		}
+	}
+
+	wakeupScheduled := false
+	if cfg.WakeupAttempt {
+		toolUse("toolu_wakeup", "ScheduleWakeup", map[string]any{"delaySeconds": 600, "prompt": "check mu-full.log for failures", "reason": "waiting for full mix test run"})
+		denied := false
+		for _, rule := range strings.FieldsFunc(flag("--disallowedTools"), func(r rune) bool { return r == ',' || r == ' ' }) {
+			denied = denied || rule == "ScheduleWakeup"
+		}
+		if denied {
+			toolResult("toolu_wakeup", "ScheduleWakeup is unavailable: the tool is disallowed", true, "reject")
+		} else {
+			wakeupScheduled = true
+			toolResult("toolu_wakeup", "Wakeup scheduled in 600 seconds", false, "accept")
 		}
 	}
 
@@ -336,6 +363,17 @@ func fakeClaude(cfgPath string, args []string) int {
 	}
 	merge(res, cfg.Result)
 	out(res)
+	if wakeupScheduled {
+		out(map[string]any{"type": "command_lifecycle", "state": "started", "wakeup_source": "loop_wakeup"})
+	}
+	switch cfg.TrailingKind {
+	case "malformed":
+		fmt.Println("not json {")
+	case "duplicate":
+		out(res)
+	case "assistant":
+		out(map[string]any{"type": "assistant", "session_id": sessionID, "message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "one more thing"}}}})
+	}
 	if cfg.TrailingEvent {
 		out(map[string]any{"type": "rate_limit_event"})
 	}

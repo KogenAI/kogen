@@ -254,7 +254,7 @@ func TestExternalTaskAndRunRecords(t *testing.T) {
 		t.Fatalf("adapter events were not forwarded to the run log: %v", events)
 	}
 	rounds := eventsNamed(events, "executor_round")
-	if len(rounds) != 1 || rounds[0]["executor"] != "claude-code" || rounds[0]["ending"] != "finish" || rounds[0]["session_id"] != "fake-session-1" {
+	if len(rounds) != 1 || rounds[0]["executor"] != "claude-code" || rounds[0]["role"] != executor.RoleBuild || rounds[0]["ending"] != "finish" || rounds[0]["session_id"] != "fake-session-1" {
 		t.Fatalf("executor_round %v", rounds)
 	}
 	if len(eventsNamed(events, "request")) != 0 || len(eventsNamed(events, "tool_call")) != 0 {

@@ -205,7 +205,7 @@ func (b *Attempt) afterExternalRound(res executor.RoundResult, rounds int) error
 	}
 	b.recordExecutor(res, rounds)
 	b.Run.Event(map[string]any{
-		"event": "executor_round", "round": b.Round, "executor": b.Executor.Name, "ending": string(res.Ending),
+		"event": "executor_round", "role": executor.RoleBuild, "round": b.Round, "executor": b.Executor.Name, "ending": string(res.Ending),
 		"claim": res.Claim, "usage": res.Usage, "session_id": res.Handle.SessionID,
 	})
 	if res.Ending == executor.EndBlocker {

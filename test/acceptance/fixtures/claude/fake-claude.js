@@ -9,7 +9,15 @@
 // outside the project where the fake records what it received). Script shape:
 //   { version?, auth?, rounds: [ { api_key_source?, end?, claim?, usage?, actions: [
 //       { write: {path, content | content_from} }, { edit: {path, old, new} },
-//       { bash: "command" }, { sleep: seconds } ] } ] }
+//       { bash: "command" }, { sleep: seconds },
+//       { background: "command" }, { schedule_wakeup: {delaySeconds, prompt, reason} },
+//       { structured_output: true } ] } ] }
+// A round may also set trailing_assistant (an ordinary assistant event after its result).
+// `background` runs a finite command in the fake's state folder without waiting for it, as a
+// session's background test run; `schedule_wakeup` is the ScheduleWakeup tool, which honors the
+// --disallowedTools it received: refused, the session awaits its background commands within the
+// round; accepted, the next event after the result is the loop_wakeup command_lifecycle that
+// Claude Code emits when the scheduled wakeup fires. wakeup-evidence.jsonl records the order.
 // The last round repeats when more `-p` invocations arrive than rounds are scripted.
 // The prompt arrives on stdin (Kogen's contract); a positional prompt after -p is still accepted.
 
@@ -142,6 +150,10 @@ function runHooks(event, toolName, payload) {
 }
 
 const denials = [];
+// The ordered record of what a session did within its round (wakeup scenarios read it).
+function evidence(event, data) {
+  fs.appendFileSync(path.join(state, 'wakeup-evidence.jsonl'), `${JSON.stringify({ role, n: roleN, event, ...data })}\n`);
+}
 function toolUse(id, name, input) {
   recordToolCall(id, name, input);
   out({ type: 'assistant', session_id: sessionId, message: { model: 'claude-sonnet-5-5', role: 'assistant', content: [{ type: 'tool_use', id, name, input }] } });
@@ -179,7 +191,9 @@ async function main() {
     // The adapter must have stopped this process before it acts.
     await new Promise(resolve => setTimeout(resolve, 5000));
   }
-  (round.actions || []).forEach((action, index) => {
+  const background = [];
+  let wakeupScheduled = false;
+  for (const [index, action] of (round.actions || []).entries()) {
     const id = `toolu_${n}_${index}`;
     if (action.read) {
       const target = path.join(cwd, action.read);
@@ -211,11 +225,43 @@ async function main() {
       const result = cp.spawnSync('/bin/sh', ['-c', action.bash], { cwd, encoding: 'utf8' });
       const text = `${result.stdout || ''}${result.stderr || ''}`;
       runHooks('PostToolUse', 'Bash', { tool_input: { command: action.bash }, tool_response: { stdout: text }, tool_use_id: id });
-      toolResult(id, text, false, 'accept');
+      // Claude Code reports a nonzero exit status in the tool result, as an error.
+      const failed = result.status !== 0;
+      evidence('command_completed', { command: action.bash, output: text, status: result.status });
+      toolResult(id, failed ? `Exit code ${result.status}\n${text}` : text, failed, 'accept');
+    } else if (typeof action.background === 'string') {
+      toolUse(id, 'Bash', { command: action.background, run_in_background: true });
+      const child = cp.spawn('/bin/sh', ['-c', action.background], { cwd: state, stdio: ['ignore', 'pipe', 'pipe'] });
+      let text = '';
+      child.stdout.on('data', chunk => { text += chunk; });
+      child.stderr.on('data', chunk => { text += chunk; });
+      background.push({ command: action.background, done: new Promise((resolve, reject) => {
+        child.on('error', reject);
+        child.on('close', status => resolve({ output: text, status }));
+      }) });
+      toolResult(id, 'Command running in background', false, 'accept');
+    } else if (action.schedule_wakeup) {
+      toolUse(id, 'ScheduleWakeup', action.schedule_wakeup);
+      evidence('wakeup_attempted', { input: action.schedule_wakeup });
+      if (flag('--disallowedTools').split(/[\s,]+/).includes('ScheduleWakeup')) {
+        evidence('wakeup_denied', {});
+        toolResult(id, 'ScheduleWakeup is unavailable: the tool is disallowed', true, 'reject');
+        // The session falls back to awaiting its background commands within this round.
+        for (const task of background.splice(0)) {
+          const { output, status } = await task.done;
+          evidence('command_completed', { command: task.command, output, status });
+        }
+      } else {
+        wakeupScheduled = true;
+        toolResult(id, 'Wakeup scheduled', false, 'accept');
+      }
+    } else if (action.structured_output) {
+      toolUse(id, 'StructuredOutput', { summary: round.claim || 'Done.' });
+      toolResult(id, 'Structured output provided successfully', false, 'accept');
     } else if (action.sleep) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, action.sleep * 1000);
     }
-  });
+  }
 
   const costFile = path.join(state, 'cost');
   const usage = { input_tokens: 10, cache_creation_input_tokens: 200, cache_read_input_tokens: 1000, output_tokens: 50, ...(round.usage || {}) };
@@ -247,7 +293,10 @@ async function main() {
     Object.assign(result, { subtype: 'error_during_execution', is_error: true, terminal_reason: 'model_error', errors: ['fake claude error'] });
     exit = 1;
   }
+  evidence('result', {});
   out(result);
+  if (wakeupScheduled) out({ type: 'command_lifecycle', state: 'started', wakeup_source: 'loop_wakeup' });
+  if (round.trailing_assistant) out({ type: 'assistant', session_id: sessionId, message: { role: 'assistant', content: [{ type: 'text', text: 'One more thing.' }] } });
   process.exitCode = exit;
 }
 

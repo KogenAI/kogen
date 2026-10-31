@@ -285,8 +285,8 @@ func TestArgvRounds(t *testing.T) {
 			"--no-chrome", "--max-turns", "150",
 		}
 	}
-	round1 := append(common("--session-id"), "--append-system-prompt", Constraints, "--json-schema", BuildSchema)
-	round2 := append(common("--resume"), "--json-schema", BuildSchema)
+	round1 := append(common("--session-id"), "--append-system-prompt", Constraints, "--disallowedTools", "ScheduleWakeup", "--json-schema", BuildSchema)
+	round2 := append(common("--resume"), "--disallowedTools", "ScheduleWakeup", "--json-schema", BuildSchema)
 	if got := h.f.argv(1); !reflect.DeepEqual(got, round1) {
 		t.Fatalf("round 1 argv\n got %q\nwant %q", got, round1)
 	}

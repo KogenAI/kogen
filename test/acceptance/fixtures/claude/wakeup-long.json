@@ -1,0 +1,43 @@
+{
+  "roles": {
+    "build": {
+      "rounds": [
+        {
+          "actions": [
+            {
+              "write": {
+                "path": "calc.py",
+                "content_from": "calc-correct.py"
+              }
+            },
+            {
+              "write": {
+                "path": "tests/test_calc.py",
+                "content_from": "test-calc-correct.py"
+              }
+            },
+            {
+              "bash": "sleep 0.3 & wait $!; printf 'long-command-output\\n'; echo completion-marker; exit 7"
+            }
+          ],
+          "claim": "WAKEUP-BUILDER-CLAIM implemented is_even."
+        }
+      ]
+    },
+    "review": {
+      "rounds": [
+        {
+          "structured": {
+            "verdict": "approve",
+            "findings": []
+          },
+          "actions": [
+            {
+              "read": "calc.py"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

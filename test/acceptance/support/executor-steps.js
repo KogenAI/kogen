@@ -153,6 +153,16 @@ function lineupSteps(world, label, args, latestRunDir) {
   return false;
 }
 
+// The ordered wakeup evidence of the Build role's fake claude session, up to its result.
+function wakeupEvidence(world) {
+  const file = path.join(stateDir(world), 'wakeup-evidence.jsonl');
+  assert.ok(fs.existsSync(file), 'the fake claude recorded no session evidence');
+  const records = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(record => record.role === 'build');
+  assert.equal(records.filter(record => record.event === 'result').length, 1, 'exactly one builder result');
+  assert.equal(records[records.length - 1].event, 'result', 'evidence after the builder result');
+  return records;
+}
+
 // Returns true when the label was an executor step.
 async function executorSteps(world, label, args, latestRunDir) {
   if (lineupSteps(world, label, args, latestRunDir)) return true;
@@ -203,6 +213,39 @@ async function executorSteps(world, label, args, latestRunDir) {
   if (label.startsWith('the run log records ') && label.includes(' executor round')) {
     const events = runLogEvents(latestRunDir);
     assert.equal(events.filter(event => event.event === 'executor_round_ended').length, Number(args[0]));
+    return true;
+  }
+  if (label.startsWith('the Build role of the run log has ')) {
+    // Independent Review emits the same executor_round event: only the Build role counts.
+    const rounds = runLogEvents(latestRunDir).filter(event => event.event === 'executor_round' && event.role === 'build');
+    assert.equal(rounds.length, Number(args[0]), `builder executor rounds: ${JSON.stringify(rounds)}`);
+    assert.equal(rounds[0].ending, 'finish');
+    assert.ok(rounds[0].claim.includes(args[1]), `the builder claim ${JSON.stringify(rounds[0].claim)} lacks ${args[1]}`);
+    return true;
+  }
+  if (label === 'the run log shows an independent review executor round') {
+    const reviews = runLogEvents(latestRunDir).filter(event => event.event === 'executor_round' && event.role === 'review');
+    assert.ok(reviews.length >= 1, 'no independent review executor round');
+    return true;
+  }
+  if (label === 'the run log records no executor protocol stop') {
+    assert.ok(!runLogEvents(latestRunDir).some(event => /executor\/protocol|continued after its result/.test(JSON.stringify(event))), 'the run log has an executor protocol stop');
+    return true;
+  }
+  if (label.startsWith('the fake claude builder recorded ')) {
+    const records = wakeupEvidence(world);
+    const events = records.map(record => record.event);
+    if (label.includes(' wakeup attempt')) {
+      assert.deepEqual(events, ['wakeup_attempted', 'wakeup_denied', 'command_completed', 'result']);
+      assert.deepEqual(records[0].input, { delaySeconds: 600, prompt: 'check mu-full.log for failures', reason: 'waiting for full mix test run' });
+      assert.equal(records[2].output, 'full mix test output\n');
+      assert.equal(records[2].status, 0);
+      assert.equal(fs.readFileSync(path.join(stateDir(world), 'mu-full.log'), 'utf8'), 'full mix test output\n');
+    } else {
+      assert.deepEqual(events, ['command_completed', 'result']);
+      assert.equal(records[0].output, 'long-command-output\ncompletion-marker\n');
+      assert.equal(records[0].status, 7);
+    }
     return true;
   }
   if (label.startsWith('the run log shows an executor hook decision ')) {

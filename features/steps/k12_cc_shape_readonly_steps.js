@@ -51,7 +51,9 @@ function checkShapeChild(d) {
 }
 function checkBuildChild(d) {
   assert.equal(d.round1_error, '', d.round1_error);
-  assert.ok(!d.argv.some(a => /^--disallowed/.test(a) || a.includes('NotebookEdit')), 'build argv must not change');
+  assert.ok(!d.argv.some(a => a.includes('NotebookEdit')), 'build argv must not deny the write tools');
+  assert.equal(count(d.argv, '--disallowedTools'), 1, 'exactly one --disallowedTools');
+  assert.equal(d.argv[d.argv.indexOf('--disallowedTools') + 1], 'ScheduleWakeup', 'build denies only ScheduleWakeup');
   assert.equal(d.argv[d.argv.indexOf('--allowedTools') + 1], 'Bash');
 }
 function checkShapeNoHook(d) {
@@ -107,7 +109,7 @@ function checkPreexisting(d) {
 function controls(kind) {
   const base = { index_changed_by_round: true, error_class: '', error_reason: '', error_text: '', exit: 0, published: true, removed_events: [], keep_note_exists: false, preexisting_content: null, status: ['?? .kogen/intents/is-even/intent.md', '?? features/steps/is_even_steps.js'] };
   const shapeChild = { round1_error: '', argv: ['-p', '--allowedTools', 'Bash', '--disallowedTools', WRITE_TOOLS, '--permission-mode', 'acceptEdits', '--json-schema', '{}'], env: ['PATH=/bin', 'GIT_OPTIONAL_LOCKS=0'] };
-  const buildChild = { round1_error: '', argv: ['-p', '--allowedTools', 'Bash', '--permission-mode', 'acceptEdits'], env: [] };
+  const buildChild = { round1_error: '', argv: ['-p', '--allowedTools', 'Bash', '--disallowedTools', 'ScheduleWakeup', '--permission-mode', 'acceptEdits'], env: [] };
   const hook = { event: 'executor_hook', decision: 'deny', hook: 'configuration', tool_name: 'Write', message: NOTE };
   const noHook = { round1_error: '', round1_ending: 'finish', round2_error: '', round2_ending: 'finish', hook_events: [hook], tool_events: [{ name: 'Write', denied: true }] };
   const buildStop = { round1_error: 'executor/protocol: hook did not run for the Write call "t"; the round was stopped', round2_error: '', round2_ending: '' };
@@ -123,7 +125,7 @@ function controls(kind) {
   bad(checkShapeChild, shapeChild, d => { d.argv[4] = 'Edit,Write'; });
   bad(checkShapeChild, shapeChild, d => { d.env = ['PATH=/bin']; });
   bad(checkShapeChild, shapeChild, d => { d.env = ['GIT_OPTIONAL_LOCKS=1']; });
-  bad(checkBuildChild, buildChild, d => { d.argv.push('--disallowedTools', WRITE_TOOLS); });
+  bad(checkBuildChild, buildChild, d => { d.argv[4] = WRITE_TOOLS; });
   bad(checkShapeNoHook, noHook, d => { d.round1_error = 'executor/protocol: hook did not run'; });
   bad(checkShapeNoHook, noHook, d => { d.round2_ending = ''; });
   bad(checkShapeNoHook, noHook, d => { d.hook_events[0].message = 'x'; });
