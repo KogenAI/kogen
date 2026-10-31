@@ -24,8 +24,10 @@ func budgetEvents(e *env, id string) []map[string]any {
 }
 
 func TestBuildRequestBudgetAcrossPasses(t *testing.T) {
+	t.Parallel()
 	for _, limit := range []int{1, 2, 4} {
 		t.Run(fmt.Sprintf("stops before request %d", limit+1), func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t)
 			f := e.prov
 			for i := 0; i < limit+2; i++ {
@@ -56,6 +58,7 @@ func TestBuildRequestBudgetAcrossPasses(t *testing.T) {
 			}
 		})
 		t.Run(fmt.Sprintf("finish on request %d lands", limit), func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t)
 			f := e.prov
 			for i := 1; i < limit; i++ {
@@ -73,6 +76,7 @@ func TestBuildRequestBudgetAcrossPasses(t *testing.T) {
 		})
 	}
 	t.Run("a response batch completes before the stop", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": "partial\n"}, "read_file", map[string]any{"path": "app.txt"}))
@@ -98,7 +102,9 @@ func TestBuildRequestBudgetAcrossPasses(t *testing.T) {
 }
 
 func TestBuildRequestBudgetResume(t *testing.T) {
+	t.Parallel()
 	t.Run("interrupted, resumed and exhausted", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		start := e.head()
@@ -154,6 +160,7 @@ func TestBuildRequestBudgetResume(t *testing.T) {
 		eq(t, "candidate", e.head(), start)
 	})
 	t.Run("a failed request is an attempt", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(f.calls("read_file", map[string]any{"path": "app.txt"}), failure(500, "server_error", "scripted failure"))
@@ -265,6 +272,7 @@ func observeBuild(t *testing.T, e *env, id string) budgetObservation {
 }
 
 func TestBuildRequestBudgetOff(t *testing.T) {
+	t.Parallel()
 	run := func(zero bool) (budgetObservation, int) {
 		e := newEnv(t)
 		f := e.prov
@@ -325,6 +333,7 @@ func TestBuildRequestBudgetOff(t *testing.T) {
 }
 
 func TestBuildRequestBudgetReview(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	f := e.prov
 	f.then(landScript(f)...)

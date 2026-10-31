@@ -43,6 +43,7 @@ func wireFixture(t *testing.T, name string) string {
 // the requests it always sent (baseline wire fixtures recorded before the retry/forcing change)
 // and ends as it always ended, with no retry, no reminder and no forcing field.
 func TestKReviewRetryUnchangedValidRequests(t *testing.T) {
+	t.Parallel()
 	t.Run("approve lands", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t)

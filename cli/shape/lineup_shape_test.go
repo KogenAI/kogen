@@ -133,7 +133,9 @@ func shapeAbsent(t *testing.T, f *shpFx) {
 // start a fresh session; malformed output, auth refusal and the round cap publish nothing and
 // never use the native provider.
 func TestClaudeLineupShapeSubmission(t *testing.T) {
+	parallel(t)
 	t.Run("readiness feedback and exact red acknowledgment stay with one session", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		head := f.head()
@@ -184,6 +186,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 	})
 
 	t.Run("an invalid submission is retried in the same session and three end shaping", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){result(map[string]any{"files": "not a list"})}}
@@ -198,6 +201,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 	})
 
 	t.Run("a model-supplied provenance line is not a Kogen documentation record", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		faked := strings.Replace(shpIntentMD, "## Tests", "## Source comparison\n- documentation-lookup: retrieved https://example.invalid/doc\n\n## Tests", 1)
@@ -210,6 +214,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 	})
 
 	t.Run("questions keep the numbered CLI and the next invocation is a fresh session", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -238,6 +243,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 	})
 
 	t.Run("startup, protocol and round-cap failures publish nothing and never fall back", func(t *testing.T) {
+		parallel(t)
 		for name, tc := range map[string]struct {
 			x      *shapeExec
 			rounds int
@@ -253,6 +259,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 			"round cap": {&shapeExec{rounds: []func(int, string) (executor.RoundResult, error){result(shpFiles()), result(shpFiles())}}, 1, "candidate", "executor_round_limit"},
 		} {
 			t.Run(name, func(t *testing.T) {
+				parallel(t)
 				f := newShpFx(t)
 				f.useExternalShape(tc.rounds)
 				tc.x.t = t
@@ -287,6 +294,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 // nonignored files, modes), the raw index and HEAD around every external round; a session change
 // stops before publication with the existing custody reasons and is left as it is.
 func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
+	parallel(t)
 	mutations := map[string]struct {
 		do     func(t *testing.T, f *shpFx, root string)
 		reason string
@@ -304,6 +312,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 	}
 	for name, m := range mutations {
 		t.Run("shape "+name, func(t *testing.T) {
+			parallel(t)
 			f := newShpFx(t)
 			f.write(".gitignore", ".kogen/local/\nignored-but-tracked.txt\n")
 			f.write("ignored-but-tracked.txt", "original\n")
@@ -344,6 +353,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 	}
 
 	t.Run("created untracked files are removed, pre-existing ones stay, a stat refresh is equal", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.write("pre-existing.txt", "mine\n")
 		f.useExternalShape(6)
@@ -365,6 +375,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 	})
 
 	t.Run("created files are reported once in the evidence", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -383,6 +394,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 	})
 
 	t.Run("a file the session untracked is not removed", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -403,6 +415,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 	})
 
 	t.Run("a failed removal names the files and publishes nothing", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -424,6 +437,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 	})
 
 	t.Run("kogen's own run evidence is not a checkout edit", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -437,6 +451,7 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 	})
 
 	t.Run("refine mutation preserves the package, approval and the detected edit", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{approved: true, external: 6})
 		before, approval, head, index := f.pkg(), f.read(".kogen/local/approvals/is-even.json"), f.head(), f.index()
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -461,7 +476,9 @@ func TestClaudeLineupShapeCheckoutGuard(t *testing.T) {
 // same ownership, cumulative-proposal and publication rules; success revokes and archives the
 // approval, every failure preserves the package, approval, HEAD and index.
 func TestClaudeLineupRefinePreservation(t *testing.T) {
+	parallel(t)
 	t.Run("an owned correction publishes and revokes the approval", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{approved: true, external: 6})
 		before, head, index := f.pkg(), f.head(), f.index()
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){result(map[string]any{"files": []any{map[string]any{"path": refIntentPath, "content": refTitled}}})}}
@@ -493,6 +510,7 @@ func TestClaudeLineupRefinePreservation(t *testing.T) {
 	})
 
 	t.Run("failures preserve the package, approval, HEAD and index", func(t *testing.T) {
+		parallel(t)
 		newPath := ".kogen/intents/is-even/model.qnt"
 		for name, tc := range map[string]struct {
 			rounds []func(int, string) (executor.RoundResult, error)
@@ -508,6 +526,7 @@ func TestClaudeLineupRefinePreservation(t *testing.T) {
 			"the round cap": {[]func(int, string) (executor.RoundResult, error){result(map[string]any{"files": []any{map[string]any{"path": newPath, "content": "module m {}\n"}}})}, "candidate", "executor_round_limit", 1},
 		} {
 			t.Run(name, func(t *testing.T) {
+				parallel(t)
 				f := newRefFx(t, refOpts{approved: true, external: tc.max})
 				before, approval, head, index := f.pkg(), f.read(".kogen/local/approvals/is-even.json"), f.head(), f.index()
 				x := &shapeExec{t: t, rounds: tc.rounds}
@@ -528,6 +547,7 @@ func TestClaudeLineupRefinePreservation(t *testing.T) {
 	})
 
 	t.Run("startup failure keeps everything", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{approved: true, external: 6})
 		before, approval := f.pkg(), f.read(".kogen/local/approvals/is-even.json")
 		x := &shapeExec{t: t, startErr: executor.Fail(executor.ReasonAuthRefused, "api key")}
@@ -545,7 +565,9 @@ func TestClaudeLineupRefinePreservation(t *testing.T) {
 // workers are refused before inference, the descriptor lists the limitations, the task tells the
 // session which native tools it lacks, and the session's own research becomes no Kogen record.
 func TestClaudeLineupUnsupportedCapabilities(t *testing.T) {
+	parallel(t)
 	t.Run("workers with a Claude Code shaper are refused before any inference", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nmodels:\n  shape: {executor: claude-code, model: m, effort: low}\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low}\n  probe: {model: p, effort: low}\n  draft: {model: d, effort: low}\n")
 		f.git("add", ".kogen/project.yaml")
@@ -564,6 +586,7 @@ func TestClaudeLineupUnsupportedCapabilities(t *testing.T) {
 	})
 
 	t.Run("a descriptor without the shape role is refused", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		f.newSession()
@@ -576,6 +599,7 @@ func TestClaudeLineupUnsupportedCapabilities(t *testing.T) {
 	})
 
 	t.Run("limitations are reported and research is not a Kogen record", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){result(shpFiles()), result(map[string]any{"files": []any{

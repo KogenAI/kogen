@@ -269,6 +269,15 @@ var serialTmps serialTmpDirs
 // parallelTests are the tests already marked parallel (a test may build several fixtures).
 var parallelTests sync.Map
 
+// parallel makes the test run beside the others unless it already does: a test may call it
+// at its start and build several fixtures, each of which calls it again.
+func parallel(t *testing.T) {
+	t.Helper()
+	if _, again := parallelTests.LoadOrStore(t.Name(), true); !again {
+		t.Parallel()
+	}
+}
+
 // dir is the test's own serial temporary folder. A subtest of a serial test is serial too and
 // gets its own TMPDIR, so its leftover checks look where its scratch is created.
 func (s *serialTmpDirs) dir(t *testing.T) string {
@@ -302,9 +311,7 @@ func newShpFx(t *testing.T, steps ...shpStep) *shpFx {
 	tmp := serialTmps.dir(t)
 	if tmp == "" {
 		// A fixture shares no process-wide state, so its test runs beside the others.
-		if _, again := parallelTests.LoadOrStore(t.Name(), true); !again {
-			t.Parallel()
-		}
+		parallel(t)
 		tmp = t.TempDir()
 	}
 	f := &shpFx{t: t, Root: t.TempDir(), Home: t.TempDir(), Aux: t.TempDir(), Tmp: tmp}

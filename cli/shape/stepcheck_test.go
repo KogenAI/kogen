@@ -10,6 +10,7 @@ import (
 )
 
 func TestSelfcheckFeedbackNamesDefectsNotWarnings(t *testing.T) {
+	parallel(t)
 	const own = "features/steps/a_steps.js"
 	var raw verify.StepRaw
 	err := json.Unmarshal([]byte(`{"loads":[{"file":"`+own+`","error":""}],
@@ -32,6 +33,7 @@ func TestSelfcheckFeedbackNamesDefectsNotWarnings(t *testing.T) {
 }
 
 func TestOwnStepFilesAreTheJavaScriptStepFiles(t *testing.T) {
+	parallel(t)
 	intent := &project.Intent{Slug: "k", Acceptance: []string{project.FeaturePath("k"),
 		"features/steps/k_steps.js", "features/steps/k_driver.go", "test/k_helper.js"}}
 	if got := verify.OwnStepFiles(intent); !slices.Equal(got, []string{"features/steps/k_steps.js"}) {

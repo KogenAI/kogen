@@ -15,6 +15,7 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
+	"kogen/durable"
 	"kogen/project"
 	"kogen/thinking"
 	"kogen/verify"
@@ -205,7 +206,7 @@ func writePrivate(path string, data []byte) error {
 		_, err = f.Write(data)
 	}
 	if err == nil {
-		err = f.Sync()
+		err = durable.Sync(f)
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr

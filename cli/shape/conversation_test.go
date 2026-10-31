@@ -15,6 +15,7 @@ func cacheKeys(reqs []map[string]any) []string {
 }
 
 func TestAShapeConversationKeepsOneCacheIdentityForEveryRequest(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t,
 		shpAnswer(shpCall("c1", "submit", shpFiles())), // refused (uninspected): a second request follows
 		shpSubmit("c2", shpFiles()),
@@ -41,6 +42,7 @@ func TestAShapeConversationKeepsOneCacheIdentityForEveryRequest(t *testing.T) {
 }
 
 func TestAShapeConversationKeepsItsIdentityAcrossAWorkingWindowReset(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, readPadding(40)...)
 	seedPadding(f)
 	f.Prov.mu.Lock()
@@ -61,6 +63,7 @@ func TestAShapeConversationKeepsItsIdentityAcrossAWorkingWindowReset(t *testing.
 }
 
 func TestEveryShapeWorkerHasItsOwnCacheIdentity(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.withWorkers()
 	jobs := []any{shpJob("one", "read", []any{"app.txt"}), shpJob("two", "read", []any{"app.txt"})}
@@ -118,6 +121,7 @@ func TestEveryShapeWorkerHasItsOwnCacheIdentity(t *testing.T) {
 }
 
 func TestARefinementKeepsOneCacheIdentityOfItsOwn(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{},
 		refProbe("c1", "true"),
 		refSubmit("c2", refIntentPath, refTitled))

@@ -26,6 +26,7 @@ func readPadding(n int) []shpStep {
 }
 
 func TestASnapshotDamagedByACompletedToolRefusesTheNextToolInTheSameBatch(t *testing.T) {
+	parallel(t)
 	marker := filepath.Join(t.TempDir(), "unsafe-tool-ran")
 	custody := ""
 	steps := readPadding(40)
@@ -72,6 +73,7 @@ func TestASnapshotDamagedByACompletedToolRefusesTheNextToolInTheSameBatch(t *tes
 }
 
 func TestCustodyDamagedDuringFinalReadinessCannotPublishSuccessfulEvidence(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, readPadding(40)...)
 	custody := filepath.Join(f.Root, ".kogen/local/shaping/is-even/working-context")
 	script := f.read("accept.sh")

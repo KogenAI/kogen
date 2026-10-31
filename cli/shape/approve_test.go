@@ -233,6 +233,7 @@ func (f *approveFx) readApproval() map[string]any {
 var approveShaRe = regexp.MustCompile(`[0-9a-f]{64}`)
 
 func TestApproveCardOutput(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	exit, out, err := f.approve(ApproveInput{})
 	if err != nil || exit != 5 {
@@ -282,6 +283,7 @@ func TestApproveCardOutput(t *testing.T) {
 }
 
 func TestApproveCardPassesNow(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.write("app.txt", "green\n")
 	f.git("add", "-A")
@@ -301,8 +303,10 @@ func TestApproveCardPassesNow(t *testing.T) {
 }
 
 func TestApproveWithFullAndPrefixHash(t *testing.T) {
+	parallel(t)
 	for _, prefixLen := range []int{64, 8, 6} {
 		t.Run(fmt.Sprint(prefixLen), func(t *testing.T) {
+			parallel(t)
 			f := newApproveFx(t)
 			if exit, _, err := f.approve(ApproveInput{}); err != nil || exit != 5 {
 				t.Fatalf("card: exit %d, err %v", exit, err)
@@ -345,6 +349,7 @@ func TestApproveWithFullAndPrefixHash(t *testing.T) {
 }
 
 func TestApproveWithoutCachedEvidenceRunsReadiness(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	exit, out, err := f.approve(ApproveInput{Hash: f.sha()[:10]})
 	if err != nil || exit != 0 {
@@ -356,6 +361,7 @@ func TestApproveWithoutCachedEvidenceRunsReadiness(t *testing.T) {
 }
 
 func TestApproveHashMismatch(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	sha := f.sha()
 	prefix := "abcdef"
@@ -377,6 +383,7 @@ func TestApproveHashMismatch(t *testing.T) {
 }
 
 func TestApproveQuestionsPending(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.write(".kogen/local/shaping/fixture/state.json",
 		`{"rounds":[{"questions":[{"text":"a"}],"answers":{"1":"x"}},{"questions":[{"text":"a"},{"text":"b"},{"text":"c"}],"answers":{"1":"x"}}]}`)
@@ -394,6 +401,7 @@ func TestApproveQuestionsPending(t *testing.T) {
 }
 
 func TestApproveMissingIntent(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	s, _, _ := f.session()
 	exit, err := Approve(context.Background(), s, ApproveInput{Project: f.Root, Slug: "unknown"})
@@ -404,6 +412,7 @@ func TestApproveMissingIntent(t *testing.T) {
 }
 
 func TestApproveNotAGitRepository(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	dir := t.TempDir()
 	s, _, _ := f.session()
@@ -415,6 +424,7 @@ func TestApproveNotAGitRepository(t *testing.T) {
 }
 
 func TestApproveBuildRunning(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	lock := git.NewLock(git.BuildLockPath(f.Root))
 	if _, err := lock.Acquire(); err != nil {
@@ -429,6 +439,7 @@ func TestApproveBuildRunning(t *testing.T) {
 }
 
 func TestApproveWithoutGitIdentityAndBy(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.git("config", "--unset", "user.name")
 	f.git("config", "--unset", "user.email")
@@ -454,8 +465,10 @@ func TestApproveWithoutGitIdentityAndBy(t *testing.T) {
 }
 
 func TestApproveReadinessInputsChangeDuringApproval(t *testing.T) {
+	parallel(t)
 	for _, prior := range []bool{false, true} {
 		t.Run(fmt.Sprint("prior approval ", prior), func(t *testing.T) {
+			parallel(t)
 			f := newApproveFx(t)
 			const raw = "{\"custody\":\"original\"}\n"
 			if prior {
@@ -492,8 +505,10 @@ func TestApproveReadinessInputsChangeDuringApproval(t *testing.T) {
 }
 
 func TestApproveInterruptDuringPublication(t *testing.T) {
+	parallel(t)
 	for _, prior := range []bool{false, true} {
 		t.Run(fmt.Sprint("prior approval ", prior), func(t *testing.T) {
+			parallel(t)
 			f := newApproveFx(t)
 			const raw = "{\"custody\":\"original\"}\n"
 			if prior {
@@ -556,6 +571,7 @@ func (f *approveFx) approveReceipt(sha string) {
 }
 
 func TestApproveBindsSourceProvenance(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approveReceipt(f.sha())
 	exit, out, err := f.approve(ApproveInput{})
@@ -577,6 +593,7 @@ func TestApproveBindsSourceProvenance(t *testing.T) {
 }
 
 func TestApproveSourceProvenanceChangedDuringReadiness(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approveReceipt(f.sha())
 	receipt := filepath.Join(f.Root, ".kogen/local/provenance/fixture/current.json")
@@ -599,6 +616,7 @@ func TestApproveSourceProvenanceChangedDuringReadiness(t *testing.T) {
 }
 
 func TestApproveRefusesBrokenBoundSourceOfExistingApproval(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.write(".kogen/local/approvals/fixture.json",
 		`{"slug":"fixture","sha256":"x","approver":"a","approved_at":"t","source_provenance":{"path":"`+filepath.Join(f.Root, "gone", "current.json")+`","sha256":"abc"}}`)
@@ -610,6 +628,7 @@ func TestApproveRefusesBrokenBoundSourceOfExistingApproval(t *testing.T) {
 }
 
 func TestApproveSourceReceiptBoundToAnotherContract(t *testing.T) {
+	parallel(t)
 	// A receipt bound to an earlier contract is historical: the card says so, and an exact
 	// approval refreshes it to the current contract, keeping the predecessor.
 	f := newApproveFx(t)
@@ -646,6 +665,7 @@ func TestApproveSourceReceiptBoundToAnotherContract(t *testing.T) {
 }
 
 func TestApproveRetainsAStaleApprovalAndNamesItOnTheCard(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approveReceipt(f.sha())
 	if exit, _, err := f.approve(ApproveInput{Hash: f.sha()}); err != nil || exit != 0 {
@@ -693,6 +713,7 @@ func TestApproveRetainsAStaleApprovalAndNamesItOnTheCard(t *testing.T) {
 }
 
 func TestApproveRefusesAnUnsafeApprovalHistory(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approveReceipt(f.sha())
 	if exit, _, err := f.approve(ApproveInput{Hash: f.sha()}); err != nil || exit != 0 {
@@ -723,6 +744,7 @@ func TestApproveRefusesAnUnsafeApprovalHistory(t *testing.T) {
 }
 
 func TestApproveCardPrintsTheStagedPlanOfTheIntent(t *testing.T) {
+	parallel(t)
 	line1, line2 := 1, 2
 	_ = line1
 	_ = line2
@@ -746,6 +768,7 @@ func TestApproveCardPrintsTheStagedPlanOfTheIntent(t *testing.T) {
 }
 
 func TestApproveCardGroupsOutlineRows(t *testing.T) {
+	parallel(t)
 	line1, line2 := 3, 7
 	two, one := 2, 1
 	name1, name2 := "Even numbers", "Odd"
@@ -773,6 +796,7 @@ func TestApproveCardGroupsOutlineRows(t *testing.T) {
 }
 
 func TestApproveRepeatedCardsReuseReadinessWithoutExecution(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	_, first, err := f.approve(ApproveInput{})
 	if err != nil {
@@ -792,6 +816,7 @@ func TestApproveRepeatedCardsReuseReadinessWithoutExecution(t *testing.T) {
 }
 
 func TestApproveRunnerFailureAfterPassingScenariosNeverSuppliesReadiness(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.write("app.txt", "green\n")
 	f.git("add", "-A")
@@ -811,6 +836,7 @@ func TestApproveRunnerFailureAfterPassingScenariosNeverSuppliesReadiness(t *test
 }
 
 func TestApproveReadinessMutationsCannotCertifyTheCandidate(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.flag("mutate")
 	for n := 1; n <= 2; n++ {
@@ -852,6 +878,7 @@ func publishedApprovalWithReceipt(t *testing.T) (f *approveFx, receipt, original
 // Ports "approval publication drift restores exact prior approval without certifying changed
 // inputs" (with a receipt bound to the earlier contract).
 func TestApprovePublicationDriftRestoresThePriorApprovalAndTheOriginalReceiptWithItsArchive(t *testing.T) {
+	parallel(t)
 	f, receipt, original, raw := publishedApprovalWithReceipt(t)
 	index, _ := os.ReadFile(filepath.Join(f.Root, ".git/index"))
 	exit, out, err := f.approve(ApproveInput{Hash: f.sha(), approveAfterWrite: func() {
@@ -882,8 +909,10 @@ func TestApprovePublicationDriftRestoresThePriorApprovalAndTheOriginalReceiptWit
 
 // Ports "approval rollback preserves external receipt and marker edits during publication".
 func TestApproveRollbackPreservesExternalReceiptAndMarkerEditsDuringPublication(t *testing.T) {
+	parallel(t)
 	for _, changed := range []string{"receipt", "marker"} {
 		t.Run(changed, func(t *testing.T) {
+			parallel(t)
 			f, receipt, original, raw := publishedApprovalWithReceipt(t)
 			head := strings.TrimSpace(f.git("rev-parse", "HEAD"))
 			destination := receipt
@@ -915,6 +944,7 @@ func TestApproveRollbackPreservesExternalReceiptAndMarkerEditsDuringPublication(
 // TestApproveCardUnresolvedConflicts: the per-run record of uncovered defects is listed
 // between the assumptions and Files; a later run's record without them shows nothing.
 func TestApproveCardUnresolvedConflicts(t *testing.T) {
+	parallel(t)
 	root := t.TempDir()
 	dir := filepath.Join(root, ".kogen/local/shaping/demo")
 	if err := os.MkdirAll(dir, 0o755); err != nil {

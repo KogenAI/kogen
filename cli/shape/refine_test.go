@@ -304,6 +304,7 @@ func refNoScratch(t *testing.T, f *refFx) {
 // ---- the happy path and its lines ----
 
 func TestRefineLargeRepositoryUsesNavigationAndKeepsCompleteOwnedAuthority(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{}, refSubmit("c1", refIntentPath, refTitled))
 	for i := 0; i < 1600; i++ {
 		f.write(fmt.Sprintf("bulk/source_%d.go", i), fmt.Sprintf("package bulk\nfunc Declaration%d() {}\n", i))
@@ -435,6 +436,7 @@ func refStrings(v any) []string {
 // ---- readiness: the original, red and green candidates ----
 
 func TestRefineOriginalReadinessHitRetainsTheRecordWithoutExecution(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{}, refSubmit("c1", refIntentPath, refTitled))
 	runs := f.runs()
 	if exit, err := f.refine(f.hash0); err != nil || exit != 0 {
@@ -503,6 +505,7 @@ func TestRefineOriginalReadinessHitRetainsTheRecordWithoutExecution(t *testing.T
 }
 
 func TestRefineOriginalReadinessMissChecksTheOriginalInScratch(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{}, refSubmit("c1", refIntentPath, refTitled))
 	f.remove(".kogen/local/readiness/is-even.json")
 	runs := f.runs()
@@ -536,6 +539,7 @@ func TestRefineOriginalReadinessMissChecksTheOriginalInScratch(t *testing.T) {
 }
 
 func TestRefineRedOriginalGivesTheModelItsObservationsAndAcknowledgmentReusesThem(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{red: true},
 		refSubmit("c1", refFeaturePath, shpFeature), // the smallest artifact, unchanged: acknowledgment
 	)
@@ -564,6 +568,7 @@ func TestRefineRedOriginalGivesTheModelItsObservationsAndAcknowledgmentReusesThe
 }
 
 func TestRefineRedCandidateReturnsObservationsAndAChangedOneIsCheckedAgain(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{},
 		refSubmit("c1", refIntentPath, refTitled),
 		refSubmit("c2", refIntentPath, refTitled),                                     // acknowledgment of the red candidate
@@ -603,6 +608,7 @@ func TestRefineRedCandidateReturnsObservationsAndAChangedOneIsCheckedAgain(t *te
 }
 
 func TestRefineAChangedCandidateAfterRedGetsFreshChecks(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{},
 		refSubmit("c1", refIntentPath, refTitled),
 		refSubmit("c2", refStepPath, shpSteps+"// changed\n"),
@@ -622,6 +628,7 @@ func TestRefineAChangedCandidateAfterRedGetsFreshChecks(t *testing.T) {
 }
 
 func TestRefineUnchangedRedFromTheInitialContextAcknowledgesItsExistingCheck(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{red: true}, refSubmit("c1", refIntentPath, shpIntentMD))
 	f.remove(".kogen/local/readiness/is-even.json")
 	runs := f.runs()
@@ -653,6 +660,7 @@ func TestRefineUnchangedRedFromTheInitialContextAcknowledgesItsExistingCheck(t *
 }
 
 func TestRefineCumulativeRedProposalsStayUnpublishedUntilTheirObservationsAreAcknowledged(t *testing.T) {
+	parallel(t)
 	marker := filepath.Join(t.TempDir(), "red-refinement-observed")
 	updated := strings.Replace(shpIntentMD, "# Add an is-even check", "# Observe the is-even check", 1)
 	corrected := strings.Replace(updated, "# Observe the is-even check", "# Acknowledge the is-even check", 1)
@@ -714,6 +722,7 @@ func TestRefineCumulativeRedProposalsStayUnpublishedUntilTheirObservationsAreAck
 }
 
 func TestRefineProviderFailureDiagnosticsReachTheResultWithoutSecrets(t *testing.T) {
+	parallel(t)
 	failure := map[string]any{
 		"code": "unknown_overload", "type": "provider_capacity", "message": "structured overload",
 		"access_token": "SECRET-TOKEN-MARKER", "request": "PRIVATE-PAYLOAD-MARKER",
@@ -758,6 +767,7 @@ func TestRefineProviderFailureDiagnosticsReachTheResultWithoutSecrets(t *testing
 // ---- proposals accumulate ----
 
 func TestRefineNarrowRetryPreservesAllEarlierProposalsUntilMergedReadiness(t *testing.T) {
+	parallel(t)
 	marker := filepath.Join(t.TempDir(), "probe-started")
 	pending := strings.NewReplacer(
 		"# Add an is-even check", "# Correct the is-even check",
@@ -814,6 +824,7 @@ func TestRefineNarrowRetryPreservesAllEarlierProposalsUntilMergedReadiness(t *te
 }
 
 func TestRefineAMixedUnsafePayloadContributesNoProposals(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{},
 		refSubmit("c1", refIntentPath, strings.Replace(shpIntentMD, "# Add an is-even check", "# Must never publish", 1), "app.txt", "unsafe"),
 		refSubmit("c2", refFeaturePath, refFeatured),
@@ -840,6 +851,7 @@ func TestRefineAMixedUnsafePayloadContributesNoProposals(t *testing.T) {
 }
 
 func TestRefineLaterProposalsReplaceAPathAndOriginalBytesRevertIt(t *testing.T) {
+	parallel(t)
 	pending := strings.Replace(shpIntentMD, "- Non-integers raise TypeError. (source: request)", "- Non-integers raise TypeError. Retain the feature correction.", 1)
 	latest := strings.Replace(pending, "# Add an is-even check", "# Latest correction", 1)
 	corrected := strings.Replace(latest, "Retain the feature correction.", "Retain the feature correction. (source: request)", 1)
@@ -867,6 +879,7 @@ func refMessage(text string) shpStep {
 }
 
 func TestRefineInvalidSubmitIsRetriedAndAnAnswerWithoutCallsIsAsked(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{},
 		refMessage("done"), // no call at all
 		shpAnswer(shpCall("c1", "submit_refinement", map[string]any{"files": []any{}})),
@@ -886,6 +899,7 @@ func TestRefineInvalidSubmitIsRetriedAndAnAnswerWithoutCallsIsAsked(t *testing.T
 }
 
 func TestRefineThreeInvalidSubmissionsStopIt(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{},
 		refMessage("done"),
 		shpAnswer(shpCall("c1", "submit_refinement", map[string]any{"files": []any{}})),
@@ -906,6 +920,7 @@ func TestRefineThreeInvalidSubmissionsStopIt(t *testing.T) {
 }
 
 func TestRefineBlankConstraintIsInvalid(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{}, refConstraint("c1", "  "), refConstraint("c2", ""), refConstraint("c3", " \n"))
 	_, err := f.refine(f.hash0)
 	e := shpWantError(t, err, "shape", "refinement_invalid", "", 1)
@@ -914,6 +929,7 @@ func TestRefineBlankConstraintIsInvalid(t *testing.T) {
 }
 
 func TestRefineAReadOnlyAnswerDoesNotCountAsInvalid(t *testing.T) {
+	parallel(t)
 	read := func(id string) shpStep {
 		return shpAnswer(shpCall(id, "read_file", map[string]any{"path": refIntentPath}))
 	}
@@ -926,6 +942,7 @@ func TestRefineAReadOnlyAnswerDoesNotCountAsInvalid(t *testing.T) {
 }
 
 func TestRefineOnlyOneSubmissionCountsPerResponse(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{}, shpAnswer(
 		shpCall("c1", "submit_refinement", map[string]any{"files": []any{map[string]any{"path": refIntentPath, "content": refTitled}}}),
 		shpCall("c2", "submit_refinement", map[string]any{"constraint": "ignored"}),
@@ -1002,8 +1019,10 @@ func TestRefineInvalidUnsupportedProviderAndNotReadyResultsPreserveTheReadyDraft
 }
 
 func TestRefineRejectsProtectedAndSharedStepEditsWithoutChangingThePackage(t *testing.T) {
+	parallel(t)
 	for _, target := range []string{".kogen/project.yaml", "features/steps/calc_steps.js", refStepPath} {
 		t.Run(target, func(t *testing.T) {
+			parallel(t)
 			f := newRefFx(t, refOpts{},
 				refSubmit("c1", target, "changed"), refSubmit("c2", target, "changed"), refSubmit("c3", target, "changed"))
 			switch target {
@@ -1024,6 +1043,7 @@ func TestRefineRejectsProtectedAndSharedStepEditsWithoutChangingThePackage(t *te
 }
 
 func TestRefineProtectedPathsAreNotEditable(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{})
 	cfgText := f.read(".kogen/project.yaml")
 	f.write(".kogen/project.yaml", cfgText+"protect: [features/steps/is_even_steps.js]\n")
@@ -1051,6 +1071,7 @@ func TestRefineProtectedPathsAreNotEditable(t *testing.T) {
 }
 
 func TestRefineFixersFormatTheCandidateAndCannotTouchOtherFiles(t *testing.T) {
+	parallel(t)
 	setup := func(t *testing.T, fix string, steps ...shpStep) *refFx {
 		f := newRefFx(t, refOpts{})
 		f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"  fix: ["+fix+"]\n")
@@ -1070,6 +1091,7 @@ func TestRefineFixersFormatTheCandidateAndCannotTouchOtherFiles(t *testing.T) {
 		return f
 	}
 	t.Run("formats the submitted files", func(t *testing.T) {
+		parallel(t)
 		f := setup(t, `"printf '// formatted\\n' >> features/steps/is_even_steps.js"`, refSubmit("c1", refStepPath, shpSteps))
 		exit, err := f.refine(f.hash())
 		if err != nil || exit != 0 {
@@ -1078,6 +1100,7 @@ func TestRefineFixersFormatTheCandidateAndCannotTouchOtherFiles(t *testing.T) {
 		refText(t, "step", f.read(refStepPath), shpSteps+"// formatted\n")
 	})
 	t.Run("a failing fixer is unsupported work", func(t *testing.T) {
+		parallel(t)
 		f := setup(t, `"exit 3"`, refSubmit("c1", refIntentPath, refTitled))
 		before := f.pkg()
 		_, err := f.refine(f.hash())
@@ -1088,6 +1111,7 @@ func TestRefineFixersFormatTheCandidateAndCannotTouchOtherFiles(t *testing.T) {
 		refEqual(t, "package", f.pkg(), before)
 	})
 	t.Run("a fixer changing another file", func(t *testing.T) {
+		parallel(t)
 		f := setup(t, `"printf x >> app.txt"`, refSubmit("c1", refIntentPath, refTitled))
 		before := f.pkg()
 		_, err := f.refine(f.hash())
@@ -1098,7 +1122,9 @@ func TestRefineFixersFormatTheCandidateAndCannotTouchOtherFiles(t *testing.T) {
 }
 
 func TestRefineRefusalsBeforeTheModel(t *testing.T) {
+	parallel(t)
 	t.Run("hash must be the full lowercase digest", func(t *testing.T) {
+		parallel(t)
 		for _, h := range []string{"", "abc123", strings.ToUpper(strings.Repeat("a", 64)), strings.Repeat("a", 63) + "g"} {
 			f := newRefFx(t, refOpts{})
 			exit, err := f.refine(h)
@@ -1108,6 +1134,7 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 		}
 	})
 	t.Run("unknown Intent", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		f.newSession()
 		exit, err := Refine(context.Background(), f.S, RefineInput{Project: f.Root, Slug: "missing", Hash: f.hash0, Request: "x"})
@@ -1115,6 +1142,7 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 		shpEq(t, "exit", exit, 2)
 	})
 	t.Run("an Intent that is not ready", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		f.write(refIntentPath, strings.Replace(shpIntentMD, "- none\n", "", 1))
 		exit, err := f.refine(f.hash0)
@@ -1124,6 +1152,7 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 		refRequestMissing(t, f)
 	})
 	t.Run("pending shaping questions", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		f.write(".kogen/local/shaping/is-even/state.json", "{}")
 		_, err := f.refine(f.hash0)
@@ -1132,12 +1161,14 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 		refRequestMissing(t, f)
 	})
 	t.Run("acceptance not configured", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n")
 		_, err := f.refine(f.hash0)
 		shpWantError(t, err, "environment", "acceptance_unconfigured", "set commands.acceptance in .kogen/project.yaml", 3)
 	})
 	t.Run("a Build owns the checkout", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		lock := git.NewLock(git.BuildLockPath(f.Root))
 		if _, err := lock.Acquire(); err != nil {
@@ -1150,6 +1181,7 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 		refRequestMissing(t, f)
 	})
 	t.Run("not a repository", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		f.newSession()
 		exit, err := Refine(context.Background(), f.S, RefineInput{Project: t.TempDir(), Slug: shpSlug, Hash: f.hash0, Request: "x"})
@@ -1157,6 +1189,7 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 		shpEq(t, "exit", exit, 3)
 	})
 	t.Run("not signed in", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		os.RemoveAll(filepath.Join(f.Home, ".kogen"))
 		exit, err := f.refine(f.hash0)
@@ -1172,6 +1205,7 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 	// ExUnit provider_test.exs "Shape includes enabled workers but Refine can select only the Shape
 	// role": workers on a provider without a login cannot stop Refine at its login check.
 	t.Run("enabled workers need no login for Refine", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		cfg, err := os.ReadFile(filepath.Join(f.Root, ".kogen/project.yaml"))
 		if err != nil {
@@ -1196,6 +1230,7 @@ func TestRefineRefusalsBeforeTheModel(t *testing.T) {
 		}
 	})
 	t.Run("no commit", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{})
 		root := t.TempDir()
 		cmd := exec.Command("git", "init", "-q")
@@ -1235,10 +1270,12 @@ func refInt(n int) string {
 }
 
 func TestRefineStaleHashesApprovalMismatchesAndDirtyImplementationRefuseBeforeModelRequests(t *testing.T) {
+	parallel(t)
 	// Ports "SHP-11 stale hashes and approved-current dirty implementation refuse before model
 	// requests": a marker for another contract no longer refuses by itself.
 	for _, kind := range []string{"hash", "dirty"} {
 		t.Run(kind, func(t *testing.T) {
+			parallel(t)
 			f := newRefFx(t, refOpts{approved: true})
 			if kind == "dirty" {
 				f.write("app.txt", "unfinished candidate\n")
@@ -1274,6 +1311,7 @@ func TestRefineStaleHashesApprovalMismatchesAndDirtyImplementationRefuseBeforeMo
 }
 
 func TestRefineAnUnrelatedStaleLegacyApprovalDoesNotImposeBuildCleanRestrictions(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{approved: true})
 	f.write(refIntentPath, f.read(refIntentPath)+"\nCurrent draft.\n")
 	f.write("app.txt", "unrelated unfinished implementation\n")
@@ -1308,6 +1346,7 @@ func TestRefineAnUnrelatedStaleLegacyApprovalDoesNotImposeBuildCleanRestrictions
 // ---- approval ----
 
 func TestRefineAnApprovedCorrectionArchivesTheExactApprovalAndNeedsAFreshOne(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{approved: true}, refSubmit("c1", refIntentPath, refTitled))
 	index := f.index()
 	exit, err := f.refine(f.hash0)
@@ -1387,6 +1426,7 @@ func TestRefineFailedAndCancelledApprovedCorrectionsPreservePackageRawApprovalAn
 }
 
 func TestRefineFailedApprovalRevocationRestoresAReadOnlyArtifactAndRetainsApproval(t *testing.T) {
+	parallel(t)
 	marker := filepath.Join(t.TempDir(), "probe-started")
 	f := newRefFx(t, refOpts{approved: true},
 		refProbe("c1", "touch '"+marker+"' && sleep 1"),
@@ -1423,8 +1463,10 @@ func TestRefineFailedApprovalRevocationRestoresAReadOnlyArtifactAndRetainsApprov
 }
 
 func TestRefineChangesToHeadRawApprovalOrIndexPreventApprovedPublication(t *testing.T) {
+	parallel(t)
 	for _, kind := range []string{"head", "approval", "index"} {
 		t.Run(kind, func(t *testing.T) {
+			parallel(t)
 			marker := filepath.Join(t.TempDir(), "probe-started")
 			f := newRefFx(t, refOpts{approved: true},
 				refProbe("c1", "touch '"+marker+"' && sleep 1"),
@@ -1454,6 +1496,7 @@ func TestRefineChangesToHeadRawApprovalOrIndexPreventApprovedPublication(t *test
 }
 
 func TestRefineAnExternalEditWhileRefiningIsPreservedAndPreventsPublication(t *testing.T) {
+	parallel(t)
 	marker := filepath.Join(t.TempDir(), "probe-started")
 	f := newRefFx(t, refOpts{},
 		refProbe("c1", "touch '"+marker+"' && sleep 1"),
@@ -1517,8 +1560,10 @@ func TestRefineInterruptionDuringAProbePreservesThePackageAndRetainsEvidence(t *
 // ---- probes ----
 
 func TestRefineLocalIgnoredWarmthStaysAvailableToProbesButOutOfFinalProof(t *testing.T) {
+	parallel(t)
 	for _, mode := range []string{"info/exclude", "core.excludesFile"} {
 		t.Run(mode, func(t *testing.T) {
+			parallel(t)
 			f := newRefFx(t, refOpts{approved: true},
 				refProbe("c1", "cat local-cache/warm.txt"),
 				refSubmit("c2", refIntentPath, refTitled),
@@ -1567,6 +1612,7 @@ func TestRefineLocalIgnoredWarmthStaysAvailableToProbesButOutOfFinalProof(t *tes
 }
 
 func TestRefineProbeRunsInTheScratchCopyWithTheProposalApplied(t *testing.T) {
+	parallel(t)
 	unsourced := strings.Replace(shpIntentMD, "- Non-integers raise TypeError. (source: request)", "- Non-integers raise TypeError.", 1)
 	f := newRefFx(t, refOpts{},
 		refSubmit("c1", refFeaturePath, refFeatured, refIntentPath, unsourced),
@@ -1594,6 +1640,7 @@ func TestRefineProbeRunsInTheScratchCopyWithTheProposalApplied(t *testing.T) {
 // ---- source provenance ----
 
 func TestRefineRecordsTheCorrectionInTheSourceReceipt(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{source: true, approved: true}, refSubmit("c1", refIntentPath, strings.Replace(refTitled, "- The request asks for is_even; the feature covers it.", "- The correction is addressed; the request is superseded where it conflicts.", 1)))
 	receiptPath := filepath.Join(f.Root, ".kogen/local/provenance/is-even/current.json")
 	original, err := os.ReadFile(receiptPath)
@@ -1647,8 +1694,10 @@ func TestRefineRecordsTheCorrectionInTheSourceReceipt(t *testing.T) {
 }
 
 func TestRefineRefusesChangedOrDeletedBoundSourceDuringInferenceWithoutPublishingOrRevoking(t *testing.T) {
+	parallel(t)
 	for _, drift := range []string{"changed", "deleted"} {
 		t.Run(drift, func(t *testing.T) {
+			parallel(t)
 			f := newRefFx(t, refOpts{source: true, approved: true})
 			before := f.pkg()
 			index := f.index()
@@ -1690,6 +1739,7 @@ func TestRefineRefusesChangedOrDeletedBoundSourceDuringInferenceWithoutPublishin
 }
 
 func TestRefineSourceReceiptThatIsNotBoundIsRefusedBeforeTheModel(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{source: true})
 	source := filepath.Join(f.Root, ".kogen/local/provenance/is-even/current.json")
 	if err := os.Chmod(source, 0o644); err != nil {
@@ -1703,6 +1753,7 @@ func TestRefineSourceReceiptThatIsNotBoundIsRefusedBeforeTheModel(t *testing.T) 
 // ---- the session's own cancellation ----
 
 func TestRefineStopsWhenTheContextIsCancelled(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{}, refSubmit("c1", refIntentPath, refTitled))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1719,6 +1770,7 @@ func TestRefineStopsWhenTheContextIsCancelled(t *testing.T) {
 func receiptOf(f *refFx) string { return f.read(".kogen/local/provenance/is-even/current.json") }
 
 func TestRefineOfAHistoricalContractResolvesTheStaleMarkersReceiptAndKeepsThePredecessor(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{approved: true, source: true})
 	original := receiptOf(f)
 	f.write(refIntentPath, f.read(refIntentPath)+"\nCurrent draft.\n")
@@ -1747,6 +1799,7 @@ func TestRefineOfAHistoricalContractResolvesTheStaleMarkersReceiptAndKeepsThePre
 }
 
 func TestRefineRefusesAMarkerWhoseReceiptPointerIsNotThePinnedCurrentOne(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{approved: true, source: true})
 	var marker map[string]any
 	if err := json.Unmarshal([]byte(f.approval), &marker); err != nil {
@@ -1764,6 +1817,7 @@ func TestRefineRefusesAMarkerWhoseReceiptPointerIsNotThePinnedCurrentOne(t *test
 }
 
 func TestRefineRollsBackItsReceiptWhenTheCheckoutChangesDuringPublication(t *testing.T) {
+	parallel(t)
 	marker := filepath.Join(t.TempDir(), "probe-started")
 	f := newRefFx(t, refOpts{approved: true, source: true},
 		refProbe("c1", "touch '"+marker+"' && sleep 1"),
@@ -1808,6 +1862,7 @@ func TestRefineProbeReportsTimeoutObservationFailure(t *testing.T) {
 }
 
 func TestRefineAnthropicInvalidProviderFailureReachesTheResult(t *testing.T) {
+	parallel(t)
 	f := newRefFx(t, refOpts{})
 	step := shpAnthropic(f.shpFx)
 	f.Prov.route = func(map[string]any) *shpStep { return &step }

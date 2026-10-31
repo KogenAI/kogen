@@ -7,6 +7,7 @@ import (
 )
 
 func TestSumUsagePartialWhenStatesDiffer(t *testing.T) {
+	parallel(t)
 	a, b := 1.5, 2.0
 	one := executor.Usage{CostUSD: &a, State: executor.UsageComplete}
 	two := executor.Usage{CostUSD: &b, State: executor.UsageUnknown}

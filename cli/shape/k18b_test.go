@@ -184,11 +184,18 @@ func k18bResetCase(t *testing.T, owner string) {
 	}
 }
 
-func TestK18bShapeResetContinuesWithoutStaleThinking(t *testing.T) { k18bResetCase(t, "shape") }
+func TestK18bShapeResetContinuesWithoutStaleThinking(t *testing.T) {
+	parallel(t)
+	k18bResetCase(t, "shape")
+}
 
-func TestK18bRefineResetContinuesWithoutStaleThinking(t *testing.T) { k18bResetCase(t, "refine") }
+func TestK18bRefineResetContinuesWithoutStaleThinking(t *testing.T) {
+	parallel(t)
+	k18bResetCase(t, "refine")
+}
 
 func TestK18bShapeAndRefineRequestWithoutResetIsByteIdentical(t *testing.T) {
+	parallel(t)
 	for _, owner := range []string{"shape", "refine"} {
 		root := t.TempDir()
 		client := provider.NewClient("")

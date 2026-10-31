@@ -136,6 +136,7 @@ func TestKReviewVerdictStrandReset(t *testing.T) {
 // resume` starts one fresh review that obtains a valid verdict and lands only the reviewed
 // green tree, with no builder round and no completed verification rerun.
 func TestKReviewVerdictStrandPinnedResume(t *testing.T) {
+	t.Parallel()
 	bin := buildKogen(t)
 	e := newEnv(t)
 	e.credentials()
@@ -274,6 +275,7 @@ func TestKReviewVerdictStrandPinnedResume(t *testing.T) {
 // the reviewer left it; a changed stopped candidate refuses an explicit resume naming the
 // observed and green trees and the changed paths; substantive verdicts are not verdictless.
 func TestKReviewVerdictStrandSafety(t *testing.T) {
+	t.Parallel()
 	// stopWith runs two verdictless reviews in this process; second is review 2's first turn,
 	// which may touch the checkout.
 	stopWith := func(t *testing.T, first, second func(f *fakeProvider) handler) (*env, string, string) {

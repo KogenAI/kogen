@@ -177,6 +177,7 @@ func TestAResumeStillRefusesEveryChangeToWhatIsStaged(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e, id := interruptedReview(t)
 			saved := e.indexBytes()
 			c.change(e)

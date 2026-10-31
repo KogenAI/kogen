@@ -85,6 +85,7 @@ func namedFeedbackEnv(t *testing.T) (*env, verify.Tools) {
 }
 
 func TestNamedFeedbackBuilderRepair(t *testing.T) {
+	t.Parallel()
 	e, tools := namedFeedbackEnv(t)
 	wrong := "package widget\n\nimport \"testing\"\n\nfunc TestWidgetBehaviour(t *testing.T) {\n\tif Name() != \"widget\" {\n\t\tt.Fatal(Name())\n\t}\n}\n"
 	missing := regexp.MustCompile(`\n\s+(Test\w+): did not run`)

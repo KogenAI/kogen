@@ -61,6 +61,7 @@ func uswWarnings(t *testing.T, ev map[string]any) []map[string]any {
 }
 
 func TestUnusedStepWarnShape(t *testing.T) {
+	parallel(t)
 	steps := uswHeader + uswGiven + uswEven + uswOdd + uswDead
 	f := uswFx(t, shpSubmit("c1", uswPackage(steps)))
 	exit, err := f.shape("Add calc.is_even(n).")
@@ -93,6 +94,7 @@ func TestUnusedStepWarnShape(t *testing.T) {
 }
 
 func TestUnusedStepWarnReused(t *testing.T) {
+	parallel(t)
 	shared := uswHeader + uswGiven + uswDead
 	f := uswFx(t, shpSubmit("c1", map[string]any{"files": []any{
 		map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": strings.Replace(shpIntentMD,
@@ -125,6 +127,7 @@ func TestUnusedStepWarnReused(t *testing.T) {
 }
 
 func TestUnusedStepWarnShapeRefusals(t *testing.T) {
+	parallel(t)
 	wrapper := uswHeader + "const { spawnSync } = require('node:child_process');\n" + uswGiven +
 		"Then('it is even', function () { const r = spawnSync('sh', ['-c', 'go run ./cmd/evencheck 4']); assert.equal(r.status, 2); });\n" + uswOdd
 	cases := []struct{ name, steps, line string }{
@@ -136,6 +139,7 @@ func TestUnusedStepWarnShapeRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			parallel(t)
 			// The defect comes with an unused definition, which must neither hide it nor change
 			// its feedback; the corrected package then publishes.
 			f := uswFx(t, shpSubmit("c1", uswPackage(c.steps+uswDead)), shpSubmit("c2", shpFiles()))

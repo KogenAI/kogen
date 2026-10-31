@@ -262,6 +262,7 @@ func TestRecoveryRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e, id := blocked(t, "printf candidate > app.txt")
 			if c.prep != nil {
 				c.prep(e, id)

@@ -286,6 +286,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 	}
 	for _, g := range legacyGolden {
 		t.Run(g.name, func(t *testing.T) {
+			t.Parallel()
 			data := legacyUnhex(t, g.hex)
 			got, err := legacyDecodeTerm(data)
 			if err != nil {
@@ -300,6 +301,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		})
 	}
 	t.Run("a struct", func(t *testing.T) {
+		t.Parallel()
 		got, err := legacyDecodeTerm(legacyUnhex(t, rows["struct"]))
 		if err != nil {
 			t.Fatal(err)
@@ -315,6 +317,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		}
 	})
 	t.Run("a map of 40 entries", func(t *testing.T) {
+		t.Parallel()
 		data := legacyUnhex(t, rows["big map"])
 		got, err := legacyDecodeTerm(data)
 		if err != nil {
@@ -332,6 +335,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		}
 	})
 	t.Run("a tuple of 300", func(t *testing.T) {
+		t.Parallel()
 		data := legacyUnhex(t, rows["big tuple"])
 		got, err := legacyDecodeTerm(data)
 		if err != nil || len(got.(legacyTuple)) != 300 || !bytes.Equal(legacyEncode(got), data) {
@@ -339,6 +343,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		}
 	})
 	t.Run("a list of 300 integers", func(t *testing.T) {
+		t.Parallel()
 		data := legacyUnhex(t, rows["long charlist"])
 		got, err := legacyDecodeTerm(data)
 		if err != nil || len(got.([]any)) != 300 || got.([]any)[299] != int64(300) || !bytes.Equal(legacyEncode(got), data) {
@@ -346,6 +351,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		}
 	})
 	t.Run("compressed terms", func(t *testing.T) {
+		t.Parallel()
 		got, err := legacyDecodeTerm(legacyUnhex(t, rows["compressed"]))
 		if err != nil || got != strings.Repeat("abc", 1000) {
 			t.Fatalf("%v", err)
@@ -359,6 +365,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		}
 	})
 	t.Run("Latin-1 atoms", func(t *testing.T) {
+		t.Parallel()
 		got, err := legacyDecodeTerm([]byte{131, 100, 0, 2, 0xe9, 0x41}) // ATOM_EXT "éA"
 		if err != nil || got != latom("éA") {
 			t.Fatalf("%v %v", got, err)
@@ -369,6 +376,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		}
 	})
 	t.Run("the old float text", func(t *testing.T) {
+		t.Parallel()
 		text := append([]byte("1.25000000000000000000e+00"), 0, 0, 0, 0, 0)
 		got, err := legacyDecodeTerm(append([]byte{131, 99}, text...))
 		if err != nil || got != 1.25 {
@@ -376,6 +384,7 @@ func TestLegacyReaderReadsWhatTheErlangRuntimeWrites(t *testing.T) {
 		}
 	})
 	t.Run("bytes after the term are ignored, as binary_to_term ignores them", func(t *testing.T) {
+		t.Parallel()
 		got, err := legacyDecodeTerm([]byte{131, 97, 1, 0})
 		if err != nil || got != int64(1) {
 			t.Fatalf("%v %v", got, err)
@@ -443,6 +452,7 @@ func TestLegacyReaderRefusesEverythingElse(t *testing.T) {
 	}
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if got, err := legacyDecodeTerm(data); err == nil {
 				t.Fatalf("read %#v", got)
 			}
@@ -600,6 +610,7 @@ func TestTheWriterGivesBackTheBytesTheElixirKogenSaved(t *testing.T) {
 	man := legacyLoadManifest(t)
 	for name := range man.Cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			doc := legacyDoc(t, name)
 			raw, _ := base64.StdEncoding.DecodeString(doc["state"].(string))
 			term, err := legacyDecodeTerm(raw)
@@ -619,6 +630,7 @@ func TestEveryRealCheckpointDecodes(t *testing.T) {
 	man := legacyLoadManifest(t)
 	for name, c := range man.Cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			raw, err := os.ReadFile(filepath.Join(legacyDir, c.Checkpoint))
 			if err != nil {
 				t.Fatal(err)
@@ -1281,6 +1293,7 @@ func TestLegacyResumeRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			fixture := c.fixture
 			if fixture == "" {
 				fixture = "builder"
@@ -1462,6 +1475,7 @@ func TestLegacyDecodeRefusesWhatValidStateRefuses(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			fixture := c.fixture
 			if fixture == "" {
 				fixture = "builder"
@@ -1557,6 +1571,7 @@ func TestLegacyDecodeRefusesIncompleteReviewAndPassState(t *testing.T) {
 	}}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			_, why := legacyDecodeAt(t, c.fixture, root, c.state, nil)
 			eq(t, "reason", why, "malformed required checkpoint fields")
 		})
@@ -1567,6 +1582,7 @@ func TestLegacyDecodeRefusesIncompleteReviewAndPassState(t *testing.T) {
 			continue // its Quint model is not on disk here: complete_pass? needs only the feature
 		}
 		t.Run("accepted "+name, func(t *testing.T) {
+			t.Parallel()
 			if _, why := legacyDecodeAt(t, name, root, nil, nil); why != "" {
 				t.Fatal(why)
 			}
@@ -1675,6 +1691,7 @@ func TestLegacyDecodeAcceptsAndRefusesLikeTheElixirDecoder(t *testing.T) {
 	}
 	for name, evidence := range map[string]func() *legacyMap{"old": func() *legacyMap { return passMap() }, "current": current} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			with := func(last *legacyMap, continuation *legacyMap) *legacyMap {
 				st := state()
 				if last != nil {

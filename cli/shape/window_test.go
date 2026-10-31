@@ -132,6 +132,7 @@ func jsonRoundTrip(t *testing.T, v any) any {
 }
 
 func TestRepeatedWindowsArchiveExactInputAndPreviousHandoffKeepingFullNewestBatch(t *testing.T) {
+	parallel(t)
 	f := newWindowFx(t)
 	f.win.documentation = []map[string]any{{"result": "unsupported"}}
 	input := concatItems(f.authority, windowExchange(1), windowExchange(2), windowExchange(3))
@@ -207,6 +208,7 @@ func TestRepeatedWindowsArchiveExactInputAndPreviousHandoffKeepingFullNewestBatc
 }
 
 func TestTheResetEventMeasuresTheRequestOfTheNewWindow(t *testing.T) {
+	parallel(t)
 	f := newWindowFx(t)
 	f.role = provider.Role{Model: "gpt-6.1-sol", Effort: "high"}
 	input := concatItems(f.authority, windowExchange(1), windowExchange(2), windowExchange(3))
@@ -233,6 +235,7 @@ func TestTheResetEventMeasuresTheRequestOfTheNewWindow(t *testing.T) {
 }
 
 func TestUnsafeAncestorCustodyRefusesBeforeWritingAnUnsentArchive(t *testing.T) {
+	parallel(t)
 	f := newWindowFx(t)
 	outside := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(f.root, ".kogen/local"), 0o755); err != nil {
@@ -265,8 +268,10 @@ func TestUnsafeAncestorCustodyRefusesBeforeWritingAnUnsentArchive(t *testing.T) 
 }
 
 func TestDamagedCustodyRefusesAnOtherwiseFittingNextRequest(t *testing.T) {
+	parallel(t)
 	for _, damage := range []string{"changed", "missing", "symlink", "mode"} {
 		t.Run(damage, func(t *testing.T) {
+			parallel(t)
 			f := newWindowFx(t)
 			input := concatItems(f.authority, windowExchange(1), windowExchange(2), windowExchange(3))
 			reduced, err := f.win.prepare(f.prep(), input)
@@ -298,6 +303,7 @@ func TestDamagedCustodyRefusesAnOtherwiseFittingNextRequest(t *testing.T) {
 }
 
 func TestADamagedDocumentationSnapshotIsDamagedCustody(t *testing.T) {
+	parallel(t)
 	f := newWindowFx(t)
 	f.win.documentation = []map[string]any{{"status": "retrieved"}}
 	input := concatItems(f.authority, windowExchange(1), windowExchange(2), windowExchange(3))
@@ -315,6 +321,7 @@ func TestADamagedDocumentationSnapshotIsDamagedCustody(t *testing.T) {
 }
 
 func TestIrreducibleAuthorityIsRetainedExactlyUnsent(t *testing.T) {
+	parallel(t)
 	f := newWindowFx(t)
 	input := []any{map[string]any{"role": "user", "content": strings.Repeat("x", 600_000)}}
 	f.win = newShapeWindow(f.root, "huge", input)
@@ -340,6 +347,7 @@ func TestIrreducibleAuthorityIsRetainedExactlyUnsent(t *testing.T) {
 }
 
 func TestARefineWindowLivesInTheRunEvidenceAndNamesItsOwner(t *testing.T) {
+	parallel(t)
 	root := t.TempDir()
 	evidence := filepath.Join(root, ".kogen/local/refinements/abc")
 	if err := os.MkdirAll(evidence, 0o700); err != nil {

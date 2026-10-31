@@ -16,6 +16,7 @@ import (
 // The native builder stops on no tool-call repeats of a red verification pass (noprogress.go),
 // never on repeated tool calls: four identical continuing reads followed by finish complete.
 func TestNativeBuilderRepeatedCallsContinue(t *testing.T) {
+	t.Parallel()
 	raw, _ := json.Marshal(project.Role{Model: "gpt-6.1-sol", Effort: "medium"})
 	if string(raw) != `{"Provider":"","Model":"gpt-6.1-sol","Effort":"medium"}` {
 		t.Fatalf("default role JSON %s", raw)

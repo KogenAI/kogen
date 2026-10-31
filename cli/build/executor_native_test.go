@@ -53,6 +53,7 @@ func TestNativeOpeningInputEqualsTheOpeningMessage(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
 			dir := physical(t, t.TempDir())
 			env := isolatedEnv()
 			initGit(t, dir, env)
@@ -404,6 +405,7 @@ func TestNativeRoundMapsCancellationButKeepsTheSessionsInterrupt(t *testing.T) {
 }
 
 func TestNativeShellContextCancellationStops(t *testing.T) {
+	t.Parallel()
 	root := conformance.NewCheckout(t)
 	home := physical(t, t.TempDir())
 	seedLogin(t, home)

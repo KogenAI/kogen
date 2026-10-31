@@ -110,7 +110,9 @@ func wantTenMinuteExpiry(t *testing.T, a *attempt) {
 }
 
 func TestShapeBudgetRolesBuild(t *testing.T) {
+	t.Parallel()
 	t.Run("the builder and the independent reviewer send under ten minutes and the run records it once", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
@@ -129,6 +131,7 @@ func TestShapeBudgetRolesBuild(t *testing.T) {
 	})
 
 	t.Run("a stalled builder expires unavailable naming ten minutes and its resume lands under a new budget", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		clock := newBudgetClock()
@@ -155,6 +158,7 @@ func TestShapeBudgetRolesBuild(t *testing.T) {
 	})
 
 	t.Run("a stalled review expires unavailable naming ten minutes and its resume answers it", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		clock := newBudgetClock()

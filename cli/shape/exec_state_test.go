@@ -73,9 +73,12 @@ func (s startMutating) external() External {
 // a later round, a round that fails, and the audit session; the refusal names the path or key,
 // publishes nothing and runs nothing.
 func TestShapeExecutionStateBoundary(t *testing.T) {
+	parallel(t)
 	t.Run("startup", func(t *testing.T) {
+		parallel(t)
 		for name, startErr := range map[string]error{"successful": nil, "failed": errors.New("executor failed to start")} {
 			t.Run(name, func(t *testing.T) {
+				parallel(t)
 				f := newShpFx(t)
 				f.useExternalShape(6)
 				var marker string
@@ -93,6 +96,7 @@ func TestShapeExecutionStateBoundary(t *testing.T) {
 		}
 	})
 	t.Run("a later round", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		var marker string
@@ -111,6 +115,7 @@ func TestShapeExecutionStateBoundary(t *testing.T) {
 		shapeAbsent(t, f)
 	})
 	t.Run("a failed round", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		var marker string
@@ -125,6 +130,7 @@ func TestShapeExecutionStateBoundary(t *testing.T) {
 		shapeAbsent(t, f)
 	})
 	t.Run("selected executables and unreadable state", func(t *testing.T) {
+		parallel(t)
 		cases := map[string]struct {
 			mutate func(f *shpFx)
 			reason string
@@ -138,6 +144,7 @@ func TestShapeExecutionStateBoundary(t *testing.T) {
 		}
 		for name, c := range cases {
 			t.Run(name, func(t *testing.T) {
+				parallel(t)
 				f := newShpFx(t)
 				f.useExternalShape(6)
 				x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -152,6 +159,7 @@ func TestShapeExecutionStateBoundary(t *testing.T) {
 		}
 	})
 	t.Run("the audit session", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"shape_audit:\n  enabled: true\n")
@@ -169,6 +177,7 @@ func TestShapeExecutionStateBoundary(t *testing.T) {
 		shapeAbsent(t, f)
 	})
 	t.Run("config values are never named", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){
@@ -187,6 +196,7 @@ func TestShapeExecutionStateBoundary(t *testing.T) {
 // TestRefineExecutionStateBoundary: an external Refine round is bracketed by the same comparison;
 // the correction is refused, the package and approval are preserved and nothing runs.
 func TestRefineExecutionStateBoundary(t *testing.T) {
+	parallel(t)
 	for name, mutate := range map[string]func(f *refFx) string{
 		"planted hook": func(f *refFx) string { return f.plant("commit-msg") },
 		"filter": func(f *refFx) string {
@@ -195,6 +205,7 @@ func TestRefineExecutionStateBoundary(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			parallel(t)
 			f := newRefFx(t, refOpts{approved: true, external: 6})
 			before, approval, head := f.pkg(), f.read(".kogen/local/approvals/is-even.json"), f.head()
 			var marker string
@@ -217,6 +228,7 @@ func TestRefineExecutionStateBoundary(t *testing.T) {
 		})
 	}
 	t.Run("startup", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{approved: true, external: 6})
 		before := f.pkg()
 		var marker string

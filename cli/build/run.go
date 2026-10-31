@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"kogen/durable"
 )
 
 // Run is a Build's run record (LOOP-10): `.kogen/local/runs/<id>/log.jsonl` with requests and
@@ -143,7 +145,7 @@ func (r *Run) PublishCheckpoint(doc any) error {
 		if _, err := f.Write(append(b, '\n')); err != nil {
 			return err
 		}
-		return f.Sync()
+		return durable.Sync(f)
 	}()
 	if cerr := f.Close(); werr == nil {
 		werr = cerr

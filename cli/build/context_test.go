@@ -237,7 +237,10 @@ func TestResetsRetainObservationsTheLatestExchangeAndPrivateExactHistoryNotStale
 		if name == "" {
 			name = "chatgpt"
 		}
-		t.Run(name, func(t *testing.T) { resetRetains(t, role) })
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			resetRetains(t, role)
+		})
 	}
 }
 

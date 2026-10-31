@@ -167,6 +167,7 @@ func verdictless(reason string, calls *int) *scriptedReviewer {
 // its reason (no allowlist): the second failure stops review_invalid after exactly one automatic
 // retry, and each explicit resume starts exactly one further review.
 func TestKReviewRetry2AnyEnd(t *testing.T) {
+	t.Parallel()
 	for _, reason := range []string{
 		"no_tool_reminder_exhausted", "rejected_verdict_exhausted", "window_reset_without_verdict", "reason_no_list_names",
 	} {
@@ -253,6 +254,7 @@ func checkoutSeenBy(e *env, seen *map[string]string, h handler) handler {
 // that starts from the exact green candidate tree: the edits are discarded, logged and never
 // seen by review 2. A reviewer that committed its change is not eligible and nothing is undone.
 func TestKReviewRetry2DiscardEdits(t *testing.T) {
+	t.Parallel()
 	edits := func(f *fakeProvider) handler {
 		return f.calls("write_file", map[string]any{"path": "app.txt", "content": "reviewer edit\n"},
 			"shell", map[string]any{"command": "rm README.md && printf 'scratch\\n' > notes.txt"})
@@ -378,6 +380,7 @@ func chatCall(name string, args map[string]any) handler {
 // body that is transmitted, and a text-only answer to it is a provider fault logged with route
 // and model, never an exempt turn; it is the ordinary no-tool handling, not another allowance.
 func TestKReviewRetry2ForcedReset(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("Everything is fine. ", 5_000)
 	type route struct {
 		name, model string

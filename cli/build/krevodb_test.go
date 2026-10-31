@@ -15,8 +15,14 @@ const frozenPartsResetNote = "Native delivery facts, not findings, judgments, ap
 	"use a smaller batch only after a native not-delivered notice shows a batch did not fit. " +
 	"A not-delivered read is not counted and must be read again."
 
-func TestKRevodBOnDemandReset(t *testing.T) { krevodbReset(t, true) }
-func TestKRevodBPartsReset(t *testing.T)    { krevodbReset(t, false) }
+func TestKRevodBOnDemandReset(t *testing.T) {
+	t.Parallel()
+	krevodbReset(t, true)
+}
+func TestKRevodBPartsReset(t *testing.T) {
+	t.Parallel()
+	krevodbReset(t, false)
+}
 
 func krevodbReset(t *testing.T, onDemand bool) {
 	e := newEnv(t)

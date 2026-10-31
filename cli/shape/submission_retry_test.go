@@ -43,10 +43,16 @@ func retryShape(t *testing.T, limit, invalid int, success bool) {
 		shpEq(t, "limit", events[0]["limit"], any(float64(effective)))
 	}
 }
-func TestSubmissionRetryDefault(t *testing.T) { retryShape(t, 0, 2, true); retryShape(t, 0, 3, false) }
+func TestSubmissionRetryDefault(t *testing.T) {
+	parallel(t)
+	retryShape(t, 0, 2, true)
+	retryShape(t, 0, 3, false)
+}
 func TestSubmissionRetryOne(t *testing.T) {
+	parallel(t)
 	retryShape(t, 1, 1, false)
 	t.Run("title fallback", func(t *testing.T) {
+		parallel(t)
 		const long = "Add an is-even check for integers and also reject every string"
 		f := newShpFx(t, shpSubmit("one", shpTitled(long, "")))
 		f.setReport("PASSED", 0)
@@ -59,6 +65,7 @@ func TestSubmissionRetryOne(t *testing.T) {
 		shpEq(t, "title events", len(shpNamed(f.events(), "title_shortened")), 1)
 	})
 	t.Run("audit fallback", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"shape_audit:\n  enabled: true\n")
@@ -83,6 +90,7 @@ func TestSubmissionRetryOne(t *testing.T) {
 		}
 	})
 	t.Run("decision fallback", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"shape_decision_check:\n  enabled: true\n")
@@ -102,16 +110,26 @@ func TestSubmissionRetryOne(t *testing.T) {
 	})
 
 }
-func TestSubmissionRetryFive(t *testing.T) { retryShape(t, 5, 4, true); retryShape(t, 5, 5, false) }
+func TestSubmissionRetryFive(t *testing.T) {
+	parallel(t)
+	retryShape(t, 5, 4, true)
+	retryShape(t, 5, 5, false)
+}
 func TestSubmissionRetryEvidence(t *testing.T) {
+	parallel(t)
 	for _, n := range []int{0, 3, 1, 5, -1} {
-		t.Run(fmt.Sprint(n), func(t *testing.T) { retryShape(t, n, submissionRetryLimit(n), false) })
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			parallel(t)
+			retryShape(t, n, submissionRetryLimit(n), false)
+		})
 	}
 }
 func TestSubmissionRetryRefine(t *testing.T) {
+	parallel(t)
 	for _, n := range []int{0, 1, 3, 5} {
 		for _, success := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/%v", n, success), func(t *testing.T) {
+				parallel(t)
 				limit := submissionRetryLimit(n)
 				count := limit
 				if success {
@@ -157,8 +175,10 @@ func boolInt(v bool) int {
 	return 0
 }
 func TestSubmissionRetryExternal(t *testing.T) {
+	parallel(t)
 	both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
 	t.Run("shape", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){result(both)}}
@@ -169,6 +189,7 @@ func TestSubmissionRetryExternal(t *testing.T) {
 		shapeAbsent(t, f)
 	})
 	t.Run("refine", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{external: 6})
 		before := f.pkg()
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){result(map[string]any{"files": []any{}})}}

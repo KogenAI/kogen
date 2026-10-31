@@ -145,6 +145,7 @@ func (e *env) snapshot() checkoutSnapshot {
 // completed checks, and never grants another automatic retry: review 3 ending invalid stops
 // without a review 4, and one more explicit resume approves and lands.
 func TestKReviewRetryReviewOnlyResume(t *testing.T) {
+	t.Parallel()
 	bin := buildKogen(t)
 	e := newEnv(t)
 	id := e.stopAfterTwoInvalidReviews(bin)
@@ -267,6 +268,7 @@ func treeOfCandidate(e *env) string {
 // serves every case: each drift is undone after its refusal, so the checkout is the stopped one
 // every time.
 func TestKReviewRetryChangedCheckout(t *testing.T) {
+	t.Parallel()
 	bin := buildKogen(t)
 	e := newEnv(t)
 	id := e.stopAfterTwoInvalidReviews(bin)

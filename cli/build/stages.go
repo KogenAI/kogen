@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"kogen-loop/sys"
+	"kogen/durable"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -256,7 +257,7 @@ func (b *Attempt) retainStage(e StageEvidence) (StageEvidence, error) {
 		_, werr = f.Write(raw)
 	}
 	if werr == nil {
-		werr = f.Sync()
+		werr = durable.Sync(f)
 	}
 	if cerr := f.Close(); werr == nil {
 		werr = cerr

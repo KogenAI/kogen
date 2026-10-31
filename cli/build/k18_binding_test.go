@@ -113,6 +113,7 @@ func k18Conversation(b *Attempt, owner string, batches [][2]int) []any {
 func k18Json(v any) string { raw, _ := json.Marshal(v); return string(raw) }
 
 func TestK18BindingFakeRejectsForeignSignatures(t *testing.T) {
+	t.Parallel()
 	b, _, _ := windowAttempt(t)
 	good := k18Conversation(b, "review", [][2]int{{2, 10}})
 	if msg := k18Validate(b.bodyOf(k15Role, "policy", good, nil, "review")); msg != "" {
@@ -157,15 +158,18 @@ func k18ResetCase(t *testing.T, owner string, batches [][2]int) {
 }
 
 func TestK18ReviewResetContinuesWithoutStaleThinking(t *testing.T) {
+	t.Parallel()
 	k18ResetCase(t, "review", [][2]int{{2, 300_000}, {2, 10_000}})
 	k18ResetCase(t, "review", [][2]int{{2, 300_000}, {30, 10_000}})
 }
 
 func TestK18BuildResetContinuesWithoutStaleThinking(t *testing.T) {
+	t.Parallel()
 	k18ResetCase(t, "build", [][2]int{{2, 300_000}, {2, 10_000}})
 }
 
 func TestK18ResetStripsOnlyThinkingAndKeepsNewConversationBlocks(t *testing.T) {
+	t.Parallel()
 	b, _, _ := windowAttempt(t)
 	input := k18Conversation(b, "review", [][2]int{{2, 300_000}, {3, 10_000}})
 	before := k18Json(input)
@@ -217,6 +221,7 @@ func TestK18ResetStripsOnlyThinkingAndKeepsNewConversationBlocks(t *testing.T) {
 }
 
 func TestK18RequestWithoutResetIsByteIdentical(t *testing.T) {
+	t.Parallel()
 	for _, owner := range []string{"review", "build"} {
 		b, _, _ := windowAttempt(t)
 		input := k18Conversation(b, owner, [][2]int{{2, 10}, {2, 10}})

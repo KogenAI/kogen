@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"kogen/durable"
 )
 
 // Every Build runs hundreds of git commands, and on macOS /usr/bin/git is the xcode-select
@@ -29,6 +31,7 @@ func TestMain(m *testing.M) {
 			}
 		}
 	}
+	durable.SkipSyncInTests()
 	code := m.Run()
 	if shim != "" {
 		os.RemoveAll(shim)

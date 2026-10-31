@@ -113,6 +113,7 @@ func batchResult(t *testing.T, req map[string]any, callID string) map[string]any
 }
 
 func TestShapeBatchRunsWorkersAndReturnsTheirResults(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.withWorkers()
 	brief := f.brief("features/steps/draft.js")
@@ -218,6 +219,7 @@ func TestShapeBatchRunsWorkersAndReturnsTheirResults(t *testing.T) {
 }
 
 func TestShapeBatchBoundsTwelveToolsAndTwoProbes(t *testing.T) {
+	parallel(t)
 	for _, tc := range []struct {
 		reads, probes int
 		want, errText string
@@ -225,6 +227,7 @@ func TestShapeBatchBoundsTwelveToolsAndTwoProbes(t *testing.T) {
 		{12, 2, "completed", ""}, {13, 2, "failed", "ordinary tool bound exhausted"}, {12, 3, "failed", "probe bound exhausted"},
 	} {
 		t.Run(fmt.Sprintf("%d reads, %d probes", tc.reads, tc.probes), func(t *testing.T) {
+			parallel(t)
 			f := newShpFx(t)
 			f.withWorkers()
 			var calls []map[string]any
@@ -264,6 +267,7 @@ func TestShapeBatchBoundsTwelveToolsAndTwoProbes(t *testing.T) {
 }
 
 func TestShapeBatchRefusalsAndOneBatchPerConversation(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.withWorkers()
 	stale := f.brief()
@@ -293,6 +297,7 @@ func TestShapeBatchRefusalsAndOneBatchPerConversation(t *testing.T) {
 }
 
 func TestShapeBatchWorkerFailuresAreResultsNotErrors(t *testing.T) {
+	parallel(t)
 	for _, tc := range []struct {
 		name  string
 		step  func(f *shpFx) shpStep
@@ -327,6 +332,7 @@ func TestShapeBatchWorkerFailuresAreResultsNotErrors(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			parallel(t)
 			f := newShpFx(t)
 			f.withWorkers()
 			f.Prov.seq = []shpStep{
@@ -353,6 +359,7 @@ func TestShapeBatchWorkerFailuresAreResultsNotErrors(t *testing.T) {
 }
 
 func TestShapeBatchPartialWhenOneJobFails(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.withWorkers()
 	f.Prov.route = func(req map[string]any) *shpStep {
@@ -381,6 +388,7 @@ func TestShapeBatchPartialWhenOneJobFails(t *testing.T) {
 }
 
 func TestShapeBatchInterruptCancelsEveryJob(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.withWorkers()
 	opened := make(chan struct{}, 4)
@@ -445,6 +453,7 @@ func (sh *shaping) validates(brief map[string]any, jobs ...any) bool {
 }
 
 func TestBatchOwnershipAndBoundaryRefusalPrecedesCallsAndNeverAltersTheRawIndex(t *testing.T) {
+	parallel(t)
 	f, sh, brief, job := newBatchValidation(t)
 	index, _ := os.ReadFile(filepath.Join(f.Root, ".git/index"))
 	if !sh.validates(brief, job) {
@@ -485,6 +494,7 @@ func TestBatchOwnershipAndBoundaryRefusalPrecedesCallsAndNeverAltersTheRawIndex(
 }
 
 func TestBatchDraftBoundariesRejectUnsupportedArtifacts(t *testing.T) {
+	parallel(t)
 	f, sh, brief, job := newBatchValidation(t)
 	for _, target := range []string{".kogen/intents/is-even/extra.txt", "features/steps/../steps/draft.js"} {
 		b := f.brief(target)
@@ -500,6 +510,7 @@ func TestBatchDraftBoundariesRejectUnsupportedArtifacts(t *testing.T) {
 }
 
 func TestBatchAnExistingEditableStepIsAValidDraftTarget(t *testing.T) {
+	parallel(t)
 	f, sh, _, job := newBatchValidation(t)
 	f.write("features/steps/draft.js", "// existing shared step\n")
 	if !sh.validates(f.brief("features/steps/draft.js"), job) {
@@ -508,6 +519,7 @@ func TestBatchAnExistingEditableStepIsAValidDraftTarget(t *testing.T) {
 }
 
 func TestBatchRevisionNoticesNonignoredUntrackedDriftWithoutRealIndexWrites(t *testing.T) {
+	parallel(t)
 	f, sh, brief, job := newBatchValidation(t)
 	index, _ := os.ReadFile(filepath.Join(f.Root, ".git/index"))
 	f.write("new.txt", "drift")
@@ -528,6 +540,7 @@ func TestBatchRevisionNoticesNonignoredUntrackedDriftWithoutRealIndexWrites(t *t
 }
 
 func TestBatchBriefMustBeCompleteAndProtectEverythingProtected(t *testing.T) {
+	parallel(t)
 	f, sh, brief, job := newBatchValidation(t)
 	for _, key := range []string{"outcomes", "interfaces", "transitions", "fixtures", "exclusions"} {
 		b := f.brief("features/steps/draft.js")
@@ -561,6 +574,7 @@ func TestBatchBriefMustBeCompleteAndProtectEverythingProtected(t *testing.T) {
 // Ports test/integration/shape_worker_bounds_test.exs "workers receive bounded long-line reads
 // and replay the delivered display exactly".
 func TestWorkersReceiveBoundedLongLineReadsAndReplayTheDeliveredDisplayExactly(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.withWorkers()
 	original := `{"input":"` + strings.Repeat("x", 514_428) + `"}`

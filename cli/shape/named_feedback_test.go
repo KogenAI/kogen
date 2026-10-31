@@ -6,6 +6,7 @@ import (
 )
 
 func TestNamedFeedbackShapeGuidance(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	if exit, err := f.shape("Add calc.is_even(n). Non-integers raise TypeError."); err != nil || exit != 0 {
 		t.Fatalf("exit %d, err %v\nstderr: %s", exit, err, f.Stderr)

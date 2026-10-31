@@ -74,6 +74,7 @@ func preflightBlockers(doc map[string]any) []map[string]any {
 }
 
 func TestPreflightReadyTextAndJSON(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approved()
 
@@ -112,6 +113,7 @@ func TestPreflightReadyTextAndJSON(t *testing.T) {
 }
 
 func TestPreflightJSONDefaultsCheckoutFromProject(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	s, out, _ := f.session()
 	if _, err := Preflight(context.Background(), s, PreflightInput{Project: f.Root, Slug: approveSlug, JSON: true}); err != nil {
@@ -125,6 +127,7 @@ func TestPreflightJSONDefaultsCheckoutFromProject(t *testing.T) {
 }
 
 func TestPreflightBlockedWithoutApproval(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	approval := filepath.Join(f.Root, ".kogen/local/approvals/fixture.json")
 
@@ -147,6 +150,7 @@ func TestPreflightBlockedWithoutApproval(t *testing.T) {
 }
 
 func TestPreflightStaleAndMalformedApproval(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approved()
 	f.write("features/steps/fixture_steps.js", "// changed after approval\n")
@@ -166,6 +170,7 @@ func TestPreflightStaleAndMalformedApproval(t *testing.T) {
 }
 
 func TestPreflightMissingPackage(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	exit, doc := f.preflightJSON("missing")
 	checks := preflightChecks(t, doc)
@@ -188,6 +193,7 @@ func TestPreflightMissingPackage(t *testing.T) {
 }
 
 func TestPreflightInvalidPackageJoinsProblems(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.write(project.FeaturePath(approveSlug), "Feature: Empty\n")
 	_, doc := f.preflightJSON(approveSlug)
@@ -205,6 +211,7 @@ func TestPreflightInvalidPackageJoinsProblems(t *testing.T) {
 }
 
 func TestPreflightDirtyTree(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approved()
 	f.write("stray.txt", "x\n")
@@ -230,6 +237,7 @@ func TestPreflightDirtyTree(t *testing.T) {
 }
 
 func TestPreflightDirtyTreeListsAtMostTwentyPaths(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	for i := 0; i < 25; i++ {
 		f.write("stray/"+string(rune('a'+i))+".txt", "x\n")
@@ -247,6 +255,7 @@ func TestPreflightDirtyTreeListsAtMostTwentyPaths(t *testing.T) {
 }
 
 func TestPreflightConflicts(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approved()
 
@@ -275,6 +284,7 @@ func TestPreflightConflicts(t *testing.T) {
 }
 
 func TestPreflightProjectConfigurationUnreadable(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	if err := os.Remove(filepath.Join(f.Root, ".kogen/project.yaml")); err != nil {
 		t.Fatal(err)
@@ -297,6 +307,7 @@ func TestPreflightProjectConfigurationUnreadable(t *testing.T) {
 }
 
 func TestPreflightObservesWithoutRunningGitHooksOrWriting(t *testing.T) {
+	parallel(t)
 	f := newApproveFx(t)
 	f.approved()
 	monitor, marker := filepath.Join(f.Aux, "fsmonitor"), filepath.Join(f.Aux, "fsmonitor-ran")

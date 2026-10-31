@@ -111,7 +111,9 @@ func bigDiagnostic() *Diagnostic {
 }
 
 func TestLoopKnobsNativeBuilder(t *testing.T) {
+	t.Parallel()
 	t.Run("a tool result is cut at 16384 bytes with a 4096-byte head", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.prov.then(e.prov.calls("shell", map[string]any{"command": knobShell}))
 		e.prov.then(landScript(e.prov)...)
@@ -123,6 +125,7 @@ func TestLoopKnobsNativeBuilder(t *testing.T) {
 	})
 
 	t.Run("a large diagnostic fits the input budget and is sent", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		e.prov.then(landScript(e.prov)...)
 		if a := e.build(func(in *Input) { in.Context = bigDiagnostic() }); a.exit != 0 {
@@ -131,6 +134,7 @@ func TestLoopKnobsNativeBuilder(t *testing.T) {
 	})
 
 	t.Run("the sent request carries no authority breakpoint", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		anthropicRole(e, "build")
 		e.prov.then(refused())
@@ -146,9 +150,11 @@ func TestLoopKnobsNativeBuilder(t *testing.T) {
 }
 
 func TestLoopKnobsReview(t *testing.T) {
+	t.Parallel()
 	bigApp := "// candidate\n" + strings.Repeat("padding of the candidate source line\n", 1800)
 
 	t.Run("a tool result is cut at 16384 bytes with a 4096-byte head", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(landScript(f)...)
@@ -169,6 +175,7 @@ func TestLoopKnobsReview(t *testing.T) {
 	})
 
 	t.Run("the candidate source stays inline within the input budget", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		f := e.prov
 		f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigApp}, "finish", map[string]any{"summary": "done"}))
@@ -184,6 +191,7 @@ func TestLoopKnobsReview(t *testing.T) {
 	})
 
 	t.Run("the sent request carries no authority breakpoint", func(t *testing.T) {
+		t.Parallel()
 		e := newEnv(t)
 		anthropicRole(e, "review")
 		f := e.prov

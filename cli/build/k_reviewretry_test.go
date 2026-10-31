@@ -53,6 +53,7 @@ func counters(ev map[string]any) [2]float64 {
 // as the next review, with the same material and rules and nothing of the invalid conversation
 // or the builder's.
 func TestKReviewRetryFreshConversation(t *testing.T) {
+	t.Parallel()
 	bad := finding("blocking", "An approve verdict cannot contain a blocking finding.")
 	for name, tc := range map[string]struct {
 		first  func(f *fakeProvider) []handler
@@ -257,6 +258,7 @@ func repeatHandler(h handler, n int) []handler {
 // back once each and independently, in either order, in one conversation; the unread-parts
 // progress exemption stays; a second spending of either allowance ends only that allowance.
 func TestKReviewRetrySeparateAllowances(t *testing.T) {
+	t.Parallel()
 	build := func(t *testing.T, content string) (*env, *fakeProvider) {
 		e := newEnv(t)
 		f := e.prov
@@ -489,6 +491,7 @@ func choiceEvents(e *env, id string) []map[string]any {
 // routes keep today's reminder text with no forcing field; forcing never accepts a verdict
 // that validation rejects and never earns a provider-refusal retry.
 func TestKReviewRetryReminderChoice(t *testing.T) {
+	t.Parallel()
 	bad := finding("blocking", "An approve verdict cannot contain a blocking finding.")
 
 	t.Run("Responses route: reminder request only", func(t *testing.T) {

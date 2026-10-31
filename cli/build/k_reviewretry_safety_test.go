@@ -60,6 +60,7 @@ func (e *env) stopNatively() (string, *attempt) {
 // review of the exact green tree gets the new treatment; blockers are not invalid
 // reviews; and no limit, timeout or option was raised.
 func TestKReviewRetrySafetyBoundaries(t *testing.T) {
+	t.Parallel()
 	t.Run("consumption and counters survive a checkpoint", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t)
@@ -321,6 +322,7 @@ func TestKReviewRetrySafetyBoundaries(t *testing.T) {
 	})
 
 	t.Run("no limit, timeout or option was raised", func(t *testing.T) {
+		t.Parallel()
 		eq(t, "response budget", provider.ResponseBudget, 30*time.Minute)
 		eq(t, "request ceiling", agent.InputBudgetBytes, 524288)
 		eq(t, "output reserve", agent.OutputReserveTokens, 131072)

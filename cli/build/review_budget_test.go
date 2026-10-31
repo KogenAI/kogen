@@ -337,6 +337,7 @@ func TestReviewBudgetResetWithoutCatalogListedReferencesRepeatsEveryReferenceAnd
 	// Non-review owners and reviews without pinned parts keep the exact complete history list.
 	for _, owner := range []string{"build", "review"} {
 		t.Run(owner, func(t *testing.T) {
+			t.Parallel()
 			b, _, _ := windowAttempt(t)
 			role := defaultRole()
 			input := []any{map[string]any{"role": "user", "content": "exact approved authority"}}

@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"kogen-loop/sys"
+	"kogen/durable"
 	kgit "kogen/git"
 )
 
@@ -329,7 +330,7 @@ func privateWrite(path string, data []byte) error {
 		_, err = f.Write(data)
 	}
 	if err == nil {
-		err = f.Sync()
+		err = durable.Sync(f)
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr

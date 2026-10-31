@@ -64,6 +64,7 @@ func phaseWall(events []map[string]any, phase string) []float64 {
 }
 
 func TestEvidenceCancellationAndOverlappingCompletedCallsRemainInTimingAndUsage(t *testing.T) {
+	parallel(t)
 	// ExUnit: shape_speed_test cancellation and overlapping completed calls remain in final timing and usage
 	ev, clock, dir := newTestEvidence(t)
 	// A completed HTTP call can append while its owner is inside a probe; final phase
@@ -114,6 +115,7 @@ func TestEvidenceCancellationAndOverlappingCompletedCallsRemainInTimingAndUsage(
 func project0(model, effort string) project.Role { return project.Role{Model: model, Effort: effort} }
 
 func TestEvidenceRecoveryRecordsEachTransportWithoutClaimingRetryDelayAsModelTime(t *testing.T) {
+	parallel(t)
 	// ExUnit: shape_speed_test main recovery records each completed transport without claiming retry delay as model time
 	ev, clock, dir := newTestEvidence(t)
 	call := ev.BeginCall("shape", "", map[string]any{}, "main", project0("sol", "high"))
@@ -143,6 +145,7 @@ func TestEvidenceRecoveryRecordsEachTransportWithoutClaimingRetryDelayAsModelTim
 }
 
 func TestEvidenceInconsistentUsageIsLeftOutOfTheTotals(t *testing.T) {
+	parallel(t)
 	ev, _, dir := newTestEvidence(t)
 	ev.Record(map[string]any{"event": "provider_call", "started_ms": 0, "wall_ms": 1, "usage": map[string]any{"input": 5, "cached": 0, "output": 1, "reasoning": 0}, "provider": map[string]any{"usage_state": "known"}})
 	ev.Record(map[string]any{"event": "provider_call", "started_ms": 1, "wall_ms": 1, "usage": map[string]any{"input": 99, "cached": 0, "output": 99, "reasoning": 0}, "provider": map[string]any{"usage_state": "inconsistent"}})
@@ -154,6 +157,7 @@ func TestEvidenceInconsistentUsageIsLeftOutOfTheTotals(t *testing.T) {
 }
 
 func TestEvidenceIntervalUnionsDoNotDoubleCountOverlapsAndHandleAdjacentBoundaries(t *testing.T) {
+	parallel(t)
 	// ExUnit: shape_speed_test interval unions do not double count overlaps and handle adjacent boundaries
 	for _, tc := range []struct {
 		spans [][2]int64
@@ -169,6 +173,7 @@ func TestEvidenceIntervalUnionsDoNotDoubleCountOverlapsAndHandleAdjacentBoundari
 }
 
 func TestEvidencePhasesFromTimedIntervalsAndCounts(t *testing.T) {
+	parallel(t)
 	ev, clock, dir := newTestEvidence(t)
 	boom := errors.New("boom")
 	err := ev.Timed("setup", func() error { clock.advance(30); return boom })
@@ -198,6 +203,7 @@ func TestEvidencePhasesFromTimedIntervalsAndCounts(t *testing.T) {
 }
 
 func TestEvidenceProbeResultsAreRecordedWithTheirStatus(t *testing.T) {
+	parallel(t)
 	ev, clock, dir := newTestEvidence(t)
 	ev.Probe(func() (verify.ProbeResult, error) {
 		clock.advance(4)
@@ -231,6 +237,7 @@ func TestEvidenceProbeResultsAreRecordedWithTheirStatus(t *testing.T) {
 }
 
 func TestEvidenceRecordSurvivesTextThatIsNotUTF8(t *testing.T) {
+	parallel(t)
 	ev, _, dir := newTestEvidence(t)
 	ev.Record(map[string]any{"event": "probe_result", "detail": "bad \xff byte"})
 	events := readEvents(t, dir)
@@ -239,6 +246,7 @@ func TestEvidenceRecordSurvivesTextThatIsNotUTF8(t *testing.T) {
 }
 
 func TestEvidenceCallWithoutAnAttemptRecordsHowItEnded(t *testing.T) {
+	parallel(t)
 	ev, clock, dir := newTestEvidence(t)
 	c := ev.BeginCall("shape", "", map[string]any{"head": "h"}, "main shaping", project0("sol", "high"))
 	clock.advance(2)

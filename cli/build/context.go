@@ -14,6 +14,7 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	agent "kogen-loop/tools"
+	"kogen/durable"
 	"kogen/project"
 	"kogen/thinking"
 )
@@ -396,7 +397,7 @@ func (b *Attempt) prepareContext(owner string, role project.Role, instructions s
 		_, werr = f.Write(window.archive)
 	}
 	if werr == nil {
-		werr = f.Sync()
+		werr = durable.Sync(f)
 	}
 	if cerr := f.Close(); werr == nil {
 		werr = cerr

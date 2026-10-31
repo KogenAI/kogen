@@ -15,6 +15,7 @@ import (
 )
 
 func TestRequestUsageCarriesCacheWriteOrNull(t *testing.T) {
+	t.Parallel()
 	seven := 7
 	for _, c := range []struct {
 		write *int
@@ -28,6 +29,7 @@ func TestRequestUsageCarriesCacheWriteOrNull(t *testing.T) {
 }
 
 func TestCutFieldsOnlyForCutResults(t *testing.T) {
+	t.Parallel()
 	if cutFields(strings.Repeat("x", 16384)) != nil {
 		t.Fatal("an uncut result has cut fields")
 	}

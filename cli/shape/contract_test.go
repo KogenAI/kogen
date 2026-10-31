@@ -45,6 +45,7 @@ func anyContains(texts []string, part string) bool {
 }
 
 func TestShapeInvalidQuestionOptionsGetCorrectionFeedbackAndAreNeverPersisted(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/contract_regressions_test.exs: SHP-4 invalid question options receive correction feedback and are never persisted
 	malformed := []any{
 		"malformed array",
@@ -120,6 +121,7 @@ func TestShapeInvalidQuestionOptionsGetCorrectionFeedbackAndAreNeverPersisted(t 
 }
 
 func TestShapeBlockedSubmissionsNeedAnActualProtectedPathAndAReason(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/contract_regressions_test.exs: SHP-4 blocked submissions require an actual protected path and a reason
 	invalid := []any{
 		map[string]any{"blocked": map[string]any{"paths": []any{}, "reason": "required edit"}},
@@ -152,6 +154,7 @@ func TestShapeBlockedSubmissionsNeedAnActualProtectedPathAndAReason(t *testing.T
 }
 
 func TestShapeBlockedReportRecognizesProtectedPathsMatchedByAGlob(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/contract_regressions_test.exs: SHP-4 blocked reports recognize protected paths matched by a glob
 	f := newShpFx(t, shpSubmit("c1", map[string]any{"blocked": map[string]any{
 		"paths":  []any{"settings/check.cfg"},
@@ -199,6 +202,7 @@ func realQuintTools(t *testing.T) verify.Tools {
 }
 
 func TestShapeNarrowCorrectionsRetainTheModelAndStepFilesAlreadySubmitted(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/readiness_observations_test.exs: SHP-4 narrow shaping corrections retain the model and step files already submitted
 	tools := realQuintTools(t)
 	modelPath := project.ModelPath(shpSlug)
@@ -224,9 +228,11 @@ func TestShapeNarrowCorrectionsRetainTheModelAndStepFilesAlreadySubmitted(t *tes
 }
 
 func TestShapeLintCorrectionsKeepEarlierArtifactsAndMalformedMixedPayloadsContributeNothing(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/readiness_observations_test.exs: SHP-4 lint corrections keep earlier artifacts and malformed mixed payloads contribute nothing
 	for _, kind := range []string{"unsafe", "duplicate"} {
 		t.Run(kind, func(t *testing.T) {
+			parallel(t)
 			intentPath := ".kogen/intents/is-even/intent.md"
 			stepPath := "features/steps/is_even_steps.js"
 			unsourced := strings.Replace(shpIntentMD, "- Non-integers raise TypeError. (source: request)\n", "- Non-integers raise TypeError.\n", 1)
@@ -263,6 +269,7 @@ func TestShapeLintCorrectionsKeepEarlierArtifactsAndMalformedMixedPayloadsContri
 }
 
 func TestShapeAnEarlierStepCannotBeSilentlyAbandonedOutsideTheApprovalBaseline(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/readiness_observations_test.exs: SHP-4 an earlier step cannot be silently abandoned outside the approval baseline
 	oldStep := "features/steps/is_even_steps.js"
 	replacement := "features/steps/replacement.js"
@@ -286,6 +293,7 @@ func TestShapeAnEarlierStepCannotBeSilentlyAbandonedOutsideTheApprovalBaseline(t
 }
 
 func TestShapeFormattingCannotAbandonARetainedExecutableStepOutsideTheBaseline(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/readiness_observations_test.exs: SHP-4 formatting cannot abandon a retained executable step outside the baseline
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpSubmit("c2", shpFiles()), shpSubmit("c3", shpFiles()))
 	const intent = ".kogen/intents/is-even/intent.md"
@@ -308,6 +316,7 @@ func TestShapeFormattingCannotAbandonARetainedExecutableStepOutsideTheBaseline(t
 func quoteYAML(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
 func TestShapeReturnsMissingAndOversizedSourceComparisonsForCorrectionBeforeReadiness(t *testing.T) {
+	parallel(t)
 	// ExUnit: test/integration/readiness_observations_test.exs: native Shape returns missing and oversized source comparisons for correction before readiness
 	intent := strings.Replace(shpIntentMD, "- The request asks for is_even; the feature covers it.", "- addressed: source request is_even; contract Tests and acceptance.feature.", 1)
 	files := shpFiles()["files"].([]any)

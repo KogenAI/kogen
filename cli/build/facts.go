@@ -21,10 +21,11 @@ import (
 // facts of its Intent. They are read by `kogen context`, `intent list` and `intent inspect`;
 // they are never approval or continuation authority.
 type localFacts struct {
-	root    string
-	record  map[string]any
-	failure *sys.Error
-	clock   *phaseClock
+	root     string
+	checkout project.CheckoutFacts
+	record   map[string]any
+	failure  *sys.Error
+	clock    *phaseClock
 }
 
 // phaseClock times the phase a Build is in; a change of phase logs its duration.
@@ -63,7 +64,7 @@ func startFacts(root, slug string, run *Run, cfg *project.Config, parent, rootRu
 		rootRun = run.ID
 	}
 	now := time.Now()
-	f := &localFacts{root: root, clock: &phaseClock{phase: "startup", started: now, at: isoTime(now)}}
+	f := &localFacts{root: root, checkout: c, clock: &phaseClock{phase: "startup", started: now, at: isoTime(now)}}
 	f.record = map[string]any{
 		"checkout_id":        c.ID,
 		"slug":               slug,
@@ -277,11 +278,7 @@ func (f *localFacts) update(b *Attempt, phase, outcome string) error {
 	if b.LastReview != nil && b.LastReview.Verdict != "pending" {
 		f.evidence("reviews", reviewSummary(b), b.LastReview.N, "")
 	}
-	c, err := project.Checkout(b.Root)
-	if err != nil {
-		return err
-	}
-	return f.publish(c)
+	return f.publish(f.checkout)
 }
 
 // evidence adds or replaces the summary of one pass or review in the record's list of the

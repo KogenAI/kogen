@@ -100,8 +100,10 @@ func forceHasReminder(t *testing.T, raws []shpRaw, i int, reminder string) {
 }
 
 func TestShapeForceRecovery(t *testing.T) {
+	parallel(t)
 	for _, w := range []*forceWire{responsesWire, chatWire} {
 		t.Run(w.name+"/shape", func(t *testing.T) {
+			parallel(t)
 			f := w.newShape(t, w.prose("The package is described above."), w.shapeSubmit("c1", shpFiles()), w.shapeAck("c2"))
 			exit, err := f.shape("Add calc.is_even(n).")
 			if err != nil || exit != 0 {
@@ -115,6 +117,7 @@ func TestShapeForceRecovery(t *testing.T) {
 			forceHasReminder(t, f.Prov.rawRequests(), 1, shapeReminder)
 		})
 		t.Run(w.name+"/refine", func(t *testing.T) {
+			parallel(t)
 			f := w.newRefine(t, w.prose("The draft is fine."), w.refineSubmit("c1", refIntentPath, refTitled))
 			before := f.pkg()
 			exit, err := f.refine(f.hash0)
@@ -132,6 +135,7 @@ func TestShapeForceRecovery(t *testing.T) {
 }
 
 func TestShapeForceFallback(t *testing.T) {
+	parallel(t)
 	w := anthropicWire
 	sameSettings := func(t *testing.T, reqs []map[string]any) {
 		t.Helper()
@@ -145,6 +149,7 @@ func TestShapeForceFallback(t *testing.T) {
 		}
 	}
 	t.Run("anthropic/shape", func(t *testing.T) {
+		parallel(t)
 		f := w.newShape(t, w.prose("Done."), w.shapeSubmit("c1", shpFiles()), w.shapeAck("c2"))
 		exit, err := f.shape("Add calc.is_even(n).")
 		if err != nil || exit != 0 {
@@ -158,6 +163,7 @@ func TestShapeForceFallback(t *testing.T) {
 		sameSettings(t, reqs)
 	})
 	t.Run("anthropic/refine", func(t *testing.T) {
+		parallel(t)
 		f := w.newRefine(t, w.prose("Done."), w.refineSubmit("c1", refIntentPath, refTitled))
 		before := f.pkg()
 		exit, err := f.refine(f.hash0)
@@ -174,6 +180,7 @@ func TestShapeForceFallback(t *testing.T) {
 	// An external executor has no API tool choice: its invalid submission returns the existing
 	// feedback, and no forced wire request is claimed.
 	t.Run("external/shape", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.useExternalShape(6)
 		both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
@@ -187,6 +194,7 @@ func TestShapeForceFallback(t *testing.T) {
 		noNativeRequests(t, f)
 	})
 	t.Run("external/refine", func(t *testing.T) {
+		parallel(t)
 		f := newRefFx(t, refOpts{external: 6})
 		before := f.pkg()
 		good := map[string]any{"files": []any{map[string]any{"path": refIntentPath, "content": refTitled}}}
@@ -202,8 +210,10 @@ func TestShapeForceFallback(t *testing.T) {
 }
 
 func TestShapeForceInvalidBudget(t *testing.T) {
+	parallel(t)
 	w := responsesWire
 	t.Run("shape", func(t *testing.T) {
+		parallel(t)
 		both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
 		f := w.newShape(t, w.prose("Done."), w.shapeSubmit("c1", both), w.shapeSubmit("c2", both), w.shapeSubmit("c3", both), w.shapeSubmit("c4", shpFiles()))
 		exit, err := f.shape("Add calc.is_even(n).")
@@ -215,6 +225,7 @@ func TestShapeForceInvalidBudget(t *testing.T) {
 		shapeAbsent(t, f)
 	})
 	t.Run("refine", func(t *testing.T) {
+		parallel(t)
 		empty := func(id string) shpStep {
 			return w.calls(shpCall(id, "submit_refinement", map[string]any{"files": []any{}}))
 		}
@@ -231,8 +242,10 @@ func TestShapeForceInvalidBudget(t *testing.T) {
 }
 
 func TestShapeForceNoToolBound(t *testing.T) {
+	parallel(t)
 	w := responsesWire
 	t.Run("shape", func(t *testing.T) {
+		parallel(t)
 		f := w.newShape(t, w.prose("one"), w.prose("two"), w.prose("three"), w.shapeSubmit("c1", shpFiles()))
 		exit, err := f.shape("Add calc.is_even(n).")
 		e := shpWantError(t, err, "shape", "invalid_output", "the shaper answered without calling any tool 3 times (no-tool limit); no submission was made", 1)
@@ -244,6 +257,7 @@ func TestShapeForceNoToolBound(t *testing.T) {
 		shapeAbsent(t, f)
 	})
 	t.Run("refine", func(t *testing.T) {
+		parallel(t)
 		f := w.newRefine(t, w.prose("one"), w.prose("two"), w.prose("three"), w.refineSubmit("c1", refIntentPath, refTitled))
 		before := f.pkg()
 		exit, err := f.refine(f.hash0)
@@ -257,6 +271,7 @@ func TestShapeForceNoToolBound(t *testing.T) {
 	// Discovery without a submission is not a no-tool answer, and a refusal between prose
 	// answers does not reset the no-tool count: prose, refusal, prose, prose stops.
 	t.Run("counters are independent", func(t *testing.T) {
+		parallel(t)
 		both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
 		f := w.newShape(t, w.readReadme("r"), w.prose("one"), w.shapeSubmit("c1", both), w.prose("two"), w.prose("three"), w.shapeSubmit("c2", shpFiles()))
 		_, err := f.shape("Add calc.is_even(n).")
@@ -267,6 +282,7 @@ func TestShapeForceNoToolBound(t *testing.T) {
 	})
 	// A provider error exit keeps the final counters too.
 	t.Run("provider error", func(t *testing.T) {
+		parallel(t)
 		f := w.newShape(t, w.prose("one"), shpStep{status: 400, code: "invalid_request_error"})
 		_, err := f.shape("Add calc.is_even(n).")
 		if e, ok := sys.AsError(err); !ok || e.Class != "shape" || e.Reason != "provider_failed" {
@@ -338,6 +354,7 @@ func forceCheckReset(t *testing.T, events, reqs []map[string]any, raws []shpRaw,
 func forceResets(t *testing.T, w *forceWire) {
 	t.Helper()
 	t.Run("reset/shape", func(t *testing.T) {
+		parallel(t)
 		both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
 		f := w.newShape(t)
 		seedPadding(f)
@@ -350,6 +367,7 @@ func forceResets(t *testing.T, w *forceWire) {
 		forceCheckReset(t, f.events(), reqs, f.Prov.rawRequests(), "shape")
 	})
 	t.Run("reset/refine", func(t *testing.T) {
+		parallel(t)
 		f := w.newRefine(t)
 		seedPadding(f.shpFx)
 		f.Prov.route = forceResetRoute(w, w.calls(shpCall("c0", "submit_refinement", map[string]any{"files": []any{}})), "padding.txt")
@@ -385,6 +403,7 @@ func forceRetained(t *testing.T, reqs []map[string]any, i int) {
 }
 
 func TestShapeForceWireCompatibility(t *testing.T) {
+	parallel(t)
 	// Ordinary sessions send the bytes and headers they sent before enforcement existed.
 	golden := forceGolden(t)
 	seen := 0
@@ -407,6 +426,7 @@ func TestShapeForceWireCompatibility(t *testing.T) {
 	// a submission does not, and the answer to a forced request restores the automatic choice.
 	for _, w := range []*forceWire{responsesWire, chatWire} {
 		t.Run(w.name+"/shape", func(t *testing.T) {
+			parallel(t)
 			f := w.newShape(t, w.readReadme("r"), w.prose("Thinking out loud."), w.shapeSubmit("c1", shpFiles()), w.shapeAck("c2"))
 			if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
 				t.Fatalf("exit %d: %v", exit, err)
@@ -418,6 +438,7 @@ func TestShapeForceWireCompatibility(t *testing.T) {
 			shpEq(t, "published", f.read(refIntentPath), shpIntentMD)
 		})
 		t.Run(w.name+"/refine", func(t *testing.T) {
+			parallel(t)
 			empty := w.calls(shpCall("c1", "submit_refinement", map[string]any{"files": []any{}}))
 			f := w.newRefine(t, w.readReadme("r"), w.prose("Thinking out loud."), empty, w.refineSubmit("c2", refIntentPath, refTitled))
 			before := f.pkg()

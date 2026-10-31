@@ -16,6 +16,7 @@ import (
 	"syscall"
 
 	"kogen-loop/sys"
+	"kogen/durable"
 	"kogen/git"
 	"kogen/project"
 )
@@ -726,7 +727,7 @@ func writeNew(dir, p string, data []byte) error {
 		_, err = f.Write(data)
 	}
 	if err == nil {
-		err = f.Sync()
+		err = durable.Sync(f)
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
@@ -815,7 +816,7 @@ func syncDir(dir string) error {
 		return err
 	}
 	defer f.Close()
-	return f.Sync()
+	return durable.Sync(f)
 }
 
 // pathSide is a path and the side it should be restored to (nil: absent).

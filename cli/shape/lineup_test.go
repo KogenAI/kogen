@@ -23,6 +23,7 @@ func lineupShapeConfig(t *testing.T, text string) *project.Config {
 // natively instead), enabled workers with it are refused explicitly, and a native shaper keeps
 // its workers.
 func TestClaudeLineupNativeCompatibility(t *testing.T) {
+	parallel(t)
 	omitted := lineupShapeConfig(t, "models:\n  shape: {model: s, effort: high}\n")
 	explicit := lineupShapeConfig(t, "models:\n  shape: {executor: native, model: s, effort: high}\n")
 	if ProviderRole(omitted.Models["shape"]) != ProviderRole(explicit.Models["shape"]) || omitted.Models["shape"] != explicit.Models["shape"] {

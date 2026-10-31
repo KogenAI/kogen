@@ -200,6 +200,7 @@ func k15Conversation(batches [][2]int) []any {
 }
 
 func TestK15ValidatorAcceptsValidAndRejectsInvalidShapes(t *testing.T) {
+	t.Parallel()
 	b, _, _ := windowAttempt(t)
 	items, outputs := k15Exchange("a", 3, 10)
 	good := append(append([]any{map[string]any{"role": "user", "content": "go"}}, items...), outputs...)
@@ -287,11 +288,13 @@ func k15Reset(t *testing.T, batches [][2]int) ([]any, map[string]any) {
 }
 
 func TestK15ReviewResetThenContinueIsValidForAnthropic(t *testing.T) {
+	t.Parallel()
 	for name, batches := range map[string][][2]int{
 		"older batch of 30":  {{30, 20_000}, {2, 10_000}},
 		"newest batch of 30": {{2, 300_000}, {30, 10_000}},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			_, body := k15Reset(t, batches)
 			if msg := k15Validate(body); msg != "" {
 				t.Fatalf("post-reset request invalid: %s", msg)
@@ -310,6 +313,7 @@ func TestK15ReviewResetThenContinueIsValidForAnthropic(t *testing.T) {
 }
 
 func TestK15OldPostResetShapeIsRejected(t *testing.T) {
+	t.Parallel()
 	got, _ := k15Reset(t, [][2]int{{2, 300_000}, {30, 10_000}})
 	b, _, _ := windowAttempt(t)
 	// The old window kept the newest function_call_output items and dropped the assistant message.

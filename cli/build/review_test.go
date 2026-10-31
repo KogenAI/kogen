@@ -645,6 +645,7 @@ func TestABlockedRetryThatFailsAtTheContinuedRequestKeepsFreshEvidenceAndTheSave
 			name = "setup red"
 		}
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			aux := t.TempDir()
 			trace, red := filepath.Join(aux, "setup-trace"), filepath.Join(aux, "setup-red")
 			e := newEnv(t, func(c *project.Config) {
@@ -1398,6 +1399,7 @@ func TestReviewValidateAcceptanceSet(t *testing.T) {
 	r := &reviewRun{b: &Attempt{Root: root}}
 	for i, tc := range reviewShapeCases() {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			t.Parallel()
 			verdict, problems, err := r.validate(decodeReviewArgs(t, tc.args), nil)
 			if err != nil {
 				t.Fatal(err)
@@ -1433,6 +1435,7 @@ func readThen(f *fakeProvider, verdict string, fs ...map[string]any) handler {
 }
 
 func TestChangesWhilePartsAreUnreadIsSentBackToRead(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
@@ -1450,6 +1453,7 @@ func TestChangesWhilePartsAreUnreadIsSentBackToRead(t *testing.T) {
 }
 
 func TestAReviewerThatNeverReadsIsStopped(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
@@ -1468,6 +1472,7 @@ func TestAReviewerThatNeverReadsIsStopped(t *testing.T) {
 }
 
 func TestChangesAfterEveryPartWasReadStaysBlocked(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))

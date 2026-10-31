@@ -128,6 +128,7 @@ func TestKRevodGateHunkCoverage(t *testing.T) {
 		return map[string]any{"path": path, "kind": kind, "first_line": first, "last_line": last}
 	}
 	t.Run("ranges", func(t *testing.T) {
+		t.Parallel()
 		hunks := []materialHunkRange{
 			{"a.go", "diff", 5, 14}, {"a.go", "file", 40, 46}, // a hunk split over parts 2 and 3
 			{"a.go", "diff", 15, 19},           // a deletion-only hunk: diff lines, no candidate lines
@@ -159,6 +160,7 @@ func TestKRevodGateHunkCoverage(t *testing.T) {
 		eq(t, "no parts", materialRequired(hunks, nil), []int{})
 	})
 	t.Run("manifest", func(t *testing.T) {
+		t.Parallel()
 		// Hunks from the real diff: a split modification, a deletion-only hunk, an added file,
 		// a deleted path and a binary file, located by the covers of small parts.
 		b, e, _ := materialAttempt(t)

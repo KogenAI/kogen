@@ -34,6 +34,7 @@ func renderExcerpt(t *testing.T, bytes string) (map[string]any, string) {
 }
 
 func TestExcerptWindowsPreserveAdjacentLineAndUTF8ByteBounds(t *testing.T) {
+	parallel(t)
 	// ExUnit: shape_context_test explicit windows preserve adjacent line and UTF-8 byte bounds
 	for _, count := range []int{79, 80, 81} {
 		var lines []string
@@ -67,6 +68,7 @@ func TestExcerptWindowsPreserveAdjacentLineAndUTF8ByteBounds(t *testing.T) {
 }
 
 func TestExcerptWindowsDoNotInventALineAfterTheSourceFinalNewline(t *testing.T) {
+	parallel(t)
 	// ExUnit: shape_context_test explicit windows do not invent a line after the source final newline
 	for _, tc := range []struct {
 		bytes, want string
@@ -82,6 +84,7 @@ func TestExcerptWindowsDoNotInventALineAfterTheSourceFinalNewline(t *testing.T) 
 }
 
 func TestExcerptStartsFiveLinesBeforeTheFirstMatch(t *testing.T) {
+	parallel(t)
 	var lines []string
 	for i := 1; i <= 200; i++ {
 		lines = append(lines, fmt.Sprintf("line %d", i))
@@ -97,6 +100,7 @@ func TestExcerptStartsFiveLinesBeforeTheFirstMatch(t *testing.T) {
 }
 
 func TestContextIsIndexFirstAndExcerptsRetainExactFrozenProvenance(t *testing.T) {
+	parallel(t)
 	// ExUnit: shape_dispatch_test context is index-first and explicit excerpts retain exact frozen provenance
 	f, sh, _, _ := newBatchValidation(t)
 	path := "features/steps/source.js"
@@ -149,6 +153,7 @@ func TestContextIsIndexFirstAndExcerptsRetainExactFrozenProvenance(t *testing.T)
 }
 
 func TestContextIndexOwnershipSkipsAndDirectories(t *testing.T) {
+	parallel(t)
 	f, sh, _, _ := newBatchValidation(t)
 	f.write("AGENTS.md", "agents")
 	f.write("sub/CLAUDE.md", "claude")
@@ -213,6 +218,7 @@ func TestContextIndexOwnershipSkipsAndDirectories(t *testing.T) {
 }
 
 func TestContextIndexPagesLongSignatureLists(t *testing.T) {
+	parallel(t)
 	f, sh, _, _ := newBatchValidation(t)
 	var b strings.Builder
 	for i := 0; i < 250; i++ {
@@ -271,6 +277,7 @@ func TestRevisionFollowsTheCheckoutWithoutTouchingTheRealIndex(t *testing.T) {
 }
 
 func TestContextBlocksCarryTheContractsAndEarlierRounds(t *testing.T) {
+	parallel(t)
 	f, sh, _, _ := newBatchValidation(t)
 	st := &state{Request: "Add calc.is_even(n).", Rounds: []map[string]any{{
 		"questions": []any{
@@ -306,6 +313,7 @@ func TestContextBlocksCarryTheContractsAndEarlierRounds(t *testing.T) {
 }
 
 func TestInspectStringsMatchesElixir(t *testing.T) {
+	parallel(t)
 	for _, tc := range []struct {
 		in   []string
 		want string
@@ -327,6 +335,7 @@ func TestInspectStringsMatchesElixir(t *testing.T) {
 }
 
 func TestSubmittedPathsMustBeNormal(t *testing.T) {
+	parallel(t)
 	for p, want := range map[string]bool{
 		"a.js": true, "dir/a.js": true, "a/b/c": true, "": false, "/a": false, "./a": false, "a/./b": false, "a//b": false,
 		"a/../b": false, "../a": false, "a/": false, "~": false, "~/a": false, "..": false, "a/..": false, ".hidden": true,
@@ -338,12 +347,14 @@ func TestSubmittedPathsMustBeNormal(t *testing.T) {
 }
 
 func TestFormatWallPrintsAtLeastOneDecimal(t *testing.T) {
+	parallel(t)
 	for in, want := range map[float64]string{0: "0.0", 0.1: "0.1", 3: "3.0", 12.5: "12.5", 300: "300.0"} {
 		shpEq(t, "wall", formatWall(in), want)
 	}
 }
 
 func TestShapeCommonHelpers(t *testing.T) {
+	parallel(t)
 	shpEq(t, "shell quote", ShellQuote("it's"), `'it'\''s'`)
 	shpEq(t, "hash", ContentHash([]byte("")), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
 	shpEq(t, "no readme", ReadmeText(t.TempDir()), "(no README.md)")
@@ -364,6 +375,7 @@ func TestShapeCommonHelpers(t *testing.T) {
 // Ports test/kogen/shape_context_test.exs "navigation has fixed shape across empty, small and
 // large candidate trees".
 func TestNavigationHasFixedShapeAcrossEmptySmallAndLargeCandidateTrees(t *testing.T) {
+	parallel(t)
 	f, _, _, _ := newBatchValidation(t)
 	head := f.head()
 	var sizes []int

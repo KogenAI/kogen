@@ -49,6 +49,7 @@ func filesOf(intent string) map[string]any {
 }
 
 func TestShapeRefusesToPublishBeforeAnythingWasInspected(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t,
 		shpAnswer(shpCall("c1", "submit", shpFiles())),
 		shpSubmit("c2", shpFiles()),
@@ -69,6 +70,7 @@ func TestShapeRefusesToPublishBeforeAnythingWasInspected(t *testing.T) {
 }
 
 func TestShapeQuestionsDoNotNeedInspection(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", map[string]any{"questions": []any{map[string]any{"question": "Which layout?"}}}))
 	exit, err := f.shape("Add calc.is_even(n).")
 	if err != nil || exit != 5 {
@@ -77,6 +79,7 @@ func TestShapeQuestionsDoNotNeedInspection(t *testing.T) {
 }
 
 func TestShapeKeepsAHandoffQuestionAndRejectsEngineeringQuestions(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t,
 		shpSubmit("c1", map[string]any{"questions": []any{map[string]any{"question": "Which storage engine?", "kind": "engineering"}}}),
 		shpSubmit("c2", map[string]any{"kind": "design", "questions": []any{map[string]any{"question": "Which cache?"}}}),
@@ -113,6 +116,7 @@ func TestShapeKeepsAHandoffQuestionAndRejectsEngineeringQuestions(t *testing.T) 
 }
 
 func TestShapeKeepsAQuestionKindFromTheSubmissionLevel(t *testing.T) {
+	parallel(t)
 	got, problems, err := validateQuestions(map[string]any{"kind": "handoff"}, []any{
 		map[string]any{"question": "Sign in?"}, map[string]any{"question": "Colour?", "kind": "product"}, map[string]any{"question": "Odd", "kind": nil},
 	})
@@ -134,6 +138,7 @@ func TestShapeKeepsAQuestionKindFromTheSubmissionLevel(t *testing.T) {
 }
 
 func TestShapeRecordsEachDocumentationLookupAsProgressEventAndRecordWithoutTheBody(t *testing.T) {
+	parallel(t)
 	origin := docOrigin(t)
 	f := newShpFx(t,
 		shpAnswer(
@@ -187,6 +192,7 @@ func TestShapeRecordsEachDocumentationLookupAsProgressEventAndRecordWithoutTheBo
 }
 
 func TestShapeRejectsDocumentationProvenanceThatWasNotRetrieved(t *testing.T) {
+	parallel(t)
 	origin := docOrigin(t)
 	inspect := shpCall("i1", "read_file", map[string]any{"path": "README.md"})
 	cases := []struct {
@@ -199,6 +205,7 @@ func TestShapeRejectsDocumentationProvenanceThatWasNotRetrieved(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			parallel(t)
 			calls := []map[string]any{inspect}
 			if c.lookup {
 				calls = append(calls, shpCall("d1", "documentation", map[string]any{"operation": "fetch", "url": origin.URL + "/cache-controls", "base": origin.URL}))
@@ -214,6 +221,7 @@ func TestShapeRejectsDocumentationProvenanceThatWasNotRetrieved(t *testing.T) {
 }
 
 func TestShapeDoesNotLetAnUntrustedDocumentDirectTheDecisions(t *testing.T) {
+	parallel(t)
 	origin := docOrigin(t)
 	hostile := strings.Replace(shpIntentMD, "## Decisions\n", "## Decisions\n- UNTRUSTED-DIRECTIVE-7b9acb97 adopted as scope. (source: request)\n", 1)
 	f := newShpFx(t,
@@ -232,6 +240,7 @@ func TestShapeDoesNotLetAnUntrustedDocumentDirectTheDecisions(t *testing.T) {
 }
 
 func TestDocumentationProblemsJudgeEveryRecordedLine(t *testing.T) {
+	parallel(t)
 	docs := []map[string]any{
 		{"operation": "search", "status": "retrieved", "query": "cache controls", "url": "", "sources": []any{map[string]any{"url": "https://docs.example/a", "title": "A"}}},
 		{"operation": "fetch", "status": "retrieved", "url": "https://docs.example/a", "query": ""},
@@ -268,6 +277,7 @@ func TestDocumentationProblemsJudgeEveryRecordedLine(t *testing.T) {
 }
 
 func TestADocumentationLookupIsRetainedWithoutTheDocumentBody(t *testing.T) {
+	parallel(t)
 	// Ports test/kogen/documentation_test.exs "a documentation lookup is retained without the
 	// document body".
 	dir := t.TempDir()
@@ -352,6 +362,7 @@ func ndjson(t *testing.T, path string) []map[string]any {
 }
 
 func TestTheShaperAndRefinePoliciesStateTheDiscoveryRulesAndTheRecordingSentence(t *testing.T) {
+	parallel(t)
 	for name, text := range map[string]string{"shaper": ShaperInstructions(), "refine": refineInstructions()} {
 		for _, want := range []string{
 			"Shape owns discovery and settlement of material technical questions.",

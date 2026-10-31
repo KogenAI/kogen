@@ -10,6 +10,7 @@ import (
 )
 
 func TestDecisionOutcomeRules(t *testing.T) {
+	parallel(t)
 	const request = "Add f. f(0) returns True."
 	const decision = "- f(0) returns False. (source: request)"
 	const assumed = "- Zero is even. (assumption: silent) (source: request)"
@@ -58,6 +59,7 @@ func TestDecisionOutcomeRules(t *testing.T) {
 }
 
 func TestAssumptionLines(t *testing.T) {
+	parallel(t)
 	intent := "## Decisions\n- A. (source: request)\n- B. (assumption: x) (source: request)\n\n## Tests\n- C (assumption: y)\n"
 	on := &project.Config{ShapeDecisionCheck: project.DecisionCheck{Enabled: true}}
 	if got := assumptionLines(on, intent); !slices.Equal(got, []string{"B. (assumption: x)"}) {
@@ -71,6 +73,7 @@ func TestAssumptionLines(t *testing.T) {
 // TestExternalShapeDecisionCheck: an external shaper runs the check as one fresh session per
 // candidate with the check schema, applies the mechanical rules and feeds problems back.
 func TestExternalShapeDecisionCheck(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.useExternalShape(8)
 	f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"shape_decision_check:\n  enabled: true\n")
@@ -109,12 +112,14 @@ func TestExternalShapeDecisionCheck(t *testing.T) {
 }
 
 func TestDecisionInstructionsKeepSourceTag(t *testing.T) {
+	parallel(t)
 	if !strings.Contains(decisionInstructions, "keeps its trailing (source: request) or (source: answer N)") {
 		t.Error("instructions do not state the rule")
 	}
 }
 
 func TestMarkAssumptions(t *testing.T) {
+	parallel(t)
 	intent := "# T\n\n## Decisions\n- Keep it small. (source: request)\n- Use blue.   (source: answer 2)\n\n## Other\n"
 	item := func(st, v, why string) decisionItem {
 		return decisionItem{statement: st, verdict: v, why: why, quotes: []string{}}
@@ -135,6 +140,7 @@ func TestMarkAssumptions(t *testing.T) {
 }
 
 func TestContainsNormalized(t *testing.T) {
+	parallel(t)
 	cases := []struct {
 		hay, needle string
 		want        bool

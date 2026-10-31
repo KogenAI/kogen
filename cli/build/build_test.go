@@ -339,6 +339,7 @@ func TestTheBuildLockIsHeldAndRefusesASecondBuild(t *testing.T) {
 }
 
 func TestDefaultShellRequestAndReplayCompatibility(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	call := e.prov.call("shell", map[string]any{"command": "printf exact"})
 	e.prov.then(sse(call))

@@ -38,6 +38,7 @@ func initCheckList(pairs ...string) []any {
 }
 
 func TestInitValidateRefusesOneTimeMachineBootstrap(t *testing.T) {
+	parallel(t)
 	_, problems := Validate(initArgs(map[string]any{"setup": []any{"mix local.hex --force"}}), InitContext{})
 	if len(problems) != 1 || !strings.Contains(problems[0], "one-time machine prerequisite") {
 		t.Fatalf("problems = %q", problems)
@@ -55,6 +56,7 @@ func TestInitValidateRefusesOneTimeMachineBootstrap(t *testing.T) {
 }
 
 func TestInitMergeDeduplicatesExactCommands(t *testing.T) {
+	parallel(t)
 	detected := project.Detected{Checks: []project.Check{{Name: "test", Run: "mix test"}}}
 	proposed := InitProposal{Checks: []project.Check{
 		{Name: "duplicate", Run: "mix test"},
@@ -74,6 +76,7 @@ func TestInitMergeDeduplicatesExactCommands(t *testing.T) {
 }
 
 func TestInitMergeProposedCheckReplacesDetectedOthersFollow(t *testing.T) {
+	parallel(t)
 	detected := project.Detected{
 		Setup:   []string{"mix deps.get"},
 		Checks:  []project.Check{{Name: "test", Run: "mix test"}, {Name: "compile", Run: "mix compile"}},
@@ -104,6 +107,7 @@ func TestInitMergeProposedCheckReplacesDetectedOthersFollow(t *testing.T) {
 }
 
 func TestInitValidateDependencyOnlyManifestsAreNotEligible(t *testing.T) {
+	parallel(t)
 	cases := []struct {
 		path, content string
 		checks        []any
@@ -141,6 +145,7 @@ func TestInitValidateDependencyOnlyManifestsAreNotEligible(t *testing.T) {
 }
 
 func TestInitValidateProtectionIncludesDetectedChecks(t *testing.T) {
+	parallel(t)
 	args := map[string]any{"checks": []any{}, "protect": []any{"package.json"}}
 	ctx := InitContext{
 		Tracked:        []string{"package.json"},
@@ -170,6 +175,7 @@ func TestInitValidateProtectionIncludesDetectedChecks(t *testing.T) {
 }
 
 func TestInitValidateMixTestDiscoveryAndCoverageAreVerificationConfiguration(t *testing.T) {
+	parallel(t)
 	for _, key := range []string{"test_paths", "test_pattern", "test_load_filters", "test_ignore_filters", "test_coverage"} {
 		ctx := InitContext{Tracked: []string{"mix.exs"}, Contents: map[string]string{"mix.exs": "def project, do: [" + key + ": []]"}}
 		got, problems := Validate(map[string]any{"protect": []any{"mix.exs"}}, ctx)
@@ -180,6 +186,7 @@ func TestInitValidateMixTestDiscoveryAndCoverageAreVerificationConfiguration(t *
 }
 
 func TestInitValidateCommittedMixTestSelectionIsProtectedConfiguration(t *testing.T) {
+	parallel(t)
 	// The mix.exs of this repository's Elixir Kogen, which sets test_load_filters and
 	// test_ignore_filters inside a multi-line project list full of captures.
 	manifest, err := os.ReadFile("testdata/init/kogen-mix.exs")
@@ -200,6 +207,7 @@ func TestInitValidateCommittedMixTestSelectionIsProtectedConfiguration(t *testin
 }
 
 func TestInitValidateNamesDuplicatesReservedAndUntrackedAreProblems(t *testing.T) {
+	parallel(t)
 	args := map[string]any{
 		"setup": []any{""},
 		"checks": []any{
@@ -228,6 +236,7 @@ func TestInitValidateNamesDuplicatesReservedAndUntrackedAreProblems(t *testing.T
 }
 
 func TestInitValidateShapes(t *testing.T) {
+	parallel(t)
 	cases := []struct {
 		name string
 		args map[string]any
@@ -254,6 +263,7 @@ func TestInitValidateShapes(t *testing.T) {
 }
 
 func TestInitMixVerificationMatchesElixir(t *testing.T) {
+	parallel(t)
 	data, err := os.ReadFile("testdata/init/mix-golden.json")
 	if err != nil {
 		t.Fatal(err)
@@ -297,6 +307,7 @@ func TestInitMixVerificationMatchesElixir(t *testing.T) {
 }
 
 func TestInitDetectedJSONKeyOrderAndEscapes(t *testing.T) {
+	parallel(t)
 	d := project.Detected{Setup: []string{"a \"q\"\n"}, Checks: []project.Check{{Name: "t", Run: "x\ty"}}}
 	want := `{"setup":["a \"q\"\n"],"protect":[],"fix":[],"checks":[{"name":"t","run":"x\ty"}]}`
 	if got := initDetectedJSON(d); got != want {
@@ -594,6 +605,7 @@ func (f *initFx) config() *project.Config {
 }
 
 func TestInitEmptyRepositoryMakesTheFirstCommit(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	out, errs := f.mustRun()
 	initWantLines(t, out,
@@ -619,6 +631,7 @@ func TestInitEmptyRepositoryMakesTheFirstCommit(t *testing.T) {
 }
 
 func TestInitEmptyRepositoryKeepsAnExistingGitignore(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	f.write(".gitignore", "node_modules")
 	f.mustRun()
@@ -628,6 +641,7 @@ func TestInitEmptyRepositoryKeepsAnExistingGitignore(t *testing.T) {
 }
 
 func TestInitRefusesFilesNotCommittedYet(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	f.write("app.txt", "x")
 	e := f.wantError("environment", "no_commits", 3)
@@ -644,6 +658,7 @@ func TestInitRefusesFilesNotCommittedYet(t *testing.T) {
 }
 
 func TestInitNotAGitRepository(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	plain := filepath.Join(filepath.Dir(f.repo), "plain")
 	os.MkdirAll(plain, 0o755)
@@ -658,6 +673,7 @@ func TestInitNotAGitRepository(t *testing.T) {
 }
 
 func TestInitWithoutGitIdentityWritesNothing(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.git("config", "--unset", "user.name")
 	e := f.wantError("environment", "git_identity_missing", 3)
@@ -667,6 +683,7 @@ func TestInitWithoutGitIdentityWritesNothing(t *testing.T) {
 }
 
 func TestInitWithoutLoginWritesNothing(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	f.write("notes.txt", "x")
 	f.commitAll("first")
@@ -680,6 +697,7 @@ func TestInitWithoutLoginWritesNothing(t *testing.T) {
 }
 
 func TestInitConfiguresAProjectWithoutChecksAndAddsTheBridge(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("README.md", "# notes\n")
 	f.write("notes.txt", "one\n")
@@ -749,6 +767,7 @@ func TestInitConfiguresAProjectWithoutChecksAndAddsTheBridge(t *testing.T) {
 }
 
 func TestInitLeavesOutAFailingCheckOnTheCommittedTree(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("mix.exs", "defmodule ExApp.MixProject do\n  def project, do: [app: :ex_app]\nend\n")
 	f.write(".formatter.exs", "[inputs: [\"lib/*.ex\"]]\n")
@@ -801,6 +820,7 @@ func TestInitLeavesOutAFailingCheckOnTheCommittedTree(t *testing.T) {
 }
 
 func TestInitRunsEveryProjectCommandOnACopyOfTheCommittedTree(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("mix.exs", "defmodule A.MixProject do\nend\n")
 	f.write(".gitignore", "deps/\n")
@@ -833,6 +853,7 @@ exit 3`)
 }
 
 func TestInitLeavesOutSetupThatCannotRunTwiceOnTheSameTree(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initSubmit(map[string]any{
 		"setup": []any{"mkdir seeded", "echo run >> runs.txt", "true"}, "fix": []any{}, "checks": []any{}, "protect": []any{}}))
 	f.write("README.md", "x\n")
@@ -853,6 +874,7 @@ func TestInitLeavesOutSetupThatCannotRunTwiceOnTheSameTree(t *testing.T) {
 }
 
 func TestInitSetupThatFailsIsLeftOut(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initSubmit(map[string]any{
 		"setup": []any{"exit 4"}, "fix": []any{"echo fixer"}, "checks": []any{map[string]any{"name": "fails", "run": "exit 7"}}, "protect": []any{"README.md"}}))
 	f.write("README.md", "x\n")
@@ -874,6 +896,7 @@ func TestInitSetupThatFailsIsLeftOut(t *testing.T) {
 }
 
 func TestInitUsesTheProjectsOwnCucumberRunner(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initSubmit(map[string]any{
 		"setup": []any{}, "fix": []any{}, "checks": []any{map[string]any{"name": "docs", "run": "node docs-check.js"}}, "protect": []any{}}))
 	f.write("README.md", "# node app\n")
@@ -903,6 +926,7 @@ func TestInitUsesTheProjectsOwnCucumberRunner(t *testing.T) {
 }
 
 func TestInitReportsAnExistingRunnerThatDoesNotStart(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("README.md", "x\n")
 	f.write("package.json", `{"devDependencies":{"@cucumber/cucumber":"13.3.0"}}`)
@@ -923,6 +947,7 @@ func TestInitReportsAnExistingRunnerThatDoesNotStart(t *testing.T) {
 }
 
 func TestInitBridgeThatWritesNoReportIsNotAdded(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("README.md", "x\n")
 	f.commitAll("notes")
@@ -941,6 +966,7 @@ func TestInitBridgeThatWritesNoReportIsNotAdded(t *testing.T) {
 }
 
 func TestInitAsksOnceToRemoveDependencyOnlyProtection(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true,
 		initSubmit(map[string]any{"setup": []any{}, "fix": []any{}, "checks": []any{}, "protect": []any{"mix.exs", ".formatter.exs"}}),
 		initSubmit(map[string]any{"setup": []any{}, "fix": []any{}, "checks": []any{}, "protect": []any{".formatter.exs"}}))
@@ -963,6 +989,7 @@ func TestInitAsksOnceToRemoveDependencyOnlyProtection(t *testing.T) {
 }
 
 func TestInitRepliesToACallWithItsOutputAndReplaysTheAnswer(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true,
 		initSubmit(map[string]any{"setup": []any{"mix local.hex --force"}, "fix": []any{}, "checks": []any{}, "protect": []any{}}),
 		initNothing())
@@ -991,6 +1018,7 @@ func TestInitRepliesToACallWithItsOutputAndReplaysTheAnswer(t *testing.T) {
 }
 
 func TestInitAnAnswerWithoutTheCallIsAskedForAgain(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initAnswerText("I think the project is fine."), initNothing())
 	f.write("README.md", "x\n")
 	f.commitAll("a")
@@ -1006,6 +1034,7 @@ func TestInitAnAnswerWithoutTheCallIsAskedForAgain(t *testing.T) {
 }
 
 func TestInitTwoInvalidAnswersEndWithNothingWritten(t *testing.T) {
+	parallel(t)
 	bad := initSubmit(map[string]any{"setup": "no", "fix": []any{}, "checks": []any{}, "protect": []any{}})
 	for name, script := range map[string][]initSSE{
 		"invalid twice":      {bad, bad},
@@ -1014,6 +1043,7 @@ func TestInitTwoInvalidAnswersEndWithNothingWritten(t *testing.T) {
 		"invalid then no it": {bad, initAnswerText("a")},
 	} {
 		t.Run(name, func(t *testing.T) {
+			parallel(t)
 			f := initNewFx(t, true, script...)
 			f.write("notes.txt", "x\n")
 			f.commitAll("a")
@@ -1033,6 +1063,7 @@ func TestInitTwoInvalidAnswersEndWithNothingWritten(t *testing.T) {
 }
 
 func TestInitProviderFailureEndsInitWithoutWriting(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true)
 	f.write("notes.txt", "x\n")
 	f.commitAll("a")
@@ -1044,6 +1075,7 @@ func TestInitProviderFailureEndsInitWithoutWriting(t *testing.T) {
 }
 
 func TestInitAlreadyInitializedChangesNothing(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("README.md", "x\n")
 	f.commitAll("a")
@@ -1058,6 +1090,7 @@ func TestInitAlreadyInitializedChangesNothing(t *testing.T) {
 }
 
 func TestInitAlreadyInitializedPrintsWhatIsMissing(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	f.write(".kogen/project.yaml", project.Template())
 	f.commitAll("configured")
@@ -1066,6 +1099,7 @@ func TestInitAlreadyInitializedPrintsWhatIsMissing(t *testing.T) {
 }
 
 func TestInitCommitsTheConfigurationAFailedInitLeftBehind(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	f.write("README.md", "x\n")
 	f.commitAll("a")
@@ -1087,6 +1121,7 @@ func TestInitCommitsTheConfigurationAFailedInitLeftBehind(t *testing.T) {
 }
 
 func TestInitLeftoverConfigurationMustBeValid(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true)
 	f.write("README.md", "x\n")
 	f.commitAll("a")
@@ -1098,8 +1133,10 @@ func TestInitLeftoverConfigurationMustBeValid(t *testing.T) {
 }
 
 func TestInitRefusesUncommittedChangesToTheFilesItWrites(t *testing.T) {
+	parallel(t)
 	for _, path := range []string{".gitignore", "features/steps/README.md"} {
 		t.Run(path, func(t *testing.T) {
+			parallel(t)
 			f := initNewFx(t, true, initNothing())
 			f.write("README.md", "x\n")
 			f.commitAll("a")
@@ -1113,6 +1150,7 @@ func TestInitRefusesUncommittedChangesToTheFilesItWrites(t *testing.T) {
 }
 
 func TestInitRefusesAnEarlierKogensConfigurationBeforeLoginOrWrites(t *testing.T) {
+	parallel(t)
 	// SET-4: a legacy file the repository ignores is still refused, signed in or not.
 	for _, signedIn := range []bool{false, true} {
 		f := initNewFx(t, signedIn, initNothing())
@@ -1131,6 +1169,7 @@ func TestInitRefusesAnEarlierKogensConfigurationBeforeLoginOrWrites(t *testing.T
 }
 
 func TestInitCommitFailureLeavesTheFilesUncommitted(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("README.md", "x\n")
 	f.commitAll("a")
@@ -1162,6 +1201,7 @@ func TestInitCommitFailureLeavesTheFilesUncommitted(t *testing.T) {
 }
 
 func TestInitFirstCommitFailureLeavesNothingStaged(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, false)
 	hooks := strings.TrimSpace(f.git("config", "core.hooksPath"))
 	os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\nexit 1\n"), 0o755)
@@ -1173,6 +1213,7 @@ func TestInitFirstCommitFailureLeavesNothingStaged(t *testing.T) {
 }
 
 func TestInitInterruptedBeforeAnyCommandStartsNothing(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("mix.exs", "x\n")
 	f.commitAll("a")
@@ -1190,6 +1231,7 @@ func TestInitInterruptedBeforeAnyCommandStartsNothing(t *testing.T) {
 }
 
 func TestInitHomeDefaultsToTheSessionsHome(t *testing.T) {
+	parallel(t)
 	f := initNewFx(t, true, initNothing())
 	f.write("README.md", "x\n")
 	f.commitAll("a")
@@ -1202,6 +1244,7 @@ func TestInitHomeDefaultsToTheSessionsHome(t *testing.T) {
 }
 
 func TestInitCommitSubjectsFollowTheRepositoryState(t *testing.T) {
+	parallel(t)
 	// SET-3 quirk kept from the Elixir Kogen: a leftover configuration committed in a
 	// repository without commits uses the first commit's subject but reports the usual line.
 	f := initNewFx(t, false)

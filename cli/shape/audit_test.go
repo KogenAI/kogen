@@ -8,6 +8,7 @@ import (
 )
 
 func TestUncoveredDefects(t *testing.T) {
+	parallel(t)
 	defect := map[string]any{"kind": "conflict", "quote_a": "QA text", "quote_b": "QB text", "exposing_input": "f(0)", "result_a": "True", "result_b": "False"}
 	undefined := map[string]any{"kind": "undefined", "quote_a": "makes a gadget", "quote_b": "Widget", "exposing_input": "any", "result_a": "", "result_b": ""}
 	intent := func(lines ...string) string {
@@ -52,6 +53,7 @@ func TestUncoveredDefects(t *testing.T) {
 }
 
 func TestAuditGateFeedback(t *testing.T) {
+	parallel(t)
 	sh := &shaping{slug: "s", proposed: map[string]string{}, auditResult: &auditResult{defects: []map[string]any{
 		{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)", "result_a": "T", "result_b": "F"}}}}
 	got := sh.auditGate(submission{questions: []map[string]any{{"question": "x"}}})
@@ -70,6 +72,7 @@ func TestAuditGateFeedback(t *testing.T) {
 // TestExternalShapeAudit: an external shaper runs the audit as one fresh session with the audit
 // schema, records the event, and applies the same gate to its first submission.
 func TestExternalShapeAudit(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	f.useExternalShape(6)
 	f.write(".kogen/project.yaml", f.read(".kogen/project.yaml")+"shape_audit:\n  enabled: true\n")
@@ -115,6 +118,7 @@ func TestExternalShapeAudit(t *testing.T) {
 
 // TestDefectTemplates: each pasted template line covers its defect; empty results and undefined.
 func TestDefectTemplates(t *testing.T) {
+	parallel(t)
 	cases := []map[string]any{
 		{"kind": "conflict", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(0)", "result_a": "T", "result_b": "F"},
 		{"kind": "precedence", "quote_a": "QA", "quote_b": "QB", "exposing_input": "f(1)", "result_a": "", "result_b": "F"},
@@ -144,6 +148,7 @@ func TestDefectTemplates(t *testing.T) {
 // audit gate stays in the accumulated proposals, so an intent.md-only correction publishes
 // with the earlier acceptance.feature and steps.
 func TestNativeAuditRefusalKeepsTheSubmittedFiles(t *testing.T) {
+	parallel(t)
 	cover := strings.Replace(shpIntentMD, "- Non-integers raise TypeError. (source: request)\n",
 		"- Non-integers raise TypeError. (source: request)\n- Decision: for is_even(0) the result is True (because the example states it) (source: request)\n", 1)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()),

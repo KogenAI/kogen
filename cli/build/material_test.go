@@ -78,7 +78,10 @@ func TestExactUTF8SourceDeliverySurvivesResetAndDamagedCustodyRefuses(t *testing
 		"chatgpt":     materialRole(),
 		"opencode-go": {Provider: "opencode-go", Model: "kimi-k3", Effort: "high"},
 	} {
-		t.Run(name, func(t *testing.T) { exactSourceDelivery(t, role) })
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			exactSourceDelivery(t, role)
+		})
 	}
 }
 
@@ -398,6 +401,7 @@ func TestFittedInlineSourceRelocatesOnPressure(t *testing.T) {
 			name = "historical"
 		}
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b, e, tree := materialAttempt(t)
 			source := "# Check results of the final pass\nacceptance: passed (1 scenarios)\n# Diff of existing/deleted paths\n" +
 				strings.Repeat("candidate source Δ🙂\r\n", 15_000)

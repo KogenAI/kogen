@@ -22,6 +22,7 @@ import (
 )
 
 func TestShapeOneShotWritesThePackageAndPrintsTheLines(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	head := f.head()
 	exit, err := f.shape("Add calc.is_even(n). Non-integers raise TypeError.")
@@ -77,6 +78,7 @@ func TestShapeOneShotWritesThePackageAndPrintsTheLines(t *testing.T) {
 }
 
 func TestShapeWritesEvidenceAndUsageRecords(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
 		t.Fatalf("exit %d, err %v", exit, err)
@@ -130,6 +132,7 @@ func TestShapeWritesEvidenceAndUsageRecords(t *testing.T) {
 }
 
 func TestShapeSourceReceiptRecordsRequestAndRounds(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	if exit, err := f.shapeFrom("Add calc.is_even(n).", filepath.Join(f.Root, "request.md")); err != nil || exit != 0 {
 		t.Fatalf("exit %d, err %v", exit, err)
@@ -151,7 +154,9 @@ func TestShapeSourceReceiptRecordsRequestAndRounds(t *testing.T) {
 }
 
 func TestShapeRefusesWhatItCannotShape(t *testing.T) {
+	parallel(t)
 	t.Run("not initialized", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		os.Remove(filepath.Join(f.Root, ".kogen/project.yaml"))
 		exit, err := f.shape("x")
@@ -159,6 +164,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 		shpEq(t, "exit", exit, 3)
 	})
 	t.Run("acceptance unconfigured", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: ./accept.sh, steps_dir: null}\n")
 		_, err := f.shape("x")
@@ -169,6 +175,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 		shpEq(t, "requests", len(f.Prov.requests()), 0)
 	})
 	t.Run("not signed in", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		os.Remove(filepath.Join(f.Home, ".kogen/credentials/chatgpt.json"))
 		_, err := f.shape("x")
@@ -176,6 +183,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 		shpEq(t, "requests", len(f.Prov.requests()), 0)
 	})
 	t.Run("already shaped", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.write(".kogen/intents/is-even/intent.md", shpIntentMD)
 		exit, err := f.shape("x")
@@ -184,6 +192,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 		shpEq(t, "requests", len(f.Prov.requests()), 0)
 	})
 	t.Run("a failing setup stops before any request", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  setup: ['echo broken; exit 9']\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
 		f.git("add", "-A")
@@ -194,6 +203,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 		shpEq(t, "requests", len(f.Prov.requests()), 0)
 	})
 	t.Run("an acceptance command that does not start", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: 'exit 7', steps_dir: features/steps}\n")
 		f.git("add", "-A")
@@ -203,6 +213,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 		shpEq(t, "requests", len(f.Prov.requests()), 0)
 	})
 	t.Run("not a git repository", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t)
 		dir := t.TempDir()
 		f.newSession()
@@ -212,6 +223,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 }
 
 func TestShapeCallsOutAnUntrackedRequestFileAndWarnsAboutEmptyChecks(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
 	f.git("add", "-A")
@@ -235,6 +247,7 @@ func TestShapeCallsOutAnUntrackedRequestFileAndWarnsAboutEmptyChecks(t *testing.
 }
 
 func TestShapeFormatsItsFilesWithTheFixersAndLeavesOthersAlone(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  fix: ['f=features/steps/is_even_steps.js; if [ -f $f ]; then grep -q formatted $f || echo // formatted >> $f; fi; grep -q formatted README.md || echo formatted >> README.md; echo junk > calc.js']\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
 	f.git("add", "-A")
@@ -250,6 +263,7 @@ func TestShapeFormatsItsFilesWithTheFixersAndLeavesOthersAlone(t *testing.T) {
 }
 
 func TestShapeStepFileStates(t *testing.T) {
+	parallel(t)
 	// Editing an existing step file shows as edited; the Intent's own steps are new.
 	files := shpFiles()
 	list := files["files"].([]any)
@@ -269,6 +283,7 @@ func TestShapeStepFileStates(t *testing.T) {
 }
 
 func TestShapeProviderFailureWritesNoFilesAndExplainsTheRerun(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpStep{status: 429, code: "subscription_sharing_usage_limit_exceeded", resets: 1893456000})
 	exit, err := f.shapeFrom("Add calc.is_even(n).", "")
 	e := shpWantError(t, err, "shape", "provider_failed", "shaping stopped on a provider error that retrying cannot fix; the failed request wrote no files. Fix the account, then rerun kogen intent shape is-even - with the original request on stdin (or the same answers if questions are pending).", 4)
@@ -289,6 +304,7 @@ func TestShapeProviderFailureWritesNoFilesAndExplainsTheRerun(t *testing.T) {
 }
 
 func TestShapeInterruptEndsWithTheSignalAndKeepsEvidence(t *testing.T) {
+	parallel(t)
 	var f *shpFx
 	opened := make(chan struct{})
 	f = newShpFx(t, shpStep{handler: func(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +360,7 @@ func shpFilesWithDecisions(decisions ...string) map[string]any {
 }
 
 func TestShapeQuestionsPathPrintsNumberedQuestionsAndWritesNothing(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("q1", map[string]any{"questions": []any{
 		shpQuestion("What should is_even do with a non-integer?", "raise TypeError", "return False"),
 		shpQuestion("How should it be named?"),
@@ -380,6 +397,7 @@ func TestShapeQuestionsPathPrintsNumberedQuestionsAndWritesNothing(t *testing.T)
 }
 
 func TestShapeAnswersContinueShapingAndTheDecisionRecordsItsSource(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t,
 		shpSubmit("q1", map[string]any{"questions": []any{shpQuestion("What should is_even do with a non-integer?", "raise TypeError", "return False")}}),
 		shpSubmit("c1", shpFilesWithDecisions("- Non-integers raise TypeError. (source: answer 1)")),
@@ -414,6 +432,7 @@ func TestShapeAnswersContinueShapingAndTheDecisionRecordsItsSource(t *testing.T)
 }
 
 func TestShapeAllRecommendedAnswersEveryQuestion(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t,
 		shpSubmit("q1", map[string]any{"questions": []any{shpQuestion("First?", "yes", "no"), shpQuestion("Second?", "left", "right")}}),
 		shpSubmit("c1", shpFilesWithDecisions("- First. (source: answer 1)", "- Second. (source: answer 2)")),
@@ -430,6 +449,7 @@ func TestShapeAllRecommendedAnswersEveryQuestion(t *testing.T) {
 }
 
 func TestShapePendingQuestionsRejectInputeTheCallerCannotUse(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("q1", map[string]any{"questions": []any{shpQuestion("First?", "yes", "no"), shpQuestion("Second?", "left", "right")}}))
 	if _, err := f.shape("Add calc.is_even(n)."); err != nil {
 		t.Fatal(err)
@@ -465,6 +485,7 @@ func TestShapePendingQuestionsRejectInputeTheCallerCannotUse(t *testing.T) {
 }
 
 func TestShapeAllRecommendedNeedsARecommendedOptionForEveryQuestion(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("q1", map[string]any{"questions": []any{shpQuestion("First?", "yes", "no"), shpQuestion("Free text?")}}))
 	if _, err := f.shape("Add calc.is_even(n)."); err != nil {
 		t.Fatal(err)
@@ -476,6 +497,7 @@ func TestShapeAllRecommendedNeedsARecommendedOptionForEveryQuestion(t *testing.T
 // ---- invalid submissions and feedback ----
 
 func TestShapeInvalidSubmitIsRetriedWithFeedbackAndKeepsEarlierProposals(t *testing.T) {
+	parallel(t)
 	unsourced := shpFilesWithDecisions("- Non-integers raise TypeError.")
 	fixed := map[string]any{"files": []any{
 		map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": shpIntentMD},
@@ -497,6 +519,7 @@ func TestShapeInvalidSubmitIsRetriedWithFeedbackAndKeepsEarlierProposals(t *test
 }
 
 func TestShapeThreeInvalidSubmissionsStopShapingAndWriteNothing(t *testing.T) {
+	parallel(t)
 	both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
 	f := newShpFx(t, shpSubmit("c1", both), shpSubmit("c2", both), shpSubmit("c3", both))
 	exit, err := f.shape("Add calc.is_even(n).")
@@ -512,6 +535,7 @@ func TestShapeThreeInvalidSubmissionsStopShapingAndWriteNothing(t *testing.T) {
 }
 
 func TestShapeSubmissionEnvelopeProblems(t *testing.T) {
+	parallel(t)
 	file := func(path, content any) any { return map[string]any{"path": path, "content": content} }
 	for _, tc := range []struct {
 		name string
@@ -535,6 +559,7 @@ func TestShapeSubmissionEnvelopeProblems(t *testing.T) {
 		{"blocked beside files", map[string]any{"blocked": map[string]any{"paths": []any{".kogen/project.yaml"}, "reason": "x"}, "files": []any{file("features/steps/a.js", "x")}}, "submit takes exactly one of"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			parallel(t)
 			f := newShpFx(t, shpSubmit("c1", tc.args), shpSubmit("c2", tc.args), shpSubmit("c3", tc.args))
 			_, err := f.shape("Add calc.is_even(n).")
 			e := shpWantError(t, err, "shape", "invalid_output", "", 1)
@@ -547,6 +572,7 @@ func TestShapeSubmissionEnvelopeProblems(t *testing.T) {
 }
 
 func TestShapeWithoutSubmitIsAskedToEndWithSubmit(t *testing.T) {
+	parallel(t)
 	text := shpAnswer(map[string]any{"type": "message", "id": "m", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": "done"}}})
 	f := newShpFx(t, text, text, text)
 	_, err := f.shape("Add calc.is_even(n).")
@@ -559,6 +585,7 @@ func TestShapeWithoutSubmitIsAskedToEndWithSubmit(t *testing.T) {
 }
 
 func TestShapeOnlyOneSubmitCountsPerResponse(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t,
 		shpAnswer(shpCall("s1", "submit", map[string]any{"questions": []any{shpQuestion("First?", "yes")}}), shpCall("s2", "submit", shpFiles())))
 	exit, err := f.shape("Add calc.is_even(n).")
@@ -573,6 +600,7 @@ func TestShapeOnlyOneSubmitCountsPerResponse(t *testing.T) {
 // ---- blocked ----
 
 func TestShapeBlockedReportIsPrintedAndWritesNothing(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", map[string]any{"blocked": map[string]any{
 		"paths": []any{".kogen/project.yaml"}, "reason": "the requested check definition must change"}}))
 	exit, err := f.shape("Change the protected check definition.")
@@ -593,6 +621,7 @@ func TestShapeBlockedReportIsPrintedAndWritesNothing(t *testing.T) {
 }
 
 func TestShapeBlockedPathsMayBeConfiguredGlobs(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", map[string]any{"blocked": map[string]any{"paths": []any{"calc.js", "README.md"}, "reason": "needs both"}}))
 	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nprotect: ['*.js', README.md]\n")
 	f.git("add", "-A")
@@ -610,6 +639,7 @@ func TestShapeBlockedPathsMayBeConfiguredGlobs(t *testing.T) {
 // ---- readiness ----
 
 func TestShapeGreenReadinessNeedsNoAcknowledgment(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()))
 	f.setReport("PASSED", 0)
 	exit, err := f.shape("Add calc.is_even(n).")
@@ -621,6 +651,7 @@ func TestShapeGreenReadinessNeedsNoAcknowledgment(t *testing.T) {
 }
 
 func TestShapeRedReadinessReturnsObservationsAndAcknowledgmentReusesThem(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
 		t.Fatalf("exit %d, err %v", exit, err)
@@ -644,6 +675,7 @@ func TestShapeRedReadinessReturnsObservationsAndAcknowledgmentReusesThem(t *test
 }
 
 func TestShapeAChangedPackageAfterRedGetsFreshChecks(t *testing.T) {
+	parallel(t)
 	changed := map[string]any{"files": []any{map[string]any{"path": "features/steps/is_even_steps.js", "content": shpSteps + "// changed\n"}}}
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpSubmit("c2", changed), shpAck("c3"))
 	if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
@@ -656,6 +688,7 @@ func TestShapeAChangedPackageAfterRedGetsFreshChecks(t *testing.T) {
 }
 
 func TestShapeUndefinedStepGoesBackToTheShaperAndStaysNotReady(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"), shpAck("c3"))
 	f.setReport("UNDEFINED", 1)
 	exit, err := f.shape("Add calc.is_even(n).")
@@ -675,6 +708,7 @@ func TestShapeUndefinedStepGoesBackToTheShaperAndStaysNotReady(t *testing.T) {
 }
 
 func TestShapeAfterANotReadyAttemptTheShaperMayAskQuestions(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpSubmit("q1", map[string]any{"questions": []any{shpQuestion("Which way?", "this", "that")}}),
 		shpSubmit("c2", shpFilesWithDecisions("- Non-integers raise TypeError. (source: answer 1)")), shpAck("c3"))
 	f.setReport("UNDEFINED", 1)
@@ -698,6 +732,7 @@ func TestShapeAfterANotReadyAttemptTheShaperMayAskQuestions(t *testing.T) {
 }
 
 func TestShapeRejectsAnAbandonedDeclaredStep(t *testing.T) {
+	parallel(t)
 	noSteps := strings.Replace(shpIntentMD, "- features/steps/is_even_steps.js\n", "", 1)
 	dropped := map[string]any{"files": []any{map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": noSteps}}}
 	restored := map[string]any{"files": []any{map[string]any{"path": ".kogen/intents/is-even/intent.md", "content": shpIntentMD}}}
@@ -751,6 +786,7 @@ func TestShapeProbeRunsOutsideTheProjectAndItsResultIsRecorded(t *testing.T) {
 }
 
 func TestShapeProbeFailuresAreFindingsNotErrors(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpAnswer(
 		shpCall("p1", "probe", map[string]any{"command": "echo nope; exit 3"}),
 		shpCall("p2", "probe", map[string]any{"command": "true", "files": []any{map[string]any{"path": "../escape.txt", "content": "x"}}}),
@@ -775,6 +811,7 @@ func TestShapeProbeFailuresAreFindingsNotErrors(t *testing.T) {
 }
 
 func TestShapeReadOnlyToolsAnswerAsTheModelExpects(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t, shpAnswer(
 		shpCall("r1", "read_file", map[string]any{"path": "README.md"}),
 		shpCall("r2", "list_files", map[string]any{"path": "features"}),
@@ -801,6 +838,7 @@ func TestShapeReadOnlyToolsAnswerAsTheModelExpects(t *testing.T) {
 // ---- images ----
 
 func TestShapeViewImageDeliversPixelsAndRecordsReadAndDelivery(t *testing.T) {
+	parallel(t)
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	for i := range img.Pix {
 		img.Pix[i] = 255
@@ -879,6 +917,7 @@ func shpAnthropic(f *shpFx) shpStep {
 }
 
 func TestShapeAnthropicInvalidProviderFailureReachesTheDiagnostic(t *testing.T) {
+	parallel(t)
 	f := newShpFx(t)
 	step := shpAnthropic(f)
 	f.Prov.route = func(map[string]any) *shpStep { return &step }
@@ -905,6 +944,7 @@ func shpRefused(f *shpFx) []string {
 }
 
 func TestShapeRecordsEachRefusedSubmissionWithItsGate(t *testing.T) {
+	parallel(t)
 	both := map[string]any{"questions": []any{shpQuestion("Q?")}, "files": shpFiles()["files"]}
 	unsourced := shpFilesWithDecisions("- Non-integers raise TypeError.")
 	noSteps := strings.Replace(shpIntentMD, "- features/steps/is_even_steps.js\n", "", 1)
@@ -922,6 +962,7 @@ func TestShapeRecordsEachRefusedSubmissionWithItsGate(t *testing.T) {
 		{"readiness", []shpStep{shpSubmit("c1", shpFiles()), shpAck("c2"), shpAck("c3")}, "UNDEFINED", "1:readiness 2:readiness 3:readiness"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			parallel(t)
 			f := newShpFx(t, tc.steps...)
 			code := 1
 			if tc.report == "PASSED" {
@@ -935,6 +976,7 @@ func TestShapeRecordsEachRefusedSubmissionWithItsGate(t *testing.T) {
 }
 
 func TestShortenTitle(t *testing.T) {
+	parallel(t)
 	for in, want := range map[string]string{
 		"Add an is-even check for integers and also reject, every string": "Add an is-even check for integers and also reject",
 		"Add an is-even check for integers and also reject every string":  "Add an is-even check for integers and also reject",
@@ -958,9 +1000,11 @@ func shpTitled(title, decision string) map[string]any {
 }
 
 func TestShapeShortensATooLongTitleOnlyOnTheLastAttempt(t *testing.T) {
+	parallel(t)
 	const long = "Add an is-even check for integers and also reject every string"
 	const short = "Add an is-even check for integers and also reject"
 	t.Run("last attempt", func(t *testing.T) {
+		parallel(t)
 		f := newShpFx(t, shpSubmit("c1", shpTitled(long, "")), shpSubmit("c2", shpTitled(long, "")), shpSubmit("c3", shpTitled(long, "")))
 		f.setReport("PASSED", 0)
 		if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
@@ -975,6 +1019,7 @@ func TestShapeShortensATooLongTitleOnlyOnTheLastAttempt(t *testing.T) {
 		shpEq(t, "refused", strings.Join(shpRefused(f), " "), "1:intent 2:intent")
 	})
 	t.Run("another problem remains", func(t *testing.T) {
+		parallel(t)
 		unsourced := shpTitled(long, "- Non-integers raise TypeError.")
 		f := newShpFx(t, shpSubmit("c1", unsourced), shpSubmit("c2", unsourced), shpSubmit("c3", unsourced))
 		f.setReport("PASSED", 0)
@@ -999,6 +1044,7 @@ func probeHomeEmpty(out string) bool {
 }
 
 func TestShapeProbeHomeEmptinessRegression(t *testing.T) {
+	parallel(t)
 	for _, c := range []struct {
 		name, count string
 		empty       bool
@@ -1009,6 +1055,7 @@ func TestShapeProbeHomeEmptinessRegression(t *testing.T) {
 		{"padded-one", "       1", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			parallel(t)
 			out := "exit status: 0\ntimed_out: false\nwall: 0.1 s\nlc=C\nhome=/tmp/kogen-probe1\nhome-count-begin\n" + c.count + "\nhome-count-end\nLC_ALL=C\n"
 			if !c.empty {
 				out += "0\nunrelated=0\n"

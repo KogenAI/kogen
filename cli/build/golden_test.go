@@ -43,6 +43,7 @@ func TestOpeningMessageEqualsTheElixirReference(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
 			dir := physical(t, t.TempDir())
 			env := isolatedEnv()
 			cmd := exec.Command("git", "init", "-q")

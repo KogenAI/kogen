@@ -18,6 +18,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/agent"
+	"kogen/durable"
 	"kogen/git"
 	"kogen/project"
 	"kogen/verify"
@@ -634,7 +635,7 @@ func materialWritePart(path string, data []byte) error {
 		_, err = f.Write(data)
 	}
 	if err == nil {
-		err = f.Sync()
+		err = durable.Sync(f)
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
