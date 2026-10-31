@@ -435,8 +435,9 @@ func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
 	})
 }
 
-// TestClaudeLineupReviewRefusesResume: an explicit resume of an external review checkpoint is
-// candidate/resume_refused before any inference or mutation, with fresh-Build guidance.
+// TestClaudeLineupReviewRefusesResume: an explicit resume of a blocked external review is
+// candidate/resume_refused before any inference or mutation, naming the blocker only that
+// reviewer's own decision can clear, with fresh-Build guidance.
 func TestClaudeLineupReviewRefusesResume(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
@@ -459,7 +460,10 @@ func TestClaudeLineupReviewRefusesResume(t *testing.T) {
 	if !ok || se.Class != "candidate" || se.Reason != "resume_refused" {
 		t.Fatalf("error %v\n%s", r.err, r.shown())
 	}
-	for _, part := range []string{"cannot be resumed", "fresh Build", "Build-clean", "exact approval"} {
+	for _, part := range []string{
+		"review 1 by executor claude-code ended with a blocking finding that only that reviewer's own new decision can clear, and its session cannot be resumed (resume capability: none)",
+		"fresh Build", "Build-clean", "exact approval",
+	} {
 		contains(t, "refusal", se.Detail, part)
 	}
 	after, _ := os.ReadFile(e.runPath(id, "checkpoint.json"))

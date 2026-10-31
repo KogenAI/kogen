@@ -346,12 +346,23 @@ func (b *Attempt) verifyAndReview(ctx context.Context) (string, bool, error) {
 
 // ---- resume of a conversation stage ----
 
-// resumeStage continues the Build from its checkpointed stage. Only the native builder
-// resumes: the checkpoint of an external executor is refused (resume capability: none).
+// builderResumeRefusal is why the builder's own stage cannot be resumed ("" when it can). Only
+// the native builder's session resumes: an external executor's unfinished session cannot
+// (resume capability: none), while at a review stage that builder has finished.
+func (b *Attempt) builderResumeRefusal() string {
+	x := b.Executor
+	if x == nil || x.Name == executor.Native || !slices.Contains([]string{StageBuilder, StageBuilderVerify}, b.Continuation.Stage) {
+		return ""
+	}
+	return "Builds by executor " + x.Name + " cannot be resumed in this version (resume capability: none); " +
+		"inspect the preserved candidate or start a fresh Build"
+}
+
+// resumeStage continues the Build from its checkpointed stage: the native builder's
+// conversation or a review, never an external executor's builder session.
 func (b *Attempt) resumeStage(ctx context.Context) error {
-	if x := b.Executor; x != nil && x.Name != executor.Native {
-		return resumeRefused("Builds by executor " + x.Name + " cannot be resumed in this version (resume capability: none); " +
-			"inspect the preserved candidate or start a fresh Build")
+	if why := b.builderResumeRefusal(); why != "" {
+		return resumeRefused(why)
 	}
 	if err := provider.RequireLogin(b.s.Getenv("HOME"), buildRoles(b.Config)); err != nil {
 		return err
@@ -370,6 +381,9 @@ func (b *Attempt) resumeStage(ctx context.Context) error {
 	case StageReviewOnly:
 		return b.reviewOnlyResume(ctx)
 	default: // the review stages
+		if b.externalReviewStage() {
+			return b.resumeExternalReview(ctx)
+		}
 		approved, err := b.reviewWithRetry(ctx, func() (Approved, error) { return b.deps.reviewer().Resume(ctx, b) })
 		if err != nil {
 			return err

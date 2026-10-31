@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"kogen-loop/sys"
@@ -171,7 +172,7 @@ func (b *Attempt) reviewOnlyBlocked(inv *invalidReview, discard bool) string {
 		return "the candidate changed after its green pass: " + b.treeDrift(tree, inv.Pass.Tree)
 	}
 	if tree != inv.Pass.Tree {
-		if err := b.discardReviewEdits(inv, tree); err != nil {
+		if _, err := b.discardReviewEdits(inv, tree); err != nil {
 			return "the reviewer's uncommitted edits could not be discarded: " + err.Error()
 		}
 	}
@@ -196,27 +197,29 @@ func (b *Attempt) treeDrift(observed, green string) string {
 // discardReviewEdits puts the checkout back to the green tree of the review's pass: the
 // reviewer's uncommitted modifications, deletions and additions go, in that one step, and
 // the discarded paths are recorded in the run log. The result must be exactly the green tree.
-func (b *Attempt) discardReviewEdits(inv *invalidReview, current string) error {
+func (b *Attempt) discardReviewEdits(inv *invalidReview, current string) ([]string, error) {
 	green := inv.Pass.Tree
 	paths, err := b.repo.RestoreTree(current, green)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	discarded := make([]map[string]any, 0, len(paths))
+	names := make([]string, 0, len(paths))
 	for _, p := range paths {
 		discarded = append(discarded, map[string]any{"path": p.Path, "change": p.Change})
+		names = append(names, p.Path)
 	}
 	b.Run.Event(map[string]any{
 		"event": "review_edits_discarded", "review": inv.Review, "tree": green, "candidate": current, "paths": discarded,
 	})
 	now, err := b.repo.Tree(b.Start, b.Excluded)
 	if err != nil {
-		return err
+		return names, err
 	}
 	if now != green {
-		return fmt.Errorf("the checkout is not the green tree after the restore")
+		return names, fmt.Errorf("the checkout is not the green tree after the restore")
 	}
-	return nil
+	return names, nil
 }
 
 // approvalIntact is the exact approval record the Build started from.
@@ -308,4 +311,86 @@ func nonNilString(s *string) any {
 		return nil
 	}
 	return *s
+}
+
+// ---- resume of an external review stage ----
+
+// An external reviewer's session has resume capability none, so resuming a review stage of one
+// never continues it: it starts one fresh review of the green pass that session was started
+// from (Continuation.Base), discarding the stopped session's uncommitted edits first. Work
+// only a blocker's own reviewer can clear, and checkpoints that record no complete green base,
+// are refused before anything is changed.
+
+// externalReviewStage is whether the checkpoint is a review stage of an external reviewer.
+func (b *Attempt) externalReviewStage() bool {
+	return b.Config.Models["review"].External() &&
+		slices.Contains([]string{StageReview, StageReviewVerify, StageReviewRetry}, b.Continuation.Stage)
+}
+
+// externalReviewRefusal is why the external review stage of the checkpoint cannot be resumed
+// ("" when a fresh review can start, and for every other checkpoint).
+func (b *Attempt) externalReviewRefusal() string {
+	if !b.externalReviewStage() {
+		return ""
+	}
+	c, x := b.Continuation, b.Config.Models["review"].Executor
+	who := fmt.Sprintf("review %d by executor %s", b.Review, x)
+	blocked := c.Stage == StageReviewRetry
+	if c.Stage == StageReviewVerify {
+		sess, err := reviewDecode(c.Review)
+		if err != nil {
+			return who + " cannot be continued (resume capability: none) and its saved state cannot be read"
+		}
+		blocked = sess.Verdict != nil && sess.Verdict.Verdict == "changes"
+	}
+	if blocked {
+		return who + " ended with a blocking finding that only that reviewer's own new decision can clear, and its session cannot be resumed (resume capability: none); " +
+			"inspect the preserved candidate and evidence read-only and preserve them manually, then start a fresh Build from a Build-clean checkout " +
+			"under the still-current exact approval (ordinary Refine and new approval if the authority must change)"
+	}
+	if base := c.Base; base == nil || !base.Valid() || !base.Green || !b.completePass(base, b.model) {
+		return who + " cannot be continued (resume capability: none) and this checkpoint records no complete green pass that review started from, " +
+			"so no fresh review can start from verified work; start a fresh Build from a Build-clean checkout under the still-current exact approval"
+	}
+	return ""
+}
+
+// resumeExternalReview starts the one fresh review of the saved green base, with no builder
+// round and no verification rerun, and commits what that review approves.
+func (b *Attempt) resumeExternalReview(ctx context.Context) error {
+	base := *b.Continuation.Base
+	n, x := b.Review, b.Config.Models["review"].Executor
+	b.s.Puts(fmt.Sprintf("review %d by executor %s cannot be continued (resume capability: none); starting fresh review %d of the green candidate verified in pass %d, with no builder round and no rerun of its checks",
+		n, x, n+1, base.N))
+	tree, err := b.repo.Tree(b.Start, b.Excluded)
+	if err != nil {
+		return err
+	}
+	if tree != base.Tree {
+		paths, err := b.discardReviewEdits(&invalidReview{Review: n, Pass: base}, tree)
+		if err != nil {
+			return resumeRefused("review " + fmt.Sprint(n) + "'s uncommitted edits could not be discarded: " + err.Error())
+		}
+		b.s.Puts(fmt.Sprintf("discarded review %d's uncommitted edits, which are not part of that green candidate: %s", n, strings.Join(paths, ", ")))
+	}
+	// The fresh review judges the base, as an ordinary Build's review follows its green pass.
+	b.LastPass = &base
+	if err := b.Track(); err != nil {
+		return err
+	}
+	approved, err := b.reviewWithRetry(ctx, func() (Approved, error) { return b.deps.reviewer().Review(ctx, b, base) })
+	if err != nil {
+		return err
+	}
+	if err := b.Track(); err != nil {
+		return err
+	}
+	feedback, landed, err := b.commit(ctx, approved)
+	if err != nil {
+		return err
+	}
+	if !landed {
+		return fmt.Errorf("candidate changed after review in a resumed commit: %s", feedback)
+	}
+	return nil
 }

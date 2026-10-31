@@ -21,7 +21,8 @@ import (
 // delivers the complete exact authority and source as outgoing prompt data (no Read-tool
 // receipt is claimed), validates the verdict with the same rules as the native reviewer and
 // evaluates it with the same exact-tree logic (reviewRun.evaluate). Red verification and
-// concrete failures return to this same reviewer session. It has no exact resume.
+// concrete failures return to this same reviewer session. It has no exact resume: a resume
+// starts a fresh review of the green base its checkpoints record (resumeExternalReview).
 type reviewExternal struct {
 	exec      executor.Executor
 	desc      executor.Descriptor
@@ -140,7 +141,8 @@ func (x reviewExternal) Review(ctx context.Context, b *Attempt, pass verify.Pass
 		return Approved{}, err
 	}
 
-	r := &reviewRun{b: b, pass: pass, external: true, sess: reviewSession{Role: role, Usage: zeroTokens()}}
+	base := pass
+	r := &reviewRun{b: b, pass: pass, external: true, base: &base, sess: reviewSession{Role: role, Usage: zeroTokens()}}
 	feedback, invalid := "", 0
 	for round := 1; ; round++ {
 		if round > x.maxRounds {

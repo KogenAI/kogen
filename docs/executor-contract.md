@@ -28,7 +28,7 @@ v2 executors may serve the **shape** (including Refine), **build** and **review*
   A Claude Code guarded call without a PreToolUse record whose `tool_result` is an error and whose target (`file_path`, else `notebook_path`) is absent or byte-, mode-, size- and mtime-identical to its state when Kogen read the `tool_use` line was refused before the hook: it is an ordinary failed tool call (`executor_tool` with `rejected_before_hook: true`) and the round continues, while any other hookless guarded call stops the round as `executor/protocol`.
 
   Prevention never substitutes for detection or verification. A worktree or permission mode is not process isolation.
-- **E4 Honest capability.** Each executor declares its capabilities (§3). A missing capability is refused or reported as unsupported, never imitated. For example, Claude Code has no exact resume in v1, so `kogen intent resume` refuses its checkpoints with `candidate/resume_refused`.
+- **E4 Honest capability.** Each executor declares its capabilities (§3). A missing capability is refused or reported as unsupported, never imitated. For example, Claude Code has no exact resume in v1, so no Claude Code session is ever revived: `kogen intent resume` refuses a checkpoint of its unfinished builder session (stages `builder`, `builder_verify`) with `candidate/resume_refused`, resumes a review stage of a finished Claude Code builder as for a native one, and resumes a stopped Claude Code review only as one fresh review of the green pass recorded as `continuation.base` (a blocking verdict, or a checkpoint without that base, is refused with the work to redo and why).
 - **E5 Native compatibility.** With no `executor` configured, or `executor: native`, behavior is unchanged:
   - the same model-facing bytes and wire bodies;
   - the same checkpoint bytes (the new executor identity is omitted for native);
@@ -88,7 +88,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 | field | native | claude-code (build; see the per-role paragraph above) |
 |---|---|---|
 | `roles` | `build` | `build` |
-| `resume` | `exact` (Kogen checkpoint at every tool boundary) | `none` (resume refused) |
+| `resume` | `exact` (Kogen checkpoint at every tool boundary) | `none` (no session is revived: the builder's own stages are refused; a review stage resumes as a fresh review of its recorded green base) |
 | `continuation` | same conversation across rounds | same Claude session across rounds (`--resume <session_id>` within one Build process) |
 | `usage` | `provider` (exact provider-reported fields) | `harness` (Claude Code's reported usage; cost is Claude Code's API-equivalent estimate, **not a bill**) |
 | `prevention` | `write_tool_refusal` | `pretool_hook_write_edit` (Write/Edit/MultiEdit/NotebookEdit; Bash is **not** prevented) |
@@ -98,7 +98,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 | `cancel` | context + tool process groups | process group of the `claude` process |
 | `max_rounds` | unlimited (unchanged) | default 6, configurable; exceeding it stops with `candidate/executor_round_limit`, candidate preserved; three consecutive identical red passes over an unchanged tree stop it earlier, after an `executor_no_progress` event |
 
-**Routing status.** All three roles are routed. Review uses the `Reviewer` seam: a fresh session, complete source delivery, the native verdict rules and exact-tree evaluation, no exact resume (`candidate/resume_refused`). Shape and Refine run one read-only session per invocation whose structured result is the existing `submit` / `submit_refinement` payload; Kogen compares the checkout, raw index and HEAD around every round.
+**Routing status.** All three roles are routed. Review uses the `Reviewer` seam: a fresh session, complete source delivery, the native verdict rules and exact-tree evaluation, no exact resume: a stopped review resumes as one fresh review of its recorded green base, and a blocking verdict or a checkpoint without that base is refused (`candidate/resume_refused`). Shape and Refine run one read-only session per invocation whose structured result is the existing `submit` / `submit_refinement` payload; Kogen compares the checkout, raw index and HEAD around every round.
 
 ## 4. Errors
 
@@ -150,7 +150,7 @@ Build-level guarantees (E1–E3) are tested once in `cli/build` with a fake `Exe
 - a protected mutation stops with `baseline_changed`;
 - a HEAD move stops;
 - round limit;
-- a Claude checkpoint resume is refused;
+- a Claude builder-stage checkpoint resume is refused, while a review-stage one resumes, and an external review resumes as one fresh review of its green base;
 - the native default is unchanged.
 
 ## 7. Pins and cross-repo changes

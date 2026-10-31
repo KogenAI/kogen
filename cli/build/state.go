@@ -160,6 +160,12 @@ type Continuation struct {
 	// reviewer's own session state, which only the review code interprets.
 	Pass   *verify.Pass    `json:"pass,omitempty"`
 	Review json.RawMessage `json:"review,omitempty"`
+	// Base belongs to the review stages of an external reviewer only: the green pass that
+	// reviewer's current session was started from (the pass its Review call was given). It
+	// stays the same through the session's rounds and failed repairs, while Pass may become a
+	// later red pass, and it is what a fresh review resumes from, since the session itself
+	// cannot be resumed.
+	Base *verify.Pass `json:"base,omitempty"`
 }
 
 // State is everything a Build keeps and a checkpoint records (the `state` of a version 4
@@ -208,7 +214,7 @@ type State struct {
 	StageEvidence []StageEvidence `json:"stage_evidence,omitempty"`
 	// Executor identifies the external executor that produced the candidate and what it
 	// reported (docs/executor-contract.md); nil for the native builder, so a native checkpoint
-	// keeps its bytes. A checkpoint that has it is never resumed.
+	// keeps its bytes. A checkpoint that has it is not resumed at the builder's own stages.
 	Executor *ExecutorState `json:"executor,omitempty"`
 	// ReviewExecutor is the same for an independent review by an external executor: its own
 	// session, rounds and usage, separate from the builder's. Nil for the native reviewer.

@@ -15,7 +15,6 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen/agent"
-	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
 )
@@ -174,18 +173,12 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	if b.Blocker != nil {
 		return refuse(id, "protected-contract blocker requires correction and fresh approval", "")
 	}
-	// An external independent review has no exact resume either, and its reviewer conversation
-	// is never revived (nor is a builder's used as one): refuse before any inference or change.
-	if rv := b.Config.Models["review"]; rv.External() && slices.Contains([]string{StageReview, StageReviewVerify, StageReviewRetry}, b.Continuation.Stage) {
-		return refuse(id, "an independent review by executor "+rv.Executor+" cannot be resumed (resume capability: none); "+
-			"inspect the preserved candidate and evidence read-only and preserve them manually, then start a fresh Build from a Build-clean checkout "+
-			"under the still-current exact approval (ordinary Refine and new approval if the authority must change)", "")
-	}
 	// An external executor's Build has resume capability none: refuse before any new run,
-	// facts or checkpoint exists, like every other refusal here.
-	if x := b.Executor; x != nil && x.Name != executor.Native {
-		return refuse(id, "Builds by executor "+x.Name+" cannot be resumed in this version (resume capability: none); "+
-			"inspect the preserved candidate or start a fresh Build", "")
+	// facts or checkpoint exists, like every other refusal here. Only the builder's own
+	// unfinished session is the work that cannot continue; at a review stage the builder has
+	// finished and the Build resumes as a native one does.
+	if why := b.builderResumeRefusal(); why != "" {
+		return refuse(id, why, "")
 	}
 	approval, err := os.ReadFile(project.ApprovalPath(root, b.Slug))
 	saved, derr := decodeBase64(doc.Approval)
@@ -277,6 +270,11 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 		return err
 	}
 	b.model = b.intent.Model
+	// An external review cannot be continued: before any new run, say whether a fresh review
+	// of its recorded green base can start.
+	if why := b.externalReviewRefusal(); why != "" {
+		return refuse(id, why, "")
+	}
 	root0 := id
 	if b.RootRun != nil {
 		root0 = *b.RootRun

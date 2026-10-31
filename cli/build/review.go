@@ -123,6 +123,9 @@ type reviewRun struct {
 	// external: the reviewer is an external executor; its source is delivered as complete
 	// Kogen-owned prompt data (review_external.go), not as pinned parts it must read.
 	external bool
+	// base is the green pass an external review session was started from (nil for a native
+	// review); it is recorded in every checkpoint of the session (Continuation.Base).
+	base *verify.Pass
 }
 
 func (b *Attempt) reviewNativeTools() *tools.Tools {
@@ -220,7 +223,7 @@ func (r *reviewRun) save(stage string) error {
 	}
 	pass := r.pass
 	r.b.setPhase(phaseReview)
-	return r.b.Save(Continuation{Stage: stage, Pass: &pass, Review: raw})
+	return r.b.Save(Continuation{Stage: stage, Pass: &pass, Review: raw, Base: r.base})
 }
 
 // loop runs the reviewer's conversation, and judges each verdict, until the review approves
