@@ -22,6 +22,16 @@ import (
 // overall. The bound is the historical 120 seconds, not a setting.
 const StepTimeout = 120 * time.Second
 
+// shapeAcceptanceDeadline is contracted only by focused tests, never by configuration.
+var shapeAcceptanceDeadline = StepTimeout
+
+// ContractShapeAcceptanceDeadline contracts the Shape acceptance deadline for tests.
+func ContractShapeAcceptanceDeadline(d time.Duration) (time.Duration, func()) {
+	old := shapeAcceptanceDeadline
+	shapeAcceptanceDeadline = d
+	return old, func() { shapeAcceptanceDeadline = old }
+}
+
 // AttemptStep is one executed step of an approval attempt. Steps that were not reached are
 // never recorded as steps: they are only named in NotRun.
 type AttemptStep struct {

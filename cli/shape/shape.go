@@ -150,7 +150,7 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 	if len(cfg.Checks) == 0 {
 		s.Progress("warning: commands.checks is empty; Builds will not run your tests")
 	}
-	rd := &verify.Readiness{Root: root, Repo: repo, Config: cfg, Tools: tools, Evidence: ev}
+	rd := &verify.Readiness{Root: root, Repo: repo, Config: cfg, Tools: tools, Evidence: ev, BoundShapeAcceptance: true}
 	if err := ev.Timed("setup", func() error { return rd.Setup(ctx, s, root, true) }); err != nil {
 		return 0, err
 	}

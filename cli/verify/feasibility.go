@@ -3,10 +3,12 @@ package verify
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"kogen-loop/sys"
 	"kogen/project"
@@ -267,6 +269,10 @@ func jsonEqual(a, b any) bool { return encode(a) == encode(b) }
 // return the obligations; any mismatch is intent/not_ready "declared feasibility evidence
 // failed" with the expected and actual outcome of each unmet check, bounded to 16 KiB.
 func Execute(ctx context.Context, s *sys.Session, tools Tools, root string, intent *project.Intent, evidenceRoot string, ev Evidence) ([]Obligation, error) {
+	return execute(ctx, s, tools, root, intent, evidenceRoot, ev, false)
+}
+
+func execute(ctx context.Context, s *sys.Session, tools Tools, root string, intent *project.Intent, evidenceRoot string, ev Evidence, shape bool) ([]Obligation, error) {
 	ds, err := Declarations(intent)
 	if err != nil {
 		return nil, err
@@ -324,7 +330,11 @@ func Execute(ctx context.Context, s *sys.Session, tools Tools, root string, inte
 				if jsonEqual(withTimedOut(d.raw[j]), got) {
 					continue
 				}
-				problems = append(problems, d.ID+"/"+expected.Name+": expected "+encode(d.raw[j])+"; actual "+encode(got))
+				detail := d.ID + "/" + expected.Name + ": expected " + encode(d.raw[j]) + "; actual " + encode(got)
+				if shape && actual.TimedOut {
+					detail = fmt.Sprintf("%s/%s: command exceeded the %d-second limit (observers: %v); ", d.ID, expected.Name, int(ProbeTimeout/time.Second), d.Observers) + detail
+				}
+				problems = append(problems, detail)
 			}
 		}
 		e := sys.Fail("intent", "not_ready", "declared feasibility evidence failed", 1)

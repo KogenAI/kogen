@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,6 +40,8 @@ type Readiness struct {
 	// Attempt, when set (an approval), bounds every executed command step by StepTimeout,
 	// records the steps that ran and keeps private evidence of a refusal.
 	Attempt *Attempt
+	// BoundShapeAcceptance applies the approval acceptance command limit to Shape.
+	BoundShapeAcceptance bool
 }
 
 func (r *Readiness) repo(s *sys.Session) *git.Repo {
@@ -367,11 +370,11 @@ func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug st
 	var proof []Obligation
 	if declarations, _ := Declarations(intent); len(declarations) > 0 {
 		err = r.Attempt.Observe("feasibility", "feasibility", func() (err error) {
-			proof, err = Execute(ctx, s, r.Tools, dir, intent, r.Root, r.Evidence)
+			proof, err = execute(ctx, s, r.Tools, dir, intent, r.Root, r.Evidence, r.BoundShapeAcceptance)
 			return err
 		})
 	} else {
-		proof, err = Execute(ctx, s, r.Tools, dir, intent, r.Root, r.Evidence)
+		proof, err = execute(ctx, s, r.Tools, dir, intent, r.Root, r.Evidence, r.BoundShapeAcceptance)
 	}
 	if err != nil {
 		return nil, err
@@ -392,7 +395,21 @@ func (r *Readiness) checkClean(ctx context.Context, s *sys.Session, dir, slug st
 	}
 	reportDir := sys.TmpPath("kogen-dry-run")
 	defer os.RemoveAll(reportDir)
-	acc, err := RunAcceptance(ctx, s, dir, r.Tools, slug, r.acceptanceRun(), filepath.Join(reportDir, "report.ndjson"), r.Evidence, nil)
+	acceptanceCtx := ctx
+	if r.BoundShapeAcceptance && r.Attempt == nil {
+		a := NewAttempt(r.Root, slug, nil)
+		a.timeout = shapeAcceptanceDeadline
+		acceptanceCtx = a.Into(ctx)
+	}
+	acc, err := RunAcceptance(acceptanceCtx, s, dir, r.Tools, slug, r.acceptanceRun(), filepath.Join(reportDir, "report.ndjson"), r.Evidence, nil)
+	if r.BoundShapeAcceptance && r.Attempt == nil {
+		var timeout *stepTimeout
+		if errors.As(err, &timeout) && !timeout.unknown {
+			e := sys.Fail("intent", "not_ready", "acceptance timed out", 1)
+			e.Lines = []string{fmt.Sprintf("acceptance timed out: command exceeds the %d-second limit", int(StepTimeout/time.Second))}
+			return nil, e
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

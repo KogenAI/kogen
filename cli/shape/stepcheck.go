@@ -110,6 +110,9 @@ func (sh *shaping) observerItems(ctx context.Context, intent *project.Intent) ([
 			it := verify.StepItem{Check: "observer", Target: d.ID + " " + c.Name, OK: r.Status == c.Exit && !r.TimedOut}
 			if !it.OK {
 				it.Detail = fmt.Sprintf("exit %d, recorded exit %d", r.Status, c.Exit)
+				if r.TimedOut {
+					it.Detail = fmt.Sprintf("timed out: %s/%s (%v) exceeds the %d-second limit", d.ID, c.Name, d.Observers, int(verify.ProbeTimeout.Seconds()))
+				}
 			}
 			items = append(items, it)
 		}
