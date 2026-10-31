@@ -43,7 +43,7 @@ func stateOf(r verify.CommandResult) checkState {
 	if status != 0 {
 		return checkState{State: checkFailed, Status: &status, Output: r.Output}
 	}
-	return checkState{State: checkPassed, Status: &status}
+	return checkState{State: checkPassed, Status: &status, Output: r.Output}
 }
 
 // recordBaseline runs every configured check once on the unchanged tree and keeps each
@@ -51,10 +51,30 @@ func stateOf(r verify.CommandResult) checkState {
 // the collection. Only an execution error (or an interrupt) does.
 func (b *Attempt) recordBaseline(ctx context.Context) error {
 	b.CheckBaseline = nil
-	for _, c := range b.Config.Checks {
+	for i, c := range b.Config.Checks {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var digest, dir string
+		if c.Run == ":" {
+			var err error
+			digest, dir, err = baselineIdentity(b.Root, b.Config.Checks)
+			if err == nil {
+				if e, ok := readBaselineEvidence(dir, digest, i, c.Name); ok {
+					if again, _, err := baselineIdentity(b.Root, b.Config.Checks); err == nil && again == digest {
+						b.Run.Event(map[string]any{"event": "baseline_reuse", "name": c.Name, "identity": digest, "evidence": e.Reference})
+						b.CheckBaseline = append(b.CheckBaseline, verify.CommandResult{Name: c.Name, Command: c.Run})
+						continue
+					}
+				}
+			}
+		}
 		b.s.Progress("kogen: checking " + c.Name + " before the Build changes anything")
 		b.Run.Event(map[string]any{"event": "command", "name": c.Name, "command": c.Run, "before_change": true})
 		r, err := verify.RunWatched(b.s, c.Name, c.Run, b.Run, func() (sys.Result, error) {
+			if c.Run == ":" {
+				return sys.Result{}, nil
+			}
 			return b.s.Run(c.Run, b.Root, sys.Options{KillGroupOnExit: true})
 		})
 		if err != nil {
@@ -62,6 +82,12 @@ func (b *Attempt) recordBaseline(ctx context.Context) error {
 		}
 		b.Run.Event(map[string]any{"event": "command_result", "name": c.Name, "status": r.Status, "output": Cap(r.Output)})
 		b.CheckBaseline = append(b.CheckBaseline, verify.CommandResult{Name: c.Name, Command: c.Run, Status: r.Status, Output: verify.Cap(r.Output)})
+		if c.Run == ":" && digest != "" && ctx.Err() == nil && b.Run != nil && b.Run.logErr == nil {
+			if after, _, err := baselineIdentity(b.Root, b.Config.Checks); err == nil && after == digest {
+				status, output := 0, ""
+				publishBaselineEvidence(dir, baselineEvidence{Version: 2, Complete: true, Command: c.Run, Status: &status, Output: &output, Position: &i, Identity: digest, Index: i, Name: c.Name, Reference: b.Run.LogPath})
+			}
+		}
 	}
 	if len(b.CheckBaseline) == 0 {
 		return nil

@@ -120,7 +120,7 @@ func TestFailingCheckBuildRepair(t *testing.T) {
 	rows := checkRows(t, e.result(id))
 	eq(t, "rows", len(rows), 1)
 	expectSide(t, rows[0], "before", "failed", 1, "count is [       0]")
-	expectSide(t, rows[0], "after", "passed", 0, "")
+	expectSide(t, rows[0], "after", "passed", 0, "count is [0]")
 }
 
 func TestFailingCheckBuildEvidence(t *testing.T) {
@@ -185,7 +185,7 @@ func TestFailingCheckBuildEvidence(t *testing.T) {
 	expectSide(t, rows[0], "after", "failed", 3, "FIRST-MARKER")
 	expectSide(t, rows[1], "before", "failed", 5, "SECOND-MARKER")
 	expectSide(t, rows[1], "after", "not run", -1, "")
-	expectSide(t, rows[2], "before", "passed", 0, "")
+	expectSide(t, rows[2], "before", "passed", 0, "THIRD-MARKER")
 	expectSide(t, rows[2], "after", "not run", -1, "")
 	_, state := e.checkpoint(id)
 	saved := state["check_baseline"].([]any)
@@ -227,9 +227,13 @@ func TestFailingCheckBuildEvidence(t *testing.T) {
 	rows = checkRows(t, e.result(resumed))
 	expectSide(t, rows[0], "before", "failed", 3, "FIRST-MARKER")
 	expectSide(t, rows[1], "before", "failed", 5, "SECOND-MARKER")
-	expectSide(t, rows[2], "before", "passed", 0, "")
-	for _, row := range rows {
-		expectSide(t, row, "after", "passed", 0, "")
+	expectSide(t, rows[2], "before", "passed", 0, "THIRD-MARKER")
+	for i, row := range rows {
+		output := ""
+		if i == 2 {
+			output = "THIRD-MARKER"
+		}
+		expectSide(t, row, "after", "passed", 0, output)
 	}
 	_, state = e.checkpoint(resumed)
 	eq(t, "resumed baseline", len(state["check_baseline"].([]any)), 3)
