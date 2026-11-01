@@ -10,7 +10,6 @@ func TestParseHelpPagesCLI3(t *testing.T) {
 	}{
 		{name: "implicit top page", want: `Commands:
   context    Read checkout-local facts (JSON)
-  doctor     Report what is ready for a first feature and how to fix the rest
   completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
@@ -23,7 +22,6 @@ Run kogen <command> to see its subcommands and options.
 `},
 		{name: "explicit top page", args: []string{"help"}, want: `Commands:
   context    Read checkout-local facts (JSON)
-  doctor     Report what is ready for a first feature and how to fix the rest
   completion zsh  Print standalone Zsh completion
   init       Prepare this Git repository for Kogen
   intent     Shape, approve and build an Intent
@@ -130,8 +128,7 @@ func TestParseGrammarCLI2(t *testing.T) {
 		args []string
 		want invocation
 	}{
-		{name: "doctor defaults", args: []string{"doctor"}, want: invocation{command: "doctor"}},
-		{name: "doctor options", args: []string{"doctor", "--quick", "--json", "--project", "/checkout"}, want: invocation{command: "doctor", quick: true, json: true, project: "/checkout"}},
+		{name: "json option", args: []string{"provider", "list", "--json"}, want: invocation{command: "list", json: true}},
 		{name: "option value form", args: []string{"intent", "build", "feature", "--project", "/checkout"}, want: invocation{command: "build", slug: "feature", project: "/checkout"}},
 		{name: "option equals form", args: []string{"intent", "build", "feature", "--project=/checkout"}, want: invocation{command: "build", slug: "feature", project: "/checkout"}},
 		{name: "options before positionals", args: []string{"intent", "shape", "--project", "/checkout", "feature", "request.md"}, want: invocation{command: "shape", slug: "feature", file: "request.md", project: "/checkout"}},
@@ -160,7 +157,7 @@ func TestParseGrammarCLI2(t *testing.T) {
 		msg  string
 		page string
 	}{
-		{name: "doctor unknown option", args: []string{"doctor", "--fast"}, msg: "kogen doctor: unknown option '--fast'", page: "top"},
+		{name: "removed doctor command", args: []string{"doctor", "--quick", "--json", "--project", "."}, msg: "kogen: unknown command 'doctor'", page: "top"},
 		{name: "unknown command", args: []string{"frobnicate"}, msg: "kogen: unknown command 'frobnicate'", page: "top"},
 		{name: "first unknown command wins", args: []string{"queue", "start"}, msg: "kogen: unknown command 'queue'", page: "top"},
 		{name: "unknown intent command", args: []string{"intent", "frob"}, msg: "kogen intent: unknown command 'frob'", page: "intent"},

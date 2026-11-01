@@ -122,6 +122,40 @@ func TestStartBinaryMissingIsUnavailable(t *testing.T) {
 	wantError(t, err, "executor/unavailable")
 }
 
+func TestUnavailableAndRefusedMessagesNameTheFix(t *testing.T) {
+	t.Parallel()
+	const install = "npm install -g @anthropic-ai/claude-code"
+	t.Run("missing executable", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t, fakeConfig{})
+		o := h.f.options()
+		o.Binary = filepath.Join(t.TempDir(), "no-such-claude")
+		_, err := h.start(o)
+		want := "the Claude Code executable (no-such-claude) was not found; install it with " + install + ", then sign in with `claude auth login` or save a token with kogen provider login claude-code"
+		if got := wantError(t, err, "executor/unavailable").Detail; got != want {
+			t.Fatalf("detail %q, want %q", got, want)
+		}
+	})
+	t.Run("too old", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t, fakeConfig{Version: "2.1.294", Script: oneRound(finishRound)})
+		_, err := h.start(h.f.options())
+		want := "Claude Code 2.1.294 is older than the qualified minimum " + MinVersion + "; update it with " + install
+		if got := wantError(t, err, "executor/unavailable").Detail; got != want {
+			t.Fatalf("detail %q, want %q", got, want)
+		}
+	})
+	t.Run("not signed in", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t, fakeConfig{Auth: `{"loggedIn":false}`, Script: oneRound(finishRound)})
+		_, err := h.start(h.f.options())
+		want := "Claude Code is not signed in; run `claude auth login` with your subscription, or save a token from claude setup-token with kogen provider login claude-code"
+		if got := wantError(t, err, "executor/auth_refused").Detail; got != want {
+			t.Fatalf("detail %q, want %q", got, want)
+		}
+	})
+}
+
 func TestStartRequiresHookCommand(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, fakeConfig{})

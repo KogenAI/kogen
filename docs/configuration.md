@@ -600,7 +600,7 @@ and its `native_no_progress` outcome, added in 090f36b) was removed unused; it w
 never a YAML or CLI option. The legacy spellings `NoProgress` and `no_progress` are
 not supported settings and nothing reads them. Like any other unrecognized role key
 they are not applied: strict loading of `.kogen/project.yaml` reports them as before,
-and the lenient view used by `kogen doctor` leaves that role at its default. Default
+and the lenient view used by init's readiness lines leaves that role at its default. Default
 configuration is unchanged. The verification-level `no_progress` stop (a native builder
 answering without a tool call to the same red verification pass; when acceptance scenarios are still not passing it first gets one notice naming them, and the stop comes only if the same red repeats after that notice) and
 `executor_no_progress` remain.

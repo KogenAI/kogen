@@ -1,10 +1,9 @@
-// Package doctor is `kogen doctor`: a read-only report of what is ready for a first feature and
-// how to fix what is not. It makes no model call, changes nothing in the checkout and sets no
-// time limit; the project's commands run once on the committed tree in a scratch copy.
-package doctor
+// Package readiness is the report that ends `kogen init`: what is ready for a first feature
+// (install, Git, configuration, model logins) and the exact fix for each problem. It makes no
+// model call and changes nothing in the checkout.
+package readiness
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"kogen-loop/provider"
 	"kogen-loop/sys"
@@ -24,16 +22,15 @@ import (
 
 // Check is one line of the report.
 type Check struct {
-	Check  string `json:"check"`
-	Status string `json:"status"`
-	Detail string `json:"detail"`
-	Fix    string `json:"fix"`
+	Check  string
+	Status string
+	Detail string
+	Fix    string
 }
 
 // Input says what to examine. Version is the installed VERSION line.
 type Input struct {
 	Project string
-	Quick   bool
 	Tools   verify.Tools
 	Version string
 	Home    string
@@ -45,15 +42,9 @@ const (
 	gitIdentityFix = `run git config user.name "<name>" and git config user.email "<email>" (global or repository)`
 )
 
-func ok(check, detail string) Check   { return Check{check, "ok", detail, ""} }
-func skip(check, detail string) Check { return Check{check, "skip", detail, ""} }
+func ok(check, detail string) Check { return Check{check, "ok", detail, ""} }
 func fail(check, detail string, fixes ...string) Check {
 	return Check{check, "fail", detail, strings.Join(fixes, "; ")}
-}
-
-// Failed reports whether any check failed.
-func Failed(checks []Check) bool {
-	return slices.ContainsFunc(checks, func(c Check) bool { return c.Status == "fail" })
 }
 
 // Text is the report: one line per check, a `  fix:` line after each failure.
@@ -68,39 +59,12 @@ func Text(checks []Check) string {
 	return b.String()
 }
 
-// JSON is the report as one JSON array.
-func JSON(checks []Check) string {
-	out := make([]Check, len(checks))
-	for i, c := range checks {
-		if c.Status != "fail" {
-			c.Fix = ""
-		}
-		out[i] = c
-	}
-	b, _ := json.Marshal(out)
-	return string(b) + "\n"
-}
-
-// FormatDuration is a duration as the report shows it: whole milliseconds below a second.
-func FormatDuration(d time.Duration) string {
-	if d < time.Second {
-		return fmt.Sprintf("%dms", d.Milliseconds())
-	}
-	return fmt.Sprintf("%.1fs", d.Seconds())
-}
-
-// Run examines the project. The error is an interrupt or an internal failure, not a failed check.
-func Run(ctx context.Context, s *sys.Session, in Input) ([]Check, error) {
+// Run examines the project: install, git, config and models, in that order.
+func Run(s *sys.Session, in Input) []Check {
 	checks := []Check{checkInstall(s, in)}
 	repo, gitCheck := checkGit(s, in)
-	checks = append(checks, gitCheck)
-	cfgCheck, cfg, valid := checkConfig(repo, in)
-	checks = append(checks, cfgCheck, checkModels(cfg, in))
-	cmd, err := checkCommands(ctx, s, in, repo, cfg, valid)
-	if err != nil {
-		return nil, err
-	}
-	return append(checks, cmd), nil
+	cfgCheck, cfg := checkConfig(repo, in)
+	return append(checks, gitCheck, cfgCheck, checkModels(cfg, in))
 }
 
 func toolEnv(t verify.Tools) map[string]string {
@@ -151,18 +115,18 @@ func checkGit(s *sys.Session, in Input) (*git.Repo, Check) {
 	return repo, ok("git", "repository "+repo.Dir)
 }
 
-func checkConfig(repo *git.Repo, in Input) (Check, *project.Config, bool) {
+func checkConfig(repo *git.Repo, in Input) (Check, *project.Config) {
 	root := in.Project
 	if repo != nil {
 		root = repo.Dir
 	}
 	text, err := os.ReadFile(filepath.Join(root, project.ConfigPath))
 	if err != nil {
-		return fail("config", project.ConfigPath+" is missing", "in your project, run kogen init"), project.ReadableConfig(""), false
+		return fail("config", project.ConfigPath+" is missing", "in your project, run kogen init"), project.ReadableConfig("")
 	}
 	cfg, err := project.ParseConfig(string(text), filepath.Join(root, project.ConfigPath))
 	if err == nil {
-		return ok("config", project.ConfigPath+" is valid"), cfg, true
+		return ok("config", project.ConfigPath+" is valid"), cfg
 	}
 	readable := project.ReadableConfig(string(text))
 	e, isKogen := sys.AsError(err)
@@ -171,13 +135,13 @@ func checkConfig(repo *git.Repo, in Input) (Check, *project.Config, bool) {
 		if isKogen {
 			msg = e.Detail
 		}
-		return fail("config", msg, "edit "+project.ConfigPath), readable, false
+		return fail("config", msg, "edit "+project.ConfigPath), readable
 	}
 	var lines []string
 	for _, l := range e.Lines {
 		lines = append(lines, strings.TrimPrefix(strings.SplitN(l, ":", 2)[0], "line "))
 	}
-	return fail("config", strings.Join(e.Lines, "; "), "edit "+project.ConfigPath+" at line "+strings.Join(lines, ", ")), readable, false
+	return fail("config", strings.Join(e.Lines, "; "), "edit "+project.ConfigPath+" at line "+strings.Join(lines, ", ")), readable
 }
 
 type namedRole struct {
@@ -269,96 +233,4 @@ func checkClaude(in Input) (problems, fixes []string) {
 		fixes = append(fixes, "kogen provider login claude-code")
 	}
 	return
-}
-
-func checkCommands(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg *project.Config, valid bool) (Check, error) {
-	const name = "commands"
-	switch {
-	case in.Quick:
-		return skip(name, "skipped with --quick"), nil
-	case !valid:
-		return skip(name, "skipped: the configuration is not valid"), nil
-	case repo == nil:
-		return skip(name, "skipped: not inside a Git repository"), nil
-	}
-	head := repo.Head()
-	if head == "" {
-		return skip(name, "skipped: the repository has no commit"), nil
-	}
-	scratch := sys.TmpPath("kogen-doctor")
-	defer os.RemoveAll(scratch)
-	tree, err := repo.OK("rev-parse", head+"^{tree}")
-	if err != nil {
-		return Check{}, err
-	}
-	if _, err := repo.Materialize(strings.TrimSpace(tree), scratch); err != nil {
-		return Check{}, err
-	}
-	if err := os.MkdirAll(filepath.Join(scratch, ".kogen/local"), 0o755); err != nil {
-		return Check{}, err
-	}
-	var parts []string
-	var failing []string
-	var fixes []string
-	run := func(label, command string) (bool, error) {
-		start := time.Now()
-		res, err := exec1(s, in.Tools, command, scratch)
-		if err != nil {
-			if ie := s.Err(); ie != nil {
-				return false, ie
-			}
-			return false, err
-		}
-		parts = append(parts, fmt.Sprintf("%s status=%d in %s", label, res.Status, FormatDuration(time.Since(start))))
-		return res.Status == 0, nil
-	}
-	setupFailed := false
-	for i, cmd := range cfg.Setup {
-		label := fmt.Sprintf("setup-%d", i+1)
-		passed, err := run(label, cmd)
-		if err != nil {
-			return Check{}, err
-		}
-		if !passed {
-			setupFailed = true
-			failing = append(failing, "Build would stop with setup_failed ("+label+")")
-			fixes = append(fixes, "fix "+label+" or remove it from commands.setup")
-			break
-		}
-	}
-	if !setupFailed {
-		for _, c := range cfg.Checks {
-			passed, err := run(c.Name, c.Run)
-			if err != nil {
-				return Check{}, err
-			}
-			if !passed {
-				failing = append(failing, "Build would record "+c.Name+" as a baseline failure and could not land until it passes")
-				fixes = append(fixes, "make the check "+c.Name+" pass on the committed tree, or repair it in a Build; every configured check must pass before a Build lands")
-			}
-		}
-		if cfg.Acceptance != nil && cfg.Acceptance.Run != "" {
-			res, err := exec1(s, in.Tools, cucumberVersion, scratch)
-			if err != nil {
-				return Check{}, err
-			}
-			if res.Status != 0 {
-				parts = append(parts, "acceptance runner status="+fmt.Sprint(res.Status))
-				failing = append(failing, "Kogen's bundled Cucumber does not run")
-				fixes = append(fixes, reinstall)
-			} else {
-				parts = append(parts, "acceptance runner reachable")
-			}
-		} else {
-			parts = append(parts, "acceptance runner skipped (run is null)")
-		}
-	}
-	detail := strings.Join(parts, "; ")
-	if len(parts) == 0 {
-		detail = "no commands configured"
-	}
-	if len(failing) > 0 {
-		return fail(name, detail+"; "+strings.Join(failing, "; "), fixes...), nil
-	}
-	return ok(name, detail), nil
 }

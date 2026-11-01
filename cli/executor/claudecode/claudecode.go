@@ -133,7 +133,7 @@ func roleCapabilities() map[string]executor.RoleCapabilities {
 func (a *adapter) binary() (string, error) {
 	p, err := exec.LookPath(a.opts.Binary)
 	if err != nil {
-		return "", executor.Fail(executor.ReasonUnavailable, "the Claude Code executable ("+filepath.Base(a.opts.Binary)+") was not found; install Claude Code and sign in with `claude auth login`")
+		return "", executor.Fail(executor.ReasonUnavailable, "the Claude Code executable ("+filepath.Base(a.opts.Binary)+") was not found; install it with npm install -g @anthropic-ai/claude-code, then sign in with `claude auth login` or save a token with kogen provider login claude-code")
 	}
 	return p, nil
 }
@@ -313,7 +313,7 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 		return nil, err
 	}
 	if !versionAtLeast(version, MinVersion) {
-		return nil, executor.Fail(executor.ReasonUnavailable, "Claude Code "+version+" is older than the qualified minimum "+MinVersion)
+		return nil, executor.Fail(executor.ReasonUnavailable, "Claude Code "+version+" is older than the qualified minimum "+MinVersion+"; update it with npm install -g @anthropic-ai/claude-code")
 	}
 	env := childEnv(a.opts.Env, t.Home, a.opts.Token)
 	if t.Role == executor.RoleShape {
@@ -413,7 +413,7 @@ func (a *adapter) authStatus(ctx context.Context, bin string, env []string) (aut
 	case !info.LoggedIn && a.opts.Token != "":
 		return info, executor.Fail(executor.ReasonAuthRefused, tokenRefusedHint)
 	case !info.LoggedIn:
-		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code is not signed in; run `claude auth login` with your subscription")
+		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code is not signed in; run `claude auth login` with your subscription, or save a token from claude setup-token with kogen provider login claude-code")
 	case info.AuthMethod != "claude.ai" && !(a.opts.Token != "" && info.AuthMethod == tokenAuthMethod):
 		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code's sign-in route is "+quoteBound(info.AuthMethod)+", not the claude.ai subscription")
 	case info.APIProvider != "firstParty":

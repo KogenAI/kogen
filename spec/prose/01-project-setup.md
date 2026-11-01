@@ -28,7 +28,7 @@ Next: <what to do>                              (only when something is missing)
 
 `<how>` is `Cucumber bridge added in features/steps` (SET-13), `existing Cucumber runner, steps in <steps_dir>` (SET-10), or `not configured: <reason>` (SET-13). The note lists those of `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules` and `.github/copilot-instructions.md` that are tracked (SET-6). A left-out setup entry is named `setup-<n>`. The `Next:` lines are `Next: set commands.acceptance in .kogen/project.yaml` when acceptance is not configured and `Next: add the project's checks to commands.checks in .kogen/project.yaml` when no check was kept.
 
-Successful init ends with the five ordered `doctor --quick` checks (install, git, config, models, commands); a diagnostic failure does not change init's successful exit.
+Every successful init (first configuration, empty repository, leftover configuration, already initialized) ends its stdout with four readiness lines, in order `install`, `git`, `config`, `models`, each `<ok|fail> <check> - <detail>` with one `  fix: <fix>` line (fixes joined with `; `) after each `fail`. They make no model call and change nothing; a failing readiness line does not change init's successful exit.
 
 In a repository with no commit yet but with files other than `.gitignore`, `init` refuses with `environment/no_commits: <n> file(s) are not committed yet; commit them first (git add -A && git commit -m "Initial commit"), then run kogen init` (exit 3), so the project's own first commit keeps that name and `init` can configure it. In an empty repository there is nothing to detect: `init` makes no request and writes the template unchanged; its commit is the repository's first commit, with message `Initial commit`, and the output is `Initialized Kogen in {abs:root}`, `Commit: {sha8} Initial commit (the first commit of this repository)` and both `Next:` lines.
 
@@ -38,7 +38,7 @@ If `git commit` fails, the written files stay uncommitted and `init` prints `env
 
 **SET-4 — Invalid configuration.** Every command that reads `.kogen/project.yaml` refuses an invalid file with `environment/project_config_invalid: {abs:path}` and one `  line <n>: <message>` line per problem (exit 3). The parser is strict: unknown keys, wrong types and duplicate keys are errors. A file without a `version` key is the earlier Kogen's: every command, `init` included, refuses it before writing anything with `environment/old_kogen_config: .kogen/ is from an earlier Kogen; move it aside (git mv .kogen .kogen-old), commit, and run kogen init` (exit 3).
 
-**SET-5 — Git identity.** Without a Git identity, `init` writes nothing and prints `environment/git_identity_missing: configure git user.name and user.email` (exit 3).
+**SET-5 — Git identity.** Without a Git identity, `init` writes nothing and prints `environment/git_identity_missing: no Git user.name and user.email; run git config user.name "<name>" and git config user.email "<email>" (global or repository)` (exit 3).
 
 **SET-6 — Project instructions.** The root `README.md` is the project's instructions; shaping, building and reviewing give it to their models. Kogen never puts `AGENTS.md` or `CLAUDE.md` into a prompt as project instructions; the models' tools may still read any file. Kogen's testing rules are the installed `docs/testing-rules.md` (INS-2): the shaper, the builder and the reviewer each get its text, and Kogen does not copy it into the project.
 

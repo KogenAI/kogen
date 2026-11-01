@@ -116,7 +116,7 @@ func TestIdentity(t *testing.T) {
 	equal(t, "no email", f.Identity(), "")
 	_, err := f.RequireIdentity()
 	e := wantSysError(t, err, "environment", "git_identity_missing", 3)
-	equal(t, "detail", e.Detail, "configure git user.name and user.email")
+	equal(t, "detail", e.Detail, "no Git user.name and user.email; run git config user.name \"<name>\" and git config user.email \"<email>\" (global or repository)")
 	f.git(t, "config", "user.email", "x@example.invalid")
 	f.git(t, "config", "user.name", "")
 	equal(t, "empty name", f.Identity(), "")

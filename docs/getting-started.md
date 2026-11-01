@@ -16,56 +16,21 @@ kogen <version>
 
 ## 2. Check
 
-Run doctor **inside your project repository**, not from your home directory. It makes no model call and changes nothing:
+Kogen has no separate check command. Readiness comes from two places: the readiness lines that end `kogen init` (step 4), and the error each command prints when it cannot proceed, which names what is missing and the fix. The readiness lines make no model call and change nothing.
 
-```sh
-kogen doctor
-```
+The readiness lines are `install` (the program and its bundled node, cucumber and quint run; fix: reinstall), `git` (you are inside a Git repository and Git has a `user.name` and `user.email`), `config` (`.kogen/project.yaml` exists and is valid) and `models` (every role has a stored login for its provider; fix: `kogen provider login <provider>`, step 3). Each failing line is followed by one `  fix:` line.
 
-It prints one line per check, with the exact fix under each `fail`:
+A command that cannot proceed prints one of these errors instead:
 
-- `install`: the program and its bundled node, cucumber and quint run. Fix: reinstall.
-- `git`: you are inside a Git repository and Git has a `user.name` and `user.email`. Fix for a missing identity: run `git config user.name "<name>"` and `git config user.email "<email>"`.
-- `config`: `.kogen/project.yaml` exists and is valid. Fix for a missing file: run `kogen init` (step 4). For an invalid file, correct the key doctor names in `.kogen/project.yaml`.
-- `models`: every role (shape, build, review) has a stored login for its provider. Fix: `kogen provider login <provider>` (step 3).
-- `commands`: the project's checks and the acceptance runner pass on your unchanged tree. If a check fails there, a Build still starts and records the failure as a baseline, but it can only land when every configured check passes, so the Intent has to repair that check as well (or you fix the project first).
+- A damaged install: `environment/installation_damaged: ...; reinstall Kogen`. Reinstall Kogen (step 1).
+- Outside a Git repository: `environment/not_a_git_repo: <path>; run git init first`. Change into your project's repository, or start one with `git init`.
+- No configuration: `environment/not_initialized: <root> has no .kogen/project.yaml; run kogen init`. Run `kogen init` inside the project (step 4).
+- An invalid configuration: `environment/project_config_invalid` with one `  line <n>: <message>` line per problem. Correct those lines in `.kogen/project.yaml`.
+- No model login: `provider/login: not signed in; run kogen provider login <provider>`. Sign in (step 3).
+- No Git identity: `environment/git_identity_missing: no Git user.name and user.email; run git config user.name "<name>" and git config user.email "<email>" (global or repository)`.
+- Claude Code as an executor: the executable is missing (`install it with npm install -g @anthropic-ai/claude-code`), older than 2.1.295 (`update it with npm install -g @anthropic-ai/claude-code`), or not signed in (`run claude auth login` with your subscription, or save a token from `claude setup-token` with `kogen provider login claude-code`).
 
-Run from your home directory, doctor shows what a wrong place looks like: outside a repository there is no Git and no configuration, so `git` and `config` fail; `models` fails only when you are not logged in; and `commands` is skipped because the configuration is not valid:
-
-```sh
-cd ~
-kogen doctor
-```
-
-```output doctor-outside-repo
-ok install - <version>; node, cucumber and quint run
-fail git - <directory> is not inside a Git repository
-  fix: run this inside your project's repository (cd <repo>), or git init to start a new one
-fail config - .kogen/project.yaml is missing
-  fix: in your project, run kogen init
-fail models - shape: chatgpt has no stored login; build: chatgpt has no stored login; review: chatgpt has no stored login
-  fix: kogen provider login chatgpt
-skip commands - skipped: the configuration is not valid
-```
-
-The `git` fix is `run this inside your project's repository (cd <repo>), or git init to start a new one`: change into the repository, or start a new one with `git init`. The `config` fix is `in your project, run kogen init`: the configuration belongs to a project, so do this inside it.
-
-In a new repository with no Git identity, no login and no configuration, the expected failures are these:
-
-```sh
-cd <repo>
-kogen doctor
-```
-
-```output doctor-before-init
-fail git - no Git user.name and user.email
-  fix: run git config user.name "<name>" and git config user.email "<email>" (global or repository)
-fail config - .kogen/project.yaml is missing
-  fix: in your project, run kogen init
-fail models - shape: chatgpt has no stored login; build: chatgpt has no stored login; review: chatgpt has no stored login
-  fix: kogen provider login chatgpt
-skip commands - skipped: the configuration is not valid
-```
+If a check fails on your unchanged tree, a Build still starts and records the failure as a baseline, but it can only land when every configured check passes, so the Intent has to repair that check as well (or you fix the project first).
 
 ## 3. Log in
 
@@ -111,23 +76,13 @@ Setup: none
 Checks: app
 Acceptance: Cucumber bridge added in features/steps
 Commit: <commit> Add Kogen configuration
+ok install - <version>; node, cucumber and quint run
 ok git - repository <repo>
 ok config - .kogen/project.yaml is valid
 ok models - shape, build, review ready
 ```
 
-Run doctor again; everything should be `ok`:
-
-```sh
-kogen doctor
-```
-
-```output doctor-after-init
-ok git - repository <repo>
-ok config - .kogen/project.yaml is valid
-ok models - shape, build, review ready
-ok commands - app status=<status> in <duration>; acceptance runner reachable
-```
+The last four lines are the readiness lines of step 2; everything should be `ok`. A `fail` line is followed by its fix, and does not change init's exit status.
 
 ### Without ChatGPT
 
@@ -160,26 +115,20 @@ shape_workers:
   enabled: false
 ```
 
-Leave `.kogen/project.yaml` uncommitted. `kogen init` then takes its leftover-configuration path and commits it as `Add Kogen configuration` together with the `.gitignore` entry for `.kogen/local/`. (If it were already committed, init would only report that Kogen is already initialized and would not add that entry.) Then run init and doctor:
+Leave `.kogen/project.yaml` uncommitted. `kogen init` then takes its leftover-configuration path and commits it as `Add Kogen configuration` together with the `.gitignore` entry for `.kogen/local/`. (If it were already committed, init would only report that Kogen is already initialized and would not add that entry.) Then run init:
 
 ```sh
 kogen init
-kogen doctor
 ```
 
 ```text without-chatgpt-init
 Initialized Kogen in <repo>
 Commit: <commit> Add Kogen configuration
-```
-
-```text without-chatgpt-doctor
+ok install - <version>; node, cucumber and quint run
 ok git - repository <repo>
 ok config - .kogen/project.yaml is valid
 ok models - shape, build, review ready
-...
 ```
-
-`kogen doctor` runs the setup, checks and acceptance runner too, so its `commands` line needs `go` installed and the project's own tests green.
 
 ## 5. Shape
 

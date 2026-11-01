@@ -677,7 +677,7 @@ func TestInitWithoutGitIdentityWritesNothing(t *testing.T) {
 	f := initNewFx(t, true, initNothing())
 	f.git("config", "--unset", "user.name")
 	e := f.wantError("environment", "git_identity_missing", 3)
-	if e.Detail != "configure git user.name and user.email" || f.exists(".kogen") || len(f.requests()) != 0 {
+	if e.Detail != "no Git user.name and user.email; run git config user.name \"<name>\" and git config user.email \"<email>\" (global or repository)" || f.exists(".kogen") || len(f.requests()) != 0 {
 		t.Fatalf("%v", e)
 	}
 }

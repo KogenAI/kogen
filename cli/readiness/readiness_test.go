@@ -1,40 +1,21 @@
-package doctor
+package readiness
 
 import (
-	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"kogen-loop/sys"
-	"kogen/git"
 	"kogen/project"
 	"kogen/verify"
 )
 
-func TestFormatDuration(t *testing.T) {
-	for d, want := range map[time.Duration]string{12 * time.Millisecond: "12ms", 0: "0ms", 1500 * time.Millisecond: "1.5s"} {
-		if got := FormatDuration(d); got != want {
-			t.Errorf("FormatDuration(%v) = %q, want %q", d, got, want)
-		}
-	}
-}
-
-func TestTextAndJSON(t *testing.T) {
-	checks := []Check{{"git", "fail", "no identity", "do it"}, {"models", "ok", "fine", "stale"}}
-	if got, want := Text(checks), "fail git - no identity\n  fix: do it\nok models - fine\n"; got != want {
+func TestText(t *testing.T) {
+	checks := []Check{{"git", "fail", "no identity", "do it; or that"}, {"models", "ok", "fine", "stale"}}
+	if got, want := Text(checks), "fail git - no identity\n  fix: do it; or that\nok models - fine\n"; got != want {
 		t.Fatalf("Text = %q, want %q", got, want)
-	}
-	var arr []map[string]string
-	if err := json.Unmarshal([]byte(JSON(checks)), &arr); err != nil || len(arr) != 2 || arr[0]["fix"] != "do it" || arr[1]["fix"] != "" || len(arr[0]) != 4 {
-		t.Fatalf("JSON = %v, %v", arr, err)
-	}
-	if !Failed(checks) || Failed(checks[1:]) {
-		t.Fatal("Failed")
 	}
 }
 
@@ -112,16 +93,6 @@ func TestModelsChecks(t *testing.T) {
 	}
 }
 
-func TestCommandsReportAndSkip(t *testing.T) {
-	s := sys.NewWith(os.Environ(), t.TempDir())
-	if c, err := checkCommands(context.Background(), s, Input{Quick: true}, nil, nil, true); err != nil || c.Status != "skip" {
-		t.Fatalf("%+v %v", c, err)
-	}
-	if c, _ := checkCommands(context.Background(), s, Input{}, nil, nil, false); c.Status != "skip" || !strings.Contains(c.Detail, "not valid") {
-		t.Fatalf("%+v", c)
-	}
-}
-
 func readable(text string) *project.Config { return project.ReadableConfig(text) }
 
 func gitRepo(t *testing.T) string {
@@ -137,38 +108,6 @@ func gitRepo(t *testing.T) string {
 	return dir
 }
 
-func TestCommandsChecksAndAcceptanceRunner(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("no node")
-	}
-	dir := gitRepo(t)
-	s := sys.NewWith(os.Environ(), dir)
-	repo, err := git.OpenReadOnly(dir, s.Env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tools := verify.Tools{Node: node, Cucumber: "/nonexistent"}
-	cfg := &project.Config{Checks: []project.Check{{Name: "broken", Run: "touch marker; exit 7"}, {Name: "fine", Run: "true"}},
-		Acceptance: &project.Acceptance{Run: "anything", StepsDir: "features/steps"}}
-	c, err := checkCommands(context.Background(), s, Input{Tools: tools}, repo, cfg, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Status != "fail" || !strings.Contains(c.Detail, "broken status=7 in ") || !strings.Contains(c.Detail, "fine status=0 in ") ||
-		!strings.Contains(c.Detail, "Build would record broken as a baseline failure and could not land until it passes") || strings.Contains(c.Detail, "check_failing") || !strings.Contains(c.Detail, "bundled Cucumber does not run") ||
-		c.Fix != "make the check broken pass on the committed tree, or repair it in a Build; every configured check must pass before a Build lands; "+reinstall {
-		t.Fatalf("%+v", c)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "marker")); err == nil {
-		t.Fatal("the check ran in the checkout")
-	}
-	cfg = &project.Config{Checks: []project.Check{{Name: "fine", Run: "true"}}}
-	if c, err := checkCommands(context.Background(), s, Input{Tools: tools}, repo, cfg, true); err != nil || c.Status != "ok" || !strings.Contains(c.Detail, "acceptance runner skipped") {
-		t.Fatalf("%+v %v", c, err)
-	}
-}
-
 func TestOutsideRepositoryAndMissingConfigFixes(t *testing.T) {
 	s := &sys.Session{Env: os.Environ()}
 	_, c := checkGit(s, Input{Project: t.TempDir()})
@@ -176,7 +115,7 @@ func TestOutsideRepositoryAndMissingConfigFixes(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 	dir := gitRepo(t)
-	if c, _, _ := checkConfig(nil, Input{Project: dir}); c.Status != "fail" || c.Fix != "in your project, run kogen init" {
+	if c, _ := checkConfig(nil, Input{Project: dir}); c.Status != "fail" || c.Fix != "in your project, run kogen init" {
 		t.Fatalf("%+v", c)
 	}
 }

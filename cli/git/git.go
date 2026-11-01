@@ -368,7 +368,7 @@ func (r *Repo) RequireIdentity() (string, error) {
 	if who := r.Identity(); who != "" {
 		return who, nil
 	}
-	return "", sys.Fail("environment", "git_identity_missing", "configure git user.name and user.email", 3)
+	return "", sys.Fail("environment", "git_identity_missing", "no Git user.name and user.email; run git config user.name \"<name>\" and git config user.email \"<email>\" (global or repository)", 3)
 }
 
 // ChangedPaths lists the paths with uncommitted changes (staged, unstaged, or untracked and

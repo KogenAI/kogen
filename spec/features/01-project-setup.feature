@@ -26,7 +26,6 @@ Feature: Project setup
       ok git - repository {abs:.}
       ok config - .kogen/project.yaml is valid
       ok models - shape, build, review ready
-      skip commands - skipped with --quick
       """
     And the new commit changes exactly:
       | path                     |
@@ -58,7 +57,6 @@ Feature: Project setup
       ok git - repository {abs:.}
       ok config - .kogen/project.yaml is valid
       ok models - shape, build, review ready
-      skip commands - skipped with --quick
       """
     And the file ".kogen/project.yaml" contains "    - name: format"
     And the file ".kogen/project.yaml" contains "      run: 'mix format --check-formatted'"
@@ -86,7 +84,6 @@ Feature: Project setup
       ok git - repository {abs:.}
       ok config - .kogen/project.yaml is valid
       ok models - shape, build, review ready
-      skip commands - skipped with --quick
       """
     And the new commit changes exactly:
       | path                |
@@ -167,7 +164,6 @@ Feature: Project setup
       ok config - .kogen/project.yaml is valid
       fail models - shape: chatgpt has no stored login; build: chatgpt has no stored login; review: chatgpt has no stored login
         fix: kogen provider login chatgpt
-      skip commands - skipped with --quick
       """
     And the new commit's message is:
       """
@@ -246,7 +242,7 @@ Feature: Project setup
     Then the exit code is 3
     And stdout is:
       """
-      environment/git_identity_missing: configure git user.name and user.email
+      environment/git_identity_missing: no Git user.name and user.email; run git config user.name "<name>" and git config user.email "<email>" (global or repository)
       """
     And the file ".kogen/project.yaml" does not exist
 
