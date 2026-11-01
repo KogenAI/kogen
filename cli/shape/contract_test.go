@@ -161,7 +161,7 @@ func TestShapeBlockedReportRecognizesProtectedPathsMatchedByAGlob(t *testing.T) 
 		"reason": "the requested verification definition cannot be changed in Build",
 	}}))
 	f.write("settings/check.cfg", "strict=true\n")
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nprotect: ['settings/*.cfg']\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\nprotect: ['settings/*.cfg']\n")
 	f.git("add", "settings/check.cfg", ".kogen/project.yaml")
 	f.git("commit", "-qm", "Configure protected glob")
 
@@ -298,7 +298,7 @@ func TestShapeFormattingCannotAbandonARetainedExecutableStepOutsideTheBaseline(t
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpSubmit("c2", shpFiles()), shpSubmit("c3", shpFiles()))
 	const intent = ".kogen/intents/is-even/intent.md"
 	fixer := "grep -v '^- features/steps/is_even_steps.js$' " + intent + " > fix.tmp && mv fix.tmp " + intent
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  fix: ["+quoteYAML(fixer)+"]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  fix: ["+quoteYAML(fixer)+"]\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\n")
 	f.git("add", "-A")
 	f.git("commit", "-qm", "fixer abandons the step")
 	exit, err := f.shape("Add calc.is_even(n).")

@@ -166,7 +166,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 	t.Run("acceptance unconfigured", func(t *testing.T) {
 		parallel(t)
 		f := newShpFx(t)
-		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: ./accept.sh, steps_dir: null}\n")
+		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: sh accept.sh, steps_dir: null}\n")
 		_, err := f.shape("x")
 		shpWantError(t, err, "environment", "acceptance_unconfigured", "set commands.acceptance in .kogen/project.yaml", 3)
 		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: null, steps_dir: features/steps}\n")
@@ -194,7 +194,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 	t.Run("a failing setup stops before any request", func(t *testing.T) {
 		parallel(t)
 		f := newShpFx(t)
-		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  setup: ['echo broken; exit 9']\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
+		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  setup: ['echo broken; exit 9']\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\n")
 		f.git("add", "-A")
 		f.git("commit", "-qm", "setup")
 		_, err := f.shape("x")
@@ -225,7 +225,7 @@ func TestShapeRefusesWhatItCannotShape(t *testing.T) {
 func TestShapeCallsOutAnUntrackedRequestFileAndWarnsAboutEmptyChecks(t *testing.T) {
 	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\n")
 	f.git("add", "-A")
 	f.git("commit", "-qm", "no checks")
 	f.write("request.md", "Add calc.is_even(n).")
@@ -249,7 +249,7 @@ func TestShapeCallsOutAnUntrackedRequestFileAndWarnsAboutEmptyChecks(t *testing.
 func TestShapeFormatsItsFilesWithTheFixersAndLeavesOthersAlone(t *testing.T) {
 	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  fix: ['f=features/steps/is_even_steps.js; if [ -f $f ]; then grep -q formatted $f || echo // formatted >> $f; fi; grep -q formatted README.md || echo formatted >> README.md; echo junk > calc.js']\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  fix: ['f=features/steps/is_even_steps.js; if [ -f $f ]; then grep -q formatted $f || echo // formatted >> $f; fi; grep -q formatted README.md || echo formatted >> README.md; echo junk > calc.js']\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\n")
 	f.git("add", "-A")
 	f.git("commit", "-qm", "fixer")
 	readme, calc := f.read("README.md"), f.read("calc.js")
@@ -623,7 +623,7 @@ func TestShapeBlockedReportIsPrintedAndWritesNothing(t *testing.T) {
 func TestShapeBlockedPathsMayBeConfiguredGlobs(t *testing.T) {
 	parallel(t)
 	f := newShpFx(t, shpSubmit("c1", map[string]any{"blocked": map[string]any{"paths": []any{"calc.js", "README.md"}, "reason": "needs both"}}))
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nprotect: ['*.js', README.md]\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\nprotect: ['*.js', README.md]\n")
 	f.git("add", "-A")
 	f.git("commit", "-qm", "protect")
 	exit, err := f.shape("Change both.")

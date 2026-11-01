@@ -108,7 +108,7 @@ func newApproveFx(t *testing.T) *approveFx {
 	f.git("config", "commit.gpgsign", "false")
 	f.write(".gitignore", ".kogen/local/\n")
 	f.write("app.txt", "red\n")
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance:\n    run: ./accept.sh\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  acceptance:\n    run: sh accept.sh\n")
 	f.write(project.IntentMDPath(approveSlug), approveIntentMD)
 	f.write(project.FeaturePath(approveSlug), approveFeature)
 	f.write("features/steps/fixture_steps.js", "// steps\n")

@@ -70,13 +70,14 @@ func forceNormalize(f *shpFx, raws []shpRaw) []forceCapture {
 func forceOrdinary(t *testing.T, w *forceWire, owner string) []forceCapture {
 	t.Helper()
 	if owner == "refine" {
-		f := w.newRefine(t, w.readReadme("r1"), w.refineSubmit("c1", refIntentPath, refTitled))
+		f := newRefFx(t, refOpts{wire: w, literal: true}, w.readReadme("r1"), w.refineSubmit("c1", refIntentPath, refTitled))
 		if exit, err := f.refine(f.hash0); err != nil || exit != 0 {
 			t.Fatalf("exit %d: %v", exit, err)
 		}
 		return forceNormalize(f.shpFx, f.Prov.rawRequests())
 	}
-	f := w.newShape(t, w.shapeSubmit("c1", shpFiles()), w.shapeAck("c2"))
+	f := newShpFxRun(t, "./accept.sh", w.shapeSubmit("c1", shpFiles()), w.shapeAck("c2"))
+	w.configure(f)
 	if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
 		t.Fatalf("exit %d: %v", exit, err)
 	}

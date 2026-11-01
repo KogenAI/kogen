@@ -35,6 +35,7 @@ type refOpts struct {
 	red      bool       // the original's dry run fails its scenarios
 	external int        // >0: the shape role is claude-code with this max_rounds (lineup tests)
 	wire     *forceWire // non-nil: the shape role is this provider route (force tests)
+	literal  bool       // the acceptance command is ./accept.sh (the force golden records it)
 }
 
 type refFx struct {
@@ -48,7 +49,11 @@ type refFx struct {
 // report unless red.
 func newRefFx(t *testing.T, o refOpts, steps ...shpStep) *refFx {
 	t.Helper()
-	f := &refFx{shpFx: newShpFx(t, steps...)}
+	run := "sh accept.sh"
+	if o.literal {
+		run = "./accept.sh"
+	}
+	f := &refFx{shpFx: newShpFxRun(t, run, steps...)}
 	if o.external > 0 {
 		f.useExternalShape(o.external)
 	}
@@ -410,7 +415,7 @@ func TestRefineWritesTheCorrectionAndPrintsTheLines(t *testing.T) {
 	shpContains(t, "request", body, "# Exclusively owned editable files\n"+refIntentPath+"\n"+refFeaturePath+"\n"+refStepPath+"\n")
 	shpContains(t, "request", body, `Configured protected files: []`)
 	shpContains(t, "request", body, `Checks: [{"unit", "true"}]`)
-	shpContains(t, "request", body, "Acceptance: ./accept.sh")
+	shpContains(t, "request", body, "Acceptance: sh accept.sh")
 	shpContains(t, "request", body, "# Project README\n# Calc")
 	shpContains(t, "request", body, "Use the narrowest test that exercises the rule")
 	shpContains(t, "request", body, "Cumulative proposal/original manifest: ")

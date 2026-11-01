@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+// preflightFakeStart is shell text the fake claude runs first, before its background child and
+// before it writes ready. Empty by default; an acceptance overlay sets it to delay or prevent the
+// preflight's start.
+var preflightFakeStart string
+
 // Preflight launches the installed executable too: its children must not outlive
 // cancellation or an early exit, even when they close their inherited output.
 func TestPreflightStopsOwnedChildren(t *testing.T) {
@@ -20,7 +25,7 @@ func TestPreflightStopsOwnedChildren(t *testing.T) {
 			dir := t.TempDir()
 			ready, effect := filepath.Join(dir, "ready"), filepath.Join(dir, "effect")
 			binary := filepath.Join(dir, "claude")
-			script := "#!/bin/sh\n(sleep 0.5; echo survived > \"$2\") >/dev/null 2>&1 &\necho ready > \"$1\"\n"
+			script := "#!/bin/sh\n" + preflightFakeStart + "(sleep 0.5; echo survived > \"$2\") >/dev/null 2>&1 &\necho ready > \"$1\"\n"
 			if cancelRun {
 				script += "wait\n"
 			} else {
@@ -29,7 +34,7 @@ func TestPreflightStopsOwnedChildren(t *testing.T) {
 			if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			a := New(Options{}).(*adapter)
 			done := make(chan error, 1)
@@ -37,19 +42,30 @@ func TestPreflightStopsOwnedChildren(t *testing.T) {
 				_, err := a.run(ctx, binary, nil, "", ready, effect)
 				done <- err
 			}()
-			for {
-				if _, err := os.Stat(ready); err == nil {
+			// Wait on the preflight's own start (ready) or its end, not a wall-clock bound.
+			var err error
+			returned := false
+			for !returned {
+				if _, statErr := os.Stat(ready); statErr == nil {
 					break
 				}
-				if ctx.Err() != nil {
+				select {
+				case err = <-done:
+					returned = true
+				case <-time.After(5 * time.Millisecond):
+				}
+			}
+			if returned {
+				if _, statErr := os.Stat(ready); statErr != nil {
 					t.Fatal("preflight did not start")
 				}
-				time.Sleep(5 * time.Millisecond)
 			}
 			if cancelRun {
 				cancel()
 			}
-			err := <-done
+			if !returned {
+				err = <-done
+			}
 			if cancelRun {
 				wantError(t, err, "executor/interrupted")
 			} else if err != nil {

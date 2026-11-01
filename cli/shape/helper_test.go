@@ -307,6 +307,14 @@ func isolatedTmp(t *testing.T) bool {
 // default), a signed-in home and a provider that plays steps.
 func newShpFx(t *testing.T, steps ...shpStep) *shpFx {
 	t.Helper()
+	return newShpFxRun(t, "sh accept.sh", steps...)
+}
+
+// newShpFxRun is newShpFx whose acceptance command is run. Project commands start the freshly
+// written script through sh: a first exec of every new executable file waits on the host's
+// assessment of it, which dominates under load. A test that quotes the command literal passes it.
+func newShpFxRun(t *testing.T, run string, steps ...shpStep) *shpFx {
+	t.Helper()
 	tmp := isolatedTmps.dir(t)
 	if tmp == "" {
 		// A fixture shares no process-wide state, so its test runs beside the others.
@@ -334,7 +342,7 @@ func newShpFx(t *testing.T, steps ...shpStep) *shpFx {
 	f.write("app.txt", "red\n")
 	f.write("calc.js", "function add(a, b) { return a + b }\n")
 	f.write("features/steps/calc_steps.js", "Given('a calculator', function () {});\n")
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: "+run+", steps_dir: features/steps}\n")
 	script := fmt.Sprintf(`#!/bin/sh
 echo run >> '%[1]s/trace'
 case "$KOGEN_ACCEPTANCE_FEATURES" in */check.feature) : > "$KOGEN_ACCEPTANCE_REPORT"; exit 0;; esac

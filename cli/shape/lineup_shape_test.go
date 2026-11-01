@@ -93,7 +93,7 @@ func result(v any) func(int, string) (executor.RoundResult, error) {
 
 func (f *shpFx) useExternalShape(rounds int) {
 	f.t.Helper()
-	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nmodels:\n  shape: {executor: claude-code, model: claude-opus-5-5, effort: xhigh, max_rounds: "+fmt.Sprint(rounds)+"}\n")
+	f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\nmodels:\n  shape: {executor: claude-code, model: claude-opus-5-5, effort: xhigh, max_rounds: "+fmt.Sprint(rounds)+"}\n")
 	f.git("add", ".kogen/project.yaml")
 	f.git("commit", "-qm", "claude-code shaper")
 }
@@ -570,7 +570,7 @@ func TestClaudeLineupUnsupportedCapabilities(t *testing.T) {
 	t.Run("workers with a Claude Code shaper are refused before any inference", func(t *testing.T) {
 		parallel(t)
 		f := newShpFx(t)
-		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nmodels:\n  shape: {executor: claude-code, model: m, effort: low}\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low}\n  probe: {model: p, effort: low}\n  draft: {model: d, effort: low}\n")
+		f.write(".kogen/project.yaml", "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\nmodels:\n  shape: {executor: claude-code, model: m, effort: low}\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low}\n  probe: {model: p, effort: low}\n  draft: {model: d, effort: low}\n")
 		f.git("add", ".kogen/project.yaml")
 		f.git("commit", "-qm", "workers")
 		x := &shapeExec{t: t, rounds: []func(int, string) (executor.RoundResult, error){result(shpFiles())}}

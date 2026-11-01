@@ -15,7 +15,7 @@ import (
 	"kogen/project"
 )
 
-const shpWorkersConfig = "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: ./accept.sh, steps_dir: features/steps}\nprotect: [guard.txt]\nshape_workers:\n  enabled: true\n  read: {model: luna, effort: medium}\n  probe: {model: luna, effort: medium}\n  draft: {model: luna, effort: max}\n"
+const shpWorkersConfig = "version: 1\ncommands:\n  checks: [{name: unit, run: 'true'}]\n  acceptance: {run: sh accept.sh, steps_dir: features/steps}\nprotect: [guard.txt]\nshape_workers:\n  enabled: true\n  read: {model: luna, effort: medium}\n  probe: {model: luna, effort: medium}\n  draft: {model: luna, effort: max}\n"
 
 // withWorkers enables shape workers in the committed project configuration.
 func (f *shpFx) withWorkers() {
