@@ -15,8 +15,8 @@ import (
 // These tests run Shape, Refine, the shape workers and the setup conversation of init with the
 // production settings: none of them configures a response budget, so each sends under the pinned
 // loop's 30 minutes. The budget is observed on the real client's transport deadline, and the run
-// log and the expiry diagnostic are read as a user sees them. They are serial because other
-// tests change the process-wide settings.
+// log and the expiry diagnostic are read as a user sees them. Tests changing
+// process-wide settings run in separate processes.
 
 // deadlineObserver records the time the client's transport had left for each exchange.
 type deadlineObserver struct {
@@ -115,8 +115,9 @@ func wantThirtyMinuteText(t *testing.T, text string) {
 }
 
 func TestShapeBudgetRolesShape(t *testing.T) {
+	parallel(t)
 	t.Run("shape sends every request under thirty minutes and records it once", func(t *testing.T) {
-		serialTmp(t)
+		parallel(t)
 		f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 		obs := observeDeadlines(f.Client)
 		f.newSession()
@@ -129,7 +130,7 @@ func TestShapeBudgetRolesShape(t *testing.T) {
 	})
 
 	t.Run("a stalled shape expires unavailable naming thirty minutes, is not retried and records once", func(t *testing.T) {
-		serialTmp(t)
+		parallel(t)
 		clock := newBudgetClock()
 		f := newShpFx(t, stalledPastThirty(clock), shpSubmit("c1", shpFiles()), shpAck("c2"))
 		f.Client.Now = clock.Now
@@ -153,7 +154,7 @@ func TestShapeBudgetRolesShape(t *testing.T) {
 	})
 
 	t.Run("refine sends every request under thirty minutes and records it once", func(t *testing.T) {
-		serialTmp(t)
+		parallel(t)
 		f := newRefFx(t, refOpts{red: true}, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), refSubmit("c1", refIntentPath, shpIntentMD))
 		f.remove(".kogen/local/readiness/is-even.json")
 		obs := observeDeadlines(f.Client)
@@ -167,7 +168,7 @@ func TestShapeBudgetRolesShape(t *testing.T) {
 	})
 
 	t.Run("a stalled refine expires unavailable naming thirty minutes and records once", func(t *testing.T) {
-		serialTmp(t)
+		parallel(t)
 		clock := newBudgetClock()
 		f := newRefFx(t, refOpts{red: true}, stalledPastThirty(clock), refSubmit("c1", refIntentPath, shpIntentMD))
 		f.remove(".kogen/local/readiness/is-even.json")
@@ -183,7 +184,7 @@ func TestShapeBudgetRolesShape(t *testing.T) {
 	})
 
 	t.Run("shape workers send under the same thirty minutes within the one record", func(t *testing.T) {
-		serialTmp(t)
+		parallel(t)
 		f := newShpFx(t)
 		f.withWorkers()
 		obs := observeDeadlines(f.Client)
@@ -223,7 +224,7 @@ func TestShapeBudgetRolesShape(t *testing.T) {
 	})
 
 	t.Run("the setup conversation of init sends under thirty minutes", func(t *testing.T) {
-		serialTmp(t)
+		parallel(t)
 		f := initNewFx(t, true, initNothing())
 		f.write("README.md", "x\n")
 		f.commitAll("a")

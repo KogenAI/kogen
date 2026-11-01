@@ -51,10 +51,10 @@ func revodGatePartsRequests(t *testing.T) []string {
 	aux := revodGateFixedDir(t, 220)
 	// The committed configuration names the acceptance script through the environment, so the
 	// start HEAD, the candidate tree and the authority are the same in every run.
-	t.Setenv("KOGEN_REVOD_GATE_ACCEPT", filepath.Join(aux, "accept.sh"))
 	e := newEnvIn(t, revodGateFixedDir(t, 220), revodGateFixedDir(t, 220), aux, dates, func(c *project.Config) {
 		c.Acceptance.Run = `sh "$KOGEN_REVOD_GATE_ACCEPT"`
 	})
+	e.extraEnv = []string{"KOGEN_REVOD_GATE_ACCEPT=" + filepath.Join(aux, "accept.sh")}
 	f := e.prov
 	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"}))
 	for i := 0; i < 3; i++ {
@@ -128,6 +128,7 @@ func jsonEscaped(s string) string {
 }
 
 func TestKRevodGatePartsUnchanged(t *testing.T) {
+	t.Parallel()
 	bodies := revodGatePartsRequests(t)
 	got := revodGateDescribe(t, bodies)
 	if os.Getenv("KOGEN_REVOD_GATE_GOLDEN") == "write" {

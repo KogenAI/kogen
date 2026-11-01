@@ -96,7 +96,6 @@ var knobEntries = []knobEntry{{"shape", knobShapeEntry}, {"refine", knobRefineEn
 func knobTools(t *testing.T, e knobEntry) {
 	probe := shpAnswer(shpCall("p1", "probe", map[string]any{"command": probeBig}))
 	t.Run("a result is cut at 16384 bytes with a 4096-byte head", func(t *testing.T) {
-		serialTmp(t)
 		r := e.run(t, probe, "Clarify the draft.")
 		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
 			t.Fatalf("exit %d err %v requests %d", r.exit, r.err, len(r.reqs))
@@ -111,7 +110,6 @@ func knobDocumentation(t *testing.T, e knobEntry) {
 		return shpAnswer(shpCall("d1", "documentation", map[string]any{"operation": "fetch", "url": origin.URL + "/big", "base": origin.URL}))
 	}
 	t.Run("the page is cut within 16384 bytes", func(t *testing.T) {
-		serialTmp(t)
 		origin := docBigOrigin(t)
 		r := e.run(t, fetch(origin), "Clarify the draft.")
 		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
@@ -132,7 +130,6 @@ func knobDocumentation(t *testing.T, e knobEntry) {
 func knobInput(t *testing.T, e knobEntry) {
 	big := strings.Repeat("Clarify. ", 12000)
 	t.Run("a request within the input budget is sent", func(t *testing.T) {
-		serialTmp(t)
 		r := e.run(t, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), big)
 		if r.err != nil || r.exit != 0 || len(r.reqs) < 2 {
 			t.Fatalf("exit %d err %v requests %d", r.exit, r.err, len(r.reqs))
@@ -143,7 +140,7 @@ func knobInput(t *testing.T, e knobEntry) {
 // knobAuthority runs one entry on an Anthropic role and requires the first request to carry
 // no authority breakpoint in its first user message.
 func knobAuthority(t *testing.T, name string) {
-	serialTmp(t)
+	parallel(t)
 	var f *shpFx
 	if name == "shape" {
 		f = newShpFx(t)
@@ -179,14 +176,13 @@ func knobAuthority(t *testing.T, name string) {
 }
 
 func TestLoopKnobsShape(t *testing.T) {
-	serialTmp(t)
+	parallel(t)
 	e := knobEntries[0]
-	t.Run("tools", func(t *testing.T) { knobTools(t, e) })
-	t.Run("documentation", func(t *testing.T) { knobDocumentation(t, e) })
-	t.Run("input", func(t *testing.T) { knobInput(t, e) })
+	t.Run("tools", func(t *testing.T) { parallel(t); knobTools(t, e) })
+	t.Run("documentation", func(t *testing.T) { parallel(t); knobDocumentation(t, e) })
+	t.Run("input", func(t *testing.T) { parallel(t); knobInput(t, e) })
 	t.Run("the first request carries no authority breakpoint", func(t *testing.T) { knobAuthority(t, "shape") })
 	t.Run("client keeps the loop's response budget", func(t *testing.T) {
-		serialTmp(t)
 		f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 		f.newSession()
 		if _, err := Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client}); err != nil {
@@ -195,7 +191,6 @@ func TestLoopKnobsShape(t *testing.T) {
 		shpEq(t, "response budget", f.Client.ResponseBudget, time.Duration(0))
 	})
 	t.Run("an injected client is left as it was", func(t *testing.T) {
-		serialTmp(t)
 		f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 		f.Client.ResponseBudget = 42 * time.Second
 		f.newSession()
@@ -205,7 +200,6 @@ func TestLoopKnobsShape(t *testing.T) {
 		shpEq(t, "response budget", f.Client.ResponseBudget, 42*time.Second)
 	})
 	t.Run("workers use the same bounds", func(t *testing.T) {
-		serialTmp(t)
 		f := newShpFx(t)
 		sh := &shaping{s: f.S, repo: f.Repo, root: f.Root, client: f.Client}
 		out, err := sh.agentTools(context.Background(), []string{"probe"}).Run("probe", map[string]any{"command": probeBig})
@@ -218,14 +212,13 @@ func TestLoopKnobsShape(t *testing.T) {
 }
 
 func TestLoopKnobsRefine(t *testing.T) {
-	serialTmp(t)
+	parallel(t)
 	e := knobEntries[1]
-	t.Run("tools", func(t *testing.T) { knobTools(t, e) })
-	t.Run("documentation", func(t *testing.T) { knobDocumentation(t, e) })
-	t.Run("input", func(t *testing.T) { knobInput(t, e) })
+	t.Run("tools", func(t *testing.T) { parallel(t); knobTools(t, e) })
+	t.Run("documentation", func(t *testing.T) { parallel(t); knobDocumentation(t, e) })
+	t.Run("input", func(t *testing.T) { parallel(t); knobInput(t, e) })
 	t.Run("the first request carries no authority breakpoint", func(t *testing.T) { knobAuthority(t, "refine") })
 	t.Run("client keeps the loop's response budget", func(t *testing.T) {
-		serialTmp(t)
 		f := newRefFx(t, refOpts{red: true}, shpAnswer(shpCall("p1", "probe", map[string]any{"command": "true"})), refSubmit("c1", refIntentPath, shpIntentMD))
 		f.remove(".kogen/local/readiness/is-even.json")
 		f.newSession()

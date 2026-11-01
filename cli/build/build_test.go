@@ -374,6 +374,7 @@ func TestDefaultShellRequestAndReplayCompatibility(t *testing.T) {
 }
 
 func TestBuildRefusesStaleAndBaselessApproval(t *testing.T) {
+	t.Parallel()
 	for _, legacy := range []bool{false, true} {
 		t.Run(fmt.Sprint(legacy), func(t *testing.T) {
 			e := newEnv(t)

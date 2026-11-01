@@ -58,6 +58,7 @@ func continueSilent(t *testing.T, f *fakeProvider, terminal handler) handler {
 }
 
 func TestSilentBuildShellNotStopped(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.prov.then(
 		e.prov.calls("shell", map[string]any{"command": silentCommand}),
@@ -79,6 +80,7 @@ func TestSilentBuildShellNotStopped(t *testing.T) {
 }
 
 func TestSilentReviewShellNotStopped(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	f := e.prov
 	f.then(landScript(f)...)

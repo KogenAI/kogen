@@ -77,7 +77,7 @@ func (t *pacedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // minutes and inside the loop's thirty, is not cut. Valid incremental events arrive through one
 // logical Respond call, then a valid completion; Shape finishes with the production settings.
 func TestShapeBudgetStreaming800Seconds(t *testing.T) {
-	serialTmp(t)
+	parallel(t)
 	clock := newBudgetClock()
 	f := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))
 	tr := &pacedTransport{clock: clock}

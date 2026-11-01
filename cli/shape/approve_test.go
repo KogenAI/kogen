@@ -966,6 +966,7 @@ func TestApproveCardUnresolvedConflicts(t *testing.T) {
 }
 
 func TestApprovalMovedBase(t *testing.T) {
+	t.Parallel()
 	f := newApproveFx(t)
 	exit, _, err := f.approve(ApproveInput{Hash: f.sha()})
 	if err != nil || exit != 0 {
@@ -987,6 +988,7 @@ func TestApprovalMovedBase(t *testing.T) {
 	}
 }
 func TestMovedApprovalPassingRefused(t *testing.T) {
+	t.Parallel()
 	f := newApproveFx(t)
 	if exit, _, err := f.approve(ApproveInput{Hash: f.sha()}); err != nil || exit != 0 {
 		t.Fatalf("initial %d %v", exit, err)

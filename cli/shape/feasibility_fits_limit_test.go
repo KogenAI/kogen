@@ -31,7 +31,9 @@ func assertNoReadyOnRetry(t *testing.T, f *shpFx) {
 }
 
 func TestShapeFeasibilityFitsLimit(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	production, restore := verify.ContractProbeDeadline(time.Second, nil)
 	defer restore()
 	if production != 300*time.Second {
@@ -65,7 +67,9 @@ func TestShapeFeasibilityFitsLimit(t *testing.T) {
 }
 
 func TestShapeTimelyEvidenceFitsLimit(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	_, restore := verify.ContractProbeDeadline(2*time.Second, nil)
 	defer restore()
 	f := newShpFx(t, shpSubmit("timely", budgetFiles("sleep 1.2", "sleep 1.2; exit 143")), shpAck("ack"))
@@ -79,7 +83,9 @@ func TestShapeTimelyEvidenceFitsLimit(t *testing.T) {
 }
 
 func TestShapeAcceptanceFitsLimit(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	production, restore := verify.ContractShapeAcceptanceDeadline(10 * time.Second)
 	defer restore()
 	if production != 120*time.Second {
@@ -103,7 +109,9 @@ func TestShapeAcceptanceFitsLimit(t *testing.T) {
 }
 
 func TestShapeTimelyAcceptanceFitsLimit(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	_, restore := verify.ContractShapeAcceptanceDeadline(30 * time.Second)
 	defer restore()
 	for _, status := range []string{"PASSED", "FAILED"} {

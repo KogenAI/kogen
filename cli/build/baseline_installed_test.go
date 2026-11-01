@@ -12,6 +12,7 @@ import (
 )
 
 func TestBaselinePerBaseInstalled(t *testing.T) {
+	t.Parallel()
 	source, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)

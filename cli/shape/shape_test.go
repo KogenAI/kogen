@@ -747,7 +747,9 @@ func TestShapeRejectsAnAbandonedDeclaredStep(t *testing.T) {
 // ---- tools and probes ----
 
 func TestShapeProbeRunsOutsideTheProjectAndItsResultIsRecorded(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	probe := shpCall("p1", "probe", map[string]any{
 		"command": "printf focused; pwd; cat extra.txt",
 		"files":   []any{map[string]any{"path": "extra.txt", "content": " scratch\n"}},
@@ -879,7 +881,9 @@ func TestShapeViewImageDeliversPixelsAndRecordsReadAndDelivery(t *testing.T) {
 // A timeout whose whole-group absence cannot be proven fails the shaping run with a message
 // naming it; it is neither a timed-out probe result nor tool feedback for the model.
 func TestShapeProbeReportsTimeoutObservationFailure(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	restore := verify.ContractProbeRun(func(*sys.Session, string, string, sys.Options) (sys.Result, error) {
 		return sys.Result{}, fmt.Errorf("%w: group query failed", sys.ErrTimeoutObservation)
 	})
@@ -1071,7 +1075,9 @@ func TestShapeProbeHomeEmptinessRegression(t *testing.T) {
 // PATH, locale and the explicit tools, while the caller's secrets and saved logins never reach
 // the command, the model's tool result or the retained probe_result evidence.
 func TestShapeProbeMinimalEnvironmentWiring(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	probe := shpCall("p1", "probe", map[string]any{
 		"command": `cat extra.txt; "$KOGEN_NODE"; echo "lc=$LC_ALL"; command -v sh >/dev/null && echo path-ok; echo "home=$HOME"; echo home-count-begin; ls -A "$HOME" | wc -l; echo home-count-end; env`,
 		"files":   []any{map[string]any{"path": "extra.txt", "content": "overlay\n"}},

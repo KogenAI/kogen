@@ -12,10 +12,12 @@ import (
 
 	"kogen-loop/sys"
 	"kogen/project"
+	"kogen/testproc"
 	"kogen/verify"
 )
 
 func TestBaselineCacheTreeAndCustody(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	cmd := exec.Command("git", "init", "-q", root)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -65,6 +67,7 @@ func TestBaselineCacheTreeAndCustody(t *testing.T) {
 }
 
 func TestBaselinePerBaseEligibility(t *testing.T) {
+	t.Parallel()
 	commands := []string{":", " :", ": ", "true", "sh -c :", ":; :", "date >/dev/null", "test -e /dev/null"}
 	checks := make([]project.Check, len(commands))
 	for i, c := range commands {
@@ -105,6 +108,9 @@ func TestBaselinePerBaseEligibility(t *testing.T) {
 }
 
 func TestBaselinePerBaseIdentity(t *testing.T) {
+	if !testproc.Isolate(t) {
+		return
+	}
 	if child := os.Getenv("BASELINE_ID_CHILD"); child != "" {
 		id, _, err := baselineIdentity(child, []project.Check{{Name: "executable", Run: ":"}})
 		if err != nil {
@@ -239,6 +245,7 @@ func TestBaselinePerBaseIdentity(t *testing.T) {
 
 // Baseline and comparison retain actual successful output as well as failures.
 func TestBaselineComparisonPassingOutput(t *testing.T) {
+	t.Parallel()
 	got := stateOf(verify.CommandResult{Name: "check", Command: "printf hello", Status: 0, Output: "hello"})
 	if got.State != checkPassed || got.Status == nil || *got.Status != 0 || got.Output != "hello" {
 		t.Fatalf("comparison lost actual result: %+v", got)
@@ -246,6 +253,7 @@ func TestBaselineComparisonPassingOutput(t *testing.T) {
 }
 
 func TestBaselinePerBaseFailures(t *testing.T) {
+	t.Parallel()
 	checks := []project.Check{{Name: "closed", Run: ":"}, {Name: "failure", Run: `printf 'failure-marker\n'; exit 7`}}
 	e := newEnv(t, func(c *project.Config) { c.Checks = checks })
 	f := e.prov
@@ -322,6 +330,7 @@ func TestBaselinePerBaseFailures(t *testing.T) {
 }
 
 func TestBaselinePerBaseCustody(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("BASELINE_CUSTODY_CHILD") == "1" {
 		root, err := os.Getwd()
 		if err != nil {
@@ -364,8 +373,6 @@ func TestBaselinePerBaseCustody(t *testing.T) {
 	git(root, "commit", "-qm", "base")
 	other := filepath.Join(t.TempDir(), "worktree")
 	git(root, "worktree", "add", "-q", "--detach", other, "HEAD")
-	t.Setenv("BASELINE_CUSTODY_CHILD", "1")
-	t.Setenv("BASELINE_CUSTODY_SECRET", "private-custody-secret-724")
 	child := func(dir string) string {
 		t.Helper()
 		exe, err := os.Executable()
@@ -374,7 +381,7 @@ func TestBaselinePerBaseCustody(t *testing.T) {
 		}
 		cmd := exec.Command(exe, "-test.run=^TestBaselinePerBaseCustody$", "-test.v")
 		cmd.Dir = dir
-		cmd.Env = os.Environ()
+		cmd.Env = append(os.Environ(), "BASELINE_CUSTODY_CHILD=1", "BASELINE_CUSTODY_SECRET=private-custody-secret-724")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("child: %v: %s", err, out)

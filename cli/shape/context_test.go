@@ -248,7 +248,9 @@ func TestContextIndexPagesLongSignatureLists(t *testing.T) {
 }
 
 func TestRevisionFollowsTheCheckoutWithoutTouchingTheRealIndex(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	f, _, _, _ := newBatchValidation(t)
 	index, _ := os.ReadFile(filepath.Join(f.Root, ".git/index"))
 	a, err := CurrentRevision(f.Repo)

@@ -20,6 +20,7 @@ import (
 	"kogen-loop/sys"
 	"kogen/git"
 	"kogen/project"
+	"kogen/testproc"
 )
 
 // ---- a scripted provider ----
@@ -314,11 +315,10 @@ type shpFx struct {
 	Client *provider.Client
 }
 
-// serialTmps holds the temporary folder of the tests that look into the process's temporary
-// folder for leftovers: they point TMPDIR at it, so they cannot run in parallel.
-type serialTmpDirs struct{ m sync.Map }
+// isolatedTmps records private TMPDIR roots for tests owning process-wide state.
+type isolatedTmpDirs struct{ m sync.Map }
 
-var serialTmps serialTmpDirs
+var isolatedTmps isolatedTmpDirs
 
 // parallelTests are the tests already marked parallel (a test may build several fixtures).
 var parallelTests sync.Map
@@ -332,37 +332,38 @@ func parallel(t *testing.T) {
 	}
 }
 
-// dir is the test's own serial temporary folder. A subtest of a serial test is serial too and
-// gets its own TMPDIR, so its leftover checks look where its scratch is created.
-func (s *serialTmpDirs) dir(t *testing.T) string {
+// dir finds the isolated root of this test or its nearest isolated ancestor.
+func (s *isolatedTmpDirs) dir(t *testing.T) string {
 	t.Helper()
-	name := t.Name()
-	if d, ok := s.m.Load(name); ok {
-		return d.(string)
-	}
-	for i := strings.LastIndex(name, "/"); i > 0; i = strings.LastIndex(name[:i], "/") {
-		if _, ok := s.m.Load(name[:i]); ok {
-			serialTmp(t)
-			d, _ := s.m.Load(name)
+	for name := t.Name(); name != ""; {
+		if d, ok := s.m.Load(name); ok {
 			return d.(string)
 		}
+		i := strings.LastIndex(name, "/")
+		if i < 0 {
+			break
+		}
+		name = name[:i]
 	}
 	return ""
 }
 
-// serialTmp makes the test run alone, with TMPDIR in a folder only it uses; call it first.
-func serialTmp(t *testing.T) {
+// isolatedTmp gives tests that inspect TMPDIR or mutate globals exclusive process ownership.
+func isolatedTmp(t *testing.T) bool {
 	t.Helper()
 	tmp := t.TempDir()
-	t.Setenv("TMPDIR", tmp)
-	serialTmps.m.Store(t.Name(), tmp)
+	if !testproc.Isolate(t, "TMPDIR="+tmp) {
+		return false
+	}
+	isolatedTmps.m.Store(t.Name(), os.Getenv("TMPDIR"))
+	return true
 }
 
 // newShpFx is a committed project whose acceptance runner replays a prepared report (red by
 // default), a signed-in home and a provider that plays steps.
 func newShpFx(t *testing.T, steps ...shpStep) *shpFx {
 	t.Helper()
-	tmp := serialTmps.dir(t)
+	tmp := isolatedTmps.dir(t)
 	if tmp == "" {
 		// A fixture shares no process-wide state, so its test runs beside the others.
 		parallel(t)

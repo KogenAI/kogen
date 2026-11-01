@@ -502,6 +502,7 @@ func TestNativeShellContextCancellationStops(t *testing.T) {
 // start delay: the shell child is observed running before the round is released, the round is
 // still held while it is observed, and cleanup interrupts and joins it on an early exit.
 func TestChecktimeClockReadiness(t *testing.T) {
+	t.Parallel()
 	for _, early := range []bool{false, true} {
 		name := "interrupt"
 		if early {

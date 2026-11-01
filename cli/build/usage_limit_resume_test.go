@@ -13,6 +13,7 @@ import (
 )
 
 func TestUsageLimitResumeSafety(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.useExecutor("")
 	start := e.head()

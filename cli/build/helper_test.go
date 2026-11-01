@@ -179,13 +179,14 @@ func jsonText(v any) string {
 
 // project is a repository with an approved Intent, ready to build.
 type env struct {
-	t     *testing.T
-	root  string
-	home  string
-	aux   string // outside the repository: reports, scripts
-	git   []string
-	prov  *fakeProvider
-	hooks string
+	t        *testing.T
+	root     string
+	home     string
+	aux      string // outside the repository: reports, scripts
+	git      []string
+	prov     *fakeProvider
+	hooks    string
+	extraEnv []string
 }
 
 func isolatedEnv(extra ...string) []string {
@@ -356,7 +357,7 @@ type attempt struct {
 }
 
 func (e *env) session() (*sys.Session, *strings.Builder, *strings.Builder) {
-	env := isolatedEnv("HOME="+e.home, "KOGEN_PROVIDER_URL="+e.prov.srv.URL, "KOGEN_AUTH_URL="+e.prov.srv.URL)
+	env := isolatedEnv(append([]string{"HOME=" + e.home, "KOGEN_PROVIDER_URL=" + e.prov.srv.URL, "KOGEN_AUTH_URL=" + e.prov.srv.URL}, e.extraEnv...)...)
 	s := sys.NewWith(env, e.root)
 	out, errs := &strings.Builder{}, &strings.Builder{}
 	s.Stdout, s.Stderr = out, errs

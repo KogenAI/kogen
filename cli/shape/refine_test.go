@@ -367,7 +367,9 @@ func TestRefineLargeRepositoryUsesNavigationAndKeepsCompleteOwnedAuthority(t *te
 }
 
 func TestRefineWritesTheCorrectionAndPrintsTheLines(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	f := newRefFx(t, refOpts{approved: true}, refSubmit("c1", refIntentPath, refTitled))
 	before := f.pkg()
 	index := f.index()
@@ -999,7 +1001,7 @@ func TestRefineOnlyOneSubmissionCountsPerResponse(t *testing.T) {
 // ---- refusals and unsupported corrections keep the draft ----
 
 func TestRefineInvalidUnsupportedProviderAndNotReadyResultsPreserveTheReadyDraft(t *testing.T) {
-	serialTmp(t)
+	parallel(t)
 	undefined := "Feature: Fixture\n  Scenario: Undefined\n    Then a new undefined sentence\n"
 	cases := []struct {
 		name    string
@@ -1028,6 +1030,9 @@ func TestRefineInvalidUnsupportedProviderAndNotReadyResultsPreserveTheReadyDraft
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			if !isolatedTmp(t) {
+				return
+			}
 			f := newRefFx(t, refOpts{}, c.steps...)
 			before := f.pkg()
 			exit, err := f.refine(f.hash0)
@@ -1414,10 +1419,13 @@ func TestRefineAnApprovedCorrectionArchivesTheExactApprovalAndNeedsAFreshOne(t *
 }
 
 func TestRefineFailedAndCancelledApprovedCorrectionsPreservePackageRawApprovalAndIndex(t *testing.T) {
-	serialTmp(t)
+	parallel(t)
 	undefined := "Feature: Fixture\n  Scenario: Undefined\n    Then a new undefined sentence\n"
 	for _, kind := range []string{"provider", "invalid", "not ready", "cancel"} {
 		t.Run(kind, func(t *testing.T) {
+			if !isolatedTmp(t) {
+				return
+			}
 			marker := filepath.Join(t.TempDir(), "probe-started")
 			var steps []shpStep
 			switch kind {
@@ -1575,12 +1583,15 @@ func TestRefineAnExternalEditWhileRefiningIsPreservedAndPreventsPublication(t *t
 }
 
 func TestRefineInterruptionDuringAProbePreservesThePackageAndRetainsEvidence(t *testing.T) {
-	serialTmp(t)
+	parallel(t)
 	for _, c := range []struct {
 		signal string
 		exit   int
 	}{{"SIGINT", 130}, {"SIGTERM", 143}, {"SIGHUP", 129}} {
 		t.Run(c.signal, func(t *testing.T) {
+			if !isolatedTmp(t) {
+				return
+			}
 			marker := filepath.Join(t.TempDir(), "probe-started")
 			f := newRefFx(t, refOpts{approved: true}, refProbe("c1", "touch '"+marker+"' && sleep 10"))
 			before := f.pkg()
@@ -1901,7 +1912,9 @@ func TestRefineRollsBackItsReceiptWhenTheCheckoutChangesDuringPublication(t *tes
 }
 
 func TestRefineProbeReportsTimeoutObservationFailure(t *testing.T) {
-	serialTmp(t)
+	if !isolatedTmp(t) {
+		return
+	}
 	restore := verify.ContractProbeRun(func(*sys.Session, string, string, sys.Options) (sys.Result, error) {
 		return sys.Result{}, fmt.Errorf("%w: group query failed", sys.ErrTimeoutObservation)
 	})
