@@ -23,6 +23,7 @@ import (
 	"kogen-loop/sys"
 	"kogen-loop/tools"
 	"kogen/agent"
+	"kogen/durable"
 	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
@@ -143,6 +144,9 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 
 	if missing := st.unanswered(); len(missing) > 0 {
 		if err := saveState(stateDir, st); err != nil {
+			return 0, err
+		}
+		if err := writeQuestions(root, stateDir, slug, missing); err != nil {
 			return 0, err
 		}
 		return printQuestions(s, slug, missing), nil
@@ -365,6 +369,74 @@ func (st *state) unanswered() []numbered {
 		}
 	}
 	return out
+}
+
+// questionsFile is `.kogen/local/shaping/<slug>/questions.json`, beside state.json: the pending
+// questions and their recommended options in the version 1 checkout facts envelope
+// (docs/checkout-facts.md), for a caller that cannot read the printed block.
+const questionsFile = "questions.json"
+
+// writeQuestions replaces questions.json, as a whole and privately, with the pending questions.
+func writeQuestions(root, dir, slug string, list []numbered) error {
+	checkout, err := project.Checkout(root)
+	if err != nil {
+		return err
+	}
+	questions := make([]any, len(list))
+	for i, nq := range list {
+		kind := "product"
+		if nq.q["kind"] == "handoff" {
+			kind = "handoff"
+		}
+		options := []any{}
+		var recommended any
+		for k, o := range optionsOf(nq.q) {
+			letter := string(rune('a' + k))
+			rec := o["recommended"] != nil && o["recommended"] != false
+			if rec && recommended == nil {
+				recommended = letter
+			}
+			options = append(options, map[string]any{"letter": letter, "label": textOf(o["label"]), "recommended": rec})
+		}
+		questions[i] = map[string]any{
+			"number": nq.n, "question": textOf(nq.q["question"]), "kind": kind, "options": options, "recommended": recommended,
+		}
+	}
+	b, err := project.EncodeJSON(map[string]any{
+		"schema_version": 1, "kind": "questions", "checkout": checkout, "error": nil,
+		"data": map[string]any{"slug": slug, "questions": questions},
+	})
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, questionsFile+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, err = f.Write(append(b, '\n'))
+	if err == nil {
+		err = f.Chmod(0o600)
+	}
+	if err == nil {
+		err = durable.Sync(f)
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, filepath.Join(dir, questionsFile))
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
 }
 
 // printQuestions lists the questions and how to answer them (exit 5).
@@ -597,6 +669,9 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 		for i, q := range res.questions {
 			list[i] = numbered{i + 1, q}
 		}
+		if err := writeQuestions(sh.root, sh.stateDir, sh.slug, list); err != nil {
+			return 0, err
+		}
 		return printQuestions(sh.s, sh.slug, list), nil
 	case outBlocked:
 		return sh.printBlocked(res), nil
@@ -620,6 +695,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 		return 0, err
 	}
 	os.Remove(filepath.Join(sh.stateDir, "state.json"))
+	os.Remove(filepath.Join(sh.stateDir, questionsFile))
 	var added []string
 	for p, o := range sh.originals {
 		if o.absent {

@@ -1108,3 +1108,81 @@ func TestShapeProbeMinimalEnvironmentWiring(t *testing.T) {
 		}
 	}
 }
+
+func (f *shpFx) questionsDoc() map[string]any {
+	f.t.Helper()
+	path := filepath.Join(f.Root, ".kogen/local/shaping/is-even/questions.json")
+	st, err := os.Stat(path)
+	if err != nil || st.Mode().Perm() != 0o600 || !st.Mode().IsRegular() {
+		f.t.Fatalf("questions file: %v, %v", st, err)
+	}
+	b, _ := os.ReadFile(path)
+	if !bytes.HasSuffix(b, []byte("}\n")) || bytes.Count(b, []byte("\n")) != 1 {
+		f.t.Fatalf("questions file is one object and a newline: %q", b)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		f.t.Fatal(err)
+	}
+	checkout, err := project.Checkout(f.Root)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	want := map[string]any{"id": checkout.ID, "root": checkout.Root, "git_dir": checkout.GitDir}
+	if fmt.Sprint(doc["checkout"]) != fmt.Sprint(want) || doc["schema_version"] != float64(1) || doc["kind"] != "questions" || doc["error"] != nil || len(doc) != 5 {
+		f.t.Fatalf("envelope: %v, checkout %v", doc, want)
+	}
+	return doc["data"].(map[string]any)
+}
+
+func TestShapeQuestionsFileListsKindsOptionsAndRecommendations(t *testing.T) {
+	parallel(t)
+	f := newShpFx(t, shpSubmit("q1", map[string]any{"questions": []any{
+		map[string]any{"question": "Sign in to the provider in your browser", "kind": "handoff"},
+		shpQuestion("Which wording?", "keep", "shorter"),
+		map[string]any{"question": "Pick one", "options": []any{map[string]any{"label": "x"}, map[string]any{"label": "y", "recommended": true}, map[string]any{"label": "z", "recommended": true}}},
+	}}))
+	if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 5 {
+		t.Fatalf("exit %d, err %v", exit, err)
+	}
+	data := f.questionsDoc()
+	b, _ := json.Marshal(data)
+	shpEq(t, "data", string(b), `{"questions":[`+
+		`{"kind":"handoff","number":1,"options":[],"question":"Sign in to the provider in your browser","recommended":null},`+
+		`{"kind":"product","number":2,"options":[{"label":"keep","letter":"a","recommended":true},{"label":"shorter","letter":"b","recommended":false}],"question":"Which wording?","recommended":"a"},`+
+		`{"kind":"product","number":3,"options":[{"label":"x","letter":"a","recommended":false},{"label":"y","letter":"b","recommended":true},{"label":"z","letter":"c","recommended":true}],"question":"Pick one","recommended":"b"}`+
+		`],"slug":"is-even"}`)
+}
+
+func TestShapeQuestionsFileFollowsThePendingRoundAndGoesWhenReady(t *testing.T) {
+	parallel(t)
+	f := newShpFx(t,
+		shpSubmit("q1", map[string]any{"questions": []any{shpQuestion("First?", "yes", "no"), shpQuestion("Second?", "left", "right")}}),
+		shpSubmit("c1", shpFilesWithDecisions("- First. (source: answer 1)", "- Second. (source: answer 2)")),
+		shpAck("c2"))
+	if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 5 {
+		t.Fatalf("exit %d, err %v", exit, err)
+	}
+	shpEq(t, "pending", len(f.questionsDoc()["questions"].([]any)), 2)
+
+	// A refused answer leaves the file as it is.
+	if _, err := f.shape("2: z"); err == nil {
+		t.Fatal("option z is refused")
+	}
+	shpEq(t, "pending after refusal", len(f.questionsDoc()["questions"].([]any)), 2)
+
+	if exit, err := f.shape("2: a"); err != nil || exit != 5 {
+		t.Fatalf("exit %d, err %v", exit, err)
+	}
+	left := f.questionsDoc()["questions"].([]any)
+	shpEq(t, "pending after 2: a", len(left), 1)
+	shpEq(t, "remaining number", left[0].(map[string]any)["number"], any(float64(1)))
+	shpEq(t, "requests", len(f.Prov.requests()), 1)
+
+	if exit, err := f.shape("all: recommended"); err != nil || exit != 0 {
+		t.Fatalf("exit %d, err %v\n%s", exit, err, f.Stdout)
+	}
+	if f.exists(".kogen/local/shaping/is-even/questions.json") || f.exists(".kogen/local/shaping/is-even/state.json") {
+		t.Fatal("a ready shape leaves neither questions.json nor state.json")
+	}
+}

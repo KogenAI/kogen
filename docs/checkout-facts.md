@@ -59,6 +59,41 @@ are 3 (`environment/not_project`), unavailable paths are 3
 (`intent/run_not_found`). Invalid required local records return 3
 (`environment/local_data_invalid`); context instead safely reports invalid.
 
+## Pending shape questions
+
+When `kogen intent shape <slug> <file|->` stops on questions (exit 5), it also
+leaves the pending questions and their recommended options in
+`.kogen/local/shaping/<slug>/questions.json`, beside `state.json` in the 0700
+shaping directory. The file is a regular file with mode 0600, replaced as a whole
+(a temporary file in the same directory, then a rename), in the version 1
+envelope above: `kind` is `questions`, `checkout` is `{id, root, git_dir}` as
+`kogen context` reports it and `error` is null. It is written whether or not a
+terminal is attached, before the questions are printed; the printed block and
+exit 5 are unchanged. Exit 5 with this file present tells an unattended caller
+that shape stopped on questions (`intent/exists` also exits 5, and leaves no such
+file).
+
+`data` has exactly `slug` and `questions`: the unanswered questions of the latest
+round in ascending number order, the same ones the run prints. Each has `number`
+(as printed and as used in `<n>: <answer>` lines), `question`, `kind` (`handoff`
+for an authentication or security handoff, otherwise `product`), `options` (in
+printed order, each `{letter, label, recommended}`; empty when the question has
+none) and `recommended`, the letter of the first recommended option, which is the
+one `all: recommended` picks, or null.
+
+The file is written when the shaper submits a new round of questions and when an
+answer input leaves questions of the pending round unanswered, so after `2: a`
+answers question 2 of two it lists only question 1. It is removed, with
+`state.json`, when shaping ends ready (exit 0). Other endings, including refused
+answers, leave it, as `state.json` still holds the same pending questions;
+deleting `.kogen/local/shaping/<slug>/` discards both.
+
+Answering stays an explicit caller act through the existing input: `all:
+recommended` or `<n>: <letter or your words>` lines through
+`kogen intent shape <slug> -` (or a file). The answers are recorded with the
+Intent as for any other answer, and `kogen intent approve` still refuses pending
+questions.
+
 ## Zsh
 
 Save `kogen completion zsh > /some/directory/_kogen`, add that directory to your
