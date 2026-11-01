@@ -328,10 +328,13 @@ func TestOpenCodeGoNetworkFailureIsTransientAndNamesNoAddress(t *testing.T) {
 	e := newEnv(t, nil)
 	e.s = sys.NewWith([]string{"HOME=" + e.home, "KOGEN_PROVIDER_URL=" + url}, e.home)
 	e.saveCreds("opencode-go", map[string]any{"provider": "opencode-go", "api_key": testKey})
-	_, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p"}, nil)
+	e.c.ResponseBudget = 10 * time.Second
+	obs := &observer{}
+	_, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p"}, obs)
 	se := mustErr(t, err)
-	if se.Reason != "unavailable" || se.Detail != "OpenCode Go did not answer after 3 attempts: OpenCode Go network failure" || len(e.clk.slept()) != 2 {
-		t.Fatalf("%v", se)
+	if se.Reason != "unavailable" || se.Detail != "OpenCode Go response wait exceeded 10s" || len(obs.records()) != 1 ||
+		strings.Contains(se.Detail, testKey) || strings.Contains(se.Detail, url) {
+		t.Fatalf("%v, %d records", se, len(obs.records()))
 	}
 }
 

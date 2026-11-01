@@ -36,6 +36,8 @@ type result struct {
 	reason string         // resRefused
 	diag   map[string]any // transient: allowlisted failure fields
 	after  *retryAfter    // transient: the answer's usable Retry-After
+	// connect marks a transient failure of the dial itself: nothing reached the provider.
+	connect bool
 	// resError, resUnauthorized and resRefused
 	fail failure
 }

@@ -203,10 +203,10 @@ func hookStart(stage string) {
 // group keeps its group until the caller stops it (Terminate, then Retire); groups left
 // behind are not stopped by RunContext returning.
 func (s *Session) RunContext(ctx context.Context, command, dir string, opts Options) (Result, error) {
-	return s.runCaptured(ctx, command, dir, opts, &capBuffer{})
+	return s.runCaptured(ctx, command, dir, opts, &capBuffer{}, nil)
 }
 
-func (s *Session) runCaptured(ctx context.Context, command, dir string, opts Options, buf *capBuffer) (Result, error) {
+func (s *Session) runCaptured(ctx context.Context, command, dir string, opts Options, buf *capBuffer, started func(int)) (Result, error) {
 	hookStart("enter")
 	if opts.RefuseForeignKill {
 		if rule, refused := ForeignKill(command, s.Owned); refused {
@@ -247,6 +247,9 @@ func (s *Session) runCaptured(ctx context.Context, command, dir string, opts Opt
 	pgid := cmd.Process.Pid
 	hookStart("starting")
 	s.groups[pgid] = true
+	if started != nil {
+		started(pgid)
+	}
 	s.mu.Unlock()
 	hookStart("started")
 
@@ -316,20 +319,38 @@ func (s *Session) runCaptured(ctx context.Context, command, dir string, opts Opt
 
 // CapturedCommand provides bounded snapshots of a supervised command.
 type CapturedCommand struct {
-	buf    *capBuffer
-	done   chan struct{}
-	result Result
-	err    error
+	buf     *capBuffer
+	done    chan struct{}
+	result  Result
+	err     error
+	pgid    int
+	session *Session
 }
 
 // StartCaptured launches a shell with the normal foreign-kill policy.
 func (s *Session) StartCaptured(ctx context.Context, command, dir string) *CapturedCommand {
-	c := &CapturedCommand{buf: &capBuffer{}, done: make(chan struct{})}
+	c := &CapturedCommand{buf: &capBuffer{}, done: make(chan struct{}), session: s}
 	go func() {
-		c.result, c.err = s.runCaptured(ctx, command, dir, Options{RefuseForeignKill: true}, c.buf)
+		c.result, c.err = s.runCaptured(ctx, command, dir, Options{RefuseForeignKill: true}, c.buf, func(pgid int) { c.pgid = pgid })
 		close(c.done)
 	}()
 	return c
+}
+
+// Stop joins the command and stops any group it left behind after its leader exited.
+func (c *CapturedCommand) Stop(cancel context.CancelFunc) {
+	cancel()
+	<-c.done
+	for _, g := range c.session.LiveGroups() {
+		if g == c.pgid {
+			Terminate([]int{g})
+			c.session.mu.Lock()
+			c.session.finished[g] = true
+			c.session.mu.Unlock()
+			c.session.Retire([]int{g})
+			break
+		}
+	}
 }
 func (c *CapturedCommand) Done() <-chan struct{} { return c.done }
 func (c *CapturedCommand) Snapshot() (Result, bool, error) {
@@ -522,6 +543,20 @@ func Terminate(groups []int) {
 	}
 	for _, g := range alive {
 		syscall.Kill(-g, syscall.SIGKILL)
+	}
+	// Signal delivery is asynchronous. Do not hand custody back while a group
+	// member can still run, even if its leader has already been reaped.
+	for len(alive) > 0 {
+		var still []int
+		for _, g := range alive {
+			if present, err := groupOthers(g, 0); err != nil || present {
+				still = append(still, g)
+			}
+		}
+		alive = still
+		if len(alive) > 0 {
+			time.Sleep(20 * time.Millisecond)
+		}
 	}
 }
 

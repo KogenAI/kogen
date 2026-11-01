@@ -295,11 +295,13 @@ func TestTransientNetworkFailureWithoutAnswer(t *testing.T) {
 	f := newFake(t)
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
-	f.srv.Close() // connection refused
-	_, err := e.respond(Request{})
+	e.c.ResponseBudget = 10 * time.Second
+	f.srv.Close() // connection refused: the origin is waited for until the budget
+	obs := &observer{}
+	_, err := e.c.Respond(context.Background(), e.s, Request{Role: fixtureRole, Instructions: "fixture"}, obs)
 	se := mustErr(t, err)
-	if se.Reason != "unavailable" || !strings.HasPrefix(se.Detail, "ChatGPT did not answer after 3 attempts: network error: ") || se.ProviderFailure != nil {
-		t.Fatalf("err = %v", se)
+	if se.Reason != "unavailable" || se.Detail != "ChatGPT response wait exceeded 10s" || se.ProviderFailure != nil || len(obs.records()) != 1 || len(f.requests()) != 0 {
+		t.Fatalf("err = %v, %d records", se, len(obs.records()))
 	}
 	if strings.Contains(se.Detail, "fake-access-token") {
 		t.Fatal("token in error")

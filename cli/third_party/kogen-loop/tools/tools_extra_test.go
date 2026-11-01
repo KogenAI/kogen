@@ -136,8 +136,8 @@ func TestShellNeedsACommandString(t *testing.T) {
 			t.Errorf("%v: %q", args, got)
 		}
 	}
-	// An empty command is a command.
-	if got := run(t, tools, ShellTool, map[string]any{"command": ""}); got != "exit status: 0\n" {
+	// An empty command is not usable.
+	if got := run(t, tools, ShellTool, map[string]any{"command": ""}); got != "error: supply exactly one of command or handle" {
 		t.Errorf("empty command: %q", got)
 	}
 }

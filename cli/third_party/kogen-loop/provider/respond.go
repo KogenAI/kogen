@@ -3,8 +3,11 @@ package provider
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -431,6 +434,11 @@ func (r *run) attempts() (*Response, error) {
 			}
 			if err := r.k.pause(wait); err != nil {
 				return nil, err
+			}
+			if res.connect {
+				if err := r.k.waitForOrigin(); err != nil {
+					return nil, err
+				}
 			}
 			n++
 		case resInvalid:
@@ -981,10 +989,71 @@ func (r *run) transportFailure(ctx context.Context, err error) (result, error) {
 	if ctx.Err() != nil {
 		return result{}, r.k.expired()
 	}
+	connect := isDialFailure(err)
 	if r.k.info.key {
-		return result{kind: resTransient, detail: r.k.info.Label + " network failure"}, nil
+		return result{kind: resTransient, detail: r.k.info.Label + " network failure", connect: connect}, nil
 	}
-	return result{kind: resTransient, detail: "network error: " + networkText(err)}, nil
+	return result{kind: resTransient, detail: "network error: " + networkText(err), connect: connect}, nil
+}
+
+// isDialFailure reports an error from establishing the connection (refused, dial timeout,
+// unreachable, name lookup): nothing reached the provider.
+func isDialFailure(err error) bool {
+	var op *net.OpError
+	return errors.As(err, &op) && op.Op == "dial"
+}
+
+// waitForOrigin follows the backoff after a connection failure: it probes the origin with
+// one TCP connect (no request, no TLS, no credentials) every second until one connects. Only
+// the spent budget, an interrupt or the caller's context end it early.
+func (k *call) waitForOrigin() error {
+	addr, ok := originAddress(k.origin())
+	if !ok {
+		return nil
+	}
+	for {
+		if stop, ok := k.stopped(); ok {
+			return stop
+		}
+		rem, err := k.remaining()
+		if err != nil {
+			return err
+		}
+		limit := 5 * time.Second
+		if rem < limit {
+			limit = rem
+		}
+		ctx, cancel := context.WithTimeout(k.ctx, limit)
+		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+		cancel()
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		if err := k.pause(time.Second); err != nil {
+			return err
+		}
+	}
+}
+
+// originAddress is the host:port of an origin URL (443 for https and 80 for http by default).
+func originAddress(origin string) (string, bool) {
+	u, err := url.Parse(origin)
+	if err != nil || u.Hostname() == "" {
+		return "", false
+	}
+	port := u.Port()
+	if port == "" {
+		switch u.Scheme {
+		case "https":
+			port = "443"
+		case "http":
+			port = "80"
+		default:
+			return "", false
+		}
+	}
+	return net.JoinHostPort(u.Hostname(), port), true
 }
 
 // record sends the attempt's usage record to the Observer.

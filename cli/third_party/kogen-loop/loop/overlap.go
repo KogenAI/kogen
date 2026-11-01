@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"kogen-loop/internal/footprint"
+	"kogen-loop/sys"
 	"kogen-loop/tools"
 )
 
@@ -42,6 +43,7 @@ type attempt struct {
 	complete bool         // the validated response has registered every call
 	errs     []error      // the errors of calls, in arrival order
 	failed   bool
+	groups   map[int]bool
 }
 
 type slotState int
@@ -70,7 +72,13 @@ func newStage(run context.Context, tl *tools.Tools, terminal []string) *stage {
 
 func (s *stage) fresh() *attempt {
 	ctx, cancel := context.WithCancel(s.run)
-	return &attempt{ctx: ctx, cancel: cancel, settled: map[int]bool{}}
+	g := &attempt{ctx: ctx, cancel: cancel, settled: map[int]bool{}, groups: map[int]bool{}}
+	if s.tl != nil && s.tl.Session != nil {
+		for _, id := range s.tl.Session.Groups() {
+			g.groups[id] = true
+		}
+	}
+	return g
 }
 
 // retire replaces the current attempt with an empty one, cancels the old attempt's calls and
@@ -97,6 +105,16 @@ func (s *stage) retire(closed bool) {
 			if json.Unmarshal([]byte(sl.out.Text), &result) == nil && result.Status == "running" && result.Handle != "" {
 				s.tl.CancelShellHandle(result.Handle)
 			}
+		}
+		if s.tl.Session != nil {
+			var owned []int
+			for _, id := range s.tl.Session.LiveGroups() {
+				if !old.groups[id] {
+					owned = append(owned, id)
+				}
+			}
+			sys.Terminate(owned)
+			s.tl.Session.Retire(owned)
 		}
 	}
 }

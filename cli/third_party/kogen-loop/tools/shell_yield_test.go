@@ -36,6 +36,9 @@ func TestShellYieldRetrievalScope(t *testing.T) {
 	if !ok || id == "" {
 		t.Fatal(v)
 	}
+	if got := run(t, tl, ShellTool, map[string]any{"handle": " " + id + " "}); got != "error: unknown shell handle" {
+		t.Fatalf("padded handle: %q", got)
+	}
 	start = time.Now()
 	v = decode(run(t, tl, ShellTool, map[string]any{"handle": id}))
 	if v["status"] != "running" || v["output"] != "one" || time.Since(start) < 29*time.Second || time.Since(start) > 36*time.Second {

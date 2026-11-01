@@ -571,7 +571,7 @@ func (t *Tools) EndShellRound() {
 		j.cancel()
 	}
 	for _, j := range jobs {
-		<-j.cmd.Done()
+		j.cmd.Stop(j.cancel)
 	}
 }
 
@@ -583,14 +583,19 @@ func (t *Tools) CancelShellHandle(id string) {
 	delete(r.jobs, id)
 	r.mu.Unlock()
 	if j != nil {
-		j.cancel()
-		<-j.cmd.Done()
+		j.cmd.Stop(j.cancel)
 	}
 }
 func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string, error) {
 	command, hasCommand := args["command"]
-	handle, hasHandle := args["handle"]
-	if hasCommand == hasHandle {
+	cmd, commandIsString := command.(string)
+	handle, _ := args["handle"].(string)
+	usableCommand := commandIsString && strings.TrimSpace(cmd) != ""
+	hasHandle := strings.TrimSpace(handle) != ""
+	if !hasHandle && hasCommand && !commandIsString {
+		return "error: argument command must be a string", "", nil
+	}
+	if usableCommand == hasHandle {
 		return "error: supply exactly one of command or handle", "", nil
 	}
 	if ctx != nil && ctx.Err() != nil {
@@ -600,11 +605,7 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string,
 	var j *shellJob
 	var id string
 	if hasHandle {
-		var ok bool
-		id, ok = handle.(string)
-		if !ok || id == "" {
-			return "error: handle must be a nonempty string", "", nil
-		}
+		id = handle
 		r.mu.Lock()
 		j = r.jobs[id]
 		r.mu.Unlock()
@@ -612,10 +613,6 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string,
 			return "error: unknown shell handle", "", nil
 		}
 	} else {
-		cmd, ok := command.(string)
-		if !ok {
-			return "error: argument command must be a string", "", nil
-		}
 		var token [16]byte
 		if _, err := crand.Read(token[:]); err != nil {
 			return "", "", err
