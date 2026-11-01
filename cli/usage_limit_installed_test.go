@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kogen/internal/testrelease"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,15 +17,10 @@ func TestUsageLimitResumeInstalledRound3(t *testing.T) { usageLimitInstalled(t, 
 
 // Synthetic rate_limit events reproduce the historical error envelope, not a live account.
 func usageLimitInstalled(t *testing.T, limit int) {
-	root := repoRoot(t)
-	pkg := exec.Command("sh", "packaging/package.sh", "--version", fmt.Sprintf("usage-limit-round%d", limit))
-	pkg.Dir = root
-	data, err := pkg.CombinedOutput()
-	if err != nil {
-		t.Fatalf("package: %v\n%s", err, data)
-	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	archive := lines[len(lines)-1]
+	usageLimitInstalledFrom(t, limit, repoRoot(t))
+}
+func usageLimitInstalledFrom(t *testing.T, limit int, root string) {
+	archive := testrelease.Package(t, root, "--version", fmt.Sprintf("usage-limit-round%d", limit))
 	unpack := t.TempDir()
 	cmd := exec.Command("tar", "-xzf", archive, "-C", unpack)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -269,4 +265,12 @@ models:
 			}
 		}
 	}
+}
+
+func TestUsageLimitPackagingIsolationRound2(t *testing.T) { usageIsolation(t, 2) }
+func TestUsageLimitPackagingIsolationRound3(t *testing.T) { usageIsolation(t, 3) }
+func usageIsolation(t *testing.T, round int) {
+	root, check := testrelease.Fixture(t, repoRoot(t))
+	defer check()
+	usageLimitInstalledFrom(t, round, root)
 }

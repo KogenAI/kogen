@@ -5,9 +5,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 
+	"kogen/internal/testrelease"
 	"kogen/project"
 )
 
@@ -16,14 +16,10 @@ func TestBaselinePerBaseInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packageCmd := exec.Command("sh", "packaging/package.sh")
-	packageCmd.Dir = source
-	out, err := packageCmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("package: %v\n%s", err, out)
-	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	archive := lines[len(lines)-1]
+	baselineInstalledFrom(t, source)
+}
+func baselineInstalledFrom(t *testing.T, source string) {
+	archive := testrelease.Package(t, source)
 	unpack := t.TempDir()
 	cmd := exec.Command("tar", "-xzf", archive, "-C", unpack)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -104,3 +100,13 @@ func TestBaselinePerBaseInstalled(t *testing.T) {
 }
 
 func fmtBranch(i int) string { return []string{"trial-one", "trial-two", "trial-three"}[i] }
+
+func TestBaselinePackagingIsolation(t *testing.T) {
+	source, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, check := testrelease.Fixture(t, source)
+	defer check()
+	baselineInstalledFrom(t, root)
+}
