@@ -419,9 +419,10 @@ class FakeServers {
     if (name === 'shape-asks-one-empty-final' && record.kind === 'shape') return this.shapeResponse('shape-asks-one', ordinal, record);
     if (name === 'stream-cut-then-ok' && this.requests.length === 1) return { cut: true };
 
-    if (name === 'build-local-windows' && ['build', 'review'].includes(record.kind) && ordinal <= 4) {
+    if (name === 'build-local-windows' && ['build', 'review'].includes(record.kind) && ordinal <= 5) {
+      // Each response stays under the loop's 131072-byte visible-output bound, counting the argument JSON.
       return { items: [message(`UNFINISHED: ${record.kind} preserve current candidate and exact checks`),
-        functionCall('write_file', { path: '.kogen/local/window-fixture', content: 'x'.repeat(180000) }, `window_${record.kind}_${ordinal}`)] };
+        functionCall('write_file', { path: '.kogen/local/window-fixture', content: 'x'.repeat(130000) }, `window_${record.kind}_${ordinal}`)] };
     }
 
     if (record.kind === 'init') return this.initResponse(name, ordinal);

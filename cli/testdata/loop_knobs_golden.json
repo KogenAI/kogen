@@ -68,7 +68,7 @@
     "tool_choice": "auto",
     "tools": [
      {
-      "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
+      "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
       "name": "shell",
       "parameters": {
        "additionalProperties": false,
@@ -599,7 +599,7 @@
     "tool_choice": "auto",
     "tools": [
      {
-      "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
+      "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
       "name": "shell",
       "parameters": {
        "additionalProperties": false,
@@ -1110,7 +1110,7 @@
     "tools": [
      {
       "function": {
-       "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
+       "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
        "name": "shell",
        "parameters": {
         "additionalProperties": false,
@@ -1677,7 +1677,7 @@
     },
     "tools": [
      {
-      "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
+      "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
       "input_schema": {
        "additionalProperties": false,
        "properties": {
@@ -2163,7 +2163,7 @@
     "tools": [
      {
       "function": {
-       "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
+       "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
        "name": "shell",
        "parameters": {
         "additionalProperties": false,

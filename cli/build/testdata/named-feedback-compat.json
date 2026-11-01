@@ -29,7 +29,7 @@
   "tool_choice": "auto",
   "tools": [
    {
-    "description": "Run a command with /bin/sh -c in the repository root, or retrieve it using its handle. Supply exactly one of command or handle. Each call waits up to one second; running commands continue and return JSON with status, handle and cumulative output. Retrieval returns running or completed JSON with exit_status and cumulative output. Commands are stopped at round end. stdin is closed; stdout and stderr are combined.",
+    "description": "Run a command with /bin/sh -c in the repository root, or retrieve it using its handle. Supply exactly one of command or handle. A new command waits up to one second; retrieval waits up to 30 seconds. Both return immediately on completion; running commands continue and return JSON with status, handle and cumulative output. Retrieval returns running or completed JSON with exit_status and cumulative output. Commands are stopped at round end. stdin is closed; stdout and stderr are combined.",
     "name": "shell",
     "parameters": {
      "additionalProperties": false,
