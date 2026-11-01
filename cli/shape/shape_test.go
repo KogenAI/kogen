@@ -85,7 +85,7 @@ func TestShapeWritesEvidenceAndUsageRecords(t *testing.T) {
 	}
 	events := f.events()
 	calls := shpNamed(events, "provider_call")
-	shpEq(t, "provider calls", len(calls), 2)
+	shpEq(t, "provider calls", len(calls), 3)
 	call := calls[0]
 	shpEq(t, "status", call["status"], any("completed"))
 	shpEq(t, "role", call["role"], any("shape"))
@@ -107,8 +107,8 @@ func TestShapeWritesEvidenceAndUsageRecords(t *testing.T) {
 	shpEq(t, "selection", len(selection[0]["selection"].([]any)), 0)
 	totals := shpNamed(events, "usage_totals")
 	shpEq(t, "usage totals", len(totals), 1)
-	shpEq(t, "total input", totals[0]["known"].(map[string]any)["input"], any(float64(201)))
-	shpEq(t, "total output", totals[0]["known"].(map[string]any)["output"], any(float64(60)))
+	shpEq(t, "total input", totals[0]["known"].(map[string]any)["input"], any(float64(303)))
+	shpEq(t, "total output", totals[0]["known"].(map[string]any)["output"], any(float64(90)))
 	shpEq(t, "unknown calls", totals[0]["unknown_calls"], any(float64(0)))
 	phases := map[string]bool{}
 	for _, p := range shpNamed(events, "phase_duration") {
@@ -121,7 +121,7 @@ func TestShapeWritesEvidenceAndUsageRecords(t *testing.T) {
 	}
 	end := shpNamed(events, "session_end")
 	shpEq(t, "session ends", len(end), 1)
-	shpEq(t, "provider calls recorded", end[0]["provider_calls"], any(float64(2)))
+	shpEq(t, "provider calls recorded", end[0]["provider_calls"], any(float64(3)))
 	shpEq(t, "acceptance executions", end[0]["acceptance_executions"], any(float64(1)))
 
 	// The manifest keeps proposals and originals under the shaping folder.

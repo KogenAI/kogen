@@ -123,7 +123,7 @@ func TestShapeBudgetRolesShape(t *testing.T) {
 		if _, err := Shape(context.Background(), f.S, ShapeInput{Project: f.Root, Slug: shpSlug, Request: "Add calc.is_even(n).", Client: f.Client}); err != nil {
 			t.Fatalf("%v\n%s", err, f.Stdout)
 		}
-		obs.wantThirtyMinutes(t, len(f.Prov.requests()))
+		obs.wantThirtyMinutes(t, len(f.Prov.allRequests()))
 		shpEq(t, "client response budget", f.Client.ResponseBudget, time.Duration(0))
 		wantBudgetRecord(t, f.events())
 	})

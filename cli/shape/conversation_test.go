@@ -28,8 +28,11 @@ func TestAShapeConversationKeepsOneCacheIdentityForEveryRequest(t *testing.T) {
 		t.Fatalf("cache keys %q", keys)
 	}
 	events := shpNamed(f.events(), "cache_identity")
-	if len(events) != 1 || events[0]["owner"] != "shape" || events[0]["id"] != keys[0] {
+	if len(events) != 2 || events[0]["owner"] != "shape" || events[0]["id"] != keys[0] || events[1]["owner"] != "example-check" || events[1]["id"] == keys[0] {
 		t.Fatalf("saved identities %v, wire key %q", events, keys[0])
+	}
+	if checks := cacheKeys(f.Prov.checkRequests()); len(checks) != 1 || checks[0] != events[1]["id"] {
+		t.Fatalf("the example check wire key %q, saved %v", checks, events[1])
 	}
 	// A second invocation is another conversation.
 	g := newShpFx(t, shpSubmit("c1", shpFiles()), shpAck("c2"))

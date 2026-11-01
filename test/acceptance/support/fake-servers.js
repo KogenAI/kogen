@@ -73,6 +73,7 @@ class FakeServers {
     this.authUrl = null;
     this.script = null;
     this.requests = [];
+    this.exampleChecks = [];
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -136,6 +137,7 @@ class FakeServers {
     this.commandObserver = null;
     this.script = null;
     this.requests = [];
+    this.exampleChecks = [];
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -157,6 +159,7 @@ class FakeServers {
     this.pauseAt = pauseAt;
     this.kindCounts.clear();
     this.requests = [];
+    this.exampleChecks = [];
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -260,6 +263,19 @@ class FakeServers {
     }
     const body = await decodeRequest(req);
     const tools = (body.tools || []).map(tool => tool.name);
+    if (tools.length === 1 && tools[0] === 'submit_example_check') {
+      // Shape's example check (SHP-8) is answered apart from the scripted conversation: it finds
+      // no concrete example, and it is not among the requests the scenarios number or count.
+      this.exampleChecks.push({ body, text: flatten(body).join('\n') });
+      const item = functionCall('submit_example_check', { examples: [] }, `example_check_${this.exampleChecks.length}`);
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      res.write(responseEvent('response.created', { response: { id: `resp_example_check_${this.exampleChecks.length}` } }));
+      res.write(responseEvent('response.output_item.done', { output_index: 0, item }));
+      res.end(responseEvent('response.completed', {
+        response: { usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } } },
+      }));
+      return;
+    }
     const kind = !Array.isArray(body.tools) ? 'unknown' : tools.includes('submit_configuration') ? 'init' : tools.includes('submit_review') ? 'review' : tools.includes('submit_refinement') ? 'refine' : tools.includes('submit') ? 'shape' : 'build';
     const record = { order: this.requests.length + 1, kind, body, tools, text: flatten(body).join('\n'), receivedAt: Date.now() };
     this.requests.push(record);
