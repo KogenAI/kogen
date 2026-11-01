@@ -29,8 +29,8 @@ func TestShellYieldRetrievalScope(t *testing.T) {
 	}
 	start := time.Now()
 	v := decode(run(t, tl, ShellTool, map[string]any{"command": "printf one; while [ ! -f release ]; do sleep .05; done; printf two; exit 7"}))
-	if v["status"] != "running" || v["output"] != "one" || time.Since(start) > 5*time.Second {
-		t.Fatalf("yield: %v", v)
+	if v["status"] != "running" || v["output"] != "one" || time.Since(start) < 44*time.Second || time.Since(start) > 52*time.Second {
+		t.Fatalf("yield: %v after %v", v, time.Since(start))
 	}
 	id, ok := v["handle"].(string)
 	if !ok || id == "" {
@@ -178,5 +178,56 @@ func TestShellRetrievalCancellationStopsCommand(t *testing.T) {
 				t.Fatalf("command still exists: %v", err)
 			}
 		})
+	}
+}
+
+func TestShellNewCommandCancellationStopsCommand(t *testing.T) {
+	for _, mode := range []string{"cancel", "deadline"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			tl := &Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{ShellTool}}
+			defer tl.EndShellRound()
+			var ctx context.Context
+			var cancel context.CancelFunc
+			want := context.Canceled
+			if mode == "deadline" {
+				ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+				want = context.DeadlineExceeded
+			} else {
+				ctx, cancel = context.WithCancel(context.Background())
+				timer := time.AfterFunc(2*time.Second, cancel)
+				defer timer.Stop()
+			}
+			defer cancel()
+			start := time.Now()
+			_, err := tl.RunContext(ctx, ShellTool, map[string]any{"command": "echo $$ > actor.pid; exec sleep 600"})
+			if !errors.Is(err, want) || time.Since(start) > 7*time.Second {
+				t.Fatalf("cancellation: %v after %v", err, time.Since(start))
+			}
+			data, err := os.ReadFile(filepath.Join(root, "actor.pid"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil || pid <= 1 {
+				t.Fatalf("pid: %q", data)
+			}
+			if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+				t.Fatalf("command still exists: %v", err)
+			}
+		})
+	}
+}
+
+func TestShellNewCommandCompletesWithinBound(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	tl := &Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{ShellTool}}
+	defer tl.EndShellRound()
+	start := time.Now()
+	got := run(t, tl, ShellTool, map[string]any{"command": "printf partial; sleep 2; printf ' complete'; exit 7"})
+	if got != "exit status: 7\npartial complete" || time.Since(start) < 2*time.Second || time.Since(start) > 10*time.Second {
+		t.Fatalf("%q after %v", got, time.Since(start))
 	}
 }

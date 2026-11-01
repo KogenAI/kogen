@@ -83,7 +83,8 @@ func TestShellLifecycleEmptyHandleOnly(t *testing.T) {
 
 type retrievalScript struct {
 	scripted
-	t *testing.T
+	t    *testing.T
+	root string
 }
 
 func (s *retrievalScript) Request(ctx context.Context, r loop.Request) (*provider.Response, []any, error) {
@@ -97,15 +98,19 @@ func (s *retrievalScript) Request(ctx context.Context, r loop.Request) (*provide
 		if err := json.Unmarshal([]byte(text), &result); err != nil || result.Status != "running" || result.Handle == "" || result.Output != "partial\n" {
 			s.t.Fatalf("initial result: %q (%v)", text, err)
 		}
+		if err := os.WriteFile(filepath.Join(s.root, "release"), nil, 0600); err != nil {
+			s.t.Fatal(err)
+		}
 		s.responses[1] = respond("r2", call("c2", "shell", map[string]any{"handle": result.Handle}))
 	}
 	return s.scripted.Request(ctx, r)
 }
 
 func TestShellLifecycleHandleRetrieval(t *testing.T) {
+	t.Parallel()
 	l := newLifecycleRun(t)
-	rq := &retrievalScript{t: t, scripted: scripted{responses: []*provider.Response{
-		respond("r1", shellItem("c1", "printf 'partial\\n'; sleep 2; printf 'complete\\n'; exit 7")), nil, respond("r3", message("done")),
+	rq := &retrievalScript{t: t, root: l.w.root, scripted: scripted{responses: []*provider.Response{
+		respond("r1", shellItem("c1", "printf 'partial\\n'; while [ ! -f release ]; do sleep .05; done; printf 'complete\\n'; exit 7")), nil, respond("r3", message("done")),
 	}}}
 	if _, err := loop.Run(context.Background(), l.rd, []any{userMessage("go")}, rq, loop.Hooks{}); err != nil {
 		t.Fatal(err)

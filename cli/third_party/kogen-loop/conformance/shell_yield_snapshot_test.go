@@ -71,6 +71,7 @@ func TestShellLifecycleYieldSnapshot(t *testing.T) {
 	for _, session := range []string{"explicit", "implicit"} {
 		for _, ending := range []string{"no_call", "terminal", "requester", "hook"} {
 			t.Run(session+"/"+ending, func(t *testing.T) {
+				t.Parallel()
 				l := newLifecycleRun(t)
 				if session == "implicit" {
 					l.rd.Tools.Session = nil
@@ -84,7 +85,7 @@ func TestShellLifecycleYieldSnapshot(t *testing.T) {
 					t.Fatal(err)
 				}
 				transient := filepath.Join(dir, "expand_test.go.2127067331120939396")
-				command := `echo $$ > writer.pid; trap 'rm -f internal/tmpl/expand_test.go.2127067331120939396; exit' TERM INT; while :; do : > internal/tmpl/expand_test.go.2127067331120939396; echo x >> writes; rm -f internal/tmpl/expand_test.go.2127067331120939396; done`
+				command := `echo $$ > writer.pid; trap 'rm -f internal/tmpl/expand_test.go.2127067331120939396; exit' TERM INT; while :; do : > internal/tmpl/expand_test.go.2127067331120939396; echo x >> writes; sleep .01; rm -f internal/tmpl/expand_test.go.2127067331120939396; done`
 				last := message("done")
 				if ending == "terminal" {
 					last = fakeCall("finish", "finish", `{"summary":"s"}`)

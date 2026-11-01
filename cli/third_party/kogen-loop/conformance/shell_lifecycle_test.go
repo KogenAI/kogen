@@ -353,7 +353,7 @@ func TestShellLifecycleCompatibility(t *testing.T) {
 		}
 	}
 	def, ok := tools.Definition(tools.ShellTool)
-	if !ok || !strings.Contains(fmt.Sprint(def["description"]), "retrieval waits up to 30 seconds") {
+	if !ok || !strings.Contains(fmt.Sprint(def["description"]), "A new command waits up to 45 seconds; retrieval waits up to 30 seconds.") {
 		t.Errorf("shell definition %v", def)
 	}
 	props := def["parameters"].(map[string]any)["properties"].(map[string]any)
@@ -511,8 +511,8 @@ func TestShellLifecycleDeadlineStartup(t *testing.T) {
 		if end := r.events[len(r.events)-1]; end["status"] != "failed" {
 			t.Errorf("session.ended %v", end)
 		}
-		if r.first("tool.result") == nil || len(f.requests()) != 2 {
-			t.Errorf("expected a yielded result and second request (%d requests)", len(f.requests()))
+		if r.first("tool.result") != nil || len(f.requests()) != 1 {
+			t.Errorf("the deadline ends the initial wait: expected no result and one request (%d requests)", len(f.requests()))
 		}
 		for name, o := range map[string]owned{"shell": shell, "descendant": desc} {
 			if !o.waitGone(t, 2*time.Second) {

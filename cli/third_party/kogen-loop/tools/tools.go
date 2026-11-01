@@ -624,7 +624,7 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string,
 		r.jobs[id] = j
 		r.mu.Unlock()
 	}
-	wait := time.Second
+	wait := 45 * time.Second
 	if hasHandle {
 		wait = 30 * time.Second
 	}

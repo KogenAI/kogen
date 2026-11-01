@@ -70,7 +70,7 @@ func Definition(name string) (map[string]any, bool) {
 	switch name {
 	case ShellTool:
 		return fun(name,
-			"Run a command with /bin/sh -c in the repository root, or retrieve it using its handle. Supply exactly one of command or handle. A new command waits up to one second; retrieval waits up to 30 seconds. Both return immediately on completion; running commands continue and return JSON with status, handle and cumulative output. Retrieval returns running or completed JSON with exit_status and cumulative output. Commands are stopped at round end. stdin is closed; stdout and stderr are combined.",
+			"Run a command with /bin/sh -c in the repository root, or retrieve it using its handle. Supply exactly one of command or handle. A new command waits up to 45 seconds; retrieval waits up to 30 seconds. Both return immediately on completion; running commands continue and return JSON with status, handle and cumulative output. Retrieval returns running or completed JSON with exit_status and cumulative output. Commands are stopped at round end. stdin is closed; stdout and stderr are combined.",
 			map[string]any{"command": str(), "handle": str()}), true
 	case ViewImageTool:
 		return fun(name,

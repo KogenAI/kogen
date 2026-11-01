@@ -45,11 +45,12 @@ func TestDiscardedAttemptStopsYieldedShell(t *testing.T) {
 
 // A yielded leader may finish before its attempt is discarded, leaving a child.
 func TestDiscardedAttemptStopsCompletedYieldedShell(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	tl := &tools.Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{tools.ShellTool}}
 	defer tl.EndShellRound()
 	st := newStage(context.Background(), tl, nil)
-	st.Done(0, olShell("c", `sleep 600 >/dev/null 2>&1 & echo $! > child.pid; sleep 2`))
+	st.Done(0, olShell("c", `sleep 600 >/dev/null 2>&1 & echo $! > child.pid; while [ ! -f release ]; do sleep .05; done`))
 	st.mu.Lock()
 	g := st.gen
 	for len(g.slots) == 0 || g.slots[0].state != finished {
@@ -73,6 +74,9 @@ func TestDiscardedAttemptStopsCompletedYieldedShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sys.Terminate(tl.Session.LiveGroups()) })
+	if err := os.WriteFile(filepath.Join(root, "release"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	out, err := tl.Run(tools.ShellTool, map[string]any{"handle": result.Handle})
 	if err != nil {
 		t.Fatal(err)
