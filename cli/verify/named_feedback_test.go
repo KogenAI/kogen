@@ -3,6 +3,7 @@ package verify
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -164,6 +165,28 @@ func TestNamedFeedbackMissingTests(t *testing.T) {
 	lacks(t, "selector", selector, "TestAlphaOne: ")
 	contains(t, "selector", selector, "acceptance ran them in: go test -json -count=1 ./pkga -run ^(TestAlphaOne|TestAlphaTwo)$")
 	contains(t, "selector", selector, definition("the selector helper"))
+
+	// Only `did not run` lines are unwritten tests: a skipped test exists, a test that ran
+	// (passed or failed) is not reported, and a failure without a named test has none.
+	unwritten := map[string][]string{}
+	for _, sc := range got.Scenarios {
+		unwritten[sc.Name] = sc.Unwritten
+	}
+	for scenario, want := range map[string][]string{
+		"Wrong name behind a generic assertion":   {"TestWanted: did not run (the failure shows no run of it)"},
+		"Wrong name with go test output":          {"TestWantedVerbose: did not run (no tests to run)"},
+		"Skipped":                                 nil,
+		"Package without tests":                   {"TestNowhere: did not run (the failure shows no run of it)"},
+		"One of two required tests is missing":    {"TestMissingSecond: did not run (no run of it in the go test output)"},
+		"The test ran and failed":                 nil,
+		"Selector only":                           {"TestAlphaTwo: did not run (no run of it in the go test output)"},
+		"Not about tests":                         nil,
+		"A test-like argument without a test run": nil,
+	} {
+		if !slices.Equal(unwritten[scenario], want) {
+			t.Errorf("%s: unwritten = %q, want %q", scenario, unwritten[scenario], want)
+		}
+	}
 
 	// A test that ran and failed, and a step about something else, keep their ordinary
 	// feedback exactly: the detail of the failed step and nothing more.

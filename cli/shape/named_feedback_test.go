@@ -20,6 +20,13 @@ func TestNamedFeedbackShapeGuidance(t *testing.T) {
 	} {
 		shpContains(t, "the instructions Shape sent", instructions, want)
 	}
+	shpContains(t, "the instructions Shape sent", instructions, "Named-test helpers:")
+	if !strings.Contains(instructions, namedTestGuidance+unwrittenTestGuidance) {
+		t.Fatal("the unwritten-tests paragraph does not follow the named-test guidance")
+	}
+	if strings.Contains(refineInstructions(), "Unwritten tests:") {
+		t.Fatal("refine instructions carry the unwritten-tests guidance")
+	}
 	// The guidance is Shape's alone: a correction conversation does not carry it.
 	if strings.Contains(refineInstructions(), "Named-test helpers:") {
 		t.Fatal("refine instructions carry the new-Intent shaping guidance")

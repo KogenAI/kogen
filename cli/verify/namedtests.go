@@ -72,11 +72,13 @@ func parseGoRows(msg string) goRows {
 
 // missingNamedTests is the feedback block for a failed step whose required tests did not run,
 // or "" when the step names no tests or they all ran. The ids come from the step's arguments
-// and from `-run` selectors in the failure message.
-func missingNamedTests(tc jmap, results []stepResult, defs map[string]stepDefinition) string {
+// and from `-run` selectors in the failure message. unwritten is the lines of the tests that
+// did not run at all (`<id>: did not run (<why>)`), without those of tests that exist but
+// were skipped.
+func missingNamedTests(tc jmap, results []stepResult, defs map[string]stepDefinition) (block string, unwritten []string) {
 	_, bad := worstStep(results)
 	if bad == nil {
-		return ""
+		return "", nil
 	}
 	msg := str0(get(bad.result, "message"))
 	if msg == "" {
@@ -122,7 +124,7 @@ func missingNamedTests(tc jmap, results []stepResult, defs map[string]stepDefini
 	// also name a package or its failure must show a go test run.
 	ran := len(packages) > 0 || rows.seen || rows.noTests || goTestCommand.MatchString(msg) || runSelectorRe.MatchString(msg)
 	if len(ids) == 0 || !ran {
-		return ""
+		return "", nil
 	}
 	var lines []string
 	for _, id := range ids {
@@ -139,7 +141,12 @@ func missingNamedTests(tc jmap, results []stepResult, defs map[string]stepDefini
 		}
 	}
 	if len(lines) == 0 {
-		return ""
+		return "", nil
+	}
+	for _, l := range lines {
+		if strings.Contains(l, ": did not run (") {
+			unwritten = append(unwritten, l)
+		}
 	}
 	if len(lines) > maxNamedReason {
 		lines = append(lines[:maxNamedReason], fmt.Sprintf("[... %d more required tests omitted ...]", len(lines)-maxNamedReason))
@@ -162,5 +169,5 @@ func missingNamedTests(tc jmap, results []stepResult, defs map[string]stepDefini
 		}
 	}
 	return "\nrequired tests that did not run (from the step's arguments and the acceptance output):\n  " +
-		strings.Join(lines, "\n  ") + "\nacceptance ran them in: " + where + "\nstep definition: " + def
+		strings.Join(lines, "\n  ") + "\nacceptance ran them in: " + where + "\nstep definition: " + def, unwritten
 }

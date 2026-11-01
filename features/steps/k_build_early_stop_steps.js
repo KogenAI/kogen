@@ -11,7 +11,9 @@ const MISSING = ['failed: Second (line 4)', 'failed: Third (line 6)'];
 const NOTICE = 'Required acceptance items are still missing: verification pass 2 is the same red as the pass before it, ' +
   'and your last round ended without a tool call. The Build is not complete until each of these acceptance scenarios passes:\n' +
   '- failed: Second (line 4)\n- failed: Third (line 6)\n' +
-  'Work on them now with your tools (write the missing tests and the implementation they need), then call finish. ' +
+  'Act on them now with your tools (change the code and the tests it needs), then call finish. ' +
+  'If a correct implementation cannot make them pass because a protected acceptance file is wrong, ' +
+  'call report_blocker with its paths, the contradiction and your observed evidence instead. ' +
   'Another round without a tool call into the same red stops the Build as no_progress.\n\n' +
   'Verification pass 2 is not green.';
 const NOTICE_HEAD = 'Required acceptance items are still missing';

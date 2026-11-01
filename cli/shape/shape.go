@@ -621,6 +621,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	sh.window = newShapeWindow(sh.root, sh.slug, input)
 	sh.cacheID = startConversation(sh.ev, "shape")
 	sh.rd.BeforeRecord = func() error { return sh.window.validate(sh.root) }
+	sh.rd.Gate = unwrittenTestsGate
 
 	var res outcome
 	var usageLine string
@@ -1353,6 +1354,11 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 	}
 	sh.progress("kogen: checking readiness")
 	text, result, err := sh.certify(ctx, files)
+	var unwritten *unwrittenTestsError
+	if errors.As(err, &unwritten) {
+		sh.refused("unwritten_tests", unwritten.items)
+		return unwritten.text(), outcome{kind: outInvalid, problems: unwritten.items}, nil
+	}
 	if err != nil {
 		e, ok := sys.AsError(err)
 		if ok && (e.Reason == "not_ready" || e.Reason == "parse" || e.Reason == "lint") {
@@ -1403,6 +1409,41 @@ func (sh *shaping) certify(ctx context.Context, files []string) (string, outcome
 		return verify.Acknowledgment(sh.slug, ready, reference), outcome{kind: outObservations}, nil
 	}
 	return "accepted: the Intent is ready", outcome{kind: outReady}, nil
+}
+
+// unwrittenTestsError is the refusal of a candidate whose acceptance runs named tests that did
+// not run on the unchanged tree: the Build would have to invent them.
+type unwrittenTestsError struct {
+	scenarios int
+	items     []string
+}
+
+func (e *unwrittenTestsError) Error() string { return strings.SplitN(e.text(), "\n", 2)[0] }
+
+func (e *unwrittenTestsError) text() string {
+	return fmt.Sprintf("Acceptance depends on tests the Build would have to invent: %d scenario(s) run named tests that do not exist before the Build; nothing was published. "+
+		"Acceptance must observe behaviour that any correct implementation produces (run the program, call the code or inspect its output), "+
+		"not test names or files the Build has to write. Rewrite these steps; resubmitting them unchanged is refused again.", e.scenarios) +
+		"\n" + strings.Join(e.items, "\n")
+}
+
+// unwrittenTestsGate refuses a ready result in which a failed scenario's named-test analysis
+// reports a required test as not run.
+func unwrittenTestsGate(ready *verify.Ready) error {
+	e := &unwrittenTestsError{}
+	for _, sc := range ready.Scenarios {
+		if sc.Status != "failed" || len(sc.Unwritten) == 0 {
+			continue
+		}
+		e.scenarios++
+		for _, l := range sc.Unwritten {
+			e.items = append(e.items, fmt.Sprintf("- %s (line %d): %s", sc.Name, sc.Line, l))
+		}
+	}
+	if e.scenarios == 0 {
+		return nil
+	}
+	return e
 }
 
 // writeAttempt remembers what the files held and writes the accumulated proposals.

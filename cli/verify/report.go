@@ -34,6 +34,9 @@ type ScenarioResult struct {
 	OutlineExamples  *int         `json:"outline_examples,omitempty"`
 	Status           string       `json:"status"`
 	Detail           *string      `json:"detail"`
+	// Unwritten is the failing step's required tests that did not run at all, as the named-test
+	// analysis words them (`<id>: did not run (<why>)`). It is never serialized.
+	Unwritten []string `json:"-"`
 }
 
 // ScenarioRecord is the scenario as the readiness record holds it, without a result: the
@@ -108,6 +111,7 @@ func Account(root, feature string, expected []project.Scenario, report string, s
 		case 1:
 			r = withResult(e, hits[0].status, hits[0].detail)
 			r.UnexercisedSteps = hits[0].unexercised
+			r.Unwritten = hits[0].unwritten
 			named = hits[0].named
 		default:
 			r = withResult(e, "duplicate", nil)
@@ -168,6 +172,7 @@ type reportCase struct {
 	binding     []string
 	unexercised []StepRecord
 	named       string // the missing required tests of the failed step, as feedback text
+	unwritten   []string
 }
 
 type jmap = map[string]any
@@ -371,7 +376,7 @@ func accountCases(root string, msgs []jmap) []reportCase {
 		}
 		c.binding = bindingProblems(tc, pickle, mine, lines)
 		if complete && status == "failed" {
-			c.named = missingNamedTests(tc, mine, defs)
+			c.named, c.unwritten = missingNamedTests(tc, mine, defs)
 		}
 		out = append(out, c)
 	}

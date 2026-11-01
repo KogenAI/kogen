@@ -88,8 +88,10 @@ func missingItemsNotice(pass verify.Pass, missing []string) string {
 	for _, m := range missing {
 		sb.WriteString("- " + m + "\n")
 	}
-	sb.WriteString("Work on them now with your tools (write the missing tests and the implementation they need), " +
-		"then call finish. Another round without a tool call into the same red stops the Build as no_progress.")
+	sb.WriteString("Act on them now with your tools (change the code and the tests it needs), then call finish. " +
+		"If a correct implementation cannot make them pass because a protected acceptance file is wrong, " +
+		"call report_blocker with its paths, the contradiction and your observed evidence instead. " +
+		"Another round without a tool call into the same red stops the Build as no_progress.")
 	return sb.String()
 }
 

@@ -37,6 +37,9 @@ type Readiness struct {
 	// unchanged, right before the evidence is recorded; its error stops the check with
 	// nothing recorded (a conversation validates its private custody here).
 	BeforeRecord func() error
+	// Gate, when set, judges the complete checked result before anything is recorded (and before
+	// BeforeRecord); its error stops the check with nothing recorded.
+	Gate func(*Ready) error
 	// Attempt, when set (an approval), bounds every executed command step by StepTimeout,
 	// records the steps that ran and keeps private evidence of a refusal.
 	Attempt *Attempt
@@ -337,6 +340,11 @@ func (r *Readiness) Check(ctx context.Context, s *sys.Session, slug string) (rea
 		e := sys.Fail("intent", "not_ready", "readiness changed candidate files", 1)
 		e.Lines = mutations
 		return nil, e
+	}
+	if r.Gate != nil {
+		if err := r.Gate(ready); err != nil {
+			return nil, err
+		}
 	}
 	if r.BeforeRecord != nil {
 		if err := r.BeforeRecord(); err != nil {

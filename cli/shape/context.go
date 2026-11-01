@@ -335,10 +335,14 @@ func contextGuidance() string { return agent.Prompt(agent.ShaperContextGuidance)
 // nothing of it, so a passing Build's requests are unchanged.
 const namedTestGuidance = "Named-test helpers: when a step or helper requires named tests to have run (for example a step taking a test id and a package that runs `go test -run`), every assertion message must include the required test name, so a failure says which test is missing instead of a bare count such as `0 !== 1`. Also include the command or package the helper ran and the outcome, whether the test was absent, skipped or ran zero times.\n"
 
-// ShaperInstructions is the shaper's policy: its instructions, the context guidance and the
-// named-test helper guidance.
+// unwrittenTestGuidance tells the shaper that acceptance may run only tests that already exist;
+// Shape refuses a candidate whose named tests did not run on the unchanged tree.
+const unwrittenTestGuidance = "Unwritten tests: acceptance must not depend on test names or files the Build has to invent. A step may run a named test only when that test already exists before the Build; Shape refuses a candidate whose acceptance runs a named test that did not run on the unchanged tree. Observe behaviour that any correct implementation produces instead.\n"
+
+// ShaperInstructions is the shaper's policy: its instructions, the context guidance, the
+// named-test helper guidance and the unwritten-tests guidance.
 func ShaperInstructions() string {
-	return agent.Prompt(agent.Shaper) + contextGuidance() + "\n" + namedTestGuidance
+	return agent.Prompt(agent.Shaper) + contextGuidance() + "\n" + namedTestGuidance + unwrittenTestGuidance
 }
 
 // selectionEvent is the context_selection event of one request: what the context carried,
