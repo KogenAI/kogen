@@ -155,6 +155,13 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 		return ProbeResult{}, err
 	}
 	defer os.RemoveAll(home)
+	hexHome, err := privateHexHome(s)
+	if err != nil {
+		return ProbeResult{}, err
+	}
+	if hexHome != "" {
+		defer os.RemoveAll(hexHome)
+	}
 	if err := CopyTree(pr.Root, scratch); err != nil {
 		return ProbeResult{}, err
 	}
@@ -180,7 +187,7 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 		return ProbeResult{}, err
 	}
 	deadline, observer := probeDeadline, probeObserver
-	ps := sys.NewWith(probeEnv(s, home), scratch)
+	ps := sys.NewWith(probeEnv(s, home, hexHome), scratch)
 	defer followInterrupt(s, ps)()
 	r, err := probeRun(ps, pr.Command, scratch, sys.Options{Context: ctx, Timeout: deadline, Env: pr.Tools.env(), KillGroupOnExit: true, RefuseForeignKill: true})
 	if errors.Is(err, sys.ErrTimeoutObservation) {
@@ -213,10 +220,63 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 var probeEnvKeys = []string{"PATH", "LANG", "LANGUAGE", "GOROOT", "GOPATH", "GOTOOLDIR",
 	"MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_CACHE_DIR", "ASDF_DIR", "ASDF_DATA_DIR"}
 
+// callerToolHome is the caller's directory for a Mix or Hex home: the variable's value when
+// nonempty, else <HOME>/<dflt> when HOME is nonempty, if that path is an existing directory.
+// It is "" otherwise.
+func callerToolHome(s *sys.Session, variable, dflt string) string {
+	dir := s.Getenv(variable)
+	if dir == "" {
+		home := s.Getenv("HOME")
+		if home == "" {
+			return ""
+		}
+		dir = filepath.Join(home, dflt)
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return ""
+	}
+	return dir
+}
+
+// privateHexEntries are the only entries of the caller's Hex home a probe reaches: the package
+// tarball cache and the registry cache. The Hex home also holds hex.config, which has keys.
+var privateHexEntries = []string{"packages", "cache.bin"}
+
+// privateHexHome makes the probe's own HEX_HOME when the caller has a Hex home: a fresh
+// directory holding symbolic links to the caller's package and registry caches, and nothing
+// else. It returns "" when the caller has none. The caller removes it with os.RemoveAll,
+// which does not follow the links.
+func privateHexHome(s *sys.Session) (string, error) {
+	callerHex := callerToolHome(s, "HEX_HOME", ".hex")
+	if callerHex == "" {
+		return "", nil
+	}
+	dir, err := os.MkdirTemp("", "kogen-probe-hex-")
+	if err != nil {
+		return "", err
+	}
+	for _, name := range privateHexEntries {
+		target := filepath.Join(callerHex, name)
+		if _, err := os.Stat(target); err != nil {
+			continue
+		}
+		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+			os.RemoveAll(dir)
+			return "", err
+		}
+	}
+	return dir, nil
+}
+
 // probeEnv is the probe's whole environment, built from the caller session by allowlist: PATH,
-// locale and toolchain locations, with HOME set to the probe's private empty home. Nothing else
-// the caller has set (credentials, tokens, shell startup or tool option selectors) is passed on.
-func probeEnv(s *sys.Session, home string) []string {
+// locale and toolchain locations, the caller's Mix home when it exists, HEX_HOME as the probe's
+// private Hex directory when hexHome is set, and HOME set to the probe's private empty home.
+// Nothing else the caller has set (credentials, tokens, shell startup or tool option selectors)
+// is passed on.
+func probeEnv(s *sys.Session, home, hexHome string) []string {
 	var env []string
 	seen := map[string]bool{}
 	for i := len(s.Env) - 1; i >= 0; i-- {
@@ -228,6 +288,12 @@ func probeEnv(s *sys.Session, home string) []string {
 		env = append(env, k+"="+v)
 	}
 	slices.Reverse(env)
+	if mix := callerToolHome(s, "MIX_HOME", ".mix"); mix != "" {
+		env = append(env, "MIX_HOME="+mix)
+	}
+	if hexHome != "" {
+		env = append(env, "HEX_HOME="+hexHome)
+	}
 	return append(env, "HOME="+home)
 }
 

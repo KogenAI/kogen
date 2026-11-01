@@ -377,3 +377,114 @@ func TestProbeDoesNotStartAfterCallerInterrupt(t *testing.T) {
 	}
 	requireNoLeftovers(t, tmp)
 }
+
+// A probe gets the caller's Mix home itself, and a private Hex home that links only the caller's
+// package and registry caches, never hex.config. Homes come from MIX_HOME/HEX_HOME or from the
+// caller's HOME; a caller without such a directory gives the probe none.
+func TestShapeProbeMixAndHexHomes(t *testing.T) {
+	const command = `echo "MIX_HOME:${MIX_HOME-unset}"; echo "HEX_HOME:${HEX_HOME-unset}"; echo "HOME-LIST:"; ls -A "$HOME"; echo "HEX-LIST:"; if test -n "${HEX_HOME-}"; then ls -A "$HEX_HOME"; fi; echo "HEX_API_KEY:${HEX_API_KEY-unset}"`
+	writeHex := func(t *testing.T, hex string, entries ...string) {
+		t.Helper()
+		for _, e := range entries {
+			path := filepath.Join(hex, e)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("synthetic "+e), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// the caller's Hex entries, relative to its Hex home, that must survive untouched
+	callerFiles := []string{"packages/hexpm/dep-1.0.0.tar", "cache.bin", "hex.config"}
+	cases := []struct {
+		name     string
+		explicit bool // homes named by MIX_HOME/HEX_HOME rather than <HOME>/.mix and .hex
+		mix, hex bool // the caller's directory exists
+		entries  []string
+		refuse   bool
+	}{
+		{name: "explicit homes", explicit: true, mix: true, hex: true, entries: callerFiles},
+		{name: "default homes", mix: true, hex: true, entries: callerFiles},
+		{name: "only packages", explicit: true, mix: true, hex: true, entries: []string{"packages/hexpm/dep-1.0.0.tar", "hex.config"}},
+		{name: "only the registry cache", mix: true, hex: true, entries: []string{"cache.bin", "hex.config"}},
+		{name: "no entries to link", explicit: true, hex: true, entries: []string{"hex.config"}},
+		{name: "explicit homes missing", explicit: true},
+		{name: "default homes missing"},
+		{name: "refused probe", explicit: true, mix: true, hex: true, entries: callerFiles, refuse: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := isolateTmp(t)
+			p := newProj(t)
+			callerHome := t.TempDir()
+			var mixDir, hexDir string
+			env := []string{"HOME=" + callerHome, "HEX_API_KEY=hex-api-key-secret", "MIX_HOME=", "HEX_HOME=", "MIX_XDG=1"}
+			if tc.explicit {
+				mixDir, hexDir = filepath.Join(t.TempDir(), "mixhome"), filepath.Join(t.TempDir(), "hexhome")
+				env = append(env, "MIX_HOME="+mixDir, "HEX_HOME="+hexDir)
+			} else {
+				mixDir, hexDir = filepath.Join(callerHome, ".mix"), filepath.Join(callerHome, ".hex")
+			}
+			if tc.mix {
+				if err := os.MkdirAll(filepath.Join(mixDir, "archives"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.hex {
+				writeHex(t, hexDir, tc.entries...)
+			}
+			s := sys.NewWith(testEnv(env...), p.Root)
+			pr := Probe{Root: p.Root, Command: command}
+			if tc.refuse {
+				pr.Files = []ProbeFile{{Path: "../a"}}
+				if _, err := pr.Run(context.Background(), s); err == nil {
+					t.Fatal("want a refusal")
+				}
+				requireNoLeftovers(t, tmp)
+				for _, e := range tc.entries {
+					if !fileExists(filepath.Join(hexDir, e)) {
+						t.Errorf("the caller's %s is gone", e)
+					}
+				}
+				return
+			}
+			got, err := pr.Run(context.Background(), s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantMix, wantHex, wantList := "unset", "unset", ""
+			if tc.mix {
+				wantMix = mixDir
+			}
+			if tc.hex {
+				wantHex = "kogen-probe-hex-"
+				for _, e := range []string{"cache.bin", "packages"} {
+					for _, have := range tc.entries {
+						if have == e || strings.HasPrefix(have, e+"/") {
+							wantList += e + "\n"
+							break
+						}
+					}
+				}
+			}
+			contains(t, "output", got.Output, "MIX_HOME:"+wantMix+"\n")
+			if tc.hex {
+				contains(t, "output", got.Output, "HEX_HOME:"+tmp+"/"+wantHex)
+			} else {
+				contains(t, "output", got.Output, "HEX_HOME:unset\n")
+			}
+			contains(t, "output", got.Output, "HOME-LIST:\nHEX-LIST:\n"+wantList+"HEX_API_KEY:unset")
+			if tc.hex && strings.Contains(got.Output, "hex.config") {
+				t.Errorf("probe sees hex.config:\n%s", got.Output)
+			}
+			for _, e := range tc.entries {
+				b, err := os.ReadFile(filepath.Join(hexDir, e))
+				if err != nil || string(b) != "synthetic "+e {
+					t.Errorf("the caller's %s changed: %q, %v", e, b, err)
+				}
+			}
+			requireNoLeftovers(t, tmp)
+		})
+	}
+}
