@@ -15,12 +15,25 @@ import (
 
 const selfcheckHeadline = "Step self-check failed; nothing was published. Fix the step files and resubmit."
 
-// selfcheckFeedback is the feedback of a failed self-check, empty when no item is a defect:
-// warnings (unused definitions) are not defects.
-func selfcheckFeedback(items []verify.StepItem) string {
+// selfcheckScenarioFeedback identifies unbound steps at their feature locations, so the
+// shaper receives the same actionable diagnostics as readiness.
+func selfcheckScenarioFeedback(items []verify.StepItem, scenarios []project.Scenario) string {
 	var lines []string
+	seen := map[project.Step]bool{}
 	for _, it := range items {
-		if !it.OK {
+		if it.OK {
+			continue
+		}
+		if it.Check == "steps" && it.Detail == "undefined step" {
+			for _, sc := range scenarios {
+				for _, st := range sc.Steps {
+					if st.Text == it.Target && !seen[st] {
+						lines = append(lines, fmt.Sprintf("acceptance.feature line %d: undefined step: %s%s", st.Line, st.Keyword, st.Text))
+						seen[st] = true
+					}
+				}
+			}
+		} else {
 			lines = append(lines, "- "+it.Check+" "+it.Target+": "+it.Detail)
 		}
 	}
@@ -77,7 +90,7 @@ func (sh *shaping) stepSelfcheck(ctx context.Context) (string, error) {
 		event["warnings"] = list
 	}
 	sh.ev.Record(event)
-	return selfcheckFeedback(items), nil
+	return selfcheckScenarioFeedback(items, scenarios), nil
 }
 
 // stepTool is a tool path of the readiness tools, else the environment variable.

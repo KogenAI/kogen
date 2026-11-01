@@ -659,7 +659,7 @@ class FakeServers {
       const pending = catalog.parts.filter(part => !read.has(path.resolve(part.path)));
       if (pending.length) return { items: [
         ...pending.slice(0, 12).map((part, n) => functionCall('read_file', { path: part.path }, `source_read_${ordinal}_${n}`)),
-        ...(name !== 'build-local-windows' && pending.length <= 12 ? [approve('same_response_source_approval')] : []),
+        ...(name !== 'build-local-windows' && ordinal === 1 ? [approve('same_response_source_approval')] : []),
       ] };
       return { items: [approve()] };
     }

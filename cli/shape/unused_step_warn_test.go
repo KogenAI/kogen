@@ -131,7 +131,7 @@ func TestUnusedStepWarnShapeRefusals(t *testing.T) {
 	wrapper := uswHeader + "const { spawnSync } = require('node:child_process');\n" + uswGiven +
 		"Then('it is even', function () { const r = spawnSync('sh', ['-c', 'go run ./cmd/evencheck 4']); assert.equal(r.status, 2); });\n" + uswOdd
 	cases := []struct{ name, steps, line string }{
-		{"undefined step", uswHeader + uswGiven + uswEven, "- steps it is not even: undefined step"},
+		{"undefined step", uswHeader + uswGiven + uswEven, "acceptance.feature line 7: undefined step: Then it is not even"},
 		{"ambiguous step", uswHeader + uswGiven + uswEven + uswEven + uswOdd, "- steps it is even: ambiguous step (2 definitions)"},
 		{"file that does not load", "throw new Error('boom at load');\n" + uswHeader + uswGiven + uswEven + uswOdd, "- load " + uswStepFile + ": Error: boom at load"},
 		{"exit-code wrapper", wrapper, "- exit_code " + uswStepFile + ": step definition it is even asserts an exit code but obtains it through go run, " +

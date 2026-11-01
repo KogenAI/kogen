@@ -261,7 +261,7 @@ class AcceptanceWorld extends World {
     for (const [name, target] of Object.entries(targets)) {
       if (!target) continue;
       const wrapper = path.join(this.wrapperDir, name);
-      const extra = name === 'python3' ? `printf '%s\\n' "$(pwd -P)" >> "$KOGEN_PYTHON_CWD_LOG"\n`
+      const extra = name === 'python3' ? `printf '%s\\n' "$(pwd -P)" >> ${shQuote(this.pythonCwdLog)}\n`
         : name === 'curl' ? `if [ -n "$KOGEN_TEST_NODE_DISTRIBUTION_URL" ] && [ "$#" = 2 ] && [ "$1" = -fsSL ]; then
   case "$2" in
     https://nodejs.org/dist/*) set -- "$1" "$KOGEN_TEST_NODE_DISTRIBUTION_URL/\${2#https://nodejs.org/dist/}" ;;
