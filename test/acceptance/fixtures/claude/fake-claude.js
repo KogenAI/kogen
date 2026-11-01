@@ -286,7 +286,10 @@ async function main() {
     }
   }
   let exit = 0;
-  if (round.end === 'max_turns') {
+  if (round.end === 'synthetic_usage_limit') {
+    out({ type: 'assistant', error: 'rate_limit', session_id: sessionId });
+    Object.assign(result, { subtype: 'success', is_error: true, terminal_reason: 'api_error' });
+  } else if (round.end === 'max_turns') {
     Object.assign(result, { subtype: 'error_max_turns', is_error: true, terminal_reason: 'max_turns' });
     exit = 1;
   } else if (round.end === 'error') {

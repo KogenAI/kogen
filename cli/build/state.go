@@ -119,6 +119,7 @@ type OwnerContext struct {
 const (
 	StageStartup       = "startup"
 	StageBuilder       = "builder"
+	StageUsageLimit    = "builder_usage_limit"
 	StageBuilderVerify = "builder_verify"
 	StageTool          = "tool"
 	StageCommit        = "commit"
@@ -146,7 +147,8 @@ type Completed struct {
 type Continuation struct {
 	Stage string `json:"stage"`
 	// Input is the builder's conversation (stages builder, builder_verify and tool).
-	Input []any `json:"input,omitempty"`
+	Input    []any  `json:"input,omitempty"`
+	Feedback string `json:"feedback,omitempty"`
 	// Finish is the builder's finish call that opened a builder_verify stage.
 	Finish map[string]any `json:"finish,omitempty"`
 	// Owner is who owned the tool boundary ("build" or "review").
@@ -369,7 +371,7 @@ func (s *State) title() string {
 // validContinuation is the shape check of a continuation.
 func (c *Continuation) valid() bool {
 	switch c.Stage {
-	case StageBuilder:
+	case StageBuilder, StageUsageLimit:
 		return validItems(c.Input)
 	case StageBuilderVerify:
 		return validItems(c.Input)

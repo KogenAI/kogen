@@ -88,6 +88,9 @@ func (b *Attempt) brief() (executor.Brief, error) {
 // detection runs after it, and its round cap is enforced here.
 func (b *Attempt) drive(ctx context.Context, sess executor.Session, in executor.Input, newRound bool) error {
 	rounds := 0
+	if b.ext != nil && b.Executor != nil {
+		rounds = b.Executor.Rounds
+	}
 	for {
 		if newRound {
 			if err := b.facts.update(b, "building", ""); err != nil {
@@ -99,8 +102,24 @@ func (b *Attempt) drive(ctx context.Context, sess executor.Session, in executor.
 			}
 			b.s.Progress(fmt.Sprintf("kogen: building (round %d)", b.Round))
 		}
+		previous := b.Continuation
+		if b.ext != nil {
+			if err := b.Save(Continuation{Stage: StageTool, Owner: "build"}); err != nil {
+				return err
+			}
+		}
 		res, err := b.runRound(ctx, sess, in)
 		if err != nil {
+			if e, ok := sys.AsError(err); ok && e.Class == "executor" && e.Reason == executor.ReasonUsageLimit && b.ext != nil {
+				if saveErr := b.Save(Continuation{Stage: StageUsageLimit, Feedback: in.Feedback}); saveErr != nil {
+					return saveErr
+				}
+			} else if b.ext != nil {
+				if previous.Stage == StageUsageLimit {
+					previous = Continuation{Stage: StageBuilder}
+				}
+				b.Continuation = previous
+			}
 			return err
 		}
 		b.blockerNote = ""
@@ -369,6 +388,19 @@ func (b *Attempt) resumeStage(ctx context.Context) error {
 	}
 	c := b.Continuation
 	switch c.Stage {
+	case StageUsageLimit:
+		brief, err := b.brief()
+		if err != nil {
+			return err
+		}
+		brief.Dynamic += fmt.Sprintf("\n# Fresh conversation continuation\n\nThis is a fresh executor conversation, not restored provider history. Continue interrupted logical round %d. The candidate files include partial work; previous verification is historical and tree-bound.\n\nPrevious verification feedback:\n%s\n", b.Round, c.Feedback)
+		b.s.Progress(fmt.Sprintf("kogen: fresh conversation (provider history not restored), continuing round %d", b.Round))
+		sess, err := b.startBuilder(ctx, brief)
+		if err != nil {
+			return err
+		}
+		defer sess.Close()
+		return b.drive(ctx, sess, executor.Input{Feedback: c.Feedback}, false)
 	case StageBuilder:
 		return b.drive(ctx, b.nativeSession(c.Input, nil, nil), executor.Input{}, false)
 	case StageBuilderVerify:

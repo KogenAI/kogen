@@ -36,7 +36,9 @@ type roundRun struct {
 	lines  int
 	result map[string]any // the result event, once seen
 
-	authFailed bool // an assistant event carried error authentication_failed
+	authFailed  bool // an assistant event carried error authentication_failed
+	rateLimited bool
+	pending     map[string]bool
 }
 
 // line handles one stream-json line: malformed JSON, a failed gate or a broken hook protocol
@@ -69,6 +71,9 @@ func (r *roundRun) line(b []byte) error {
 	case "assistant":
 		if e, _ := ev["error"].(string); e == "authentication_failed" {
 			r.authFailed = true
+		}
+		if e, _ := ev["error"].(string); e == "rate_limit" {
+			r.rateLimited = true
 		}
 		r.toolUses(ev)
 	case "user":
@@ -121,6 +126,10 @@ func (r *roundRun) toolUses(ev map[string]any) {
 			r.toolNames, r.guarded, r.targets = map[string]string{}, map[string]string{}, map[string]target{}
 		}
 		r.toolNames[id] = name
+		if r.pending == nil {
+			r.pending = map[string]bool{}
+		}
+		r.pending[id] = true
 		if guardedTools[name] {
 			r.guarded[id] = name
 			if _, seen := r.targets[id]; !seen {
@@ -150,6 +159,7 @@ func (r *roundRun) toolResults(ev map[string]any) error {
 		}
 		id, _ := c["tool_use_id"].(string)
 		isErr, _ := c["is_error"].(bool)
+		delete(r.pending, id)
 		name, known := r.toolNames[id]
 		if !known {
 			continue
@@ -331,7 +341,14 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 				d += ": " + bound(first, 200)
 			}
 		}
-		return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, d)
+		reason := executor.ReasonFailed
+		if isErr && !r.authFailed && !authFailedText(res["result"]) && ((subtype == "success" && terminal == "api_error" && r.rateLimited) || usageLimitText(res["result"]) || usageLimitText(res["errors"])) {
+			if len(r.pending) != 0 {
+				return executor.RoundResult{}, executor.Fail(executor.ReasonProtocol, "usage-limit result left tool calls unfinished; continuation is unsafe")
+			}
+			reason = executor.ReasonUsageLimit
+		}
+		return executor.RoundResult{}, executor.Fail(reason, d)
 	}
 
 	usage := s.mapUsage(res, r.model)
@@ -526,4 +543,20 @@ func decodeBlocker(v any) *executor.BlockerClaim {
 		}
 	}
 	return &c
+}
+
+// usageLimitText recognizes explicit diagnostics, not generic API failures or usage percentages.
+func usageLimitText(v any) bool {
+	switch x := v.(type) {
+	case string:
+		t := strings.ToLower(x)
+		return strings.Contains(t, "rate limit") || strings.Contains(t, "rate_limit") || strings.Contains(t, "usage limit") || strings.Contains(t, "usage_limit") || strings.Contains(t, "quota exceeded")
+	case []any:
+		for _, item := range x {
+			if usageLimitText(item) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -140,10 +140,14 @@ func (b *Attempt) startBuilder(ctx context.Context, brief executor.Brief) (execu
 		return nil, err
 	}
 	h := sess.Handle()
-	b.Executor = &ExecutorState{
-		Name: b.ext.desc.Name, Version: b.ext.desc.Version, SessionID: h.SessionID,
-		Usage: ExecutorUsage{Input: count(0), Cached: count(0), Output: count(0), Reasoning: count(0), State: executor.UsageComplete,
-			Source: b.ext.desc.Capabilities.Usage, CostUSD: new(float64)},
+	if b.Executor == nil {
+		b.Executor = &ExecutorState{
+			Name: b.ext.desc.Name, Version: b.ext.desc.Version, SessionID: h.SessionID,
+			Usage: ExecutorUsage{Input: count(0), Cached: count(0), Output: count(0), Reasoning: count(0), State: executor.UsageComplete,
+				Source: b.ext.desc.Capabilities.Usage, CostUSD: new(float64)},
+		}
+	} else {
+		b.Executor.SessionID = h.SessionID
 	}
 	return sess, nil
 }

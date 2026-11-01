@@ -331,7 +331,11 @@ loop:
 		}
 		errw.Flush()
 	}
-	return rr.finish(exit, killed, errPath)
+	result, err := rr.finish(exit, killed, errPath)
+	if e, ok := sys.AsError(err); ok && e.Class == "executor" && e.Reason == executor.ReasonUsageLimit && groupAlive(pgid) {
+		return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "Claude Code process group did not exit; continuation is unsafe")
+	}
+	return result, err
 }
 
 // groupAlive reports whether any process is left in the group.

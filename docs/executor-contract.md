@@ -35,6 +35,8 @@ v2 executors may serve the **shape** (including Refine), **build** and **review*
   - the same checkpoint bytes (the new executor identity is omitted for native);
   - the same events, stops and resume.
 
+  An explicit `executor/usage_limit` stop is the narrow exception: after process, baseline and HEAD custody checks, explicit Resume starts a labelled fresh conversation at the interrupted logical round, carrying ordinary authority, the preserved candidate and prior verification feedback. Historical results remain tree-bound; no account switching or automatic retry occurs. Generic API errors remain `executor/failed`. Claude Code still reports `resume: none`.
+
   Existing version 3 checkpoints resume as before.
 - **E6 Credentials and billing.** Executors use only the user's own sign-in: Claude Code's stored login or the subscription token the user saved with `kogen provider login claude-code`. The Claude Code adapter:
   - removes API-key, base-URL, cloud-provider and nested-session variables from the child environment;
@@ -89,7 +91,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 | field | native | claude-code (build; see the per-role paragraph above) |
 |---|---|---|
 | `roles` | `build` | `build` |
-| `resume` | `exact` (Kogen checkpoint at every tool boundary) | `none` (no session is revived: the builder's own stages are refused; a review stage resumes as a fresh review of its recorded green base) |
+| `resume` | `exact` (Kogen checkpoint at every tool boundary) | `none` (no session is revived: ordinary unfinished builder stages are refused, with a fresh-conversation exception for safely checkpointed usage limits; a review stage resumes as a fresh review of its recorded green base) |
 | `continuation` | same conversation across rounds | same Claude session across rounds (`--resume <session_id>` within one Build process) |
 | `usage` | `provider` (exact provider-reported fields) | `harness` (Claude Code's reported usage; cost is Claude Code's API-equivalent estimate, **not a bill**) |
 | `prevention` | `write_tool_refusal` | `pretool_hook_write_edit` (Write/Edit/MultiEdit/NotebookEdit; Bash is **not** prevented) |

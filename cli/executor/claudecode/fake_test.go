@@ -71,7 +71,9 @@ type fakeConfig struct {
 	ExitBeforeStdin bool `json:"exit_before_stdin"`
 	// AuthFail fails the round like Claude Code does for an invalid CLAUDE_CODE_OAUTH_TOKEN: an
 	// assistant event with error authentication_failed, then an is_error success result with a 401.
-	AuthFail bool `json:"auth_fail"`
+	AuthFail       bool   `json:"auth_fail"`
+	AssistantError string `json:"assistant_error"`
+	UnfinishedTool bool   `json:"unfinished_tool"`
 	// StderrToken echoes the fd 3 token to stderr in two writes (split mid-token) and
 	// exits 1.
 	StderrToken bool `json:"stderr_token"`
@@ -322,6 +324,12 @@ func fakeClaude(cfgPath string, args []string) int {
 		}
 	}
 
+	if cfg.UnfinishedTool {
+		out(map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": "unfinished", "name": "Bash"}}}})
+	}
+	if cfg.AssistantError != "" {
+		out(map[string]any{"type": "assistant", "error": cfg.AssistantError})
+	}
 	res := map[string]any{
 		"type": "result", "subtype": "success", "is_error": false, "num_turns": 3, "session_id": sessionID,
 		"result": rs.Claim, "terminal_reason": "completed", "stop_reason": "end_turn",

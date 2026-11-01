@@ -267,6 +267,15 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 			return refuse(id, why, "")
 		}
 	}
+	if b.Continuation.Stage == StageUsageLimit {
+		b.ext, err = selectExecutor(in.Deps, b.Config.Models["build"])
+		if err != nil {
+			return err
+		}
+		if b.ext == nil || b.Executor == nil || b.ext.desc.Name != b.Executor.Name {
+			return refuse(id, "usage-limit executor changed", "")
+		}
+	}
 	// An external review cannot be continued: before any new run, say whether a fresh review
 	// of its recorded green base can start.
 	if why := b.externalReviewRefusal(); why != "" {
