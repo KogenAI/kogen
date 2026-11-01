@@ -79,7 +79,8 @@ Feature: Building
     Given the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-runs-command" with command "sleep 2"
     When the caller runs "kogen intent build is-even"
-    Then the tool result for "shell sleep 2" contains "exit status: 0"
+    Then the tool result for "shell sleep 2" contains "running"
+    And the tool result for "shell continuation" contains "completed"
     And the exit code is 0
 
   @LOOP-5

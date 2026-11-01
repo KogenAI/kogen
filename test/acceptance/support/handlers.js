@@ -739,6 +739,17 @@ function normalizeCommand(command) {
 }
 
 function findServerToolResult(world, query) {
+  if (query === 'shell continuation') {
+    // The completed retrieval of the handle the "sleep 2" call returned while running.
+    const initial = world.server.toolResults.find(item => item.name === 'shell' && item.args?.command === 'sleep 2');
+    assert.ok(initial, 'no shell sleep 2 result was received');
+    const handle = JSON.parse(initial.output).handle;
+    assert.ok(handle, 'the initial running result has no handle');
+    const completed = world.server.toolResults.find(item => item.name === 'shell' && item.args?.handle === handle && JSON.parse(item.output).status === 'completed');
+    assert.ok(completed, 'the observed handle was not retrieved to completion');
+    assert.equal(JSON.parse(completed.output).exit_status, 0);
+    return completed;
+  }
   const [name, ...rest] = query.split(' ');
   const target = rest.join(' ');
   return world.server.toolResults.find(result => {

@@ -316,7 +316,7 @@ class FakeServers {
       const shell = calls.find(call => call.name === 'shell');
       const command = safeJson(shell.arguments).command;
       this.mark('tool command running', { ...record, command });
-      if (this.commandObserver) this.commandObserver(command, record);
+      if (command && this.commandObserver) this.commandObserver(command, record);
     }
 
 
@@ -564,8 +564,17 @@ class FakeServers {
     }
     if (name === 'build-runs-command') {
       const command = args.command || 'true';
-      if (!this.hasToolOutput(record, 'shell', value => value.command === command)) {
-        return { items: [functionCall('shell', { command }, `build_shell_${ordinal}`)] };
+      const first = this.toolOutput(record, 'shell', value => value.command === command);
+      if (!first) return { items: [functionCall('shell', { command }, `build_shell_${ordinal}`)] };
+      // A command still running after the loop's one-second wait answers with JSON and a
+      // handle: retrieve that observed handle until it completes. A fast one answers with text.
+      let result;
+      try { result = JSON.parse(first.output); } catch { return calls(correct); }
+      if (result.status === 'running') {
+        const handle = result.handle;
+        const retrieved = this.toolResults.filter(item => item.kind === 'build' && item.name === 'shell' && item.args?.handle === handle);
+        if (retrieved.length) result = JSON.parse(retrieved[retrieved.length - 1].output);
+        if (result.status === 'running') return { items: [functionCall('shell', { handle }, `build_shell_continue_${ordinal}`)] };
       }
       return calls(correct);
     }

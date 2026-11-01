@@ -168,7 +168,13 @@ func (d *nativeDriver) Prepare(t *testing.T, root string, s conformance.Script) 
 	seedLogin(t, home)
 	d.prov = newFakeProvider(t)
 	for _, r := range s.Rounds {
-		d.prov.then(d.round(r))
+		if len(s.Rounds) == 1 && (s.CancelAfterSeconds > 0 || s.DeadlineSeconds > 0) {
+			// The shell yields after one second: keep retrieving the observed handle, so the
+			// cancellation or deadline interrupts a command that is still running.
+			d.prov.then(d.roundActions(r), d.continueRound())
+		} else {
+			d.prov.then(d.round(r))
+		}
 	}
 	// A script whose shell writes the protected file documents a path that is not prevented;
 	// the Build's detection of it is the next test. The attempt then leaves it out of the
@@ -186,6 +192,15 @@ func (d *nativeDriver) Prepare(t *testing.T, root string, s conformance.Script) 
 // round is the provider's answer to one script round: one response with every action's call,
 // then the ending (a finish call, or text without a call).
 func (d *nativeDriver) round(r conformance.RoundScript) handler {
+	return d.makeRound(r, true)
+}
+
+// roundActions is the same response without its ending.
+func (d *nativeDriver) roundActions(r conformance.RoundScript) handler {
+	return d.makeRound(r, false)
+}
+
+func (d *nativeDriver) makeRound(r conformance.RoundScript, terminal bool) handler {
 	var items []map[string]any
 	for _, a := range r.Actions {
 		switch {
@@ -199,6 +214,9 @@ func (d *nativeDriver) round(r conformance.RoundScript) handler {
 			items = append(items, d.prov.call("shell", map[string]any{"command": "mkdir -p .conformance; sleep 300 & echo $! > " + conformance.ChildPIDPath}))
 		}
 	}
+	if !terminal {
+		return respondWith(items, r.Usage)
+	}
 	if r.End == "no_call" {
 		items = append(items, map[string]any{"type": "message", "id": "msg-1", "role": "assistant",
 			"content": []any{map[string]any{"type": "output_text", "text": r.Claim}}})
@@ -206,6 +224,28 @@ func (d *nativeDriver) round(r conformance.RoundScript) handler {
 		items = append(items, d.prov.call("finish", map[string]any{"summary": r.Claim}))
 	}
 	return respondWith(items, r.Usage)
+}
+
+// continueRound retrieves the handle of the running shell the previous response returned,
+// again and again, until the executor is interrupted.
+func (d *nativeDriver) continueRound() handler {
+	var next handler
+	next = func(w http.ResponseWriter, req *http.Request) {
+		requests := d.prov.requests()
+		outputs := toolOutputsOf(requests[len(requests)-1])
+		var result struct {
+			Status string `json:"status"`
+			Handle string `json:"handle"`
+		}
+		if len(outputs) == 0 || json.Unmarshal([]byte(outputs[len(outputs)-1]), &result) != nil || result.Status != "running" || result.Handle == "" {
+			d.prov.t.Errorf("expected a running shell: %v", outputs)
+			refused()(w, req)
+			return
+		}
+		d.prov.then(next)
+		d.prov.calls("shell", map[string]any{"handle": result.Handle})(w, req)
+	}
+	return next
 }
 
 func trimFloat(f float64) string {

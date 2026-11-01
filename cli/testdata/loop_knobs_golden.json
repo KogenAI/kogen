@@ -68,18 +68,19 @@
     "tool_choice": "auto",
     "tools": [
      {
-      "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+      "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
       "name": "shell",
       "parameters": {
        "additionalProperties": false,
        "properties": {
         "command": {
          "type": "string"
+        },
+        "handle": {
+         "type": "string"
         }
        },
-       "required": [
-        "command"
-       ],
+       "required": [],
        "type": "object"
       },
       "strict": false,
@@ -598,18 +599,19 @@
     "tool_choice": "auto",
     "tools": [
      {
-      "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+      "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
       "name": "shell",
       "parameters": {
        "additionalProperties": false,
        "properties": {
         "command": {
          "type": "string"
+        },
+        "handle": {
+         "type": "string"
         }
        },
-       "required": [
-        "command"
-       ],
+       "required": [],
        "type": "object"
       },
       "strict": false,
@@ -1108,18 +1110,19 @@
     "tools": [
      {
       "function": {
-       "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+       "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
        "name": "shell",
        "parameters": {
         "additionalProperties": false,
         "properties": {
          "command": {
           "type": "string"
+         },
+         "handle": {
+          "type": "string"
          }
         },
-        "required": [
-         "command"
-        ],
+        "required": [],
         "type": "object"
        },
        "strict": false
@@ -1674,17 +1677,18 @@
     },
     "tools": [
      {
-      "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+      "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
       "input_schema": {
        "additionalProperties": false,
        "properties": {
         "command": {
          "type": "string"
+        },
+        "handle": {
+         "type": "string"
         }
        },
-       "required": [
-        "command"
-       ],
+       "required": [],
        "type": "object"
       },
       "name": "shell"
@@ -2159,18 +2163,19 @@
     "tools": [
      {
       "function": {
-       "description": "sha256:1e8d9ec15039abd0e3f6cf4972c912c1a5392005e97309b7f41bd55e41fe51e6:451",
+       "description": "sha256:7c9e1e6c92d9d01967262b50c855903244032aa41fe50d222689e327e72768ea:414",
        "name": "shell",
        "parameters": {
         "additionalProperties": false,
         "properties": {
          "command": {
           "type": "string"
+         },
+         "handle": {
+          "type": "string"
          }
         },
-        "required": [
-         "command"
-        ],
+        "required": [],
         "type": "object"
        },
        "strict": false

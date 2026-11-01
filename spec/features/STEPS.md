@@ -75,7 +75,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `build-wrong-then-repair` | wrong `is_even`; after feedback, the correct one |
 | `build-wrong-forever` | always a wrong implementation of `calc.py` and `tests/test_calc.py` |
 | `build-unformatted-then-formatted` | correct but unformatted, then formatted |
-| `build-runs-command` with command `C` | `shell C`, then like `build-correct-first-try` |
+| `build-runs-command` with command `C` | `shell C`, retrieving any yielded handle to completion, then like `build-correct-first-try` |
 | `build-with-background-server` | `shell python3 -m http.server 8765 > server.log 2>&1 &`, then a fixture-side wait `shell for i in $(seq 50); do curl -s -o /dev/null http://127.0.0.1:8765/ && break; sleep 0.1; done`, then the asserted `shell curl -s -o /dev/null -w %{http_code} http://127.0.0.1:8765/`, then leaves the server running and continues like `build-correct-first-try` |
 | `build-tries-path` with path `P` | `write_file P`, then like `build-correct-first-try` |
 | `build-three-calls-fragmented` | one response: `write_file a.txt hello`, `shell cat a.txt missing.txt`, `bogus_tool`, split across many stream events |

@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"kogen-loop/loop"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
@@ -24,7 +25,7 @@ import (
 )
 
 // testdata/loop_knobs_golden.json holds knobFixtureRequests and the cuts of knobFixtureRaw as the
-// previous pin (c7e8331f) rendered them, through knobNormalize: provider.Client.Body of the
+// current pin (1a3eb18) rendered them, through knobNormalize: provider.Client.Body of the
 // request as built here and tools.Cut of each raw result. TestResearchRemovalDefaults renders
 // the same with plain construction and compares.
 
@@ -163,8 +164,12 @@ func knobSession(t *testing.T, k *knobServer) *sys.Session {
 // TestResearchRemovalDefaults holds the fixed defaults that replaced Kogen's research settings,
 // through the real default construction: the 524288-byte working window, tool results of 16384
 // bytes with a 4096-byte head, documentation at its pinned defaults and no authority boundary.
-// The requests and cuts equal the previous pin's.
+// The requests and cuts equal the current pin's. The default loop instructions
+// end the work at the first pass.
 func TestResearchRemovalDefaults(t *testing.T) {
+	if !strings.Contains(loop.DefaultInstructions, "When your checks pass, call finish right away: no extra re-reads, re-runs or polishing after a pass.") {
+		t.Fatal("the default loop instructions lack the finish-right-away sentence")
+	}
 	t.Run("the working window is 524288 bytes, inclusive", func(t *testing.T) {
 		if tools.InputBudgetBytes != 524288 {
 			t.Fatalf("input budget %d", tools.InputBudgetBytes)
@@ -217,7 +222,7 @@ func TestResearchRemovalDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("a plain request has no authority boundary and equals the previous pin's", func(t *testing.T) {
+	t.Run("a plain request has no authority boundary and equals the current pin's", func(t *testing.T) {
 		raw, err := os.ReadFile("testdata/loop_knobs_golden.json")
 		if err != nil {
 			t.Fatal(err)
@@ -234,7 +239,7 @@ func TestResearchRemovalDefaults(t *testing.T) {
 		if !reflect.DeepEqual(got, any(golden.Requests)) {
 			gotJSON, _ := json.Marshal(got)
 			wantJSON, _ := json.Marshal(golden.Requests)
-			t.Fatalf("requests differ from the previous pin's (%d and %d bytes)", len(gotJSON), len(wantJSON))
+			t.Fatalf("requests differ from the current pin's (%d and %d bytes)", len(gotJSON), len(wantJSON))
 		}
 		for i, text := range knobFixtureRaw() {
 			if got := knobNormalize(tools.Cut(text)); got != golden.Cuts[i] {
