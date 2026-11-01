@@ -567,10 +567,8 @@ class FakeServers {
     const finish = () => functionCall('finish', { summary: 'Implementation complete.' }, `finish_${name}_${ordinal}`);
     const calls = list => ({ items: [...writeFiles(list), finish()] });
     if (name.startsWith('build-large-review-evidence') && ordinal <= 2) {
-      return { items: [...(ordinal === 1 ? [functionCall('shell', { command: "rm -- ':(glob)*'" }, 'delete_literal_source')] : []), functionCall('write_file', {
-        path: `large-source-${ordinal}.txt`,
-        content: `source-${ordinal}-sentinel\n` + 'literal Δ🙂\r\n'.repeat(24000),
-      }, `large_source_${ordinal}`)] };
+      const command = `${ordinal === 1 ? "rm -- ':(glob)*' && " : ''}{ printf 'source-${ordinal}-sentinel\\n'; i=0; while [ "$i" -lt 24000 ]; do printf 'literal Δ🙂\\r\\n'; i=$((i + 1)); done; } > large-source-${ordinal}.txt`;
+      return { items: [functionCall('shell', { command }, `large_source_${ordinal}`)] };
     }
     if (name === 'build-reports-blocker') {
       return { items: [functionCall('report_blocker', {
