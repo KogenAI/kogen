@@ -380,6 +380,8 @@ func (b *Attempt) resumeStage(ctx context.Context) error {
 		return b.drive(ctx, sess, executor.Input{Feedback: feedback}, true)
 	case StageReviewOnly:
 		return b.reviewOnlyResume(ctx)
+	case StageCommitFailed:
+		return b.commitFailedResume(ctx)
 	default: // the review stages
 		if b.externalReviewStage() {
 			return b.resumeExternalReview(ctx)

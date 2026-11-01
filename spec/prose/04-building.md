@@ -56,6 +56,10 @@ is `candidate/resume_unsupported` (1), with ID and inspection/correction/fresh-a
 No files, index, HEAD, approval or prior evidence are repaired on refusal. An exact already
 landed commit is a successful no-op, not another commit. Pending effects are never replayed;
 uncertain tool or commit execution may be refused with inspection instructions.
+A definite `environment/commit_failed` stop with HEAD unchanged is the exception: its checkpoint
+stage is `commit_failed`, and `kogen intent resume` finishes it by committing only, with no
+builder round, review, check rerun or provider request; uncertain commit boundaries (interrupt,
+crash, undone hook commit) stay refused.
 Checkpoint publication precedes requests and side effects and follows durable completion.
 Complete replay input includes tool results, not merely diagnostic log tails. Resume retains
 the phase and repair owner, including the same independent review conversation and external

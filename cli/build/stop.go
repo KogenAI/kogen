@@ -162,6 +162,10 @@ func (b *Attempt) details(reason string, report bool, providerFailure map[string
 		b.s.Puts("  review-only checkpoint kept: kogen intent resume " + b.Run.ID + " --project " + shellQuote(b.Root) +
 			" starts one fresh review of this unchanged green candidate")
 	}
+	if b.Continuation.Stage == StageCommitFailed {
+		b.s.Puts("  commit checkpoint kept: kogen intent resume " + b.Run.ID + " --project " + shellQuote(b.Root) +
+			" commits this verified and reviewed candidate once the commit environment is fixed")
+	}
 	b.s.Puts("  kogen intent inspect " + b.Run.ID + " --project " + shellQuote(b.Root))
 	return nil
 }

@@ -75,9 +75,9 @@ func TestACommitHookThatRejectsLeavesEditsAndRestoresTheStagedIntentIndex(t *tes
 	}
 	res := e.result(e.onlyRun())
 	eq(t, "outcome", res["outcome"], any("commit_failed"))
-	// The commit boundary cannot be resumed.
+	// A definite failure with HEAD unchanged is resumable (it commits only).
 	facts := e.jsonFile(filepath.Join(e.root, ".kogen/local/facts", e.onlyRun()+".json"))
-	eq(t, "resume_status", facts["resume_status"], any("unsupported"))
+	eq(t, "resume_status", facts["resume_status"], any("potentially_available"))
 }
 
 func TestAHookThatEditsTheCommitIsUndoneAndTheIndexRestored(t *testing.T) {

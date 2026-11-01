@@ -122,10 +122,14 @@ const (
 	StageBuilderVerify = "builder_verify"
 	StageTool          = "tool"
 	StageCommit        = "commit"
-	StageLanded        = "landed"
-	StageReview        = "review"
-	StageReviewVerify  = "review_verify"
-	StageReviewRetry   = "review_retry_verify"
+	// StageCommitFailed is the checkpoint of a Build whose `git commit` definitely failed with
+	// HEAD still at the start: the verified and approved candidate is intact, so an explicit
+	// resume finishes the commit alone.
+	StageCommitFailed = "commit_failed"
+	StageLanded       = "landed"
+	StageReview       = "review"
+	StageReviewVerify = "review_verify"
+	StageReviewRetry  = "review_retry_verify"
 	// StageReviewOnly is the review-only checkpoint of a green candidate whose independent
 	// reviews ended without a valid verdict: it holds the green pass and no reviewer
 	// conversation, so an explicit resume starts a fresh review of that exact tree.
@@ -152,7 +156,7 @@ type Continuation struct {
 	// Request marks a tool boundary that a model request saved (the response is in
 	// Response), as opposed to one a tool loop saved.
 	Request bool `json:"request,omitempty"`
-	// Tree is the tree being committed (stage commit).
+	// Tree is the tree being committed (stages commit and commit_failed).
 	Tree string `json:"tree,omitempty"`
 	// Commit is the landed commit (stage landed).
 	Commit string `json:"commit,omitempty"`
@@ -375,6 +379,8 @@ func (c *Continuation) valid() bool {
 		return c.Pass != nil && c.Pass.Valid() && c.Pass.Green && len(c.Review) == 0
 	case StageLanded:
 		return c.Commit != ""
+	case StageCommitFailed:
+		return c.Tree != ""
 	case StageStartup, StageTool, StageCommit:
 		return true
 	}
@@ -477,6 +483,12 @@ func (s *State) valid(doc *Checkpoint) bool {
 	}
 	if c.Stage == StageLanded {
 		if s.LastPass == nil || s.LastReview == nil || !s.LastPass.Green || s.LastReview.Verdict != "approve" || s.LastReview.Tree != s.LastPass.Tree {
+			return false
+		}
+	}
+	if c.Stage == StageCommitFailed {
+		p, r := s.LastPass, s.LastReview
+		if p == nil || r == nil || !p.Green || !p.Clean || r.Verdict != "approve" || p.Tree != c.Tree || r.Tree != c.Tree {
 			return false
 		}
 	}

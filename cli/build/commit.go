@@ -2,10 +2,12 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"kogen-loop/sys"
 	"kogen/executor"
 	"kogen/git"
 	"kogen/project"
@@ -15,6 +17,13 @@ import (
 // longer the reviewed tree, verification and review start over (the feedback or the landing
 // of that is returned). On a commit it reports the landing and returns landed true.
 func (b *Attempt) commit(ctx context.Context, ap Approved) (feedback string, landed bool, err error) {
+	return b.commitApproved(ctx, ap, true)
+}
+
+// commitApproved is commit. With restart false, a candidate that is no longer the reviewed
+// tree stops the Build instead of starting verification and review again: the resume of a
+// failed commit never runs a new cycle.
+func (b *Attempt) commitApproved(ctx context.Context, ap Approved, restart bool) (feedback string, landed bool, err error) {
 	b.s.Progress("kogen: committing")
 	if err := b.s.Err(); err != nil {
 		return "", false, err
@@ -31,6 +40,9 @@ func (b *Attempt) commit(ctx context.Context, ap Approved) (feedback string, lan
 		return "", false, err
 	}
 	if !(pass.Green && pass.Clean && review.Tree == pass.Tree) || tree != pass.Tree {
+		if !restart {
+			return "", false, resumeRefused("the candidate is no longer the reviewed tree " + pass.Tree + "; " + b.treeDrift(tree, pass.Tree))
+		}
 		// Something changed after the reviewed pass: verify and review again.
 		return b.verifyAndReview(ctx)
 	}
@@ -46,6 +58,13 @@ func (b *Attempt) commit(ctx context.Context, ap Approved) (feedback string, lan
 		MessageFile: filepath.Join(b.Run.Dir, "commit-message.txt"),
 	})
 	if err != nil {
+		// A definite failure with HEAD still at the start leaves the verified candidate intact
+		// and resumable; an interrupt, a crash or a hook-undone commit stays an uncertain
+		// commit boundary.
+		var failure *sys.Error
+		if errors.As(err, &failure) && failure.Class == "environment" && failure.Reason == "commit_failed" && b.repo.Head() == b.Start {
+			b.Continuation = Continuation{Stage: StageCommitFailed, Tree: pass.Tree}
+		}
 		return "", false, err
 	}
 	os.Remove(project.ApprovalPath(b.Root, b.Slug))
@@ -98,4 +117,15 @@ func duration(d interface{ Seconds() float64 }) string {
 		return fmt.Sprintf("%dm%02ds", s/60, s%60)
 	}
 	return fmt.Sprintf("%ds", s)
+}
+
+// commitFailedResume is the explicit resume of a commit_failed checkpoint: the saved approved
+// pass and review go straight to the commit step, with no builder round, review or rerun of
+// the checks. A candidate that is no longer the reviewed tree stops the Build.
+func (b *Attempt) commitFailedResume(ctx context.Context) error {
+	pass, review := *b.LastPass, *b.LastReview
+	b.s.Puts(fmt.Sprintf("finishing the commit of the candidate verified in pass %d and approved in review %d, "+
+		"with no builder round, no review and no rerun of its checks", pass.N, review.N))
+	_, _, err := b.commitApproved(ctx, Approved{Pass: pass, Review: review}, false)
+	return err
 }
