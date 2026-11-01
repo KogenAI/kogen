@@ -84,7 +84,7 @@ Commands:
   login anthropic          Save your Anthropic API key privately from stdin
   login claude-code        Save your Claude Code token (claude setup-token) privately from stdin
   login openai-compatible  Save a key for an OpenAI-compatible host: its base URL line, then the key line (stdin or terminal)
-  list                     Show which providers Kogen is signed in to
+  list [--json]            Show local logins and official compatibility
 
 Logins belong to this machine, never to a repo.
 ```

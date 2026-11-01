@@ -61,10 +61,10 @@ Feature: Install and uninstall
 
   @INS-1
   Scenario: An unsupported platform is refused
-    Given uname reports "Linux" and "aarch64"
+    Given uname reports "FreeBSD" and "x86_64"
     When the caller runs "sh install.sh"
     Then the exit code is 1
-    And stdout contains "install: unsupported platform linux-aarch64"
+    And stdout contains "install: unsupported platform freebsd-x86_64"
 
   @INS-5
   Scenario: kogen uninstall removes the program and keeps projects and the login

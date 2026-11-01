@@ -21,6 +21,8 @@ Feature: Committing
       building is-even
       landed is-even {sha8} (Build {id8})
         checks: acceptance 3/3, model not applicable, test passed
+        checks, before the Build → after (verification pass 1):
+          1. test: passed → passed
         review: approved, 1 note(s)
         note: calc.py:12: the docstring could name TypeError
         repairs: 0 · tokens: {n} · time: {dur}

@@ -22,6 +22,11 @@ Feature: Project setup
       Note: Kogen gives its models README.md only; it does not read CLAUDE.md
       Commit: {sha8} Add Kogen configuration
       Next: add the project's checks to commands.checks in .kogen/project.yaml
+      ok install - {installed_version}; node, cucumber and quint run
+      ok git - repository {abs:.}
+      ok config - .kogen/project.yaml is valid
+      ok models - shape, build, review ready
+      skip commands - skipped with --quick
       """
     And the new commit changes exactly:
       | path                     |
@@ -49,6 +54,11 @@ Feature: Project setup
       Left out: compile (mix compile --warnings-as-errors) failed with status 1
       Acceptance: Cucumber bridge added in features/steps
       Commit: {sha8} Add Kogen configuration
+      ok install - {installed_version}; node, cucumber and quint run
+      ok git - repository {abs:.}
+      ok config - .kogen/project.yaml is valid
+      ok models - shape, build, review ready
+      skip commands - skipped with --quick
       """
     And the file ".kogen/project.yaml" contains "    - name: format"
     And the file ".kogen/project.yaml" contains "      run: 'mix format --check-formatted'"
@@ -72,6 +82,11 @@ Feature: Project setup
       Left out: lint (npm run lint) failed with status 2
       Acceptance: existing Cucumber runner, steps in features/step_definitions
       Commit: {sha8} Add Kogen configuration
+      ok install - {installed_version}; node, cucumber and quint run
+      ok git - repository {abs:.}
+      ok config - .kogen/project.yaml is valid
+      ok models - shape, build, review ready
+      skip commands - skipped with --quick
       """
     And the new commit changes exactly:
       | path                |
@@ -147,6 +162,12 @@ Feature: Project setup
       Commit: {sha8} Initial commit (the first commit of this repository)
       Next: set commands.acceptance in .kogen/project.yaml
       Next: add the project's checks to commands.checks in .kogen/project.yaml
+      ok install - {installed_version}; node, cucumber and quint run
+      ok git - repository {abs:.}
+      ok config - .kogen/project.yaml is valid
+      fail models - shape: chatgpt has no stored login; build: chatgpt has no stored login; review: chatgpt has no stored login
+        fix: kogen provider login chatgpt
+      skip commands - skipped with --quick
       """
     And the new commit's message is:
       """
@@ -305,7 +326,7 @@ Feature: Project setup
   Scenario: An executor on the review role is a configuration error
     Given a Git project from fixture "py-calc"
     And the project is initialized and configured
-    And the project config sets "models.review" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
+    And the project config sets "models.review" to "{executor: unsupported, model: claude-sonnet-5-5, effort: high}"
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
       Add calc.is_even(n).
