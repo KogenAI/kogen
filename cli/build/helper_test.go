@@ -287,7 +287,7 @@ func (e *env) approve() {
 		e.t.Fatal(err)
 	}
 	err = project.WriteApproval(e.root, project.Approval{
-		Slug: testSlug, SHA256: project.Hash(e.root, baseline), Approver: "Kogen Integration <kogen-integration@example.invalid>",
+		Slug: testSlug, SHA256: project.Hash(e.root, baseline), Base: e.head(), Approver: "Kogen Integration <kogen-integration@example.invalid>",
 		ApprovedAt: "2026-10-22T00:00:00Z",
 	})
 	if err != nil {

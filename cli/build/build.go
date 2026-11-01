@@ -152,6 +152,9 @@ func buildRun(ctx context.Context, s *sys.Session, in Input, out **Attempt) erro
 		return err
 	}
 	defer lock.Release()
+	if repo.Head() != start {
+		return sys.Fail("intent", "changed_since_approval", "HEAD changed while starting Build; review with kogen intent approve "+in.Slug, 1)
+	}
 	return checked(ctx, s, in, repo, cfg, start, out)
 }
 
@@ -216,6 +219,9 @@ func checked(ctx context.Context, s *sys.Session, in Input, repo *git.Repo, cfg 
 	}
 	if approval == nil {
 		return sys.Fail("intent", "not_approved", slug+" is not approved; review it with kogen intent approve "+slug, 5)
+	}
+	if approval.Base == "" || approval.Base != start {
+		return sys.Fail("intent", "changed_since_approval", fmt.Sprintf("approval base: %s; current base: %s; review with kogen intent approve %s", approval.Base, start, slug), 1)
 	}
 	baseline, err := project.Baseline(root, slug, cfg)
 	if err != nil {

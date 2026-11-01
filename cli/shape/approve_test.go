@@ -329,7 +329,7 @@ func TestApproveWithFullAndPrefixHash(t *testing.T) {
 			if err != nil || at.Before(start) || at.After(time.Now().Add(time.Second)) || !strings.HasSuffix(fmt.Sprint(a["approved_at"]), "Z") {
 				t.Fatalf("approved_at %v (%v)", a["approved_at"], err)
 			}
-			wantKeys := map[string]any{"slug": "fixture", "sha256": sha, "approver": "Fixture <fixture@example.invalid>", "approved_at": a["approved_at"], "source_provenance": nil}
+			wantKeys := map[string]any{"slug": "fixture", "sha256": sha, "base": strings.TrimSpace(f.git("rev-parse", "HEAD")), "approver": "Fixture <fixture@example.invalid>", "approved_at": a["approved_at"], "source_provenance": nil}
 			if len(a) != len(wantKeys) {
 				t.Fatalf("approval %v", a)
 			}
@@ -674,8 +674,6 @@ func TestApproveRetainsAStaleApprovalAndNamesItOnTheCard(t *testing.T) {
 	marker := f.read(".kogen/local/approvals/fixture.json")
 	staleSHA := f.sha()
 	f.write(project.IntentMDPath(approveSlug), approveIntentMD+"\nA later clarification.\n")
-	f.git("add", "-A")
-	f.git("commit", "-qm", "clarify")
 	sha := f.sha()
 	if sha == staleSHA {
 		t.Fatal("the edit must change the contract")
@@ -720,8 +718,6 @@ func TestApproveRefusesAnUnsafeApprovalHistory(t *testing.T) {
 		t.Fatalf("first approval: exit %d, err %v", exit, err)
 	}
 	f.write(project.IntentMDPath(approveSlug), approveIntentMD+"\nA later clarification.\n")
-	f.git("add", "-A")
-	f.git("commit", "-qm", "clarify")
 	outside := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(f.Root, ".kogen/local/approvals"), 0o755); err != nil {
 		t.Fatal(err)
@@ -966,5 +962,40 @@ func TestApproveCardUnresolvedConflicts(t *testing.T) {
 	os.WriteFile(rec, []byte(`[]`), 0o644)
 	if l := unresolvedLines(root, "demo"); len(l) != 0 {
 		t.Fatalf("later run still shows %q", l)
+	}
+}
+
+func TestApprovalMovedBase(t *testing.T) {
+	f := newApproveFx(t)
+	exit, _, err := f.approve(ApproveInput{Hash: f.sha()})
+	if err != nil || exit != 0 {
+		t.Fatalf("initial %d %v", exit, err)
+	}
+	old := strings.TrimSpace(f.git("rev-parse", "HEAD"))
+	f.git("commit", "--allow-empty", "-qm", "new base")
+	next := strings.TrimSpace(f.git("rev-parse", "HEAD"))
+	exit, out, err := f.approve(ApproveInput{})
+	if err != nil || exit != 5 || !strings.Contains(out, old) || !strings.Contains(out, next) {
+		t.Fatalf("card %d %v %s", exit, err, out)
+	}
+	if f.readApproval()["base"] != old {
+		t.Fatal("card changed approval")
+	}
+	exit, _, err = f.approve(ApproveInput{Hash: f.sha()})
+	if err != nil || exit != 0 || f.readApproval()["base"] != next {
+		t.Fatalf("reapproval %d %v", exit, err)
+	}
+}
+func TestMovedApprovalPassingRefused(t *testing.T) {
+	f := newApproveFx(t)
+	if exit, _, err := f.approve(ApproveInput{Hash: f.sha()}); err != nil || exit != 0 {
+		t.Fatalf("initial %d %v", exit, err)
+	}
+	f.write("app.txt", "green\n")
+	f.git("add", "app.txt")
+	f.git("commit", "-qm", "already implemented")
+	exit, out, err := f.approve(ApproveInput{})
+	if err == nil || exit == 5 || !strings.Contains(out, "passes now") || !strings.Contains(err.Error(), "kogen intent refine fixture") {
+		t.Fatalf("card %d %v %s", exit, err, out)
 	}
 }

@@ -20,6 +20,7 @@ func (e *env) committing(files map[string]string) {
 		e.run("git", "add", path)
 	}
 	e.run("git", "commit", "-qm", "fixture files")
+	e.approve()
 }
 
 // checkRows are the rows of result.json's retained before/after comparison.

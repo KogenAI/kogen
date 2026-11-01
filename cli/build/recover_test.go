@@ -27,6 +27,7 @@ func blocked(t *testing.T, commands string) (*env, string) {
 	e.run("git", "config", "filter.normalize.clean", "tr a-z A-Z")
 	e.run("git", "add", "locked/value", "filtered", ".gitattributes")
 	e.run("git", "commit", "-qm", "Recovery inputs")
+	e.approve()
 	e.write(".git/info/exclude", "ignored/\n")
 	f := e.prov
 	f.then(f.calls("shell", map[string]any{"command": commands}, "report_blocker", blockerReport(project.FeaturePath(testSlug))))

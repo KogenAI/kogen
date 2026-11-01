@@ -42,6 +42,9 @@ type ApproveInput struct {
 // an interrupt is *sys.Interrupted; exit is also set to the matching exit code then.
 func Approve(ctx context.Context, s *sys.Session, in ApproveInput) (exit int, err error) {
 	exit, err = approveRun(ctx, s, in)
+	if e, ok := sys.AsError(err); ok && e.Reason == "source_provenance_changed" {
+		e.Detail += "; after restoration run kogen intent approve " + in.Slug + "; if exact custody cannot be restored, stop"
+	}
 	if err != nil {
 		exit = approveExitCode(err)
 	}
@@ -81,6 +84,13 @@ func approveRun(ctx context.Context, s *sys.Session, in ApproveInput) (int, erro
 
 func approveLocked(ctx context.Context, s *sys.Session, in ApproveInput, repo *git.Repo) (int, error) {
 	root, slug, prefix := repo.Dir, in.Slug, in.Hash
+	unmerged, err := repo.Observing().OK("ls-files", "--unmerged", "--format=%(path)", "-z")
+	if err != nil {
+		return 0, err
+	}
+	if unmerged != "" {
+		return 0, sys.Fail("intent", "git_conflict", "conflicting paths: "+strings.ReplaceAll(strings.TrimSuffix(unmerged, "\x00"), "\x00", ", ")+"; resolve conflicts without carrying approval; use kogen intent refine "+slug+" <full-current-sha256> <correction-file> or kogen intent shape "+slug+" <request-file>", 1)
+	}
 	cfg, err := project.LoadConfig(root)
 	if err != nil {
 		return 0, err
@@ -117,6 +127,9 @@ func approveLocked(ctx context.Context, s *sys.Session, in ApproveInput, repo *g
 		return 0, err
 	}
 	before := project.Hash(root, baseline)
+	if approval != nil && approval.Base != "" && approval.Base != repo.Head() && approval.SHA256 != before {
+		return 0, sys.Fail("intent", "changed_since_approval", "package changed on the new base; use kogen intent refine "+slug+" "+before+" <correction-file> or kogen intent shape "+slug+" <request-file>", 1)
+	}
 	if prefix != "" && !strings.HasPrefix(before, prefix) {
 		return 0, approveMismatch(slug, before, prefix)
 	}
@@ -164,7 +177,30 @@ func approveLocked(ctx context.Context, s *sys.Session, in ApproveInput, repo *g
 		return 0, sys.Fail("intent", "not_ready", "approval changed during readiness; run the card again", 1)
 	}
 
+	if approval != nil && approval.Base != "" && approval.Base != ready.Head && approval.SHA256 != sha {
+		return 0, sys.Fail("intent", "changed_since_approval", "package changed on the new base; use kogen intent refine "+slug+" "+sha+" <correction-file> or kogen intent shape "+slug+" <request-file>", 1)
+	}
+	moved := approval != nil && approval.Base != "" && approval.Base != ready.Head && approval.SHA256 == sha
+	if moved {
+		s.Puts("Approved base: " + approval.Base + "; current base: " + ready.Head)
+		failing, passing := 0, 0
+		for _, scenario := range ready.Scenarios {
+			if scenario.Status == "failed" {
+				failing++
+			} else if scenario.Status == "passed" {
+				passing++
+			}
+		}
+		s.Puts(fmt.Sprintf("Scenarios: %d (%d fail now, %d pass now)", len(ready.Scenarios), failing, passing))
+	}
+	if moved && ready.AcceptanceExit == 0 {
+		approveCard(s, slug, sha, approver, ready, baseline, assumptionLines(cfg, ready.Intent.Text), unresolvedLines(root, slug)...)
+		return 0, sys.Fail("intent", "not_ready", "scenarios already pass on the new base; correct the obsolete contract with kogen intent refine "+slug+" "+sha+" <correction-file>", 1)
+	}
 	if prefix == "" {
+		if approval != nil && !moved {
+			s.Puts("Approved base: " + approval.Base + "; current base: " + ready.Head)
+		}
 		if approval != nil && approval.SHA256 != sha {
 			s.Puts("Stale approval: " + approval.SHA256 + "; it does not authorize the current package " + sha + ".")
 		}
@@ -229,7 +265,7 @@ func approvePublish(ctx context.Context, s *sys.Session, in ApproveInput, rd *ve
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if p.approval != nil && p.approval.SHA256 != sha {
+	if p.approval != nil && (p.approval.SHA256 != sha || p.approval.Base != ready.Head) {
 		if err := archiveApproval(s, root, slug, p.previous); err != nil {
 			return err
 		}
@@ -248,6 +284,7 @@ func approvePublish(ctx context.Context, s *sys.Session, in ApproveInput, rd *ve
 	bytesToWrite, err := project.EncodeApproval(project.Approval{
 		Slug:             slug,
 		SHA256:           sha,
+		Base:             ready.Head,
 		Approver:         approver,
 		ApprovedAt:       time.Now().UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z"),
 		SourceProvenance: published.Map(),

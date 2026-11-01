@@ -168,6 +168,7 @@ func Hash(root string, paths []string) string {
 type Approval struct {
 	Slug             string         `json:"slug"`
 	SHA256           string         `json:"sha256"`
+	Base             string         `json:"base,omitempty"`
 	Approver         string         `json:"approver"`
 	ApprovedAt       string         `json:"approved_at"`
 	SourceProvenance map[string]any `json:"source_provenance"`

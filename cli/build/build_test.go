@@ -3,6 +3,7 @@ package build
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"kogen/agent"
 	"os"
 	"path/filepath"
@@ -369,5 +370,39 @@ func TestDefaultShellRequestAndReplayCompatibility(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("missing paired replay")
+	}
+}
+
+func TestBuildRefusesStaleAndBaselessApproval(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprint(legacy), func(t *testing.T) {
+			e := newEnv(t)
+			path := project.ApprovalPath(e.root, testSlug)
+			if legacy {
+				a, err := project.ReadApproval(e.root, testSlug)
+				if err != nil {
+					t.Fatal(err)
+				}
+				a.Base = ""
+				if err = project.WriteApproval(e.root, *a); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				e.gitOut("commit", "--allow-empty", "-qm", "new base")
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			head := e.head()
+			a := e.build()
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if a.exit == 0 || !strings.Contains(a.shown(), "base") || e.head() != head || !bytes.Equal(before, after) {
+				t.Fatalf("refusal %s", a.shown())
+			}
+		})
 	}
 }

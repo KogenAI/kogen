@@ -758,6 +758,7 @@ func TestTheReviewerReadsTheFullSourceAndNewFilesAppearOnce(t *testing.T) {
 	e.write("rename-from.txt", "renamed-source-sentinel\n")
 	e.run("git", "add", "existing-context.txt", "rename-from.txt")
 	e.run("git", "commit", "--only", "-qm", "Add review context fixture", "--", "existing-context.txt", "rename-from.txt")
+	e.approve()
 	f := e.prov
 	f.then(f.calls(
 		"write_file", map[string]any{"path": "new-source.txt", "content": "new-source-sentinel\n"},
@@ -1307,6 +1308,7 @@ func TestAResumedFittedReviewOfALargerSourcePinsItAndDeliversIt(t *testing.T) {
 	e.write("pad.txt", strings.Repeat("p", 22000))
 	e.run("git", "add", "README.md", "docs/development.md", "seed-knowledge.txt", "pad.txt")
 	e.run("git", "commit", "-qm", "Seed maintained documents")
+	e.approve()
 	f := e.prov
 	f.then(
 		f.calls("shell", map[string]any{"command": "printf '\\nreview-edit\\n' >> README.md; printf '\\nreview-edit\\n' >> docs/development.md; cp seed-knowledge.txt knowledge_live.ex"}),

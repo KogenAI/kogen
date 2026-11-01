@@ -481,3 +481,12 @@ recovery requirements. No approval transfer, automatic continuation or old Build
 is imported: approve the corrected full current hash and start a fresh verified,
 independently reviewed Build. Read-only `context` / `intent inspect` remain the
 observation route, not an automatic scheduler or polling loop.
+
+Approval records the exact Git HEAD used for readiness. A fresh Build refuses an
+older or missing base even when package bytes are unchanged. After moving an intact
+unchanged package, run `kogen intent approve <slug>` to inspect fresh readiness and
+both bases, then explicitly approve the printed hash. The card alone never approves.
+If the moved scenarios already pass, correct the obsolete contract with Refine;
+changed or conflicted packages require ordinary Refine or Shape, not approval transfer.
+Restore exact unsafe source custody before running the card; if restoration is
+impossible, stop. No previous Build verification or review is reused.

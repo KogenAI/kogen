@@ -85,3 +85,9 @@ preserves package, approval, successful source, HEAD and index; rollback must no
 clobber concurrent external edits. No stale marker authorizes Build or imports old
 green/review/checkpoint evidence. Fresh approval, full fresh verification and independent
 final-tree review remain mandatory, and successful landing consumes new approval.
+
+Approval binds the full Git HEAD checked for readiness. Fresh Build refuses a missing
+or different base. An unchanged package with intact custody can be checked and
+explicitly approved on a new base; the card reports both bases and current scenario
+results. If all scenarios pass after the move, Refine must correct the obsolete
+contract. Changed or conflicted packages are not carried as unchanged approval.

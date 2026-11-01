@@ -62,7 +62,7 @@ func Preflight(ctx context.Context, s *sys.Session, in PreflightInput) (int, err
 	}{
 		{"configuration", func() error { return nil }},
 		{"package", func() error { return preflightPackage(root, slug) }},
-		{"approval", func() error { return preflightApproval(root, slug, cfg) }},
+		{"approval", func() error { return preflightApproval(repo, root, slug, cfg) }},
 		{"cleanliness", func() error { return preflightClean(repo, root, slug) }},
 		{"conflict", func() error { return preflightConflict(repo, root) }},
 	}
@@ -134,7 +134,7 @@ func preflightPackage(root, slug string) error {
 	return invalid
 }
 
-func preflightApproval(root, slug string, cfg *project.Config) error {
+func preflightApproval(repo *git.Repo, root, slug string, cfg *project.Config) error {
 	var approval map[string]any
 	if b, err := os.ReadFile(project.ApprovalPath(root, slug)); err == nil {
 		if json.Unmarshal(b, &approval) != nil {
@@ -145,7 +145,7 @@ func preflightApproval(root, slug string, cfg *project.Config) error {
 	if err != nil {
 		return err
 	}
-	if approval != nil && approval["sha256"] == project.Hash(root, baseline) {
+	if approval != nil && approval["sha256"] == project.Hash(root, baseline) && repo.Head() != "" && approval["base"] == repo.Head() {
 		return nil
 	}
 	e := sys.Fail("intent", "approval_changed", "exact current approval is absent or changed", 1)
