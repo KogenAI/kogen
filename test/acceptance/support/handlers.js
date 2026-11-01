@@ -877,16 +877,8 @@ function createCredentials(world, expired) {
 }
 
 function extractArchive(world) {
-  const dir = path.join(world.workspace, `release-${crypto.randomBytes(4).toString('hex')}`);
-  const source = path.join(dir, path.basename(world.sharedSource));
-  // BeforeAll already extracted these archive bytes with tar. Give each installer
-  // its own copy; clone file data where supported, otherwise copy it normally.
-  fs.cpSync(world.sharedSource, source, {
-    recursive: true, dereference: false, verbatimSymlinks: true,
-    preserveTimestamps: true, mode: fs.constants.COPYFILE_FICLONE,
-  });
-  world.archiveDir = source;
-  return source;
+  world.archiveDir = world.sharedSource;
+  return world.archiveDir;
 }
 
 async function serveNodeDistribution(world) {
@@ -1446,8 +1438,22 @@ async function dispatchAssertions(world, label, args, attachment) {
   }
   if (label === 'the extracted archive has no lib/VERSION') {
     assert.ok(world.archiveDir, 'extract the release archive first');
-    fs.rmSync(path.join(world.archiveDir, 'lib/VERSION'), { force: true });
-    fs.rmSync(path.join(world.archiveDir, 'lib/VERSION.json'), { force: true });
+    // Only the metadata is corrupted. Keep the real payload available without
+    // allowing this scenario to remove files from the suite-owned extraction.
+    const source = world.archiveDir;
+    const damaged = path.join(world.workspace, 'damaged-release');
+    mkdirp(path.join(damaged, 'lib'));
+    for (const name of fs.readdirSync(source)) {
+      if (name === 'lib') continue;
+      if (name === 'bin') copyTree(path.join(source, name), path.join(damaged, name));
+      else fs.symlinkSync(path.join(source, name), path.join(damaged, name));
+    }
+    for (const name of fs.readdirSync(path.join(source, 'lib'))) {
+      if (name !== 'VERSION' && name !== 'VERSION.json') {
+        fs.symlinkSync(path.join(source, 'lib', name), path.join(damaged, 'lib', name));
+      }
+    }
+    world.archiveDir = damaged;
     return;
   }
   if (label === 'the installed kogen has no lib/VERSION') {
