@@ -216,8 +216,8 @@ func (pr Probe) Run(ctx context.Context, s *sys.Session) (ProbeResult, error) {
 }
 
 // probeEnvKeys are the only caller variables a probe inherits besides PATH and locale:
-// explicit toolchain locations, so installed tools stay reachable.
-var probeEnvKeys = []string{"PATH", "LANG", "LANGUAGE", "GOROOT", "GOPATH", "GOTOOLDIR",
+// explicit toolchain locations and Go caches, so installed tools and caches stay reachable.
+var probeEnvKeys = []string{"PATH", "LANG", "LANGUAGE", "GOROOT", "GOPATH", "GOTOOLDIR", "GOCACHE", "GOMODCACHE",
 	"MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_CACHE_DIR", "ASDF_DIR", "ASDF_DATA_DIR"}
 
 // callerToolHome is the caller's directory for a Mix or Hex home: the variable's value when
@@ -272,7 +272,7 @@ func privateHexHome(s *sys.Session) (string, error) {
 }
 
 // probeEnv is the probe's whole environment, built from the caller session by allowlist: PATH,
-// locale and toolchain locations, the caller's Mix home when it exists, HEX_HOME as the probe's
+// locale, toolchain locations and Go caches, the caller's Mix home when it exists, HEX_HOME as the probe's
 // private Hex directory when hexHome is set, and HOME set to the probe's private empty home.
 // Nothing else the caller has set (credentials, tokens, shell startup or tool option selectors)
 // is passed on.
