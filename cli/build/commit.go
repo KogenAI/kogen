@@ -46,30 +46,38 @@ func (b *Attempt) commitApproved(ctx context.Context, ap Approved, restart bool)
 		// Something changed after the reviewed pass: verify and review again.
 		return b.verifyAndReview(ctx)
 	}
-	if err := b.Save(Continuation{Stage: StageCommit, Tree: pass.Tree}); err != nil {
-		return "", false, err
-	}
-	if err := b.facts.update(b, "committing", ""); err != nil {
-		return "", false, err
-	}
-	b.Run.Event(map[string]any{"event": "commit", "tree": pass.Tree})
-	commit, err := b.repo.Commit(b.s, git.CommitSpec{
-		Tree: pass.Tree, Start: b.Start, Title: b.intent.Title, Slug: b.Slug,
-		MessageFile: filepath.Join(b.Run.Dir, "commit-message.txt"),
-	})
+	headTree, err := b.repo.Resolve(b.Start + "^{tree}")
 	if err != nil {
-		// A definite failure with HEAD still at the start leaves the verified candidate intact
-		// and resumable; an interrupt, a crash or a hook-undone commit stays an uncertain
-		// commit boundary.
-		var failure *sys.Error
-		if errors.As(err, &failure) && failure.Class == "environment" && failure.Reason == "commit_failed" && b.repo.Head() == b.Start {
-			b.Continuation = Continuation{Stage: StageCommitFailed, Tree: pass.Tree}
-		}
 		return "", false, err
+	}
+	alreadyPresent := tree == headTree
+	commit := b.Start
+	if !alreadyPresent {
+		if err := b.Save(Continuation{Stage: StageCommit, Tree: pass.Tree}); err != nil {
+			return "", false, err
+		}
+		if err := b.facts.update(b, "committing", ""); err != nil {
+			return "", false, err
+		}
+		b.Run.Event(map[string]any{"event": "commit", "tree": pass.Tree})
+		commit, err = b.repo.Commit(b.s, git.CommitSpec{
+			Tree: pass.Tree, Start: b.Start, Title: b.intent.Title, Slug: b.Slug,
+			MessageFile: filepath.Join(b.Run.Dir, "commit-message.txt"),
+		})
+		if err != nil {
+			// A definite failure with HEAD still at the start leaves the verified candidate intact
+			// and resumable; an interrupt, a crash or a hook-undone commit stays an uncertain
+			// commit boundary.
+			var failure *sys.Error
+			if errors.As(err, &failure) && failure.Class == "environment" && failure.Reason == "commit_failed" && b.repo.Head() == b.Start {
+				b.Continuation = Continuation{Stage: StageCommitFailed, Tree: pass.Tree}
+			}
+			return "", false, err
+		}
 	}
 	os.Remove(project.ApprovalPath(b.Root, b.Slug))
 	b.setPhase(phaseLanded)
-	if err := b.Save(Continuation{Stage: StageLanded, Commit: commit}); err != nil {
+	if err := b.Save(Continuation{Stage: StageLanded, Commit: commit, AlreadyPresent: alreadyPresent}); err != nil {
 		return "", false, err
 	}
 	var notes []map[string]any
@@ -78,14 +86,22 @@ func (b *Attempt) commitApproved(ctx context.Context, ap Approved, restart bool)
 			notes = append(notes, f)
 		}
 	}
-	b.Run.Event(map[string]any{"event": "outcome", "outcome": "landed", "commit": commit})
-	if err := b.Run.Write("result.json", b.result("landed", map[string]any{"commit": commit})); err != nil {
+	outcome := "landed"
+	if alreadyPresent {
+		outcome = "already_present"
+	}
+	b.Run.Event(map[string]any{"event": "outcome", "outcome": outcome, "commit": commit})
+	if err := b.Run.Write("result.json", b.result(outcome, map[string]any{"commit": commit})); err != nil {
 		return "", false, err
 	}
-	if err := b.facts.update(b, "", "landed"); err != nil {
+	if err := b.facts.update(b, "", outcome); err != nil {
 		return "", false, err
 	}
-	b.s.Puts(fmt.Sprintf("landed %s %s (Build %s)", b.Slug, short(commit), b.Run.ID))
+	if alreadyPresent {
+		b.s.Puts(fmt.Sprintf("already present %s at HEAD %s (Build %s)", b.Slug, commit, b.Run.ID))
+	} else {
+		b.s.Puts(fmt.Sprintf("landed %s %s (Build %s)", b.Slug, short(commit), b.Run.ID))
+	}
 	b.s.Puts("  checks: " + pass.ChecksLine())
 	for _, line := range b.comparisonLines() {
 		b.s.Puts(line)

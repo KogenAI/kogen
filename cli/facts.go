@@ -567,7 +567,7 @@ func completeCandidates(op string, packages, runs []object) int {
 			if op == "recover" && r["state"] != "build_blocked" {
 				continue
 			}
-			if op == "resume" && (r["resume_status"] == "unsupported" || r["state"] == "landed") {
+			if op == "resume" && (r["resume_status"] == "unsupported" || r["state"] == "landed" || r["state"] == "already_present") {
 				continue
 			}
 			candidates = append(candidates, object{"value": r["run_id"], "description": fmt.Sprint(r["slug"]) + " " + fmt.Sprint(r["state"])})

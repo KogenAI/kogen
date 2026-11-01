@@ -403,7 +403,7 @@ func (f *localFacts) publish(c project.CheckoutFacts) error {
 	})
 	var resume []map[string]any
 	for _, r := range runs {
-		if r["resume_status"] != "unsupported" && r["state"] != "landed" {
+		if r["resume_status"] != "unsupported" && r["state"] != "landed" && r["state"] != "already_present" {
 			resume = append(resume, r)
 		}
 	}

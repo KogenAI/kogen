@@ -150,12 +150,19 @@ func resumeLocked(ctx context.Context, s *sys.Session, in ResumeInput, repo *git
 	head := repo.Head()
 	if c := b.Continuation; c.Stage == StageLanded && head == c.Commit {
 		parent, err1 := repo.Resolve(c.Commit + "^")
+		if c.AlreadyPresent && c.Commit == b.Start {
+			parent, err1 = b.Start, nil
+		}
 		tree, err2 := repo.Resolve(c.Commit + "^{tree}")
 		if err1 != nil || err2 != nil || parent != b.Start || tree != b.LastPass.Tree ||
 			b.LastReview.Tree != b.LastPass.Tree || !b.LastPass.Green {
 			return refuse(id, "already-landed commit provenance changed", "")
 		}
-		s.Puts("Build " + id + " already landed " + c.Commit)
+		if c.AlreadyPresent {
+			s.Puts("Build " + id + " already present at HEAD " + c.Commit)
+		} else {
+			s.Puts("Build " + id + " already landed " + c.Commit)
+		}
 		return nil
 	}
 	if head != b.Start {

@@ -161,7 +161,8 @@ type Continuation struct {
 	// Tree is the tree being committed (stages commit and commit_failed).
 	Tree string `json:"tree,omitempty"`
 	// Commit is the landed commit (stage landed).
-	Commit string `json:"commit,omitempty"`
+	Commit         string `json:"commit,omitempty"`
+	AlreadyPresent bool   `json:"already_present,omitempty"`
 	// Pass and Review belong to the review stages: the green pass under review and the
 	// reviewer's own session state, which only the review code interprets.
 	Pass   *verify.Pass    `json:"pass,omitempty"`
