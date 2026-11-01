@@ -1613,6 +1613,8 @@ async function dispatchAssertions(world, label, args, attachment) {
     world.lastResult = record;
     if (label.includes('to the process group of the Build\'s running command')) {
       process.kill(-runningCommandGroup(world), signal);
+      // A signal alone does not show that cancellation was ignored; observe the negative case.
+      await new Promise(resolve => setTimeout(resolve, 2000));
     } else {
       world.sendSignal(record, signal);
       await world.waitFor(record, 15000);
@@ -1622,7 +1624,6 @@ async function dispatchAssertions(world, label, args, attachment) {
   }
   if (label === 'the kogen command is still running') {
     const record = world.currentProcess;
-    await new Promise(resolve => setTimeout(resolve, 2000));
     assert.ok(record && record.child.exitCode === null && record.child.signalCode === null, 'the kogen command has exited');
     process.kill(record.child.pid, 0);
     return;

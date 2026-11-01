@@ -1,0 +1,218 @@
+[
+  {
+    "description": "  The builder uses shell, read_file, view_image, write_file, finish and\n  report_blocker, until verification is green and the review approves. No time or\n  token limit; native shell calls are unbounded unless explicitly opted in.",
+    "elements": [
+      {
+        "description": "",
+        "id": "building;ordinary-implementation-failures-keep-repairing-until-the-caller-stops-it",
+        "keyword": "Scenario",
+        "line": 105,
+        "name": "Ordinary implementation failures keep repairing until the caller stops it",
+        "steps": [
+          {
+            "result": {
+              "status": "passed",
+              "duration": 5343999
+            },
+            "keyword": "Before",
+            "hidden": true
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 700667
+            },
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 7,
+            "name": "a clean Kogen home",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 55499
+            },
+            "arguments": [],
+            "keyword": "And ",
+            "line": 8,
+            "name": "the installed kogen command",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 62254332
+            },
+            "arguments": [],
+            "keyword": "And ",
+            "line": 9,
+            "name": "a Git project from fixture \"py-calc\"",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 59297375
+            },
+            "arguments": [],
+            "keyword": "And ",
+            "line": 10,
+            "name": "the project is initialized and configured",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 434166
+            },
+            "arguments": [],
+            "keyword": "And ",
+            "line": 11,
+            "name": "the caller is signed in to ChatGPT",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 2923744208
+            },
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 106,
+            "name": "the Intent \"is-even\" from fixture \"is-even\" is approved",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 143333
+            },
+            "arguments": [],
+            "keyword": "And ",
+            "line": 107,
+            "name": "the fake ChatGPT server plays script \"build-wrong-forever\"",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 48188000
+            },
+            "arguments": [],
+            "keyword": "And ",
+            "line": 108,
+            "name": "the caller runs \"kogen intent build is-even\" in the background",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 28845807624
+            },
+            "arguments": [],
+            "keyword": "When ",
+            "line": 109,
+            "name": "the fake ChatGPT server has sent the feedback of verification pass 25",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 97750
+            },
+            "arguments": [],
+            "keyword": "Then ",
+            "line": 110,
+            "name": "the kogen command is still running",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 372667874
+            },
+            "arguments": [],
+            "keyword": "When ",
+            "line": 111,
+            "name": "the caller sends SIGINT to the kogen command",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 236541
+            },
+            "arguments": [],
+            "keyword": "Then ",
+            "line": 112,
+            "name": "the exit code is 130",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 18194999
+            },
+            "arguments": [],
+            "keyword": "And ",
+            "line": 113,
+            "name": "HEAD is unchanged",
+            "match": {
+              "location": "steps/steps.js:45"
+            }
+          },
+          {
+            "result": {
+              "status": "passed",
+              "duration": 19347333
+            },
+            "keyword": "After",
+            "hidden": true
+          }
+        ],
+        "tags": [
+          {
+            "name": "@LOOP-7",
+            "line": 104
+          },
+          {
+            "name": "@VER-12",
+            "line": 104
+          }
+        ],
+        "type": "scenario"
+      }
+    ],
+    "id": "building",
+    "line": 1,
+    "keyword": "Feature",
+    "name": "Building",
+    "tags": [],
+    "uri": "../../spec/features/04-building.feature"
+  }
+]
