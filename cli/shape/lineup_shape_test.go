@@ -27,12 +27,6 @@ type shapeExec struct {
 	startErr error
 	seq      int
 	calls    int // rounds over every session
-	// examples, when set, answers the example check sessions in order (the last repeats); they
-	// do not count in rounds or calls. Without it every example check finds no example.
-	examples []func(n int, root string) (executor.RoundResult, error)
-	checks   int // example check rounds
-	// exampleStarts are the tasks of the example check sessions: starts holds the others.
-	exampleStarts []executor.Task
 }
 
 func (x *shapeExec) Describe() executor.Descriptor {
@@ -48,11 +42,7 @@ func (x *shapeExec) Start(_ context.Context, t executor.Task, emit executor.Sink
 	if x.startErr != nil {
 		return nil, x.startErr
 	}
-	if strings.Contains(string(t.Schema), `"derived"`) {
-		x.exampleStarts = append(x.exampleStarts, t)
-	} else {
-		x.starts = append(x.starts, t)
-	}
+	x.starts = append(x.starts, t)
 	x.seq++
 	emit(map[string]any{"event": "executor_started", "role": t.Role, "model": t.Model, "session_id": fmt.Sprintf("shape-session-%d", x.seq)})
 	return &shapeSession{x: x, task: t, id: fmt.Sprintf("shape-session-%d", x.seq), emit: emit}, nil
@@ -72,21 +62,7 @@ func (s *shapeSession) Handle() executor.Handle {
 func (s *shapeSession) Close() error { return nil }
 func (s *shapeSession) Round(_ context.Context, in executor.Input) (executor.RoundResult, error) {
 	s.n++
-	if strings.Contains(string(s.task.Schema), `"derived"`) {
-		s.x.mu.Lock()
-		s.x.checks++
-		fn := result(map[string]any{"examples": []any{}})
-		if len(s.x.examples) > 0 {
-			fn = s.x.examples[min(s.x.checks-1, len(s.x.examples)-1)]
-		}
-		s.x.mu.Unlock()
-		res, err := fn(s.n, s.task.Root)
-		if err != nil {
-			return executor.RoundResult{}, err
-		}
-		res.Ending, res.Handle = executor.EndFinish, s.Handle()
-		return res, nil
-	}
+
 	s.x.mu.Lock()
 	s.x.inputs = append(s.x.inputs, in)
 	s.x.calls++
@@ -173,7 +149,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 		lines := strings.Split(strings.TrimSuffix(f.Stdout.String(), "\n"), "\n")
 		shpEq(t, "line count", len(lines), 7)
 		shpEq(t, "scenarios line", lines[4], "Scenarios: 2 (2 fail now, 0 pass now)")
-		shpMatch(t, "usage line", lines[5], `^shape claude-opus-5-5/xhigh claude-code 3 round\(s\) wall_ms=\d+$`)
+		shpMatch(t, "usage line", lines[5], `^shape claude-opus-5-5/xhigh claude-code 2 round\(s\) wall_ms=\d+$`)
 		shpEq(t, "feature", f.read(".kogen/intents/is-even/acceptance.feature"), shpFeature)
 		shpEq(t, "steps", f.read("features/steps/is_even_steps.js"), shpSteps)
 		shpEq(t, "intent", f.read(".kogen/intents/is-even/intent.md"), shpIntentMD)

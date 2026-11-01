@@ -157,8 +157,6 @@ func (w *forceWire) newShape(t *testing.T, steps ...shpStep) *shpFx {
 	t.Helper()
 	f := newShpFx(t, steps...)
 	w.configure(f)
-	check := w.calls(shpCall("example-check", SubmitExampleCheckTool, map[string]any{"examples": []any{}}))
-	f.Prov.example = &check
 	return f
 }
 

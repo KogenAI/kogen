@@ -303,39 +303,7 @@ async function main() {
   process.exitCode = exit;
 }
 
-// Shape's example check (SHP-8) asks for its own schema: a list of examples with derived values.
-// It is answered apart from the scripted roles, finding no concrete example, and stays out of the
-// counters, prompts, sessions and cost the scenarios read (example-checks.jsonl records it).
-function isExampleCheck() {
-  try {
-    const items = ((JSON.parse(flag('--json-schema')).properties || {}).examples || {}).items || {};
-    return Boolean((items.properties || {}).derived);
-  } catch { return false; }
-}
-
-function answerExampleCheck(prompt) {
-  fs.mkdirSync(state, { recursive: true });
-  const session = flag('--session-id') || flag('--resume');
-  fs.appendFileSync(path.join(state, 'example-checks.jsonl'), `${JSON.stringify({ session, prompt })}\n`);
-  out({
-    type: 'system', subtype: 'init', cwd: fs.realpathSync(process.cwd()), session_id: session, tools: ['Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Read', 'Write'],
-    mcp_servers: [], model: flag('--model') || 'claude-sonnet-5-5', permissionMode: 'acceptEdits',
-    apiKeySource: 'none', claude_code_version: String(script.version || '2.1.306').split(' ')[0],
-    uuid: '00000000-0000-4000-8000-ffffffffffff',
-  });
-  out({
-    type: 'result', subtype: 'success', is_error: false, duration_ms: 1000, duration_api_ms: 900, num_turns: 1,
-    result: 'Done.', stop_reason: 'end_turn', terminal_reason: 'completed', session_id: session, total_cost_usd: 0,
-    usage: { input_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 5 }, permission_denials: [],
-    structured_output: { examples: [] },
-  });
-}
-
-readPrompt().then(prompt => {
-  if (isExampleCheck()) return answerExampleCheck(prompt);
-  begin(prompt);
-  return main();
-}).catch(error => {
+readPrompt().then(prompt => { begin(prompt); return main(); }).catch(error => {
   process.stderr.write(`fake claude: ${error && error.stack || error}\n`);
   process.exitCode = 70;
 });

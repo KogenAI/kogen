@@ -46,9 +46,6 @@ type shpProvider struct {
 	// route, when set, chooses the answer by what the request says; nil falls back to the
 	// sequence.
 	route func(req map[string]any) *shpStep
-	// example is the default answer to an example check call, rendered on the provider's wire;
-	// nil: no example, on the Responses wire.
-	example *shpStep
 }
 
 // shpRaw is one request as it arrived: the exact body bytes and the headers.
@@ -83,14 +80,7 @@ func (p *shpProvider) serve(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 	}
 	if !routed {
-		if isExampleCheck(req) {
-			// The default example check answer: no example states a concrete result.
-			if p.example != nil {
-				step = *p.example
-			} else {
-				step = shpAnswer(shpCall("example-check", SubmitExampleCheckTool, map[string]any{"examples": []any{}}))
-			}
-		} else if n := p.takeLocked(); n < len(p.seq) {
+		if n := p.takeLocked(); n < len(p.seq) {
 			step = p.seq[n]
 		} else {
 			step = shpStep{status: 400, code: "invalid_request_error"}
@@ -136,61 +126,15 @@ func shpFrame(w io.Writer, ev any) {
 	fmt.Fprintf(w, "data: %s\n\n", b)
 }
 
-// isExampleCheck is whether a request is an example check call: its only tool is
-// submit_example_check.
-func isExampleCheck(req map[string]any) bool {
-	tools, _ := req["tools"].([]any)
-	if len(tools) != 1 {
-		return false
-	}
-	m, _ := tools[0].(map[string]any)
-	if fn, ok := m["function"].(map[string]any); ok {
-		m = fn
-	}
-	return m["name"] == SubmitExampleCheckTool
-}
-
-// requests are the shaper's requests in order, without the example check calls.
 func (p *shpProvider) requests() []map[string]any {
-	var out []map[string]any
-	for _, r := range p.allRequests() {
-		if !isExampleCheck(r) {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-// checkRequests are the example check calls in order.
-func (p *shpProvider) checkRequests() []map[string]any {
-	var out []map[string]any
-	for _, r := range p.allRequests() {
-		if isExampleCheck(r) {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-// allRequests are every request in order, the example check calls included.
-func (p *shpProvider) allRequests() []map[string]any {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]map[string]any(nil), p.reqs...)
 }
-
-// rawRequests are the exact bodies and headers received, in order, without the example check
-// calls.
 func (p *shpProvider) rawRequests() []shpRaw {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	var out []shpRaw
-	for i, r := range p.raws {
-		if !isExampleCheck(p.reqs[i]) {
-			out = append(out, r)
-		}
-	}
-	return out
+	return append([]shpRaw(nil), p.raws...)
 }
 
 // shpCall is a function call item.

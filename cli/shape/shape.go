@@ -543,13 +543,6 @@ type shaping struct {
 	decisionChecks int            // decision check calls made
 	decisionUsage  provider.Usage // the native decision checks' tokens
 	decisionRounds int            // the external decision check sessions' rounds
-
-	exampleChecks  int             // example check calls made
-	exampleUsage   provider.Usage  // the native example checks' tokens
-	exampleRounds  int             // the external example check sessions' rounds
-	exampleChecked map[string]bool // candidates (intent.md and acceptance.feature) checked without a contradiction
-	lastGate       string          // the gate of the last refused submission
-	exampleLines   []string        // the item lines of the last example check refusal
 }
 
 func (sh *shaping) elapsed() int64 { return time.Since(sh.started).Milliseconds() / 1000 }
@@ -635,7 +628,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 		var x *extSession
 		res, x, err = sh.converseExternal(ctx, blocks)
 		if x != nil {
-			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds+sh.auditRounds+sh.decisionRounds+sh.exampleRounds, time.Since(t0).Milliseconds())
+			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds+sh.auditRounds+sh.decisionRounds, time.Since(t0).Milliseconds())
 		}
 		if err != nil {
 			return 0, err
@@ -649,17 +642,12 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 			}
 			return 0, err
 		}
-		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, sh.auditUsage.Add(sh.decisionUsage).Add(sh.exampleUsage).Add(usage).Line(), time.Since(t0).Milliseconds())
+		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, sh.auditUsage.Add(sh.decisionUsage).Add(usage).Line(), time.Since(t0).Milliseconds())
 	}
 
 	switch res.kind {
 	case outInvalid:
 		if len(sh.originals) > 0 {
-			if sh.lastGate == "example_check" {
-				if err := sh.writeExampleContradictions(sh.exampleLines); err != nil {
-					return 0, err
-				}
-			}
 			e := sys.Fail("intent", "not_ready", "the Intent is not ready to build", 1)
 			e.Lines = res.problems
 			return 0, e
@@ -708,7 +696,6 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	}
 	os.Remove(filepath.Join(sh.stateDir, "state.json"))
 	os.Remove(filepath.Join(sh.stateDir, questionsFile))
-	os.Remove(filepath.Join(sh.stateDir, exampleContradictionsFile))
 	var added []string
 	for p, o := range sh.originals {
 		if o.absent {
@@ -1169,7 +1156,6 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 
 // refused records one submission_refused event with its problem lines bounded.
 func (sh *shaping) refused(gate string, problems []string) {
-	sh.lastGate = gate
 	if len(problems) > 20 {
 		problems = problems[:20]
 	}
@@ -1355,15 +1341,6 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 			sh.refused("decision_check", lines[1:])
 			return strings.Join(lines, "\n"), outcome{kind: outInvalid, problems: lines[1:]}, nil
 		}
-	}
-	lines, err := sh.exampleCheck(ctx)
-	if err != nil {
-		return "", outcome{}, err
-	}
-	if lines != nil {
-		sh.exampleLines = lines[1:]
-		sh.refused("example_check", lines[1:])
-		return strings.Join(lines, "\n"), outcome{kind: outInvalid, problems: lines[1:]}, nil
 	}
 	sh.progress("kogen: checking step code")
 	feedback, err := sh.stepSelfcheck(ctx)

@@ -263,21 +263,6 @@ func (st *gState) row(t string, n int) {
 	gFail(n, "a table must follow a step or Examples:")
 }
 
-// RowCells reads the cells of a table row line as ParseGherkin does: split on unescaped bars
-// and trimmed. A line that is not a complete row is a *GherkinError.
-func RowCells(line string) (cells []string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			ge, ok := r.(*GherkinError)
-			if !ok {
-				panic(r)
-			}
-			cells, err = nil, ge
-		}
-	}()
-	return gCells(strings.TrimSpace(line), 0), nil
-}
-
 func gCells(t string, n int) []string {
 	if !strings.HasSuffix(t, "|") {
 		gFail(n, "a table row must end with |")
