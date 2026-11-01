@@ -14,9 +14,11 @@ var everyTool = []string{tools.ShellTool, tools.ViewImageTool, tools.ReadFileToo
 	tools.ListFilesTool, tools.SearchTextTool, ProbeTool, tools.DocumentationTool, ProposeFilesTool, SubmitTool, SubmitReviewTool, SubmitRefinementTool,
 	SubmitConfigurationTool, ShapeBatchTool, WorkerResultTool}
 
-// TestDefinitionsMatchTheElixirDefinitions compares every tool definition (Kogen.Tools.defs/1,
-// the submit_* definitions of shape, review, refine and init, shape_batch and worker_result)
-// with the JSON the Elixir functions return, as parsed values.
+// TestDefinitionsMatchTheElixirDefinitions compares every Kogen-owned tool definition (finish,
+// report_blocker, probe, propose_files, the submit_* definitions of shape, review, refine and
+// init, shape_batch and worker_result) with testdata/defs_golden.json, as parsed values. A
+// generic tool belongs to the pinned loop: the test checks that Kogen offers the definition
+// tools.Definition returns, unchanged, and the golden holds none of them.
 func TestDefinitionsMatchTheElixirDefinitions(t *testing.T) {
 	data, err := os.ReadFile("testdata/defs_golden.json")
 	if err != nil {
@@ -26,17 +28,33 @@ func TestDefinitionsMatchTheElixirDefinitions(t *testing.T) {
 	if err := json.Unmarshal(data, &want); err != nil {
 		t.Fatal(err)
 	}
-	if len(everyTool) != len(want) {
-		t.Fatalf("%d names, golden has %d", len(everyTool), len(want))
+	owned := 0
+	for _, name := range everyTool {
+		if _, loop := tools.Definition(name); !loop {
+			owned++
+		}
+	}
+	if owned != len(want) {
+		t.Fatalf("%d Kogen-owned names, golden has %d", owned, len(want))
 	}
 	for _, name := range everyTool {
 		t.Run(name, func(t *testing.T) {
-			var got any
+			var got, expected any
 			if err := json.Unmarshal(mustJSON(t, Defs(name)[0]), &got); err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(got, want[name]) {
-				t.Errorf("definition differs\n got: %s\nwant: %s", mustJSON(t, got), mustJSON(t, want[name]))
+			if pinned, loop := tools.Definition(name); loop {
+				if _, stored := want[name]; stored {
+					t.Fatalf("golden stores the loop-owned definition %s", name)
+				}
+				if err := json.Unmarshal(mustJSON(t, pinned), &expected); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				expected = want[name]
+			}
+			if !reflect.DeepEqual(got, expected) {
+				t.Errorf("definition differs\n got: %s\nwant: %s", mustJSON(t, got), mustJSON(t, expected))
 			}
 		})
 	}

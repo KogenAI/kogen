@@ -374,7 +374,9 @@ func normalized(e *env, text string) string {
 }
 
 // openings are the first request or prompt of the builder and of the reviewer, as the roles
-// receive them: native requests are the complete bodies the provider received.
+// receive them: native requests are the bodies the provider received, reduced by
+// kogenOwnedRequest to what Kogen owns (without the pinned loop's generic tool definitions and
+// envelope fields).
 func openings(t *testing.T, c extCombo, d *Diagnostic) map[string]string {
 	t.Helper()
 	e := newEnvIn(t, physical(t, t.TempDir()), physical(t, t.TempDir()), physical(t, t.TempDir()),
@@ -395,6 +397,9 @@ func openings(t *testing.T, c extCombo, d *Diagnostic) map[string]string {
 	}
 	for k, v := range out {
 		out[k] = normalized(e, v)
+		if k == "builder" || k == "reviewer" {
+			out[k] = kogenOwnedRequest(t, out[k])
+		}
 	}
 	return out
 }
@@ -422,7 +427,8 @@ func sameBytes(t *testing.T, name, got, want string) {
 // TestContextExternalNativeBytes: the native opening requests (with and without the
 // diagnostic) and the omitted-context requests of every executor pairing are byte for byte
 // what they were before the diagnostic reached external roles (testdata/context-external-golden.json,
-// recorded from the unfixed Build); only the folders, run, conversation and Git object names are normalized.
+// recorded from the unfixed Build); only the folders, run, conversation and Git object names are normalized,
+// and a native request is compared without the pinned loop's generic tool definitions and envelope fields.
 func TestContextExternalNativeBytes(t *testing.T) {
 	t.Parallel()
 	raw, err := os.ReadFile("testdata/context-external-golden.json")

@@ -15,10 +15,12 @@ import (
 
 // The default parts mode is unchanged by the on_demand hunk gate (k-revod-gate): every
 // provider request of a long parts-mode review (instructions, authority, catalog, guidance,
-// native source data, reset handoff, tool schema and replay) is byte for byte what the code
-// before the gate sent. testdata/k-revod-gate/parts-requests.json was written by this very
-// scenario run against that earlier code (KOGEN_REVOD_GATE_GOLDEN=write), not recomputed from
-// the current production code.
+// native source data, reset handoff, Kogen's tool schema and replay) is what the code before
+// the gate sent. testdata/k-revod-gate/parts-requests.json holds the byte count and SHA-256 of
+// each request reduced by kogenOwnedRequest to what Kogen owns: the generic tool definitions
+// and the envelope fields the pinned loop renders are not part of it (the loop's definitions
+// are read from the pin by that reduction). It was written by this scenario run
+// (KOGEN_REVOD_GATE_GOLDEN=write), not recomputed from the current production code.
 
 const revodGateGolden = "testdata/k-revod-gate/parts-requests.json"
 
@@ -111,8 +113,9 @@ func revodGateDescribe(t *testing.T, bodies []string) []revodGateRequest {
 		if err := json.Unmarshal([]byte(body), &req); err != nil {
 			t.Fatal(err)
 		}
-		sum := sha256.Sum256([]byte(body))
-		out[i] = revodGateRequest{Bytes: len(body), SHA256: hex.EncodeToString(sum[:]),
+		owned := kogenOwnedRequest(t, body)
+		sum := sha256.Sum256([]byte(owned))
+		out[i] = revodGateRequest{Bytes: len(owned), SHA256: hex.EncodeToString(sum[:]),
 			Prefill: strings.Contains(body, jsonEscaped(prefillMarker)), Reset: resetHandoff(t, req) != nil,
 			Reads: strings.Count(body, `"name":"read_file"`)}
 	}

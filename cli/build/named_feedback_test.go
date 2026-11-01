@@ -35,8 +35,9 @@ const namedFeedbackFeature = `Feature: Named tests
     Then the required test "TestWidgetBehaves" runs exactly once and passes in "./widget"
 `
 
-// realBuildTools are the repository's own Node and Cucumber, or a skip when npm ci has not
-// installed them.
+// realBuildTools are the repository's own Node and Cucumber, else the Cucumber the environment
+// names in KOGEN_CUCUMBER (as the configured acceptance command runs it; a copy of the tree has
+// no node_modules of its own), or a skip when neither is installed.
 func realBuildTools(t *testing.T) verify.Tools {
 	t.Helper()
 	node, err := exec.LookPath("node")
@@ -47,7 +48,10 @@ func realBuildTools(t *testing.T) verify.Tools {
 	root := filepath.Join(filepath.Dir(file), "..", "..")
 	tools := verify.Tools{Node: node, Cucumber: filepath.Join(root, "test/acceptance/node_modules")}
 	if _, err := os.Stat(filepath.Join(tools.Cucumber, "@cucumber/cucumber/bin/cucumber.js")); err != nil {
-		t.Skip("run npm ci in test/acceptance for the real Cucumber")
+		tools.Cucumber = os.Getenv("KOGEN_CUCUMBER")
+		if _, err := os.Stat(filepath.Join(tools.Cucumber, "@cucumber/cucumber/bin/cucumber.js")); tools.Cucumber == "" || err != nil {
+			t.Skip("run npm ci in test/acceptance for the real Cucumber")
+		}
 	}
 	return tools
 }
@@ -148,8 +152,9 @@ func toolOutputsOf(req map[string]any) []string {
 	return out
 }
 
-// compatCapture is the first rendered request of a passing Build and the feedback of a red
-// pass with an ordinary assertion failure, with this run's paths and cache identity replaced.
+// compatCapture is the first rendered request of a passing Build, reduced to what Kogen owns
+// (kogenOwnedRequest), and the feedback of a red pass with an ordinary assertion failure, with
+// this run's paths and cache identity replaced.
 func compatCapture(t *testing.T) (map[string]any, string) {
 	t.Helper()
 	pass := newEnv(t)
@@ -178,7 +183,7 @@ func compatCapture(t *testing.T) (map[string]any, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := strings.NewReplacer(pass.aux, "<aux>", pass.root, "<root>").Replace(string(raw))
+	text := kogenOwnedRequest(t, strings.NewReplacer(pass.aux, "<aux>", pass.root, "<root>").Replace(string(raw)))
 	var normalized map[string]any
 	if err := json.Unmarshal([]byte(text), &normalized); err != nil {
 		t.Fatal(err)
@@ -189,7 +194,8 @@ func compatCapture(t *testing.T) (map[string]any, string) {
 func TestNamedFeedbackCompatibility(t *testing.T) {
 	t.Parallel()
 	// Ordinary assertion feedback and the requests of a passing Build are exactly what they
-	// were before named-test feedback existed: testdata/named-feedback-compat.json holds them.
+	// were before named-test feedback existed: testdata/named-feedback-compat.json holds them,
+	// the request without the pinned loop's generic tool definitions and envelope fields.
 	request, feedback := compatCapture(t)
 	raw, err := os.ReadFile("testdata/named-feedback-compat.json")
 	if err != nil {

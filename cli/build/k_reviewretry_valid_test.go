@@ -12,7 +12,8 @@ import (
 
 // firstReviewWire is the first independent-review request of a run exactly as the provider
 // received it, with only the values that differ between runs replaced: the temporary folders,
-// the start HEAD and the conversation's cache identity.
+// the start HEAD and the conversation's cache identity. The wire fixtures hold it reduced by
+// kogenOwnedRequest to what Kogen owns.
 func (e *env) firstReviewWire(start string) string {
 	e.t.Helper()
 	reqs, raw := e.prov.requests(), e.prov.rawRequests()
@@ -58,7 +59,7 @@ func TestKReviewRetryUnchangedValidRequests(t *testing.T) {
 		eq(t, "review requests", len(f.reviewRequests()), 1)
 		eq(t, "reviews", e.result(id)["reviews"], any(float64(1)))
 		wire := e.firstReviewWire(start)
-		eq(t, "approve request bytes", wire, wireFixture(t, "approve.wire.json"))
+		eq(t, "approve request bytes", kogenOwnedRequest(t, wire), wireFixture(t, "approve.wire.json"))
 		lacks(t, "wire", wire, `"name":"submit_review"}`)
 		contains(t, "wire", wire, `"tool_choice":"auto"`)
 		// Independence, material and validation are the original ones.
@@ -89,7 +90,7 @@ func TestKReviewRetryUnchangedValidRequests(t *testing.T) {
 		id := e.onlyRun()
 		eq(t, "review requests", len(f.reviewRequests()), 1)
 		eq(t, "outcome", e.result(id)["outcome"], any("review_blocked"))
-		eq(t, "request bytes", e.firstReviewWire(start), wireFixture(t, "changes.wire.json"))
+		eq(t, "request bytes", kogenOwnedRequest(t, e.firstReviewWire(start)), wireFixture(t, "changes.wire.json"))
 		for _, name := range []string{"review_retry", "review_only", "review_tool_choice", "review_allowance"} {
 			eq(t, name+" events", len(eventsNamed(e.events(id), name)), 0)
 		}

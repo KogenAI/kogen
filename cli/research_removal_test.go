@@ -23,10 +23,14 @@ import (
 	"kogen/agent"
 )
 
-// testdata/loop_knobs_golden.json holds knobFixtureRequests and the cuts of knobFixtureRaw as the
-// current pin (af456d5) rendered them, through knobNormalize: provider.Client.Body of the
-// request as built here and tools.Cut of each raw result. TestResearchRemovalDefaults renders
-// the same with plain construction and compares.
+// testdata/loop_knobs_golden.json holds knobFixtureRequests and the cuts of knobFixtureRaw through
+// knobNormalize: provider.Client.Body of the request as built here and tools.Cut of each raw
+// result. It keeps what Kogen supplies or chooses (model, effort, instructions, input, the tool
+// list in its order, Kogen's own tool definitions, tool choice and the cache identity). It holds
+// no generic tool definition (each is a placeholder naming the tool, and the test reads its text
+// from the pinned loop) and none of the envelope fields the loop renders and Kogen does not set
+// (include, store, stream, max_tokens, thinking). TestResearchRemovalDefaults renders the same
+// with plain construction and compares.
 
 // knobFixtureRoles are one role per wire, as the request fixtures render them.
 var knobFixtureRoles = []provider.Role{
@@ -71,7 +75,7 @@ func knobFixtureInput() []any {
 }
 
 // knobFixtureRequests are the requests of every wire with the full tool set and a
-// conversation, as the Client renders them.
+// conversation, as the Client renders them, less the loop's envelope fields.
 func knobFixtureRequests(body func(provider.Request) map[string]any) []map[string]any {
 	var out []map[string]any
 	for _, role := range knobFixtureRoles {
@@ -79,15 +83,34 @@ func knobFixtureRequests(body func(provider.Request) map[string]any) []map[strin
 			Role: role, Instructions: "Policy of the fixture.", Input: knobFixtureInput(),
 			Tools: agent.AsAny(agent.Defs(knobFixtureEveryTool...)), CacheID: "knob-fixture-cache",
 		}
-		out = append(out, map[string]any{"provider": role.Provider, "body": body(req)})
+		rendered := body(req)
+		for _, k := range knobLoopEnvelope {
+			delete(rendered, k)
+		}
+		out = append(out, map[string]any{"provider": role.Provider, "body": rendered})
 	}
 	return out
 }
 
-// knobNormalize is a request body as the golden keeps it: decoded JSON in which the
-// documentation tool definition (the one text the new pin changes) is a placeholder and every
-// string over 256 bytes is its length and SHA-256, so the golden stays small and a difference
-// of one byte still shows.
+// knobLoopEnvelope are the top-level request fields the loop renders for its wires and Kogen
+// does not set.
+var knobLoopEnvelope = []string{"include", "store", "stream", "max_tokens", "thinking"}
+
+// knobLoopDefinition is the name of the generic tool that x defines, when it is the definition
+// of a tool the pinned loop supplies.
+func knobLoopDefinition(x map[string]any) (string, bool) {
+	name, _ := x["name"].(string)
+	if x["parameters"] == nil && x["input_schema"] == nil {
+		return "", false
+	}
+	_, loop := tools.Definition(name)
+	return name, loop
+}
+
+// knobNormalize is a request body as the golden keeps it: decoded JSON in which every generic
+// tool definition is a placeholder naming the tool and every string over 256 bytes is its length
+// and SHA-256, so the golden stays small and a difference of one byte of Kogen's content still
+// shows.
 func knobNormalize(v any) any {
 	raw, _ := json.Marshal(v)
 	var decoded any
@@ -98,8 +121,8 @@ func knobNormalize(v any) any {
 	walk = func(v any) any {
 		switch x := v.(type) {
 		case map[string]any:
-			if x["name"] == tools.DocumentationTool && (x["parameters"] != nil || x["input_schema"] != nil) {
-				return "<documentation tool definition>"
+			if name, loop := knobLoopDefinition(x); loop {
+				return "<loop tool definition: " + name + ">"
 			}
 			for k, e := range x {
 				x[k] = walk(e)
@@ -241,8 +264,13 @@ func TestResearchRemovalDefaults(t *testing.T) {
 				t.Errorf("cut %d = %v, want %v", i, got, golden.Cuts[i])
 			}
 		}
-		if _, ok := knobNormalize(map[string]any{"name": "documentation", "parameters": map[string]any{}}).(string); !ok {
-			t.Fatal("the normalization does not set the documentation definition apart")
+		for _, name := range []string{tools.ShellTool, tools.DocumentationTool} {
+			if _, ok := knobNormalize(map[string]any{"name": name, "parameters": map[string]any{}}).(string); !ok {
+				t.Fatalf("the normalization does not set the %s definition apart", name)
+			}
+		}
+		if _, ok := knobNormalize(map[string]any{"name": agent.FinishTool, "parameters": map[string]any{}}).(map[string]any); !ok {
+			t.Fatal("the normalization replaces a Kogen-owned definition")
 		}
 	})
 

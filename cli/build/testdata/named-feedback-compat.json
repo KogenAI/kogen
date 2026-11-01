@@ -1,9 +1,6 @@
 {
  "feedback": "Verification pass 1 is not green. Fix the implementation (the approved acceptance files cannot change), then call finish again.\nacceptance (\u003caux\u003e/accept.sh): failed, exit status 1\n  failed: First (line 2)\n  acceptance.feature line 3: Given the fixture is available\n  failed: Second (line 5)\n  acceptance.feature line 6: Then the acceptance check passes",
  "request": {
-  "include": [
-   "reasoning.encrypted_content"
-  ],
   "input": [
    {
     "content": [
@@ -24,92 +21,19 @@
   "reasoning": {
    "effort": "medium"
   },
-  "store": false,
-  "stream": true,
   "tool_choice": "auto",
   "tools": [
    {
-    "description": "Run a command with /bin/sh -c in the repository root, or retrieve it using its handle. Supply exactly one of command or handle. A new command waits up to one second; retrieval waits up to 30 seconds. Both return immediately on completion; running commands continue and return JSON with status, handle and cumulative output. Retrieval returns running or completed JSON with exit_status and cumulative output. Commands are stopped at round end. stdin is closed; stdout and stderr are combined.",
-    "name": "shell",
-    "parameters": {
-     "additionalProperties": false,
-     "properties": {
-      "command": {
-       "type": "string"
-      },
-      "handle": {
-       "type": "string"
-      }
-     },
-     "required": [],
-     "type": "object"
-    },
-    "strict": false,
-    "type": "function"
+    "loop_tool_definition": "shell"
    },
    {
-    "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
-    "name": "read_file",
-    "parameters": {
-     "additionalProperties": false,
-     "properties": {
-      "end_line": {
-       "type": "integer"
-      },
-      "path": {
-       "type": "string"
-      },
-      "start_line": {
-       "type": "integer"
-      }
-     },
-     "required": [
-      "path"
-     ],
-     "type": "object"
-    },
-    "strict": false,
-    "type": "function"
+    "loop_tool_definition": "read_file"
    },
    {
-    "description": "View one selected local static non-interlaced RGB8 PNG (1..131072 bytes, dimensions 1..2048) inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Read-only; no capture or provenance inference. Provider preprocessing may change resolution.",
-    "name": "view_image",
-    "parameters": {
-     "additionalProperties": false,
-     "properties": {
-      "path": {
-       "type": "string"
-      }
-     },
-     "required": [
-      "path"
-     ],
-     "type": "object"
-    },
-    "strict": false,
-    "type": "function"
+    "loop_tool_definition": "view_image"
    },
    {
-    "description": "Write the whole content of a file of the repository (created with its folders if needed).",
-    "name": "write_file",
-    "parameters": {
-     "additionalProperties": false,
-     "properties": {
-      "content": {
-       "type": "string"
-      },
-      "path": {
-       "type": "string"
-      }
-     },
-     "required": [
-      "path",
-      "content"
-     ],
-     "type": "object"
-    },
-    "strict": false,
-    "type": "function"
+    "loop_tool_definition": "write_file"
    },
    {
     "description": "Say the implementation is complete. Kogen then runs the fixers and every check, and a reviewer reviews the code; failures come back to you.",

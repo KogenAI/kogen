@@ -7,9 +7,6 @@
  "requests": [
   {
    "body": {
-    "include": [
-     "reasoning.encrypted_content"
-    ],
     "input": [
      {
       "content": "Authority: the approved Intent and its protected files.",
@@ -63,93 +60,12 @@
     "reasoning": {
      "effort": "high"
     },
-    "store": false,
-    "stream": true,
     "tool_choice": "auto",
     "tools": [
-     {
-      "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
-      "name": "shell",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "command": {
-         "type": "string"
-        },
-        "handle": {
-         "type": "string"
-        }
-       },
-       "required": [],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
-      "name": "view_image",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "path"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
-      "name": "read_file",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "end_line": {
-         "type": "integer"
-        },
-        "path": {
-         "type": "string"
-        },
-        "start_line": {
-         "type": "integer"
-        }
-       },
-       "required": [
-        "path"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "Write the whole content of a file of the repository (created with its folders if needed).",
-      "name": "write_file",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "content": {
-         "type": "string"
-        },
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "path",
-        "content"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
+     "\u003cloop tool definition: shell\u003e",
+     "\u003cloop tool definition: view_image\u003e",
+     "\u003cloop tool definition: read_file\u003e",
+     "\u003cloop tool definition: write_file\u003e",
      {
       "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
       "name": "report_blocker",
@@ -197,43 +113,8 @@
       "strict": false,
       "type": "function"
      },
-     {
-      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
-      "name": "list_files",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
-      "name": "search_text",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        },
-        "pattern": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "pattern"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
+     "\u003cloop tool definition: list_files\u003e",
+     "\u003cloop tool definition: search_text\u003e",
      {
       "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
       "name": "probe",
@@ -270,7 +151,7 @@
       "strict": false,
       "type": "function"
      },
-     "\u003cdocumentation tool definition\u003e",
+     "\u003cloop tool definition: documentation\u003e",
      {
       "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
       "name": "submit",
@@ -538,9 +419,6 @@
   },
   {
    "body": {
-    "include": [
-     "reasoning.encrypted_content"
-    ],
     "input": [
      {
       "content": "Authority: the approved Intent and its protected files.",
@@ -594,93 +472,12 @@
     "reasoning": {
      "effort": "high"
     },
-    "store": false,
-    "stream": true,
     "tool_choice": "auto",
     "tools": [
-     {
-      "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
-      "name": "shell",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "command": {
-         "type": "string"
-        },
-        "handle": {
-         "type": "string"
-        }
-       },
-       "required": [],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
-      "name": "view_image",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "path"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
-      "name": "read_file",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "end_line": {
-         "type": "integer"
-        },
-        "path": {
-         "type": "string"
-        },
-        "start_line": {
-         "type": "integer"
-        }
-       },
-       "required": [
-        "path"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "Write the whole content of a file of the repository (created with its folders if needed).",
-      "name": "write_file",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "content": {
-         "type": "string"
-        },
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "path",
-        "content"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
+     "\u003cloop tool definition: shell\u003e",
+     "\u003cloop tool definition: view_image\u003e",
+     "\u003cloop tool definition: read_file\u003e",
+     "\u003cloop tool definition: write_file\u003e",
      {
       "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
       "name": "report_blocker",
@@ -728,43 +525,8 @@
       "strict": false,
       "type": "function"
      },
-     {
-      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
-      "name": "list_files",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
-     {
-      "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
-      "name": "search_text",
-      "parameters": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        },
-        "pattern": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "pattern"
-       ],
-       "type": "object"
-      },
-      "strict": false,
-      "type": "function"
-     },
+     "\u003cloop tool definition: list_files\u003e",
+     "\u003cloop tool definition: search_text\u003e",
      {
       "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
       "name": "probe",
@@ -801,7 +563,7 @@
       "strict": false,
       "type": "function"
      },
-     "\u003cdocumentation tool definition\u003e",
+     "\u003cloop tool definition: documentation\u003e",
      {
       "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
       "name": "submit",
@@ -1104,99 +866,22 @@
     ],
     "model": "kimi-k3",
     "reasoning_effort": "high",
-    "store": false,
-    "stream": false,
     "tool_choice": "auto",
     "tools": [
      {
-      "function": {
-       "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
-       "name": "shell",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "command": {
-          "type": "string"
-         },
-         "handle": {
-          "type": "string"
-         }
-        },
-        "required": [],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: shell\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
-       "name": "view_image",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "path": {
-          "type": "string"
-         }
-        },
-        "required": [
-         "path"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: view_image\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
-       "name": "read_file",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "end_line": {
-          "type": "integer"
-         },
-         "path": {
-          "type": "string"
-         },
-         "start_line": {
-          "type": "integer"
-         }
-        },
-        "required": [
-         "path"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: read_file\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "Write the whole content of a file of the repository (created with its folders if needed).",
-       "name": "write_file",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "content": {
-          "type": "string"
-         },
-         "path": {
-          "type": "string"
-         }
-        },
-        "required": [
-         "path",
-         "content"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: write_file\u003e",
       "type": "function"
      },
      {
@@ -1251,44 +936,11 @@
       "type": "function"
      },
      {
-      "function": {
-       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
-       "name": "list_files",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "path": {
-          "type": "string"
-         }
-        },
-        "required": [],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: list_files\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
-       "name": "search_text",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "path": {
-          "type": "string"
-         },
-         "pattern": {
-          "type": "string"
-         }
-        },
-        "required": [
-         "pattern"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: search_text\u003e",
       "type": "function"
      },
      {
@@ -1330,7 +982,7 @@
       "type": "function"
      },
      {
-      "function": "\u003cdocumentation tool definition\u003e",
+      "function": "\u003cloop tool definition: documentation\u003e",
       "type": "function"
      },
      {
@@ -1612,7 +1264,6 @@
   },
   {
    "body": {
-    "max_tokens": 128000,
     "messages": [
      {
       "content": "Authority: the approved Intent and its protected files.",
@@ -1659,7 +1310,6 @@
     "output_config": {
      "effort": "high"
     },
-    "stream": true,
     "system": [
      {
       "cache_control": {
@@ -1669,88 +1319,14 @@
       "type": "text"
      }
     ],
-    "thinking": {
-     "type": "adaptive"
-    },
     "tool_choice": {
      "type": "auto"
     },
     "tools": [
-     {
-      "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
-      "input_schema": {
-       "additionalProperties": false,
-       "properties": {
-        "command": {
-         "type": "string"
-        },
-        "handle": {
-         "type": "string"
-        }
-       },
-       "required": [],
-       "type": "object"
-      },
-      "name": "shell"
-     },
-     {
-      "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
-      "input_schema": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "path"
-       ],
-       "type": "object"
-      },
-      "name": "view_image"
-     },
-     {
-      "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
-      "input_schema": {
-       "additionalProperties": false,
-       "properties": {
-        "end_line": {
-         "type": "integer"
-        },
-        "path": {
-         "type": "string"
-        },
-        "start_line": {
-         "type": "integer"
-        }
-       },
-       "required": [
-        "path"
-       ],
-       "type": "object"
-      },
-      "name": "read_file"
-     },
-     {
-      "description": "Write the whole content of a file of the repository (created with its folders if needed).",
-      "input_schema": {
-       "additionalProperties": false,
-       "properties": {
-        "content": {
-         "type": "string"
-        },
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "path",
-        "content"
-       ],
-       "type": "object"
-      },
-      "name": "write_file"
-     },
+     "\u003cloop tool definition: shell\u003e",
+     "\u003cloop tool definition: view_image\u003e",
+     "\u003cloop tool definition: read_file\u003e",
+     "\u003cloop tool definition: write_file\u003e",
      {
       "description": "sha256:b1e29e282c7251f0cbe035e14bdbb67827a887b9fcb3516d2c9e95708f0e6311:332",
       "input_schema": {
@@ -1794,39 +1370,8 @@
       },
       "name": "finish"
      },
-     {
-      "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
-      "input_schema": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        }
-       },
-       "required": [],
-       "type": "object"
-      },
-      "name": "list_files"
-     },
-     {
-      "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
-      "input_schema": {
-       "additionalProperties": false,
-       "properties": {
-        "path": {
-         "type": "string"
-        },
-        "pattern": {
-         "type": "string"
-        }
-       },
-       "required": [
-        "pattern"
-       ],
-       "type": "object"
-      },
-      "name": "search_text"
-     },
+     "\u003cloop tool definition: list_files\u003e",
+     "\u003cloop tool definition: search_text\u003e",
      {
       "description": "sha256:985ab906a97273754993661a95fd6d659059030fc23633906f242152e8f2812a:333",
       "input_schema": {
@@ -1861,7 +1406,7 @@
       },
       "name": "probe"
      },
-     "\u003cdocumentation tool definition\u003e",
+     "\u003cloop tool definition: documentation\u003e",
      {
       "description": "sha256:2138059e12192bf85222cadabfa00a817ba68d22d19e54881d10572d2e929860:1618",
       "input_schema": {
@@ -2157,99 +1702,22 @@
     ],
     "model": "local-model",
     "reasoning_effort": "medium",
-    "store": false,
-    "stream": false,
     "tool_choice": "auto",
     "tools": [
      {
-      "function": {
-       "description": "sha256:46f2124beb09192764cdd447a0bd01fe5334bc27c50af71281fc79ac5144f355:491",
-       "name": "shell",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "command": {
-          "type": "string"
-         },
-         "handle": {
-          "type": "string"
-         }
-        },
-        "required": [],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: shell\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "sha256:c41b05c29da92a7a75aded3cc3aa85b1b1289134be2cfbea40474015e4ad11f7:270",
-       "name": "view_image",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "path": {
-          "type": "string"
-         }
-        },
-        "required": [
-         "path"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: view_image\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "Read a file of the repository, with line numbers. Paths are relative to the repository root; absolute paths and symlinks must stay inside the root, and ~ is refused.",
-       "name": "read_file",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "end_line": {
-          "type": "integer"
-         },
-         "path": {
-          "type": "string"
-         },
-         "start_line": {
-          "type": "integer"
-         }
-        },
-        "required": [
-         "path"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: read_file\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "Write the whole content of a file of the repository (created with its folders if needed).",
-       "name": "write_file",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "content": {
-          "type": "string"
-         },
-         "path": {
-          "type": "string"
-         }
-        },
-        "required": [
-         "path",
-         "content"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: write_file\u003e",
       "type": "function"
      },
      {
@@ -2304,44 +1772,11 @@
       "type": "function"
      },
      {
-      "function": {
-       "description": "List the repository's files (tracked and untracked, not ignored), optionally under a folder inside the repository root; paths outside it, symlinks leaving it and ~ are refused.",
-       "name": "list_files",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "path": {
-          "type": "string"
-         }
-        },
-        "required": [],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: list_files\u003e",
       "type": "function"
      },
      {
-      "function": {
-       "description": "Search the repository's files for a regular expression (git grep syntax), optionally under a path inside the repository root; paths outside it, symlinks leaving it and ~ are refused. Returns path:line:text matches.",
-       "name": "search_text",
-       "parameters": {
-        "additionalProperties": false,
-        "properties": {
-         "path": {
-          "type": "string"
-         },
-         "pattern": {
-          "type": "string"
-         }
-        },
-        "required": [
-         "pattern"
-        ],
-        "type": "object"
-       },
-       "strict": false
-      },
+      "function": "\u003cloop tool definition: search_text\u003e",
       "type": "function"
      },
      {
@@ -2383,7 +1818,7 @@
       "type": "function"
      },
      {
-      "function": "\u003cdocumentation tool definition\u003e",
+      "function": "\u003cloop tool definition: documentation\u003e",
       "type": "function"
      },
      {
