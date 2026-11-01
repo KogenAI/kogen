@@ -1,0 +1,68 @@
+# Expand Scenario Outlines before the example check
+
+Slug: k-examples-outline
+Model: not applicable — a pure text transformation of the example check's input and of the text its quotes are checked against; no new state
+Acceptance:
+- .kogen/intents/k-examples-outline/acceptance.feature
+- features/steps/k_examples_outline_steps.js
+- features/steps/k_examples_outline/yield-regressions.feature
+- features/steps/k_examples_outline/yield-regressions.expanded.feature
+- features/steps/k_examples_outline/durations-consistent.feature
+- features/steps/k_examples_outline/durations-consistent.expanded.feature
+- features/steps/k_examples_outline/durations-contradicting.feature
+- features/steps/k_examples_outline/durations-contradicting.expanded.feature
+- features/steps/k_shape_acceptance_contradicts_steps.js
+
+Fix K-EXAMPLES-OUTLINE (change_type: fix), a regression from K-SHAPE-ACCEPTANCE-CONTRADICTS (d1ffe29). Shaping L-YIELD-SNAPSHOT-RACE (kogen-loop) on Kogen d1ffe291 ended `intent/not_ready`, and approve refused with `intent/examples_contradict`. Every reported "contradiction" was a row of one consistent Scenario Outline, "Existing shell lifecycle, retrieval and attempt cleanup keep passing", whose step is `the yield snapshot regression "<test>" in package "<package>" ran and passed`, with Examples rows such as `| TestShellLifecycleSuccessCleanup | ./conformance |`. The check model had been given the raw `acceptance.feature`. It quoted that step text, with `<test>`/`<package>` unsubstituted, as `expected`. It derived the row's substituted step (`the yield snapshot regression "TestShellLifecycleSuccessCleanup" in packa...`). Kogen's mechanical rule then found derived ≠ expected for all seven rows, although the quoted rule ("The existing tests in the scenario outline pass before and after.") does not contradict them. Today any Intent whose acceptance uses a Scenario Outline can be refused this way.
+
+After this change the example check substitutes Scenario Outline placeholders from each Examples row before anything is compared. Kogen gives the check `acceptance.feature` with every Scenario Outline expanded into one Scenario per Examples row. It then checks the answer's quotes against that same expanded text. A consistent outline is accepted unchanged. A row whose expected value contradicts the rule is still refused, and its feedback line names that row's scenario, input and expected value. The cases K-SHAPE-ACCEPTANCE-CONTRADICTS targets keep being caught: a feature without a Scenario Outline is given to the check byte-identical to today. No new command, flag, option or setting; no timeout, retry or limit change.
+
+## The expansion
+- Where: in `exampleCheck` (`cli/shape/examplecheck.go`). The text after `# Candidate acceptance.feature` in the check input becomes the expanded text. This applies to the native request and to the `executor: claude-code` session, which share that input. The same expanded text replaces the raw feature as the `acceptance.feature` that `exampleOutcome` checks `scenario`, `input` and `expected` against. The candidate `intent.md`, the request text, the instructions (`exampleInstructions`), the schema, the mechanical rule itself, the event, the feedback headline and item-line format, `example-contradictions.json` and `intent/examples_contradict` are unchanged. The key that skips an already-checked candidate stays the hash of the formatted `intent.md` and raw `acceptance.feature` bytes.
+- What: the formatted candidate `acceptance.feature` with each `Scenario Outline:` or `Scenario Template:` replaced. Every line outside a replaced range is kept byte for byte, including tag lines above the outline's keyword line, Background, other scenarios, comments and the final newline. A feature without an outline is therefore unchanged. A replaced range runs from the outline's keyword line through its last Examples row line. Within it, Kogen emits one scenario for each Examples row, in file order, across every Examples/Scenarios block of that outline in order:
+  - first a line `<indentation of the keyword line>Scenario: <the outline's name>`;
+  - then the outline's step lines, each followed by its doc string and data table lines (including empty lines inside a doc string), in order and with their own indentation.
+- Inside a range, Kogen does not copy description lines, comment lines, empty lines outside doc strings, `Examples:`/`Scenarios:` lines and their tags and descriptions, or the Examples header and rows. One empty line separates consecutive expanded scenarios.
+- Substitution: in the name and in every copied line, each `<header>` of the row's Examples block is replaced by that row's cell. Cells are read as Kogen's Gherkin reader reads them (`project.ParseGherkin`: trimmed), and replacement happens in header order, as its outline pickles already substitute. Text in angle brackets that is not a header of that block stays as it is. A feature that `project.ParseGherkin` cannot read is given unchanged.
+- Example (fixture `features/steps/k_examples_outline/durations-consistent.feature` and its exact expansion `durations-consistent.expanded.feature`): the outline `<seconds> seconds render as hours, minutes and seconds`, with steps `Given the input '<seconds>'` / `Then the output is '<words>'` and rows `3725 | 1 hour, 2 minutes, 5 seconds` and `5430 | 1 hour, 30 minutes, 30 seconds`, becomes `Scenario: 3725 seconds render as hours, minutes and seconds` with `Given the input '3725'` / `Then the output is '1 hour, 2 minutes, 5 seconds'`, an empty line, then the 5430 scenario.
+
+## Resulting outcomes
+- A quote copied from the expanded text (for example the expanded scenario name `3725 seconds render as hours, minutes and seconds`, or the step text with the row's values) is quoted. Its derived value is compared with its expected value as today: `follows` or `contradicts`.
+- An item that quotes text appearing only in the raw outline is `unquoted`: recorded, never fed back, never refusing. This covers the reported answer, whose expected value is the step with `<test>`/`<package>`, because no placeholder of an expanded outline remains in the text the check sees. It also covers a raw Examples table row such as `| 3725 | ... |`.
+- `spec/prose/02-shaping.md` SHP-8 and `docs/configuration.md` (the example check paragraph) state that the check is given `acceptance.feature` with each Scenario Outline expanded into one Scenario per Examples row (the literal phrase `one Scenario per Examples row`), its placeholders substituted from that row, and that quotes are checked against that expanded text.
+
+## Unchanged and out of scope
+- Readiness, approval, the card, publication, the step self-check, the decision check, the request audit and Refine are unchanged. No other caller of `project.ParseGherkin` changes.
+- No Scenario Outline with placeholders is used in this Intent's own `acceptance.feature`; the outline fixtures are prepared files under `features/steps/k_examples_outline/` (shaping constraint of the request).
+- This item is shaped and built with Kogen v0.1.0-dev.094415bb (1 Nov 2026 kogen-main ruling); the target repository is current Kogen main. The acceptance installs the release that the configured setup (`sh packaging/package.sh`) builds from the candidate.
+
+## Decisions
+- The example check substitutes Scenario Outline placeholders from each Examples row before comparing, so a consistent Scenario Outline is accepted unchanged (source: request)
+- Only real contradictions between an example's stated input/expected values and the Intent's written rules are reported; a contradicting outline row is still refused, naming that row, and the K-SHAPE-ACCEPTANCE-CONTRADICTS cases keep being caught (source: request)
+- No new command, flag or option; no timeout, retry or limit change (source: request)
+- This Intent's own acceptance writes each case as its own Scenario with no outline placeholders; the outline fixtures live in prepared fixture files (source: request)
+
+## Source comparison
+- addressed: Problem — the reported outline (scenario "Existing shell lifecycle, retrieval and attempt cleanup keep passing", step `the yield snapshot regression "<test>" in package "<package>" ran and passed`, row `| TestShellLifecycleSuccessCleanup | ./conformance |`, rule "The existing tests in the scenario outline pass before and after.") is reproduced by fixture `yield-regressions`, with the checker answering the template as `expected` and the substituted step as `derived`, exactly as reported; acceptance scenario 1 shapes, publishes and approves it. The second row `TestShellYieldRetrievalScope | ./tools` is fixture data (a real kogen-loop test name), not one of the six unreported rows.
+- addressed: Need "substitutes placeholders from each Examples row before comparing" — the expansion section; scenario 2 checks the exact expanded text the checker receives and `follows` results.
+- addressed: Need "reports only real contradictions … K-SHAPE-ACCEPTANCE-CONTRADICTS cases keep being caught" — scenario 3 (one contradicting row of the same outline refused with its exact item line), and scenarios 4-5 (K-SHAPE-ACCEPTANCE-CONTRADICTS's arithmetic and kept-contradiction scenarios, copied verbatim and run through its own step file, including the byte-identical raw feature for a feature without an outline).
+- addressed: Acceptance evidence — scripted-provider scenarios against the installed release: consistent outline shapes and approves (scenarios 1-2, card and full-hash approval), one contradicting row refused naming that row (scenario 3), K-SHAPE scenarios keep passing (scenarios 4-5).
+- addressed: Shaping constraint — no Scenario Outline in this acceptance.feature; outline fixtures are prepared files.
+- omitted: K-SHAPE-ACCEPTANCE-CONTRADICTS's fixed-width, ordering and consistent-outline scenarios and its specification scenario are not repeated here (the same mechanical rule; its own feature file still exists and is unchanged); the full L-YIELD output and the other six rows were not supplied in the repository.
+- omitted: the pinned tool version and shaping history (08:16-08:31Z refusal) are process facts, not behavior.
+
+## Tests
+- outline expansion (name and step substitution, doc string and data table lines, several Examples blocks, Scenario Template, tags above the outline kept, comments/descriptions/Examples dropped, one empty line between rows, feature without outline byte-identical, unreadable feature unchanged): table tests of the expansion function in cli/shape/examplecheck_test.go (unit)
+- quotes are checked against the expanded text: exampleOutcome tests in cli/shape/examplecheck_test.go where a template-quoting item is unquoted, an expanded-quote consistent row follows and an expanded-quote contradicting row contradicts (unit)
+- the check request carries the expanded feature: an existing scripted-provider example check test in cli/shape updated or added to assert the request input for an outline (integration)
+- the reported outline answered with placeholder text shapes, publishes and approves: acceptance scenario 1 (regression)
+- a consistent outline is given expanded, follows, publishes and approves: acceptance scenario 2 (scenario)
+- one contradicting outline row is refused with that row's item line and the consistent version is published: acceptance scenario 3 (regression)
+- K-SHAPE-ACCEPTANCE-CONTRADICTS cases keep being caught and features without outlines are given unchanged: acceptance scenarios 4-5 (existing)
+- SHP-8 and the configuration guide describe the expansion: acceptance scenario 6 (scenario)
+
+## Feasibility
+- Draft acceptance against the unchanged HEAD release (scratch copy outside the checkout, KOGEN_ARCHIVE=dist/kogen-0f00deab-darwin-arm64.tar.gz): scenarios 4-5 pass. Scenario 1 fails for the reported defect: the first candidate is refused by the example check, and shape exits 4 when the scripted shaper has no second answer. Scenario 2 fails because the checker is given the raw outline (its events record `unquoted+unquoted`). Scenario 3 fails because the contradicting outline is published at once with no feedback. Scenario 6 fails because the docs lack the phrase. All of this took 25.2 s.
+- A scratch implementation of the expansion above (packaged with `sh packaging/package.sh`, 11 s) passes scenarios 1-5 in 26.2 s. The fixtures, scripted answers, card lines and approval observations are reachable as written. Only scenario 6 stays red, because that scratch did not edit the docs.
+- The observer controls accept the known-good observations, fixture derivations and reference expansions, and reject every known-bad one, including the old raw-outline request and the old `contradicts`/`unquoted` events (good exit 0, bad exit 1).
+- evidence: {"id":"outline-check-observer","kind":"observer","inputs":["features/steps/k_examples_outline_steps.js","features/steps/k_examples_outline/yield-regressions.feature","features/steps/k_examples_outline/yield-regressions.expanded.feature","features/steps/k_examples_outline/durations-consistent.feature","features/steps/k_examples_outline/durations-consistent.expanded.feature","features/steps/k_examples_outline/durations-contradicting.feature","features/steps/k_examples_outline/durations-contradicting.expanded.feature"],"observers":["features/steps/k_examples_outline_steps.js"],"checks":[{"name":"good","command":"\"$KOGEN_NODE\" features/steps/k_examples_outline_steps.js --control good","exit":0,"output":"accepted\n"},{"name":"bad","command":"\"$KOGEN_NODE\" features/steps/k_examples_outline_steps.js --control bad","exit":1,"output":"rejected\n"}]}

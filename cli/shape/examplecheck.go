@@ -133,6 +133,119 @@ func exampleOutcome(items []exampleItem, request, intent, feature string) (map[s
 	return event, append([]string{head}, lines...)
 }
 
+// expandOutlines returns the feature with every Scenario Outline (or Template) replaced, from its
+// keyword line through its last Examples row line, by one Scenario per Examples row in file order
+// with that row's cells substituted for the <headers> of its block, as project.ParseGherkin's
+// pickles do. Every other line is kept byte for byte, so a feature without an outline, or one
+// that cannot be read, is returned unchanged.
+func expandOutlines(feature string) string {
+	scenarios, err := project.ParseGherkin(feature)
+	if err != nil {
+		return feature
+	}
+	type span struct {
+		name        string
+		first, last int // 1-based keyword line and last Examples row line
+	}
+	var spans []*span
+	byLine := map[int]*span{}
+	for _, sc := range scenarios {
+		if sc.Outline == nil {
+			continue
+		}
+		sp := byLine[sc.Outline.Line]
+		if sp == nil {
+			sp = &span{name: sc.Outline.Name, first: sc.Outline.Line}
+			byLine[sp.first] = sp
+			spans = append(spans, sp)
+		}
+		sp.last = max(sp.last, sc.Line)
+	}
+	if len(spans) == 0 {
+		return feature
+	}
+	lines := strings.Split(feature, "\n")
+	var out []string
+	next := 0 // index of the first line not yet copied
+	for _, sp := range spans {
+		out = append(out, lines[next:sp.first-1]...)
+		out = append(out, expandOutline(sp.name, lines[sp.first-1:sp.last])...)
+		next = sp.last
+	}
+	out = append(out, lines[next:]...)
+	return strings.Join(out, "\n")
+}
+
+// expandOutline expands the lines of one outline, its keyword line first and its last Examples
+// row line last, into the lines of its scenarios.
+func expandOutline(name string, lines []string) []string {
+	keyword := lines[0]
+	indent := keyword[:len(keyword)-len(strings.TrimLeft(keyword, " \t"))]
+	var steps []string // step, doc string and data table lines
+	fence := ""
+	inExamples := false
+	var header []string
+	var out []string
+	for _, raw := range lines[1:] {
+		t := strings.TrimSpace(raw)
+		if fence != "" {
+			steps = append(steps, raw)
+			if t == fence {
+				fence = ""
+			}
+			continue
+		}
+		switch {
+		case inExamples && strings.HasPrefix(t, "|"):
+			cells, err := project.RowCells(t)
+			if err != nil {
+				continue
+			}
+			if header == nil {
+				header = cells
+				continue
+			}
+			subst := func(text string) string {
+				for i, h := range header {
+					if i < len(cells) {
+						text = strings.ReplaceAll(text, "<"+h+">", cells[i])
+					}
+				}
+				return text
+			}
+			if len(out) > 0 {
+				out = append(out, "")
+			}
+			out = append(out, indent+"Scenario: "+subst(name))
+			for _, l := range steps {
+				out = append(out, subst(l))
+			}
+		case strings.HasPrefix(t, "Examples:") || strings.HasPrefix(t, "Scenarios:"):
+			inExamples, header = true, nil
+		case strings.HasPrefix(t, "@") || inExamples:
+			// the tags and description of an Examples block
+		case strings.HasPrefix(t, `"""`):
+			fence = `"""`
+			steps = append(steps, raw)
+		case strings.HasPrefix(t, "```"):
+			fence = "```"
+			steps = append(steps, raw)
+		case strings.HasPrefix(t, "|") || hasStepKeyword(t):
+			steps = append(steps, raw)
+		}
+	}
+	return out
+}
+
+func hasStepKeyword(t string) bool {
+	for _, kw := range []string{"Given ", "When ", "Then ", "And ", "But ", "* "} {
+		if strings.HasPrefix(t, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // exampleCheck makes one fresh read-only call on the request and the candidate intent.md and
 // acceptance.feature and returns the feedback lines, nil when the candidate may go on. A
 // candidate already checked without a contradiction in this run is not checked again.
@@ -150,8 +263,9 @@ func (sh *shaping) exampleCheck(ctx context.Context) ([]string, error) {
 	if sh.exampleChecked[key] {
 		return nil, nil
 	}
+	expanded := expandOutlines(string(feature))
 	input := "Slug: " + sh.slug + "\n\n# Request\n\n" + sh.request + "\n\n# Candidate intent.md\n\n" + string(intent) +
-		"\n\n# Candidate acceptance.feature\n\n" + string(feature)
+		"\n\n# Candidate acceptance.feature\n\n" + expanded
 	var args map[string]any
 	sh.exampleChecks++
 	if sh.ext != nil {
@@ -206,7 +320,7 @@ func (sh *shaping) exampleCheck(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	event, lines := exampleOutcome(items, sh.request, string(intent), string(feature))
+	event, lines := exampleOutcome(items, sh.request, string(intent), expanded)
 	sh.ev.Record(event)
 	if lines == nil {
 		if sh.exampleChecked == nil {

@@ -377,3 +377,93 @@ func TestExternalShapeExampleCheck(t *testing.T) {
 	shpEq(t, "events", len(shpNamed(f.events(), "example_check")), 2)
 	noNativeRequests(t, f)
 }
+
+func TestExpandOutlines(t *testing.T) {
+	parallel(t)
+	cases := []struct{ name, in, want string }{
+		{"no outline is unchanged",
+			"@tag\nFeature: F\n  Background:\n    Given a\n\n  # note\n  Scenario: S\n    Given <x>\n",
+			"@tag\nFeature: F\n  Background:\n    Given a\n\n  # note\n  Scenario: S\n    Given <x>\n"},
+		{"name and steps are substituted, one scenario per row",
+			"Feature: F\n  Scenario Outline: <n> items\n    Given the input '<n>'\n    Then the output is '<w>'\n\n    Examples:\n      | n | w   |\n      | 1 | one |\n      | 2 | two |\n",
+			"Feature: F\n  Scenario: 1 items\n    Given the input '1'\n    Then the output is 'one'\n\n  Scenario: 2 items\n    Given the input '2'\n    Then the output is 'two'\n"},
+		{"tags above, text around, comments and descriptions inside are handled; Template; several blocks; doc string and table",
+			"Feature: F\n  Background:\n    Given b\n\n  @keep\n  Scenario Template: T <a>\n    A description line.\n    # a comment\n    When doc <a>\n      \"\"\"\n      line <a>\n\n      <b> and <zz>\n      \"\"\"\n    And table\n      | k   | v   |\n      | <a> | <b> |\n\n    @ex\n    Examples: first\n      Some description\n      | a | b |\n      # a comment\n      | 1 | x |\n    Scenarios: second\n      | b | a |\n      | y | 2 |\n\n  # after\n  Scenario: Plain\n    Then <a>\n",
+			"Feature: F\n  Background:\n    Given b\n\n  @keep\n  Scenario: T 1\n    When doc 1\n      \"\"\"\n      line 1\n\n      x and <zz>\n      \"\"\"\n    And table\n      | k   | v   |\n      | 1 | x |\n\n  Scenario: T 2\n    When doc 2\n      \"\"\"\n      line 2\n\n      y and <zz>\n      \"\"\"\n    And table\n      | k   | v   |\n      | 2 | y |\n\n  # after\n  Scenario: Plain\n    Then <a>\n"},
+		{"cells are trimmed and replaced in header order",
+			"Feature: F\n Scenario Outline: o\n   Given <a><b>\n   Examples:\n     | a    | b |\n     |  <b> | z |\n",
+			"Feature: F\n Scenario: o\n   Given zz\n"},
+		{"an unreadable feature is unchanged",
+			"Feature: F\n  Scenario Outline: o\n    Given <a>\n",
+			"Feature: F\n  Scenario Outline: o\n    Given <a>\n"},
+	}
+	for _, c := range cases {
+		if got := expandOutlines(c.in); got != c.want {
+			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+	dir := "../../features/steps/k_examples_outline/"
+	for _, name := range []string{"yield-regressions", "durations-consistent", "durations-contradicting"} {
+		raw, err1 := os.ReadFile(dir + name + ".feature")
+		want, err2 := os.ReadFile(dir + name + ".expanded.feature")
+		if err1 != nil || err2 != nil {
+			t.Fatal(err1, err2)
+		}
+		if got := expandOutlines(string(raw)); got != string(want) {
+			t.Errorf("%s:\n got %q\nwant %q", name, got, want)
+		}
+	}
+}
+
+func TestExampleOutcomeChecksQuotesAgainstTheExpandedOutline(t *testing.T) {
+	parallel(t)
+	raw := "Feature: F\n  Scenario Outline: <s> seconds render\n    Given the input '<s>'\n    Then the output is '<w>'\n\n    Examples:\n      | s    | w                          |\n      | 3725 | 1 hour, 2 minutes, 5 seconds |\n      | 5430 | 1 hour, 1 minute, 30 seconds |\n"
+	feature := expandOutlines(raw)
+	intent := "H is seconds div 3600, M is (seconds mod 3600) div 60 and S is seconds mod 60"
+	item := func(scenario, input, expected, derived string) exampleItem {
+		return exampleItem{scenario: scenario, input: input, expected: expected, rule: intent, derived: derived, why: "w"}
+	}
+	items := []exampleItem{
+		item("3725 seconds render", "3725", "1 hour, 2 minutes, 5 seconds", "1 hour, 2 minutes, 5 seconds"),
+		item("5430 seconds render", "5430", "1 hour, 1 minute, 30 seconds", "1 hour, 30 minutes, 30 seconds"),
+		item("<s> seconds render", "<s>", "the output is '<w>'", "the output is '1 hour'"),
+		item("3725 seconds render", "| 3725 |", "1 hour, 2 minutes, 5 seconds", "x"),
+	}
+	event, lines := exampleOutcome(items, "", intent, feature)
+	for i, want := range []string{"follows", "contradicts", "unquoted", "unquoted"} {
+		if got := event["items"].([]any)[i].(map[string]any)["result"]; got != want {
+			t.Errorf("item %d: %v, want %s", i, got, want)
+		}
+	}
+	wantLines := []string{fmt.Sprintf(exampleHeadline, 1),
+		"- scenario: 5430 seconds render | input: 5430 | expected: 1 hour, 1 minute, 30 seconds | rule: " + intent + " | derived: 1 hour, 30 minutes, 30 seconds | why: w"}
+	if !slices.Equal(lines, wantLines) {
+		t.Errorf("lines %q\nwant %q", lines, wantLines)
+	}
+}
+
+// TestShapeExampleCheckGivesTheExpandedOutline: the check request carries the feature with the
+// outline expanded, and the already-checked key stays on the raw bytes.
+func TestShapeExampleCheckGivesTheExpandedOutline(t *testing.T) {
+	parallel(t)
+	feature := "Feature: Is even\n  Scenario Outline: Even <n>\n    Given the number <n>\n    Then it is even\n\n    Examples:\n      | n |\n      | 4 |\n      | 6 |\n"
+	files := shpFiles()
+	files["files"].([]any)[1] = map[string]any{"path": ".kogen/intents/is-even/acceptance.feature", "content": feature}
+	f := newShpFx(t, shpSubmit("c1", files), shpAck("c2"))
+	f.setReport("PASSED", 0)
+	scriptChecks(f, exampleAnswer(map[string]any{"scenario": "Even <n>", "input": "<n>", "expected": "it is even",
+		"rule": exampleRule, "derived": "it is odd", "why": "w"}))
+	exit, err := f.shape("Add calc.is_even(n).")
+	if err != nil || exit != 0 {
+		t.Fatalf("exit %d, err %v\n%s", exit, err, f.Stderr)
+	}
+	checks := f.Prov.checkRequests()
+	if len(checks) == 0 {
+		t.Fatalf("no check request\n%s", f.Stderr)
+	}
+	content := checks[0]["input"].([]any)[0].(map[string]any)["content"].(string)
+	expanded := "Feature: Is even\n  Scenario: Even 4\n    Given the number 4\n    Then it is even\n\n  Scenario: Even 6\n    Given the number 6\n    Then it is even\n"
+	shpEq(t, "input", content, "Slug: is-even\n\n# Request\n\nAdd calc.is_even(n).\n\n# Candidate intent.md\n\n"+shpIntentMD+"\n\n# Candidate acceptance.feature\n\n"+expanded)
+	results := shpNamed(f.events(), "example_check")
+	shpEq(t, "results", fmt.Sprint(results[0]["items"].([]any)[0].(map[string]any)["result"]), "unquoted")
+}
