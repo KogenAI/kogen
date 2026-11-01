@@ -87,6 +87,7 @@ func noSecret(t *testing.T, err error, secrets ...string) {
 }
 
 func TestLCredOriginLogin(t *testing.T) {
+	t.Parallel()
 	e := originWorld(t, nil)
 	if err := e.originLogin("HTTPS://Models.Example:443/v1/x?q=1#frag", originKey); err != nil {
 		t.Fatal(err)
@@ -164,6 +165,7 @@ func TestLCredOriginLogin(t *testing.T) {
 }
 
 func TestLCredOriginMismatch(t *testing.T) {
+	t.Parallel()
 	a := newKeyFakeTLS(t, true, jsonAnswer(200, goText("a")))
 	b := newKeyFakeTLS(t, true, jsonAnswer(200, goText("b")))
 	e := originWorld(t, nil)
@@ -234,6 +236,7 @@ func TestLCredOriginMismatch(t *testing.T) {
 }
 
 func TestLCredOriginMatch(t *testing.T) {
+	t.Parallel()
 	a := newKeyFakeTLS(t, true, jsonAnswer(200, goText("first")), jsonAnswer(200, goText("second")), jsonAnswer(200, goText("third")))
 	e := originWorld(t, nil)
 	e.c.HTTP = a.srv.Client()
@@ -289,6 +292,7 @@ func (s *recordingServer) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func TestLCredOriginLegacy(t *testing.T) {
+	t.Parallel()
 	tls := newKeyFakeTLS(t, true, jsonAnswer(200, goText("no")))
 	plain := newKeyFake(t, jsonAnswer(200, goText("no")))
 	rec := &noNetwork{}
@@ -326,6 +330,7 @@ func TestLCredOriginLegacy(t *testing.T) {
 }
 
 func TestLCredOriginPlaintext(t *testing.T) {
+	t.Parallel()
 	// Keyless loopback over HTTP works: localhost, IPv4 and IPv6 literals.
 	v4 := newKeyFake(t, jsonAnswer(200, goText("v4")), jsonAnswer(200, goText("localhost")))
 	e := originWorld(t, nil)

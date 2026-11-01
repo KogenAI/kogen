@@ -24,6 +24,7 @@ func runFixture(t *testing.T, name string) (result, *fakeProvider, *world, fixtu
 }
 
 func TestFixtures(t *testing.T) {
+	t.Parallel()
 	names, err := filepath.Glob("testdata/*.json")
 	if err != nil || len(names) == 0 {
 		t.Fatalf("no fixtures: %v", err)
@@ -31,6 +32,7 @@ func TestFixtures(t *testing.T) {
 	for _, path := range names {
 		name := strings.TrimSuffix(filepath.Base(path), ".json")
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			r, f, _, fx := runFixture(t, name)
 			if r.exit != fx.Expect.Exit {
 				t.Errorf("exit %d, want %d (stderr: %s)", r.exit, fx.Expect.Exit, r.stderr)
@@ -49,6 +51,7 @@ func sha(text string) string {
 }
 
 func TestToolEventsCarryHashesOfWhatTheModelSaw(t *testing.T) {
+	t.Parallel()
 	r, f, _, fx := runFixture(t, "terminal")
 	if r.exit != 0 {
 		t.Fatal(r.stderr)
@@ -75,6 +78,7 @@ func TestToolEventsCarryHashesOfWhatTheModelSaw(t *testing.T) {
 }
 
 func TestToolResultIsCutAt16384BytesIncludingTheMarker(t *testing.T) {
+	t.Parallel()
 	r, f, _, _ := runFixture(t, "tool_result_cut")
 	if r.exit != 0 {
 		t.Fatal(r.stderr)
@@ -97,6 +101,7 @@ func TestToolResultIsCutAt16384BytesIncludingTheMarker(t *testing.T) {
 }
 
 func TestTerminalInTheMiddleOfABatchLeavesItUnanswered(t *testing.T) {
+	t.Parallel()
 	r, f, _, _ := runFixture(t, "multi_call_terminal_in_middle")
 	if r.exit != 0 {
 		t.Fatal(r.stderr)
@@ -112,6 +117,7 @@ func TestTerminalInTheMiddleOfABatchLeavesItUnanswered(t *testing.T) {
 }
 
 func TestUsageUnknownStaysNullOnTheWire(t *testing.T) {
+	t.Parallel()
 	r, _, _, _ := runFixture(t, "usage_unknown")
 	if r.exit != 0 {
 		t.Fatal(r.stderr)
@@ -132,6 +138,7 @@ func TestUsageUnknownStaysNullOnTheWire(t *testing.T) {
 }
 
 func TestClaimIsBoundedTo16384Bytes(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	long := strings.Repeat("x", 40000)
 	f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "finish", map[string]any{"summary": long})}}})
@@ -146,6 +153,7 @@ func TestClaimIsBoundedTo16384Bytes(t *testing.T) {
 }
 
 func TestCustomTerminalNameEndsTheRound(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "report", map[string]any{"summary": "mine"})}}})
 	r := runCLI(t, w, f, w.task(map[string]any{"terminal": []any{"report"}}))
@@ -193,6 +201,7 @@ func expectRefusal(t *testing.T, r result, f *fakeProvider, class, reason string
 }
 
 func TestStrictTaskRefusal(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	base, _ := json.Marshal(w.task(nil))
 	extra := map[string]any{}
@@ -223,6 +232,7 @@ func TestStrictTaskRefusal(t *testing.T) {
 }
 
 func TestUnsupportedProtocolIsRefusedBeforeItsFieldsAreJudged(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	for name, task := range map[string]string{
 		"other version":  `{"protocol":"kogen-loop/v2","fields_of_the_future":true}`,
@@ -238,6 +248,7 @@ func TestUnsupportedProtocolIsRefusedBeforeItsFieldsAreJudged(t *testing.T) {
 }
 
 func TestRequiresRefusal(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"subagents", "telepathy"} {
 		t.Run(name, func(t *testing.T) {
 			w := newWorld(t).signIn()
@@ -260,6 +271,7 @@ func TestRequiresRefusal(t *testing.T) {
 }
 
 func TestInvalidTaskFields(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(w *world) map[string]any{
 		"root missing": func(w *world) map[string]any { return map[string]any{"root": filepath.Join(w.root, "nope")} },
 		"root is file": func(w *world) map[string]any {
@@ -289,6 +301,7 @@ func TestInvalidTaskFields(t *testing.T) {
 }
 
 func TestLoginRequiredBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t) // no credential
 	f := newFakeProvider(t, []exchange{{Items: []map[string]any{message("never")}}})
 	r := runCLI(t, w, f, w.task(nil))
@@ -296,6 +309,7 @@ func TestLoginRequiredBeforeAnyRequest(t *testing.T) {
 }
 
 func TestOverBudgetRequestIsRefusedBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{{Items: []map[string]any{message("never")}}})
 	r := runCLI(t, w, f, w.task(map[string]any{"prompt": strings.Repeat("a", 600_000)}))
@@ -306,6 +320,7 @@ func TestOverBudgetRequestIsRefusedBeforeAnyRequest(t *testing.T) {
 }
 
 func TestProviderFailureIsAnErrorEventWithExit1(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{{Status: 400}})
 	r := runCLI(t, w, f, w.task(nil))
@@ -341,6 +356,7 @@ func readPid(t *testing.T, path string) int {
 }
 
 func TestDeadlineEndsAHangingRequest(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{{Hang: true}})
 	start := time.Now()
@@ -361,6 +377,7 @@ func TestDeadlineEndsAHangingRequest(t *testing.T) {
 }
 
 func TestDeadlineTerminatesARunningShellGroup(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "shell", map[string]any{"command": sleeper})}}, {Hang: true}})
 	p := startCLI(t, w, f, mustJSON(t, w.task(map[string]any{"deadline_seconds": 3})), "run", "--task", "-")
@@ -381,12 +398,14 @@ func TestDeadlineTerminatesARunningShellGroup(t *testing.T) {
 }
 
 func TestInterruptionTerminatesTheShellGroup(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		sig  syscall.Signal
 		exit int
 	}{{"SIGINT", syscall.SIGINT, 130}, {"SIGTERM", syscall.SIGTERM, 143}} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			w := newWorld(t).signIn()
 			f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "shell", map[string]any{"command": sleeper})}}})
 			p := startCLI(t, w, f, mustJSON(t, w.task(nil)), "run", "--task", "-")
@@ -419,6 +438,7 @@ func TestInterruptionTerminatesTheShellGroup(t *testing.T) {
 }
 
 func TestKilledHostStillTakesTheShellGroupDown(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "shell", map[string]any{"command": sleeper})}}})
 	p := startCLI(t, w, f, mustJSON(t, w.task(nil)), "run", "--task", "-")
@@ -468,6 +488,7 @@ func sessionTask(w *world, dir string, resume bool, over map[string]any) map[str
 }
 
 func TestTranscriptResumeAfterATerminalEnding(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	dir := filepath.Join(t.TempDir(), "transcript")
 	f := newFakeProvider(t, []exchange{
@@ -541,6 +562,9 @@ func TestTranscriptResumeAfterATerminalEnding(t *testing.T) {
 }
 
 func TestResumeRefusesAMismatchBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
+	// The subtests stay sequential: they share one transcript directory, and "other protocol
+	// in the transcript" rewrites session.json there and restores it afterwards.
 	w := newWorld(t).signIn()
 	dir := filepath.Join(t.TempDir(), "transcript")
 	seed := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "finish", map[string]any{"summary": "x"})}}})
@@ -592,6 +616,7 @@ func TestResumeRefusesAMismatchBeforeAnyRequest(t *testing.T) {
 }
 
 func TestFailedRoundLeavesTheLastCompletedTranscript(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	dir := filepath.Join(t.TempDir(), "transcript")
 	f := newFakeProvider(t, []exchange{
@@ -621,6 +646,7 @@ func runPlain(t *testing.T, args ...string) (string, int) {
 }
 
 func TestCapabilitiesNeedNoNetworkOrCredentials(t *testing.T) {
+	t.Parallel()
 	out, code := runPlain(t, "capabilities", "--json")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -651,6 +677,7 @@ func TestCapabilitiesNeedNoNetworkOrCredentials(t *testing.T) {
 }
 
 func TestVersionAndUsage(t *testing.T) {
+	t.Parallel()
 	if out, code := runPlain(t, "version"); code != 0 || out != "kogen-loop dev\n" {
 		t.Errorf("version %q exit %d", out, code)
 	}

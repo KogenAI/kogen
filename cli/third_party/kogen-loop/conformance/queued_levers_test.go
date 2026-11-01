@@ -66,6 +66,7 @@ func declaredNames(t *testing.T, dir string) map[string]bool {
 }
 
 func TestQueuedLeversRemoved(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		typ   reflect.Type
 		field string
@@ -119,6 +120,7 @@ func TestQueuedLeversRemoved(t *testing.T) {
 }
 
 func TestQueuedLeverCleanup(t *testing.T) {
+	t.Parallel()
 	for _, gone := range []string{
 		"provider/prefixlog_test.go", "loop/read_ledger_test.go", "tools/l_tooldesc_test.go",
 		"tools/l_image_test.go", "tools/testdata/defs_compact_golden.json",
@@ -179,6 +181,7 @@ func TestQueuedLeverCleanup(t *testing.T) {
 }
 
 func TestQueuedLeverDefaults(t *testing.T) {
+	t.Parallel()
 	forbidden := func(t *testing.T, v any) {
 		t.Helper()
 		b, _ := json.Marshal(v)

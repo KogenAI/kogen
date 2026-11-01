@@ -39,6 +39,7 @@ func mustNotExist(t *testing.T, path string) {
 
 // features/08-chatgpt: an expired access token is refreshed and the rotated refresh token is saved (GPT-6).
 func TestExpiredChatGPTTokenIsRefreshedAndRotationSaved(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, textAnswer("ok")).authScript(tokenAnswer("rotated-access", "rotated-refresh", 3600))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds("expires_at", e.clk.Now().Unix()+30, "email", "u@example.com", "scope", "openid", "extra", "kept"))
@@ -73,6 +74,7 @@ func TestExpiredChatGPTTokenIsRefreshedAndRotationSaved(t *testing.T) {
 }
 
 func TestRefreshKeepsOldRefreshTokenWhenNotRotated(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, textAnswer("ok")).authScript(tokenAnswer("a2", "", 0))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds("expires_at", int64(0)))
@@ -94,6 +96,7 @@ func TestRefreshKeepsOldRefreshTokenWhenNotRotated(t *testing.T) {
 
 // features/08-chatgpt: a 401 refreshes once and retries once.
 func TestUnauthorizedRefreshesOnceThenRetries(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, unauthorized(), textAnswer("ok")).authScript(tokenAnswer("rotated-access", "rotated-refresh", 3600))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -113,6 +116,7 @@ func TestUnauthorizedRefreshesOnceThenRetries(t *testing.T) {
 // provider_diagnostics_test: context and login wrappers preserve known response metadata
 // (the second 401 is rejected without a second refresh).
 func TestSecond401IsRejectedWithDiagnostics(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, unauthorized(), unauthorized(), textAnswer("never")).authScript(tokenAnswer("rotated-access", "rotated-refresh", 3600))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -131,6 +135,7 @@ func TestSecond401IsRejectedWithDiagnostics(t *testing.T) {
 
 // features/08-chatgpt: a rejected access token and refresh token ask for a new login.
 func TestRejectedTokenAndRejectedRefreshAskForNewLogin(t *testing.T) {
+	t.Parallel()
 	for _, auth := range []handler{jsonAnswer(400, map[string]any{"error": "invalid_grant"}), jsonAnswer(500, map[string]any{}), jsonAnswer(200, map[string]any{})} {
 		f := newFake(t, unauthorized(), textAnswer("never")).authScript(auth)
 		e := newEnv(t, f)
@@ -150,6 +155,7 @@ func TestRejectedTokenAndRejectedRefreshAskForNewLogin(t *testing.T) {
 }
 
 func TestProactiveRefreshFailures(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		answer handler
@@ -161,6 +167,7 @@ func TestProactiveRefreshFailures(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t, textAnswer("never")).authScript(tc.answer)
 			e := newEnv(t, f)
 			e.saveCreds("chatgpt", e.chatgptCreds("expires_at", int64(0)))
@@ -180,6 +187,7 @@ func TestProactiveRefreshFailures(t *testing.T) {
 }
 
 func TestInvalidGrantAfterAcceptedSessionIsRejectedNotExpired(t *testing.T) {
+	t.Parallel()
 	// The server may answer with the OAuth error in a 200-less body of any status.
 	f := newFake(t, textAnswer("never")).authScript(jsonAnswer(401, map[string]any{"error": "invalid_grant"}))
 	e := newEnv(t, f)
@@ -193,15 +201,19 @@ func TestInvalidGrantAfterAcceptedSessionIsRejectedNotExpired(t *testing.T) {
 // features/08-chatgpt: two commands that start at once with an expired access token
 // refresh it once (GPT-3 lock, re-read under the lock).
 func TestConcurrentProactiveRefreshHappensOnceUnderTheLock(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"chatgpt", "supergrok"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			var mu sync.Mutex
 			refreshes := 0
+			waiting := make(chan struct{})
+			var waitingOnce sync.Once
 			slow := func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				refreshes++
 				mu.Unlock()
-				time.Sleep(200 * time.Millisecond)
+				<-waiting // the other client has observed the held refresh lock
 				tokenAnswer("rotated-access", "rotated-refresh", 3600)(w, r)
 			}
 			f := newFake(t, textAnswer("a"), textAnswer("b"))
@@ -221,6 +233,17 @@ func TestConcurrentProactiveRefreshHappensOnceUnderTheLock(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					c := &Client{Version: e.c.Version, ResponseBudget: 20 * time.Second} // two Kogens: separate clients, one home
+					c.Sleep = func(ctx context.Context, d time.Duration) error {
+						waitingOnce.Do(func() { close(waiting) })
+						timer := time.NewTimer(d)
+						defer timer.Stop()
+						select {
+						case <-timer.C:
+							return nil
+						case <-ctx.Done():
+							return ctx.Err()
+						}
+					}
 					_, errs[i] = c.Respond(context.Background(), e.s, Request{Role: role, Instructions: "p"}, nil)
 				}()
 			}
@@ -247,6 +270,7 @@ func TestConcurrentProactiveRefreshHappensOnceUnderTheLock(t *testing.T) {
 }
 
 func TestRefreshWaitsForAHeldLockAndUsesTheNewerToken(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, textAnswer("ok"))
 	e := newEnv(t, f).realClock()
 	e.saveCreds("chatgpt", e.chatgptCreds("expires_at", int64(0)))
@@ -255,11 +279,12 @@ func TestRefreshWaitsForAHeldLockAndUsesTheNewerToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		time.Sleep(250 * time.Millisecond)
+	e.c.Sleep = func(ctx context.Context, d time.Duration) error {
+		// withLock calls Sleep only after observing the held lock.
 		e.saveCreds("chatgpt", e.chatgptCreds("access_token", "other-process-access", "expires_at", time.Now().Unix()+3600))
 		held.Release()
-	}()
+		return nil
+	}
 	e.c.ResponseBudget = 10 * time.Second
 	if _, err := e.respond(Request{}); err != nil {
 		t.Fatal(err)
@@ -270,6 +295,7 @@ func TestRefreshWaitsForAHeldLockAndUsesTheNewerToken(t *testing.T) {
 }
 
 func TestStaleLockOfADeadProcessDoesNotBlockRefresh(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, textAnswer("ok")).authScript(tokenAnswer("rotated-access", "rotated-refresh", 3600))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds("expires_at", int64(0)))
@@ -281,6 +307,7 @@ func TestStaleLockOfADeadProcessDoesNotBlockRefresh(t *testing.T) {
 }
 
 func TestAfter401AnotherProcessAlreadyRefreshed(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, nil, textAnswer("ok"))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -299,6 +326,7 @@ func TestAfter401AnotherProcessAlreadyRefreshed(t *testing.T) {
 // supergrok_test: refresh rotates privately, re-reads newer credentials under the lock and
 // defaults expiry.
 func TestSuperGrokRefreshRotatesPrivately(t *testing.T) {
+	t.Parallel()
 	f := newFake(t).authScript(jsonAnswer(200, map[string]any{"access_token": "new-access", "refresh_token": "new-refresh"}))
 	e := newEnv(t, f)
 	e.saveCreds("supergrok", e.supergrokCreds("expires_at", int64(0)))
@@ -339,6 +367,7 @@ func TestSuperGrokRefreshRotatesPrivately(t *testing.T) {
 
 // supergrok_test: refresh failure retains earlier bytes.
 func TestSuperGrokRefreshFailureRetainsEarlierBytes(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		reason refreshReason
 		name   string
@@ -351,6 +380,7 @@ func TestSuperGrokRefreshFailureRetainsEarlierBytes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name+"/"+tc.code, func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t).authScript(jsonAnswer(400, map[string]any{"error": tc.code}))
 			e := newEnv(t, f)
 			e.saveCreds("supergrok", e.supergrokCreds("expires_at", int64(0)))
@@ -373,6 +403,7 @@ func TestSuperGrokRefreshFailureRetainsEarlierBytes(t *testing.T) {
 
 // supergrok_test: SuperGrok workers refresh once after 401 and preserve routed attempt identity.
 func TestSuperGrokWorkersRefreshOnceAfter401(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, jsonAnswer(401, map[string]any{"error": map[string]any{"code": "unauthorized"}}), textAnswer("completed")).
 		authScript(jsonAnswer(200, map[string]any{"access_token": "new-access", "expires_in": int64(60)}))
 	e := newEnv(t, f)
@@ -400,6 +431,7 @@ func TestSuperGrokWorkersRefreshOnceAfter401(t *testing.T) {
 }
 
 func TestSuperGrokSecond401IsRejected(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, unauthorized(), unauthorized()).authScript(tokenAnswer("new-access", "", 3600))
 	e := newEnv(t, f)
 	e.saveCreds("supergrok", e.supergrokCreds())

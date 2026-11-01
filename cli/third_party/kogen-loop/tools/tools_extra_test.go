@@ -24,6 +24,7 @@ func run(t *testing.T, tools *Tools, name string, args map[string]any) string {
 }
 
 func TestShellRunsInTheRootWithStdinClosedAndReportsStatusAndOutput(t *testing.T) {
+	t.Parallel()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -54,6 +55,7 @@ func TestShellRunsInTheRootWithStdinClosedAndReportsStatusAndOutput(t *testing.T
 }
 
 func TestShellUsesTheSessionsEnvironment(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	tools := &Tools{Root: root, Enabled: []string{ShellTool}, Session: sys.NewWith(append(os.Environ(), "KOGEN_AGENT_TEST=value"), root)}
 	if got := run(t, tools, ShellTool, map[string]any{"command": "echo $KOGEN_AGENT_TEST"}); got != "exit status: 0\nvalue\n" {
@@ -62,6 +64,7 @@ func TestShellUsesTheSessionsEnvironment(t *testing.T) {
 }
 
 func TestShellQuickCommand(t *testing.T) {
+	t.Parallel()
 	tools := newTools(t.TempDir(), ShellTool)
 	start := time.Now()
 	got := run(t, tools, ShellTool, map[string]any{"command": "echo done"})
@@ -71,14 +74,47 @@ func TestShellQuickCommand(t *testing.T) {
 }
 
 func TestShellInterruptIsAnErrorNotAResult(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	session := sys.NewWith(os.Environ(), root)
 	tools := &Tools{Root: root, Session: session, Enabled: []string{ShellTool}}
+	type outcome struct {
+		out Output
+		err error
+	}
+	done := make(chan outcome, 1)
 	go func() {
-		time.Sleep(200 * time.Millisecond)
-		session.Interrupt("SIGINT")
+		out, err := tools.Run(ShellTool, map[string]any{"command": "echo ready > ready; sleep 30"})
+		done <- outcome{out, err}
 	}()
-	out, err := tools.Run(ShellTool, map[string]any{"command": "sleep 30"})
+	joined := false
+	defer func() {
+		if !joined {
+			session.Interrupt("SIGINT")
+			sys.Terminate(session.Groups())
+			<-done
+		}
+		tools.EndShellRound()
+	}()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
+		if _, err := os.Stat(filepath.Join(root, "ready")); err == nil {
+			break
+		}
+		select {
+		case got := <-done:
+			joined = true
+			t.Fatalf("command exited before readiness: %+v", got)
+		case <-deadline.C:
+			t.Fatal("command did not become ready")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	session.Interrupt("SIGINT")
+	got := <-done
+	joined = true
+	out, err := got.out, got.err
 	var interrupted *sys.Interrupted
 	if !errors.As(err, &interrupted) || interrupted.Signal != "SIGINT" || out.Text != "" {
 		t.Errorf("output %q, error %v", out.Text, err)
@@ -93,6 +129,7 @@ func TestShellInterruptIsAnErrorNotAResult(t *testing.T) {
 }
 
 func TestShellNeedsACommandString(t *testing.T) {
+	t.Parallel()
 	tools := newTools(t.TempDir(), ShellTool)
 	for _, args := range []map[string]any{{"command": 5}, {"command": nil}} {
 		if got := run(t, tools, ShellTool, args); got != "error: argument command must be a string" {
@@ -106,6 +143,7 @@ func TestShellNeedsACommandString(t *testing.T) {
 }
 
 func TestShellResultNeedsCutWhenLong(t *testing.T) {
+	t.Parallel()
 	tools := newTools(t.TempDir(), ShellTool)
 	out, err := tools.Run(ShellTool, map[string]any{"command": "head -c 40000 /dev/zero | tr '\\0' x"})
 	if err != nil {
@@ -121,6 +159,7 @@ func TestShellResultNeedsCutWhenLong(t *testing.T) {
 }
 
 func TestToolsRefuseNamesThatAreNotEnabled(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	tools := newTools(root, ReadFileTool)
 	os.WriteFile(filepath.Join(root, "a"), []byte("x\n"), 0o644)
@@ -143,6 +182,7 @@ func TestToolsRefuseNamesThatAreNotEnabled(t *testing.T) {
 }
 
 func TestCallRunsTheDecodedFunctionCall(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	os.WriteFile(filepath.Join(root, "a"), []byte("1\n2\n"), 0o644)
 	tools := newTools(root, ReadFileTool)
@@ -157,6 +197,7 @@ func TestCallRunsTheDecodedFunctionCall(t *testing.T) {
 }
 
 func TestProbeBelongsToTheShaper(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	tools := newTools(root, ProbeTool)
 	if got := run(t, tools, ProbeTool, map[string]any{"command": "true"}); got != "error: probe is not available" {
@@ -186,6 +227,7 @@ func TestProbeBelongsToTheShaper(t *testing.T) {
 }
 
 func TestFileErrorsUseErlangsReasonNames(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores file permissions")
 	}
@@ -216,6 +258,7 @@ func TestFileErrorsUseErlangsReasonNames(t *testing.T) {
 }
 
 func TestWriteFileCreatesFoldersAndReplacesContent(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	tools := newTools(root, ReadFileTool, WriteFileTool)
 	for _, content := range []string{"first\n", "second, longer\n", "", "é\x00\xff\n"} {
@@ -240,6 +283,7 @@ func TestWriteFileCreatesFoldersAndReplacesContent(t *testing.T) {
 }
 
 func TestWriteFileRefusesProtectedPathsHoweverTheyAreSpelled(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	tools := newTools(root, WriteFileTool)
 	tools.Protected = []string{"features/a.feature", ".kogen/project.yaml"}
@@ -264,6 +308,7 @@ func TestWriteFileRefusesProtectedPathsHoweverTheyAreSpelled(t *testing.T) {
 	}
 }
 
+// Serial: this test changes the parent process HOME.
 func TestTildeIsNotTheHomeFolderForReads(t *testing.T) {
 	home, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("HOME", home)
@@ -283,6 +328,7 @@ func TestTildeIsNotTheHomeFolderForReads(t *testing.T) {
 }
 
 func TestNumberedWindows(t *testing.T) {
+	t.Parallel()
 	text := "a\nb\nc\n"
 	for _, c := range []struct {
 		text     string
@@ -314,6 +360,7 @@ func TestNumberedWindows(t *testing.T) {
 }
 
 func TestRelativeTo(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ abs, root, want string }{
 		{"/r/a/b", "/r", "a/b"},
 		{"/r", "/r", "."},
@@ -330,6 +377,7 @@ func TestRelativeTo(t *testing.T) {
 }
 
 func TestExpandNormalisesWithoutResolvingLinks(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ path, want string }{
 		{"a/b", "/r/a/b"},
 		{"./a/../b", "/r/b"},
@@ -346,6 +394,7 @@ func TestExpandNormalisesWithoutResolvingLinks(t *testing.T) {
 }
 
 func TestListAndSearchOutsideARepositoryAreErrors(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	tools := newTools(root, ListFilesTool, SearchTextTool)
 	for _, c := range []struct {
@@ -359,6 +408,7 @@ func TestListAndSearchOutsideARepositoryAreErrors(t *testing.T) {
 }
 
 func TestListAndSearchUseTheRepoGiven(t *testing.T) {
+	t.Parallel()
 	_, root := newRepo(t)
 	write(t, root, "a.txt", "needle\n")
 	write(t, root, "b/c.txt", "needle\n")
@@ -386,6 +436,7 @@ func TestListAndSearchUseTheRepoGiven(t *testing.T) {
 }
 
 func TestReasonNames(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	os.WriteFile(filepath.Join(root, "f"), nil, 0o644)
 	_, err := os.ReadDir(filepath.Join(root, "f"))

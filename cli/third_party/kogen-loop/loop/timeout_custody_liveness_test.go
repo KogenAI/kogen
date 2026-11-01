@@ -17,6 +17,7 @@ func (custodyFake) Request(ctx context.Context, r Request) (*provider.Response, 
 }
 
 func TestTimeoutCustodyHookPrecedence(t *testing.T) {
+	t.Parallel()
 	for _, hook := range []string{"BeforeCall", "HandleCall", "AfterCall"} {
 		ctx, cancel := context.WithCancel(context.Background())
 		s := sys.NewWith(nil, t.TempDir())

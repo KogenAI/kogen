@@ -16,6 +16,7 @@ var genericNames = []string{ShellTool, ViewImageTool, ReadFileTool, WriteFileToo
 // TestGenericDefinitionsMatchTheGolden compares each generic definition with the JSON the
 // Elixir functions returned (kept in the golden file), as parsed values.
 func TestGenericDefinitionsMatchTheGolden(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("testdata/defs_golden.json")
 	if err != nil {
 		t.Fatal(err)
@@ -26,6 +27,7 @@ func TestGenericDefinitionsMatchTheGolden(t *testing.T) {
 	}
 	for _, name := range genericNames {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			def, ok := Definition(name)
 			if !ok {
 				t.Fatalf("no definition for %s", name)
@@ -49,6 +51,7 @@ func TestGenericDefinitionsMatchTheGolden(t *testing.T) {
 }
 
 func TestDefinitionRefusesNamesThatAreNotGeneric(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{ProbeTool, "finish", "report_blocker", "submit", "submit_review",
 		"submit_refinement", "submit_configuration", "shape_batch", "worker_result", "bogus", ""} {
 		if def, ok := Definition(name); ok || def != nil {
@@ -58,6 +61,7 @@ func TestDefinitionRefusesNamesThatAreNotGeneric(t *testing.T) {
 }
 
 func TestDefsKeepTheOrderAskedFor(t *testing.T) {
+	t.Parallel()
 	defs := Defs(ShellTool, ReadFileTool, DocumentationTool)
 	var names []string
 	for _, d := range defs {
@@ -76,6 +80,7 @@ func TestDefsKeepTheOrderAskedFor(t *testing.T) {
 }
 
 func TestDefsPanicOnANameThatIsNotGeneric(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if recover() == nil {
 			t.Error("Defs(finish) did not panic")
@@ -85,6 +90,7 @@ func TestDefsPanicOnANameThatIsNotGeneric(t *testing.T) {
 }
 
 func TestEveryDefinitionIsPlainJSON(t *testing.T) {
+	t.Parallel()
 	// Provider requests encode []any and map[string]any only through their own encoder; a
 	// typed slice or a struct in a definition would be encoded differently.
 	var walk func(path string, v any)

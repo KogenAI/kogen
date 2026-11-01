@@ -9,6 +9,7 @@ import (
 )
 
 func TestExactProfileQualification(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ role, provider, model, effort, status, profile string }{
 		{"shape", "chatgpt", "gpt-6.1-sol", "high", "supported", "chatgpt-sol-6-1"},
 		{"build", "chatgpt", "gpt-6.1-sol", "medium", "supported", "chatgpt-sol-6-1"},
@@ -44,6 +45,7 @@ func TestExactProfileQualification(t *testing.T) {
 }
 
 func TestUsableFamilyBound(t *testing.T) {
+	t.Parallel()
 	ptr := func(n int) *int { return &n }
 	for _, tc := range []struct {
 		name   string
@@ -58,6 +60,7 @@ func TestUsableFamilyBound(t *testing.T) {
 		{"global minimum", Limits{Input: ptr(922000), Context: ptr(1050000), Reserve: 131072}, 524288},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			limit := UsableInputBytes(tc.limits)
 			if limit != tc.want {
 				t.Fatalf("%d != %d", limit, tc.want)
@@ -77,6 +80,7 @@ func TestUsableFamilyBound(t *testing.T) {
 }
 
 func TestProfileEvidenceScope(t *testing.T) {
+	t.Parallel()
 	for _, p := range Profiles().Profiles {
 		ids := map[string]bool{}
 		for _, e := range p.Evidence {
@@ -107,6 +111,7 @@ func TestProfileEvidenceScope(t *testing.T) {
 }
 
 func TestOfficialTextRecommendedChatGPTDefaults(t *testing.T) {
+	t.Parallel()
 	const want = "Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).\n"
 	if !strings.Contains(OfficialText(), "\n"+want) && !strings.HasPrefix(OfficialText(), want) {
 		t.Fatalf("OfficialText lacks recommended defaults line %q:\n%s", want, OfficialText())

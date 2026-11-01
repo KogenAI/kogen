@@ -11,6 +11,7 @@ import (
 // A refused shell call is ordinary tool feedback: its tool.result carries "rule", an
 // ordinary call's does not, and the round continues to its ending.
 func TestSessionToolResultCarriesRuleOnlyForRefusedShellCall(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{
 		{Items: []map[string]any{call("c1", "shell", map[string]any{"command": "pkill -f nothing-at-all"})}},

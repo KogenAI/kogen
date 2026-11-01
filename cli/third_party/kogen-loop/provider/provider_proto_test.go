@@ -51,6 +51,7 @@ func limitUsage() map[string]any {
 // and usage reach the failed attempt record whatever its output, with the same nullable
 // consistency rules as a completed response; a cut stream stays unknown.
 func TestProviderProtoTerminalAccounting(t *testing.T) {
+	t.Parallel()
 	incomplete := func(resp map[string]any) map[string]any {
 		return map[string]any{"type": "response.incomplete", "response": resp}
 	}
@@ -98,6 +99,7 @@ func TestProviderProtoTerminalAccounting(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e, f := chatEnv(t, events(c.frames...))
 			resp, err, recs := protoRecords(t, e, true)
 			se := mustErr(t, err)
@@ -120,6 +122,7 @@ func TestProviderProtoTerminalAccounting(t *testing.T) {
 	}
 
 	t.Run("transient failure keeps its accounting on every attempt", func(t *testing.T) {
+		t.Parallel()
 		one := failedEvent(protoEnvelope("resp_busy", map[string]any{"usage": limitUsage(), "error": map[string]any{"code": "server_error", "message": "busy"}}))
 		e, f := chatEnv(t, events(one), events(one), events(one), textAnswer("never"))
 		_, err, recs := protoRecords(t, e, false)
@@ -134,6 +137,7 @@ func TestProviderProtoTerminalAccounting(t *testing.T) {
 	})
 
 	t.Run("cut stream stays unknown", func(t *testing.T) {
+		t.Parallel()
 		cut := events(itemDone(0, tool()), map[string]any{"type": "response.output_item.added", "output_index": int64(1)})
 		e, _ := chatEnv(t, cut)
 		_, err, recs := protoRecords(t, e, true)
@@ -147,6 +151,7 @@ func TestProviderProtoTerminalAccounting(t *testing.T) {
 	})
 
 	t.Run("completed response accounting is unchanged", func(t *testing.T) {
+		t.Parallel()
 		e, _ := chatEnv(t, events(itemDone(0, tool()), done(protoEnvelope("resp_ok", map[string]any{"usage": limitUsage()}))))
 		resp, err, recs := protoRecords(t, e, true)
 		if err != nil || resp.ID != "resp_ok" || resp.Usage != (Usage{1000, 200, 500, 400}) || resp.UsageState != UsagePartial {
@@ -165,6 +170,7 @@ func TestProviderProtoTerminalAccounting(t *testing.T) {
 // keep their allowlisted diagnostics in the attempt record, without raw messages, arguments
 // or event bodies.
 func TestProviderProtoAttemptDiagnostics(t *testing.T) {
+	t.Parallel()
 	incomplete := func(details any) map[string]any {
 		return map[string]any{"type": "response.incomplete", "response": map[string]any{"incomplete_details": details, "id": "resp_x"}}
 	}
@@ -195,6 +201,7 @@ func TestProviderProtoAttemptDiagnostics(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			for _, single := range []bool{true, false} {
 				e, f := chatEnv(t, c.h)
 				_, err, recs := protoRecords(t, e, single)
@@ -231,6 +238,7 @@ func TestProviderProtoAttemptDiagnostics(t *testing.T) {
 	}
 	for _, c := range invalid {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			first := events(append(c.frames, nil)[:len(c.frames)]...)
 			e, f := chatEnv(t, first, textAnswer("recovered"))
 			resp, err, recs := protoRecords(t, e, false)
@@ -261,6 +269,7 @@ func TestProviderProtoAttemptDiagnostics(t *testing.T) {
 	}
 
 	t.Run("unrecovered invalid completion keeps its error and evidence", func(t *testing.T) {
+		t.Parallel()
 		bad := events(itemDone(0, with(tool(), "arguments", "[]")), done(map[string]any{}))
 		e, f := chatEnv(t, bad, bad)
 		_, err, recs := protoRecords(t, e, false)
@@ -283,6 +292,7 @@ func TestProviderProtoAttemptDiagnostics(t *testing.T) {
 // the whole effective output is rejected, whichever of the done items or the terminal output is
 // authoritative; distinct IDs stay valid.
 func TestProviderProtoDuplicateCallIdentities(t *testing.T) {
+	t.Parallel()
 	a, b := with(tool(), "call_id", "call_1"), with(tool(), "call_id", "call_1", "arguments", `{"x":1}`)
 	c := with(tool(), "call_id", "call_2")
 	reject := map[string][]any{
@@ -292,6 +302,7 @@ func TestProviderProtoDuplicateCallIdentities(t *testing.T) {
 	}
 	for name, frames := range reject {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			e, f := chatEnv(t, events(frames...))
 			resp, err := single(e)
 			if resp != nil || mustErr(t, err).Reason != "invalid_response" || len(f.requests()) != 1 {
@@ -307,6 +318,7 @@ func TestProviderProtoDuplicateCallIdentities(t *testing.T) {
 		"terminal replaces dupes": {itemDone(0, a), itemDone(1, b), done(map[string]any{"output": []any{a, c}})},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			e, _ := chatEnv(t, events(frames...))
 			resp, err := single(e)
 			if err != nil || len(resp.Items) != 2 || resp.Items[0]["call_id"] != "call_1" || resp.Items[1]["call_id"] != "call_2" {

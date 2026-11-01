@@ -14,8 +14,10 @@ import (
 // Timeout feedback must observe individual disappearance, not just a vanished
 // process group (which can exclude still-observable zombies on Darwin).
 func TestCallerShellBoundCustody(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"exits", "ignores"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			s := session(t)
 			readyPath := filepath.Join(s.Cwd, "ready")
 			if err := syscall.Mkfifo(readyPath, 0600); err != nil {

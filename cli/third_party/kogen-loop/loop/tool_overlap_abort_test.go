@@ -15,6 +15,7 @@ import (
 // A round that does not complete leaves nothing running, nothing staged and nothing
 // published: no next request, no result, and the error it always returned.
 func TestToolOverlapAbort(t *testing.T) {
+	t.Parallel()
 	// world is a root with the FIFOs a held shell reports through.
 	type world struct {
 		root, ready, gate string
@@ -72,6 +73,8 @@ func TestToolOverlapAbort(t *testing.T) {
 	}
 
 	t.Run("cancelled mid-stream", func(t *testing.T) {
+
+		t.Parallel()
 		res, err, pid, prov := cancelRound(t, false, 0)
 		if err == nil {
 			t.Fatal("no error")
@@ -88,6 +91,8 @@ func TestToolOverlapAbort(t *testing.T) {
 	})
 
 	t.Run("deadline mid-stream", func(t *testing.T) {
+
+		t.Parallel()
 		res, err, pid, prov := cancelRound(t, false, 2*time.Second)
 		if err == nil {
 			t.Fatal("no error")
@@ -103,6 +108,7 @@ func TestToolOverlapAbort(t *testing.T) {
 	// of it reaches the retried attempt's results.
 	for _, early := range []string{"running", "finished"} {
 		t.Run("retried response/"+early, func(t *testing.T) {
+			t.Parallel()
 			w := newWorld(t)
 			first := olHold(w.ready, w.gate, "echo attempt1")
 			if early == "finished" {
@@ -161,6 +167,8 @@ func TestToolOverlapAbort(t *testing.T) {
 	}
 
 	t.Run("failed response", func(t *testing.T) {
+
+		t.Parallel()
 		w := newWorld(t)
 		sent, failNow := make(chan struct{}), make(chan struct{})
 		prov := newOLProvider(t, "responses",
@@ -191,6 +199,7 @@ func TestToolOverlapAbort(t *testing.T) {
 
 	// A stopped shell is a stopping error, returned unchanged, with no next request.
 	t.Run("tool stop", func(t *testing.T) {
+		t.Parallel()
 		w := newWorld(t)
 		prov := newOLProvider(t, "responses",
 			func(s *olStream) {

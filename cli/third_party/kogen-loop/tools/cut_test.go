@@ -15,6 +15,7 @@ import (
 // multi-byte characters at the cut points and with many digits in the
 // count.
 func TestCutMatchesTheElixirCut(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("testdata/cut_golden.json")
 	if err != nil {
 		t.Fatal(err)
@@ -29,6 +30,7 @@ func TestCutMatchesTheElixirCut(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
 			unit, err := base64.StdEncoding.DecodeString(c.Unit)
 			if err != nil {
 				t.Fatal(err)
@@ -43,6 +45,7 @@ func TestCutMatchesTheElixirCut(t *testing.T) {
 }
 
 func TestCutKeepsHeadAndTailAroundAMarker(t *testing.T) {
+	t.Parallel()
 	text := strings.Repeat("0123456789", 3000) // 30000 bytes
 	got := Cut(text)
 	marker := "\n[... 13647 bytes omitted ...]\n"
@@ -64,6 +67,7 @@ func TestCutKeepsHeadAndTailAroundAMarker(t *testing.T) {
 }
 
 func TestCutEndsOnWholeCharacters(t *testing.T) {
+	t.Parallel()
 	for _, unit := range []string{"é", "€", "😀"} {
 		got := Cut(strings.Repeat(unit, 20_000))
 		if !utf8.ValidString(got) {
@@ -76,6 +80,7 @@ func TestCutEndsOnWholeCharacters(t *testing.T) {
 }
 
 func TestCutOfAnOutputPassesTypedPartsUnchanged(t *testing.T) {
+	t.Parallel()
 	parts := Output{Parts: []any{map[string]any{"type": "input_text", "text": strings.Repeat("x", 40_000)}}}
 	if got := parts.Cut(); !got.Typed() || len(got.Parts) != 1 || got.Parts[0].(map[string]any)["text"] != parts.Parts[0].(map[string]any)["text"] {
 		t.Error("typed output changed")

@@ -7,6 +7,7 @@ import (
 )
 
 func TestShellRefusesForeignKill(t *testing.T) {
+	t.Parallel()
 	tl := &Tools{Root: t.TempDir(), Enabled: []string{"shell"}}
 	out, err := tl.Run("shell", map[string]any{"command": "pkill -f nothing-at-all"})
 	if err != nil || out.Text != sys.RefusalText(sys.RulePkillKillall) || out.Rule != sys.RulePkillKillall {

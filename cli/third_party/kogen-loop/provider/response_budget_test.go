@@ -63,6 +63,7 @@ func expiryDetail(t *testing.T, client time.Duration) string {
 }
 
 func TestClientResponseBudgetDefault(t *testing.T) {
+	t.Parallel()
 	for _, b := range []time.Duration{0, 30 * time.Minute} {
 		assertBudgetDeadline(t, b, 30*time.Minute)
 	}
@@ -104,6 +105,7 @@ func TestClientResponseBudgetDefault(t *testing.T) {
 }
 
 func TestClientResponseBudgetValidation(t *testing.T) {
+	t.Parallel()
 	bad := []time.Duration{-time.Second, time.Second - 1, 30*time.Minute + 1}
 	for _, d := range bad {
 		e, f := chatEnv(t, textAnswer("ok"))
@@ -124,6 +126,7 @@ func TestClientResponseBudgetValidation(t *testing.T) {
 }
 
 func TestClientResponseBudgetSelection(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		client time.Duration
 		want   string
@@ -145,6 +148,7 @@ func TestClientResponseBudgetSelection(t *testing.T) {
 }
 
 func TestClientResponseBudgetStall(t *testing.T) {
+	t.Parallel()
 	release := make(chan struct{})
 	var attempts atomic.Int32
 	closed := make(chan struct{})
@@ -178,6 +182,7 @@ func TestClientResponseBudgetStall(t *testing.T) {
 }
 
 func TestClientResponseBudgetAbsolute(t *testing.T) {
+	t.Parallel()
 	// retries and their backoff spend one budget: expiry adds no attempt
 	e, f := chatEnv(t, jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}))
 	e.c.ResponseBudget = 5 * time.Second
@@ -222,6 +227,7 @@ func TestClientResponseBudgetAbsolute(t *testing.T) {
 }
 
 func TestClientResponseBudgetDiagnostic(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		client time.Duration
 		want   string

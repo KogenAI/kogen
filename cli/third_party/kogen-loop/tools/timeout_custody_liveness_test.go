@@ -7,6 +7,7 @@ import (
 )
 
 func TestTimeoutCustodyContextCalls(t *testing.T) {
+	t.Parallel()
 	tt := &Tools{Root: t.TempDir(), Enabled: []string{ShellTool}}
 	call := Call{Name: ShellTool, Arguments: `{"command":"printf exact"}`}
 	ctx, cancel := context.WithCancel(context.Background())

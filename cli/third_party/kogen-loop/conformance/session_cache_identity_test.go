@@ -90,6 +90,7 @@ func cacheReference(t *testing.T, f *fakeProvider, cfg loop.SessionConfig, s *lo
 }
 
 func TestSessionCacheIdentityIsTheSessionID(t *testing.T) {
+	t.Parallel()
 	for _, role := range cacheProfiles {
 		t.Run(role.Provider, func(t *testing.T) {
 			f, cfg := cacheSetup(t, role, 4)
@@ -115,6 +116,7 @@ func TestSessionCacheIdentityIsTheSessionID(t *testing.T) {
 }
 
 func TestResumedSessionKeepsItsSessionIDAsCacheIdentity(t *testing.T) {
+	t.Parallel()
 	for _, role := range cacheProfiles {
 		t.Run(role.Provider, func(t *testing.T) {
 			f, cfg := cacheSetup(t, role, 2)

@@ -1,16 +1,21 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"kogen-loop/sys"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
 
 func TestShellYieldRetrievalScope(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	tl := &Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{ShellTool}}
 	defer tl.EndShellRound()
@@ -33,17 +38,26 @@ func TestShellYieldRetrievalScope(t *testing.T) {
 	}
 	start = time.Now()
 	v = decode(run(t, tl, ShellTool, map[string]any{"handle": id}))
-	if v["status"] != "running" || time.Since(start) > 5*time.Second {
+	if v["status"] != "running" || v["output"] != "one" || time.Since(start) < 29*time.Second || time.Since(start) > 36*time.Second {
 		t.Fatal(v)
 	}
-	if err := os.WriteFile(filepath.Join(root, "release"), nil, 0600); err != nil {
-		t.Fatal(err)
-	}
+	release := make(chan error, 1)
+	go func() {
+		time.Sleep(2 * time.Second)
+		release <- os.WriteFile(filepath.Join(root, "release"), nil, 0600)
+	}()
+	start = time.Now()
 	for i := 0; i < 2; i++ {
 		v = decode(run(t, tl, ShellTool, map[string]any{"handle": id}))
+		if i == 0 && (time.Since(start) < time.Second || time.Since(start) > 6*time.Second) {
+			t.Fatalf("completion did not wake retrieval promptly: %v", time.Since(start))
+		}
 		if v["status"] != "completed" || v["exit_status"] != float64(7) || v["output"] != "onetwo" {
 			t.Fatal(v)
 		}
+	}
+	if err := <-release; err != nil {
+		t.Fatal(err)
 	}
 	tl.EndShellRound()
 	for _, a := range []map[string]any{{}, {"handle": id}, {"handle": "unknown"}, {"command": "touch bad", "handle": id}, {"handle": 42}} {
@@ -57,8 +71,10 @@ func TestShellYieldRetrievalScope(t *testing.T) {
 }
 
 func TestShellYieldLargeJSON(t *testing.T) {
+	t.Parallel()
 	for _, n := range []string{"16383", "16384", "16385", "200000"} {
 		t.Run(n, func(t *testing.T) {
+			t.Parallel()
 			root := t.TempDir()
 			tl := &Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{ShellTool}}
 			defer tl.EndShellRound()
@@ -87,6 +103,7 @@ func TestShellYieldLargeJSON(t *testing.T) {
 }
 
 func TestShellYieldLargeMalformedOutput(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	tl := &Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{ShellTool}}
 	defer tl.EndShellRound()
@@ -112,4 +129,51 @@ func TestShellYieldLargeMalformedOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(run(t, tl, ShellTool, map[string]any{"handle": v["handle"]}), "completed")
+}
+
+func TestShellRetrievalCancellationStopsCommand(t *testing.T) {
+	for _, mode := range []string{"cancel", "deadline"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			tl := &Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{ShellTool}}
+			defer tl.EndShellRound()
+			var v struct {
+				Status string `json:"status"`
+				Handle string `json:"handle"`
+			}
+			text := run(t, tl, ShellTool, map[string]any{"command": "echo $$ > actor.pid; exec sleep 600"})
+			if err := json.Unmarshal([]byte(text), &v); err != nil || v.Status != "running" || v.Handle == "" {
+				t.Fatalf("yield: %s %v", text, err)
+			}
+			data, err := os.ReadFile(filepath.Join(root, "actor.pid"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil || pid <= 1 {
+				t.Fatalf("pid: %q", data)
+			}
+			var ctx context.Context
+			var cancel context.CancelFunc
+			want := context.Canceled
+			if mode == "deadline" {
+				ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+				want = context.DeadlineExceeded
+			} else {
+				ctx, cancel = context.WithCancel(context.Background())
+				timer := time.AfterFunc(2*time.Second, cancel)
+				defer timer.Stop()
+			}
+			defer cancel()
+			start := time.Now()
+			_, err = tl.RunContext(ctx, ShellTool, map[string]any{"handle": v.Handle})
+			if !errors.Is(err, want) || time.Since(start) > 7*time.Second {
+				t.Fatalf("cancellation: %v after %v", err, time.Since(start))
+			}
+			if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+				t.Fatalf("command still exists: %v", err)
+			}
+		})
+	}
 }

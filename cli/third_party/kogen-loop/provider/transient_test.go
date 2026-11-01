@@ -40,11 +40,13 @@ func roleOf(name string) Role {
 }
 
 func TestRecognizedStreamFailureCodesRetryOnBothRoutesAndEnvelopes(t *testing.T) {
+	t.Parallel()
 	overloaded := map[string]any{"message": "Our servers are currently overloaded"}
 	for _, provider := range []string{"chatgpt", "supergrok"} {
 		for _, event := range []string{"error", "flat", "response.failed"} {
 			for _, code := range []string{"server_is_overloaded", "server_error", "rate_limit_exceeded", "subscription_sharing_usage_unavailable", "subscription_sharing_user_unavailable"} {
 				t.Run(fmt.Sprintf("%s/%s/%s", provider, event, code), func(t *testing.T) {
+					t.Parallel()
 					e, f := retryEnv(t, provider, failureStream(event, with(overloaded, "code", code)), textAnswer("ok"))
 					obs := &observer{}
 					resp, err := e.c.Respond(context.Background(), e.s, Request{Role: roleOf(provider), Instructions: "p", Input: user("x")}, obs)
@@ -69,6 +71,7 @@ func TestRecognizedStreamFailureCodesRetryOnBothRoutesAndEnvelopes(t *testing.T)
 }
 
 func TestOverloadRecoversOnTheThirdAttemptAndExhaustsAfterThree(t *testing.T) {
+	t.Parallel()
 	body := map[string]any{"code": "server_is_overloaded", "type": "service_unavailable_error", "message": "Our servers are currently overloaded"}
 	e, f := retryEnv(t, "chatgpt", failureStream("error", body), failureStream("error", body), textAnswer("ok"))
 	if _, err := e.c.Respond(context.Background(), e.s, Request{Role: roleOf("chatgpt"), Instructions: "p"}, nil); err != nil || len(f.requests()) != 3 ||
@@ -90,6 +93,7 @@ func TestOverloadRecoversOnTheThirdAttemptAndExhaustsAfterThree(t *testing.T) {
 }
 
 func TestCodelessSuperGrokGenerationFailureRetriesOnlyUnderTheNarrowRule(t *testing.T) {
+	t.Parallel()
 	const msg = "Internal error during token generation"
 	retry := []struct {
 		event string
@@ -143,6 +147,7 @@ func TestCodelessSuperGrokGenerationFailureRetriesOnlyUnderTheNarrowRule(t *test
 }
 
 func TestOverloadBackoffEndsWithTheAbsoluteBudgetAndWithCancellation(t *testing.T) {
+	t.Parallel()
 	body := map[string]any{"code": "server_is_overloaded", "message": "Our servers are currently overloaded"}
 	e, f := retryEnv(t, "chatgpt", failureStream("error", body), failureStream("error", body), failureStream("error", body))
 	e.c.ResponseBudget = time.Second

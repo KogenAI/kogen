@@ -9,6 +9,7 @@ import (
 )
 
 func TestChatGPTAffinityRendering(t *testing.T) {
+	t.Parallel()
 	info, _ := Lookup("chatgpt")
 	for _, id := range []string{"conversation-existing", strings.Repeat("x", 64), strings.Repeat("x", 65), strings.Repeat("legacy", 40)} {
 		for _, unsupported := range []bool{false, true} {

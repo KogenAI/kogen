@@ -16,6 +16,7 @@ import (
 // Failed process observation must not postpone the timeout's termination signals.
 // Isolate the descriptor limit from the test runner and every other test.
 func TestCallerShellBoundObservationFailure(t *testing.T) {
+	t.Parallel()
 	const helper = "CALLER_SHELL_BOUND_OBSERVATION_HELPER"
 	if os.Getenv(helper) != "1" {
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)

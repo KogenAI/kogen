@@ -6,6 +6,7 @@ import (
 )
 
 func TestRunnerHeadAndTreeFollowTheCandidate(t *testing.T) {
+	t.Parallel()
 	_, root := newRepo(t)
 	r := newRunner(root, hermeticEnv())
 	if got := r.Head(); got != "" {
@@ -49,6 +50,7 @@ func TestRunnerHeadAndTreeFollowTheCandidate(t *testing.T) {
 }
 
 func TestRunnerDropsLocationVariablesAndMapsFailures(t *testing.T) {
+	t.Parallel()
 	_, root := newRepo(t)
 	env := append(hermeticEnv(), "GIT_DIR=/nonexistent", "GIT_INDEX_FILE=/nonexistent/index")
 	r := newRunner(root, env)

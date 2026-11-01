@@ -23,6 +23,7 @@ func refusalMessage(parts ...[2]string) map[string]any {
 // TestProviderProtoRefusalClaim: a valid completion whose message carries refusal parts is a
 // no_call ending whose claim keeps them, in content order.
 func TestProviderProtoRefusalClaim(t *testing.T) {
+	t.Parallel()
 	const refused = "I cannot help with that request."
 	cases := []struct {
 		name  string
@@ -65,6 +66,7 @@ func shellCall(id, command string) map[string]any {
 // TestProviderProtoDuplicateCalls: two function calls with one call_id reject the whole
 // effective batch (invalid response, one retry) before either runs; distinct IDs stay valid.
 func TestProviderProtoDuplicateCalls(t *testing.T) {
+	t.Parallel()
 	const appendX = "printf x >> counter.txt"
 	dup := []map[string]any{shellCall("call_1", appendX), shellCall("call_1", appendX)}
 	conflict := []map[string]any{shellCall("call_1", appendX), shellCall("call_1", "printf y >> counter.txt")}

@@ -74,17 +74,20 @@ func olOutputs(t *testing.T, res Result, err error) []string {
 // A later call never bypasses an earlier one it can conflict with, and calls that cannot
 // conflict do not wait for each other.
 func TestToolOverlapConflicts(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("x", 4<<20)
 
 	// Writes to one file serialize, however the file is named: the last call's content wins
 	// although the first is far larger and so would finish last if they overlapped.
 	t.Run("same target", func(t *testing.T) {
+		t.Parallel()
 		for name, paths := range map[string][2]string{
 			"same path":     {"a/f.txt", "a/f.txt"},
 			"lexical alias": {"a/f.txt", "a/../a/./f.txt"},
 			"symlink alias": {"real/f.txt", "lnk/f.txt"},
 		} {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				run, repo, root, _ := olConflict(t, func(root string) {
 					if err := os.MkdirAll(filepath.Join(root, "real"), 0o755); err != nil {
 						t.Fatal(err)
@@ -107,6 +110,8 @@ func TestToolOverlapConflicts(t *testing.T) {
 	})
 
 	t.Run("read after write", func(t *testing.T) {
+
+		t.Parallel()
 		run, repo, _, _ := olConflict(t, nil, olWrite("w", "d/f.txt", big), olSearchIn("r", "r", "d"))
 		repo.startedKeys(t, "r")
 		if got := repo.snapshot("r"); got != "d/f.txt" {
@@ -122,12 +127,14 @@ func TestToolOverlapConflicts(t *testing.T) {
 	// Git reads ignore files beside the listed path and receives the path as written, not as
 	// resolved: a write to either is ordered before the listing.
 	t.Run("Git inputs of a listing", func(t *testing.T) {
+		t.Parallel()
 		for name, c := range map[string]struct{ write, list, key, want string }{
 			"ignore file":                 {".gitignore", "d", "ls:d", ".gitignore"},
 			"pathspec as written":         {"b/f.txt", "a/../b", "ls:b", "b/f.txt"},
 			"ignore file of a parent dir": {"d/.gitignore", "d/e", "ls:d/e", "d/.gitignore"},
 		} {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				run, repo, _, _ := olConflict(t, func(root string) {
 					for _, dir := range []string{"x/y", "b", "d/e"} {
 						if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
@@ -153,6 +160,7 @@ func TestToolOverlapConflicts(t *testing.T) {
 
 	// A read through a missing folder and ".." opens only once the earlier write created it.
 	t.Run("read through a folder a write creates", func(t *testing.T) {
+		t.Parallel()
 		run, _, _, _ := olConflict(t, func(root string) {
 			if err := os.WriteFile(filepath.Join(root, "b.txt"), []byte("bee\n"), 0o644); err != nil {
 				t.Fatal(err)
@@ -165,6 +173,8 @@ func TestToolOverlapConflicts(t *testing.T) {
 	})
 
 	t.Run("write after read", func(t *testing.T) {
+
+		t.Parallel()
 		run, repo, root, _ := olConflict(t, nil,
 			olSearchIn("r", "r", "d"), olWrite("w", "d/f.txt", "x"), olSearchIn("z", "z", "elsewhere"))
 		// The unrelated read after the write starts beside the first read; the write, which
@@ -186,6 +196,7 @@ func TestToolOverlapConflicts(t *testing.T) {
 	// Distinct files overlap each other and independent reads: the second write and the read
 	// of its folder finish while the first write is still waiting behind a held read.
 	t.Run("disjoint writes and reads", func(t *testing.T) {
+		t.Parallel()
 		run, repo, root, _ := olConflict(t, nil,
 			olSearchIn("ra", "ra", "a"), olWrite("wa", "a/f.txt", "A"), olWrite("wb", "b/g.txt", "B"), olSearchIn("rb", "rb", "b"),
 			olSearchIn("x", "x", "x"), olList("l", "y"))
@@ -208,6 +219,8 @@ func TestToolOverlapConflicts(t *testing.T) {
 	})
 
 	t.Run("view_image reads the whole tree", func(t *testing.T) {
+
+		t.Parallel()
 		run, repo, _, _ := olConflict(t, func(root string) {
 			img := image.NewRGBA(image.Rect(0, 0, 1, 1))
 			img.Set(0, 0, color.RGBA{R: 1, G: 2, B: 3, A: 255})
@@ -231,6 +244,8 @@ func TestToolOverlapConflicts(t *testing.T) {
 	})
 
 	t.Run("write then shell", func(t *testing.T) {
+
+		t.Parallel()
 		run, _, _, _ := olConflict(t, nil, olWrite("w", "f.txt", big), olShell("s", "cat f.txt | wc -c | tr -d ' '"))
 		res, err := run.wait(t)
 		if got := olOutputs(t, res, err); !reflect.DeepEqual(got, []string{"w=ok", "s=exit status: 0\n4194304\n"}) {
@@ -239,6 +254,8 @@ func TestToolOverlapConflicts(t *testing.T) {
 	})
 
 	t.Run("shell then read and shell", func(t *testing.T) {
+
+		t.Parallel()
 		root := t.TempDir()
 		ready, gate := olFifo(t, root, "ready"), olFifo(t, root, "gate")
 		repo := newOLRepo(t)
@@ -270,6 +287,7 @@ func TestToolOverlapConflicts(t *testing.T) {
 	// Calls whose effects are unknown, whether not enabled or opaque like probe, are ordered
 	// against everything around them.
 	t.Run("unknown effects", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		repo := newOLRepo(t)
 		probeStarted, probeGate := make(chan struct{}), make(chan struct{})
@@ -319,6 +337,7 @@ func TestToolOverlapConflicts(t *testing.T) {
 	// A call after one that is not complete in the stream waits for it, even when it is itself
 	// complete: the earlier call's effects are unknown.
 	t.Run("earlier incomplete call", func(t *testing.T) {
+		t.Parallel()
 		repo := newOLRepo(t)
 		sent, proceed := make(chan struct{}), make(chan struct{})
 		prov := newOLProvider(t, "responses",

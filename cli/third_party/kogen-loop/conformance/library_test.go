@@ -76,6 +76,7 @@ func ids(items []any) []string {
 }
 
 func TestEngineOrder(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).seed(map[string]string{"a.txt": "alpha\n"})
 	var log []string
 	rq := &scripted{log: &log, responses: []*provider.Response{
@@ -169,6 +170,7 @@ func TestEngineOrder(t *testing.T) {
 }
 
 func TestSentInputOfARequesterIsWhatTheConversationKeeps(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	rq := &scripted{
 		responses: []*provider.Response{respond("r1", fakeCall("c1", "finish", `{}`))},
@@ -184,6 +186,7 @@ func TestSentInputOfARequesterIsWhatTheConversationKeeps(t *testing.T) {
 }
 
 func TestNoCallEnding(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	rq := &scripted{responses: []*provider.Response{respond("r1", message("hello"))}}
 	res, err := loop.Run(context.Background(), roundWith(t, w), []any{userMessage("go")}, rq, loop.Hooks{})
@@ -196,6 +199,7 @@ func TestNoCallEnding(t *testing.T) {
 }
 
 func TestHandledCall(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	rd := roundWith(t, w)
 	big := strings.Repeat("h", 20000)
@@ -268,6 +272,7 @@ func TestHandledCall(t *testing.T) {
 }
 
 func TestToolResultCutIsAppliedByTheEngine(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).seed(map[string]string{"big.txt": strings.Repeat("0123456789\n", 5000)})
 	rq := &scripted{responses: []*provider.Response{
 		respond("r1", fakeCall("c1", "read_file", `{"path":"big.txt"}`)),
@@ -286,6 +291,7 @@ func TestToolResultCutIsAppliedByTheEngine(t *testing.T) {
 }
 
 func TestHookErrorStopsTheRound(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).seed(map[string]string{"a.txt": "alpha\n"})
 	stop := errors.New("hook stop")
 	responses := func() []*provider.Response {
@@ -350,6 +356,7 @@ func TestHookErrorStopsTheRound(t *testing.T) {
 }
 
 func TestCancelledContextStopsBeforeTheNextCall(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).seed(map[string]string{"a.txt": "alpha\n"})
 	ctx, cancel := context.WithCancel(context.Background())
 	var ran []string
@@ -372,6 +379,7 @@ func TestCancelledContextStopsBeforeTheNextCall(t *testing.T) {
 }
 
 func TestContextEndTerminatesTheShellGroupBeforeRunReturns(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	rq := &scripted{responses: []*provider.Response{
 		respond("r1", fakeCall("c1", "shell", fmt.Sprintf(`{"command":%q}`, sleeper))),
@@ -401,6 +409,7 @@ func TestContextEndTerminatesTheShellGroupBeforeRunReturns(t *testing.T) {
 }
 
 func TestInterruptedSessionStopsTheShellAndReturnsTheInterrupt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	session := sys.NewWith([]string{"HOME=" + w.home, "PATH=" + os.Getenv("PATH")}, w.root)
 	rd := roundWith(t, w)
@@ -443,6 +452,7 @@ func direct(t *testing.T, w *world, f *fakeProvider) *loop.Direct {
 }
 
 func TestOverBudgetRefusalComesBeforeAnyRequestAndTheInputIsNeverClipped(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{{Items: []map[string]any{message("never")}}})
 	d := direct(t, w, f)
@@ -472,6 +482,7 @@ func TestOverBudgetRefusalComesBeforeAnyRequestAndTheInputIsNeverClipped(t *test
 }
 
 func TestFailOverBudgetZeroValueMeasuresTheRenderedRequest(t *testing.T) {
+	t.Parallel()
 	r := loop.Request{Role: provider.Role{Provider: "chatgpt", Model: "m", Effort: "e"}, Instructions: "i", Tools: []any{}}
 	r.Input = []any{userMessage("small")}
 	if got, err := (loop.FailOverBudget{}).Prepare(context.Background(), r); err != nil || len(got) != 1 {
@@ -485,6 +496,7 @@ func TestFailOverBudgetZeroValueMeasuresTheRenderedRequest(t *testing.T) {
 }
 
 func TestDirectSendsOneCacheIdentityAndTheObserverSeesAttempts(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{
 		{Items: []map[string]any{call("c1", "write_file", map[string]any{"path": "x.txt", "content": "x"})}},
@@ -537,6 +549,7 @@ func eventTypes(events []api.Event) []string {
 }
 
 func TestSessionRoundsInMemoryAndTheFeedbackRule(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{
 		{ID: "r1", Items: []map[string]any{call("c1", "finish", map[string]any{"summary": "one"})}},
@@ -586,6 +599,7 @@ func TestSessionRoundsInMemoryAndTheFeedbackRule(t *testing.T) {
 func toAny(in []any) []any { return in }
 
 func TestSessionFeedbackAnsweringTerminalIsCut(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{
 		{Items: []map[string]any{call("c1", "finish", map[string]any{"summary": "one"})}},
@@ -606,6 +620,7 @@ func TestSessionFeedbackAnsweringTerminalIsCut(t *testing.T) {
 }
 
 func TestSessionResumeLibraryAndMismatch(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	dir := filepath.Join(t.TempDir(), "s")
 	f := newFakeProvider(t, []exchange{
@@ -655,6 +670,7 @@ func TestSessionResumeLibraryAndMismatch(t *testing.T) {
 }
 
 func TestSessionEmitsToolEventsWithCutAndHashes(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	f := newFakeProvider(t, []exchange{
 		{Items: []map[string]any{
@@ -680,6 +696,7 @@ func TestSessionEmitsToolEventsWithCutAndHashes(t *testing.T) {
 }
 
 func TestSessionDefaultsAreTheGenericTools(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	var events []api.Event
 	s, err := loop.NewSession(sessionConfig(w, nil, &events))
@@ -712,6 +729,7 @@ func TestSessionDefaultsAreTheGenericTools(t *testing.T) {
 }
 
 func TestUsageHelpers(t *testing.T) {
+	t.Parallel()
 	five, six := 5, 6
 	complete := loop.UsageOf(&provider.Response{Known: provider.KnownUsage{Input: &five, Cached: &five, Output: &six, Reasoning: &five}, UsageState: provider.UsagePartial})
 	if complete.State != api.UsageComplete || complete.Source != "provider" || *complete.Output != 6 {

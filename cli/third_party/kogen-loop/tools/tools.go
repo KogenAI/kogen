@@ -627,7 +627,11 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (string, string,
 		r.jobs[id] = j
 		r.mu.Unlock()
 	}
-	timer := time.NewTimer(time.Second)
+	wait := time.Second
+	if hasHandle {
+		wait = 30 * time.Second
+	}
+	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	var done <-chan struct{}
 	if ctx != nil {

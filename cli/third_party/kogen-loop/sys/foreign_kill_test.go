@@ -8,6 +8,7 @@ import (
 )
 
 func TestForeignKillTable(t *testing.T) {
+	t.Parallel()
 	owned := func(pid int) bool { return pid == 4242 || pid == -4242 }
 	refused := map[string]string{
 		"pkill -f x":                  RulePkillKillall,
@@ -58,6 +59,7 @@ func TestForeignKillTable(t *testing.T) {
 }
 
 func TestSessionOwnedAndRefusal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s := NewWith(os.Environ(), dir)
 	t.Cleanup(func() { Terminate(s.Groups()) })

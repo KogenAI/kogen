@@ -88,6 +88,8 @@ func copyAffinity(o affinityObservation) affinityObservation {
 	return c
 }
 func TestProviderStreamAffinity(t *testing.T) {
+	t.Parallel()
+	// Serial producer subtests supply observations to the negative controls below.
 	var sessionGood, keyGood affinityObservation
 	for _, single := range []bool{false, true} {
 		t.Run(fmt.Sprintf("session_id_single_%v", single), func(t *testing.T) {
@@ -155,6 +157,7 @@ func TestProviderStreamAffinity(t *testing.T) {
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
 				good := keyGood
 				if c.session {
 					good = sessionGood

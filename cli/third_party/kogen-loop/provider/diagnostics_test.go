@@ -26,6 +26,7 @@ type sysErrorView struct {
 
 // provider_diagnostics_test: unknown structured stream failure retains safe fields.
 func TestUnknownStructuredStreamFailureRetainsSafeFields(t *testing.T) {
+	t.Parallel()
 	v, f := failureOf(t, []handler{failed(map[string]any{
 		"code": "unknown_overload", "type": "provider_capacity", "message": "structured overload",
 		"access_token": "SECRET-TOKEN-MARKER", "request": "PRIVATE-PAYLOAD-MARKER"})})
@@ -45,6 +46,7 @@ func TestUnknownStructuredStreamFailureRetainsSafeFields(t *testing.T) {
 
 // provider_diagnostics_test: HTTP failure metadata without request payload.
 func TestHTTPFailureMetadataWithoutPayload(t *testing.T) {
+	t.Parallel()
 	v, _ := failureOf(t, []handler{jsonAnswer(400, map[string]any{"error": map[string]any{
 		"code": "unknown_http_code", "type": "invalid_request", "message": "structured HTTP failure", "authorization": "SECRET-AUTH-MARKER"}})})
 	want := map[string]any{"code": "unknown_http_code", "type": "invalid_request", "http_status": int64(400)}
@@ -55,6 +57,7 @@ func TestHTTPFailureMetadataWithoutPayload(t *testing.T) {
 
 // provider_diagnostics_test: known structured transients keep three attempts and final diagnostics.
 func TestKnownStructuredTransientsKeepThreeAttempts(t *testing.T) {
+	t.Parallel()
 	one := failed(map[string]any{"code": "server_error", "type": "capacity", "message": "known transient"})
 	v, f := failureOf(t, []handler{one, one, one, textAnswer("never")})
 	if v.Reason != "unavailable" || v.Detail != "ChatGPT did not answer after 3 attempts: server_error: known transient" ||
@@ -65,6 +68,7 @@ func TestKnownStructuredTransientsKeepThreeAttempts(t *testing.T) {
 
 // provider_diagnostics_test: no-code and malformed stream error fields remain safe fallbacks.
 func TestNoCodeAndMalformedStreamErrorFieldsAreSafe(t *testing.T) {
+	t.Parallel()
 	for i, errField := range []any{
 		map[string]any{"message": "no-code failure"},
 		"malformed error",
@@ -79,6 +83,7 @@ func TestNoCodeAndMalformedStreamErrorFieldsAreSafe(t *testing.T) {
 
 // provider_diagnostics_test: context and login wrappers preserve known response metadata.
 func TestContextFailurePreservesMetadataWithoutChangingTheError(t *testing.T) {
+	t.Parallel()
 	v, f := failureOf(t, []handler{failed(map[string]any{"code": "context_length_exceeded", "type": "request_error", "message": "context limit"})})
 	if v.Reason != "context_too_long" || !reflect.DeepEqual(v.Failure, map[string]any{"code": "context_length_exceeded", "type": "request_error", "event_kind": "response.failed"}) || len(f.requests()) != 1 {
 		t.Fatalf("%+v", v)
@@ -88,6 +93,7 @@ func TestContextFailurePreservesMetadataWithoutChangingTheError(t *testing.T) {
 // provider_diagnostics_test: a flat error event retains code and event kind without
 // inventing an error subtype.
 func TestFlatErrorEventRetainsCodeAndKind(t *testing.T) {
+	t.Parallel()
 	v, _ := failureOf(t, []handler{events(map[string]any{"type": "error", "code": "unknown_flat_code", "message": "flat failure", "request": "PRIVATE-FLAT-MARKER"})})
 	if v.Detail != "ChatGPT refused the request: stream flat failure" || !reflect.DeepEqual(v.Failure, map[string]any{"code": "unknown_flat_code", "event_kind": "error"}) || strings.Contains(v.Rendered, "PRIVATE-FLAT-MARKER") {
 		t.Fatalf("%+v", v)
@@ -97,6 +103,7 @@ func TestFlatErrorEventRetainsCodeAndKind(t *testing.T) {
 // provider_diagnostics_test: incomplete stream diagnostics do not present an internal
 // marker as provider code.
 func TestIncompleteStreamHasNoInternalCode(t *testing.T) {
+	t.Parallel()
 	v, _ := failureOf(t, []handler{events(map[string]any{"type": "response.incomplete", "response": map[string]any{"incomplete_details": map[string]any{"reason": "max_output_tokens"}}})})
 	if v.Reason != "refused" || !reflect.DeepEqual(v.Failure, map[string]any{"event_kind": "response.incomplete"}) {
 		t.Fatalf("%+v", v)
@@ -104,6 +111,7 @@ func TestIncompleteStreamHasNoInternalCode(t *testing.T) {
 }
 
 func TestDiagnosticsOmitIllTypedFields(t *testing.T) {
+	t.Parallel()
 	f := failure{status: "stream", code: "", typ: 7, eventKind: "", message: "m"}
 	if len(f.diagnostics()) != 0 {
 		t.Fatalf("%v", f.diagnostics())

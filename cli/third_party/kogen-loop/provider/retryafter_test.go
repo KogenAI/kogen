@@ -70,6 +70,7 @@ func secs(n ...int) []time.Duration {
 }
 
 func TestRetryAfterWaits(t *testing.T) {
+	t.Parallel()
 	for _, rt := range raRoutes() {
 		for _, status := range []int{429, 503} {
 			for _, tc := range []struct {
@@ -77,6 +78,7 @@ func TestRetryAfterWaits(t *testing.T) {
 				want   []time.Duration
 			}{{"3", secs(3)}, {"003", secs(3)}, {"0", secs(0)}, {"1", secs(1)}, {" \t3 ", secs(3)}} {
 				t.Run(rt.name+"/"+tc.header, func(t *testing.T) {
+					t.Parallel()
 					e, n, resp, err := rt.run(t, noMod, limited(status, tc.header), rt.ok())
 					if err != nil || resp == nil || n() != 2 || !reflect.DeepEqual(e.clk.slept(), tc.want) {
 						t.Fatalf("%v, %d requests, slept %v", err, n(), e.clk.slept())
@@ -84,6 +86,7 @@ func TestRetryAfterWaits(t *testing.T) {
 				})
 			}
 			t.Run(rt.name+"/then header-less", func(t *testing.T) {
+				t.Parallel()
 				e, n, resp, err := rt.run(t, noMod, limited(status, "3"), limited(status), rt.ok())
 				if err != nil || resp == nil || n() != 3 || !reflect.DeepEqual(e.clk.slept(), secs(3, 8)) {
 					t.Fatalf("%v, %d requests, slept %v", err, n(), e.clk.slept())
@@ -97,6 +100,7 @@ func TestRetryAfterWaits(t *testing.T) {
 			"500": limited(500, "3"), "502": limited(502, "3"), "504": limited(504, "99999"),
 		} {
 			t.Run(rt.name+"/none/"+name, func(t *testing.T) {
+				t.Parallel()
 				e, n, _, err := rt.run(t, noMod, h, h, h)
 				se := mustErr(t, err)
 				if n() != 3 || !reflect.DeepEqual(e.clk.slept(), secs(2, 8)) || se.Reason != "unavailable" || !strings.HasPrefix(se.Detail, rt.label+" did not answer after 3 attempts: ") {
@@ -108,9 +112,11 @@ func TestRetryAfterWaits(t *testing.T) {
 }
 
 func TestRetryAfterBound(t *testing.T) {
+	t.Parallel()
 	for _, rt := range raRoutes() {
 		for _, status := range []int{429, 503} {
 			t.Run(rt.name+"/60", func(t *testing.T) {
+				t.Parallel()
 				e, n, resp, err := rt.run(t, noMod, limited(status, "60"), rt.ok())
 				if err != nil || resp == nil || n() != 2 || !reflect.DeepEqual(e.clk.slept(), secs(60)) {
 					t.Fatalf("%v, %d requests, slept %v", err, n(), e.clk.slept())
@@ -118,6 +124,7 @@ func TestRetryAfterBound(t *testing.T) {
 			})
 			for _, v := range []string{"61", "0061", "99999999999999999999"} {
 				t.Run(rt.name+"/"+v, func(t *testing.T) {
+					t.Parallel()
 					e, n, _, err := rt.run(t, noMod, limited(status, v), rt.ok())
 					se := mustErr(t, err)
 					digits := strings.TrimLeft(v, "0")
@@ -134,12 +141,14 @@ func TestRetryAfterBound(t *testing.T) {
 		}
 	}
 	t.Run("exact detail", func(t *testing.T) {
+		t.Parallel()
 		_, _, _, err := raRoutes()[0].run(t, noMod, limited(429, "61"))
 		if se := mustErr(t, err); se.Detail != "ChatGPT asked to wait 61 s before retrying, more than the 60 s limit: HTTP 429 rate limited" {
 			t.Fatal(se.Detail)
 		}
 	})
 	t.Run("three attempts", func(t *testing.T) {
+		t.Parallel()
 		for _, rt := range raRoutes() {
 			e, n, _, err := rt.run(t, noMod, limited(429, "1"), limited(429, "1"), limited(429, "1"))
 			se := mustErr(t, err)
@@ -155,6 +164,7 @@ func TestRetryAfterBound(t *testing.T) {
 		}
 	})
 	t.Run("budget", func(t *testing.T) {
+		t.Parallel()
 		for _, rt := range raRoutes() {
 			e, n, _, err := rt.run(t, func(e *env) { e.c.ResponseBudget = 10 * time.Second }, limited(429, "30"), rt.ok())
 			se := mustErr(t, err)
@@ -168,6 +178,7 @@ func TestRetryAfterBound(t *testing.T) {
 		}
 	})
 	t.Run("single", func(t *testing.T) {
+		t.Parallel()
 		e, f := chatEnv(t, limited(429, "3"), textAnswer("never"))
 		_, err := single(e)
 		se := mustErr(t, err)
@@ -182,6 +193,7 @@ func dateHeader(c *clock, ahead time.Duration) string {
 }
 
 func TestRetryAfterDate(t *testing.T) {
+	t.Parallel()
 	for _, rt := range raRoutes() {
 		// the clock is created inside run, so the date is computed by the handler at request time
 		dated := func(status int, ahead time.Duration, clk **clock) handler {
@@ -189,9 +201,10 @@ func TestRetryAfterDate(t *testing.T) {
 				limited(status, dateHeader(*clk, ahead))(w, r)
 			}
 		}
-		var clk *clock
-		mod := func(e *env) { clk = e.clk }
 		t.Run(rt.name+"/ahead", func(t *testing.T) {
+			t.Parallel()
+			var clk *clock
+			mod := func(e *env) { clk = e.clk }
 			// ParseTime truncates to seconds, so align the fake clock to a whole second
 			e, n, resp, err := rt.run(t, func(e *env) { e.clk.t = e.clk.t.Truncate(time.Second); mod(e) }, dated(429, 5*time.Second, &clk), rt.ok())
 			if err != nil || resp == nil || n() != 2 || !reflect.DeepEqual(e.clk.slept(), secs(5)) {
@@ -199,12 +212,18 @@ func TestRetryAfterDate(t *testing.T) {
 			}
 		})
 		t.Run(rt.name+"/past", func(t *testing.T) {
+			t.Parallel()
+			var clk *clock
+			mod := func(e *env) { clk = e.clk }
 			e, n, resp, err := rt.run(t, func(e *env) { e.clk.t = e.clk.t.Truncate(time.Second); mod(e) }, dated(503, -30*time.Second, &clk), rt.ok())
 			if err != nil || resp == nil || n() != 2 || !reflect.DeepEqual(e.clk.slept(), secs(0)) {
 				t.Fatalf("%v, %d requests, slept %v", err, n(), e.clk.slept())
 			}
 		})
 		t.Run(rt.name+"/over", func(t *testing.T) {
+			t.Parallel()
+			var clk *clock
+			mod := func(e *env) { clk = e.clk }
 			e, n, _, err := rt.run(t, func(e *env) { e.clk.t = e.clk.t.Truncate(time.Second); mod(e) }, dated(429, 90*time.Second, &clk), rt.ok())
 			se := mustErr(t, err)
 			if n() != 1 || len(e.clk.slept()) != 0 || !strings.HasPrefix(se.Detail, rt.label+" asked to wait 90 s before retrying, more than the 60 s limit: ") {
@@ -213,6 +232,7 @@ func TestRetryAfterDate(t *testing.T) {
 		})
 	}
 	t.Run("other formats", func(t *testing.T) {
+		t.Parallel()
 		now := time.Date(1994, 11, 6, 8, 49, 0, 0, time.UTC)
 		for _, v := range []string{"Sun, 06 Nov 1994 08:49:05 GMT", "Sunday, 06-Nov-94 08:49:05 GMT", "Sun Nov  6 08:49:05 1994"} {
 			a := usableRetryAfter(429, http.Header{"Retry-After": {v}}, now)

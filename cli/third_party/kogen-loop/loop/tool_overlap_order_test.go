@@ -10,6 +10,7 @@ import (
 // Independent calls run together and finish in any order, while the conversation keeps the
 // response's order: replayed items as received, then one output per call in call order.
 func TestToolOverlapOrder(t *testing.T) {
+	t.Parallel()
 	calls := []map[string]any{olSearch("a", "first"), olSearch("b", "second"), olSearch("c", "third")}
 	wantOut := func(res Result) []any {
 		return []any{
@@ -35,6 +36,8 @@ func TestToolOverlapOrder(t *testing.T) {
 	}
 
 	t.Run("responses", func(t *testing.T) {
+
+		t.Parallel()
 		repo := newOLRepo(t)
 		prov := newOLProvider(t, "responses",
 			func(s *olStream) {
@@ -75,6 +78,8 @@ func TestToolOverlapOrder(t *testing.T) {
 	})
 
 	t.Run("messages", func(t *testing.T) {
+
+		t.Parallel()
 		repo := newOLRepo(t)
 		prov := newOLProvider(t, "messages",
 			func(s *olStream) {
@@ -106,6 +111,7 @@ func TestToolOverlapOrder(t *testing.T) {
 
 	// A requester that only returns completed responses gets the same rules.
 	t.Run("legacy requester", func(t *testing.T) {
+		t.Parallel()
 		repo := newOLRepo(t)
 		items := []map[string]any{calls[0], calls[1], calls[2]}
 		end := fcall("end", "finish", `{}`)

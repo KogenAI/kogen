@@ -211,6 +211,7 @@ func rbSummaryOf(body map[string]any) string {
 }
 
 func TestRequestBudgetRetention(t *testing.T) {
+	t.Parallel()
 	const instructions = "RETENTION-INSTRUCTIONS: never lose a fact."
 	const task = "TASK-ONE: read every file and keep its fact."
 	const second = "TASK-TWO: a later user instruction that must stay verbatim."
@@ -326,6 +327,7 @@ func TestRequestBudgetRetention(t *testing.T) {
 // The feedback that answers a terminal call is a later user instruction: condensation keeps it,
 // with the call it answers, exact instead of folding it into the summary.
 func TestRequestBudgetKeepsTerminalFeedback(t *testing.T) {
+	t.Parallel()
 	const feedback = "FEEDBACK-TWO: review found a problem; fix it before finishing."
 	const first, many = 3, 120
 	w := newWorld(t).signIn()
@@ -381,11 +383,13 @@ func TestRequestBudgetKeepsTerminalFeedback(t *testing.T) {
 }
 
 func TestRequestBudgetCLI(t *testing.T) {
+	t.Parallel()
 	const instructions = "CLI-INSTRUCTIONS: keep every fact and call tools until finished."
 	const prompt = "CLI-TASK: read all the files in order and keep their facts."
 	role := provider.Role{Provider: "chatgpt", Model: "fixture-model", Effort: "medium"}
 	for _, c := range []struct{ exchanges, size int }{{54, 12000}, {73, 9000}, {177, 6000}} {
 		t.Run(fmt.Sprintf("%d exchanges", c.exchanges), func(t *testing.T) {
+			t.Parallel()
 			w := newWorld(t).signIn()
 			rbSeed(w, c.exchanges, c.size)
 			p := newRBProvider(t, rbReads(c.exchanges))

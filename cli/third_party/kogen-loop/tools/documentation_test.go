@@ -64,6 +64,7 @@ func standardFixture(w http.ResponseWriter, r *http.Request, base string) {
 
 // Ports ExUnit "a pinned base separates search from fetch and keeps honest failures".
 func TestAPinnedBaseSeparatesSearchFromFetchAndKeepsHonestFailures(t *testing.T) {
+	t.Parallel()
 	origin := newFixtureOrigin(t, standardFixture)
 	base := origin.URL
 	d := Documentation{UserAgent: "kogen/1.2.3"}
@@ -107,6 +108,7 @@ func TestAPinnedBaseSeparatesSearchFromFetchAndKeepsHonestFailures(t *testing.T)
 }
 
 func TestA200SearchWithNoFixtureSourcesStaysRetrieved(t *testing.T) {
+	t.Parallel()
 	origin := newFixtureOrigin(t, standardFixture)
 	got, _ := lookup(t, Documentation{}, map[string]any{"operation": "search", "query": "empty", "base": origin.URL})
 	if got["status"] != "retrieved" || got["untrusted"] != false || len(got["sources"].([]any)) != 0 || got["body"] != "" || got["error"] != "" {
@@ -115,6 +117,7 @@ func TestA200SearchWithNoFixtureSourcesStaysRetrieved(t *testing.T) {
 }
 
 func TestConnectionRefusalOnThePinnedOriginIsUnreachable(t *testing.T) {
+	t.Parallel()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -129,6 +132,7 @@ func TestConnectionRefusalOnThePinnedOriginIsUnreachable(t *testing.T) {
 }
 
 func TestAFetchURLOutsideThePinnedOriginIsUnsupportedAndNotRequested(t *testing.T) {
+	t.Parallel()
 	got, _ := lookup(t, Documentation{}, map[string]any{"operation": "fetch", "url": "http://127.0.0.1:9999/secret", "base": "http://127.0.0.1:9"})
 	if got["status"] != "unsupported" || got["error"] != "documentation source unsupported" || got["body"] != "" || got["url"] != "http://127.0.0.1:9999/secret" {
 		t.Errorf("result %v", got)
@@ -136,6 +140,7 @@ func TestAFetchURLOutsideThePinnedOriginIsUnsupportedAndNotRequested(t *testing.
 }
 
 func TestABasePrefixedURLWhoseHostIsCarriedInUserinfoIsNotRequested(t *testing.T) {
+	t.Parallel()
 	got, _ := lookup(t, Documentation{}, map[string]any{"operation": "fetch", "url": "http://127.0.0.1:9@evil.example/secret", "base": "http://127.0.0.1:9"})
 	if got["status"] != "unsupported" || got["error"] != "documentation source unsupported" || got["body"] != "" {
 		t.Errorf("result %v", got)
@@ -143,6 +148,7 @@ func TestABasePrefixedURLWhoseHostIsCarriedInUserinfoIsNotRequested(t *testing.T
 }
 
 func TestARedirectOffThePinnedOriginIsNotFollowed(t *testing.T) {
+	t.Parallel()
 	var hits int
 	var mu sync.Mutex
 	origin := newFixtureOrigin(t, func(w http.ResponseWriter, r *http.Request, base string) {
@@ -163,6 +169,7 @@ func TestARedirectOffThePinnedOriginIsNotFollowed(t *testing.T) {
 }
 
 func TestASameOriginRedirectDoesNotForwardUserinfo(t *testing.T) {
+	t.Parallel()
 	var landed *http.Request
 	var mu sync.Mutex
 	origin := newFixtureOrigin(t, func(w http.ResponseWriter, r *http.Request, base string) {
@@ -188,6 +195,7 @@ func TestASameOriginRedirectDoesNotForwardUserinfo(t *testing.T) {
 }
 
 func TestAnInvalidUTF8BodyThatContainsTheUntrustedMarkerStaysUntrusted(t *testing.T) {
+	t.Parallel()
 	payload := "\xffUNTRUSTED-DIRECTIVE-7b9acb97\x80"
 	origin := newFixtureOrigin(t, func(w http.ResponseWriter, r *http.Request, base string) { io.WriteString(w, payload) })
 	got, _ := lookup(t, Documentation{}, map[string]any{"operation": "fetch", "url": origin.URL + "/hostile", "base": origin.URL})
@@ -198,6 +206,7 @@ func TestAnInvalidUTF8BodyThatContainsTheUntrustedMarkerStaysUntrusted(t *testin
 }
 
 func TestALargeUntrustedBodyStaysClassifiedAndFitsTheToolOutput(t *testing.T) {
+	t.Parallel()
 	payload := strings.Repeat("a", 20_000) + "UNTRUSTED-DIRECTIVE-7b9acb97"
 	origin := newFixtureOrigin(t, func(w http.ResponseWriter, r *http.Request, base string) { io.WriteString(w, payload) })
 	got, text := lookup(t, Documentation{}, map[string]any{"operation": "fetch", "url": origin.URL + "/hostile", "base": origin.URL})
@@ -207,6 +216,7 @@ func TestALargeUntrustedBodyStaysClassifiedAndFitsTheToolOutput(t *testing.T) {
 }
 
 func TestAnUnknownOperationAndANonHTTPURLAreUnsupported(t *testing.T) {
+	t.Parallel()
 	unknown, _ := lookup(t, Documentation{}, map[string]any{"operation": "browse", "base": "http://127.0.0.1:9"})
 	if unknown["status"] != "unsupported" || unknown["error"] != "documentation source unsupported" {
 		t.Errorf("unknown %v", unknown)
@@ -221,6 +231,7 @@ func TestAnUnknownOperationAndANonHTTPURLAreUnsupported(t *testing.T) {
 }
 
 func TestPublicSearchCopiesOnlyDecodedAnchorsInsideBAlgoResults(t *testing.T) {
+	t.Parallel()
 	enc := func(s string) string { return b64(s) }
 	good, outside, other := enc("https://docs.example/cache"), enc("https://outside.example/no"), enc("https://docs.example/other")
 	html := `<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=a1` + good + `&amp;ntb=1">Cache controls</a></h2></li>
@@ -237,6 +248,7 @@ func TestPublicSearchCopiesOnlyDecodedAnchorsInsideBAlgoResults(t *testing.T) {
 }
 
 func TestPublicSearchUsesTheConfiguredSearchPage(t *testing.T) {
+	t.Parallel()
 	enc := b64("https://docs.example/cache")
 	var query string
 	origin := newFixtureOrigin(t, func(w http.ResponseWriter, r *http.Request, base string) {
@@ -256,6 +268,7 @@ func TestPublicSearchUsesTheConfiguredSearchPage(t *testing.T) {
 func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 func TestTheDocumentationToolRunsOnlyWhenEnabledAndNeverFailsTheCall(t *testing.T) {
+	t.Parallel()
 	origin := newFixtureOrigin(t, standardFixture)
 	tools := &Tools{Root: t.TempDir(), Enabled: []string{DocumentationTool}, Documentation: Documentation{UserAgent: "kogen/test"}}
 	out, err := tools.Run(DocumentationTool, map[string]any{"operation": "fetch", "url": origin.URL + "/cache-controls", "base": origin.URL})

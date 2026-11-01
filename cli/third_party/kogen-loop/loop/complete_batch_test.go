@@ -23,6 +23,7 @@ func fout(id, text string) map[string]any {
 // terminal call is the Result.Terminal; terminal calls themselves are not executed and
 // append no output.
 func TestCompleteBatchRunsAfterTerminalAndLastTerminalWins(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	start := []any{userMsg("go")}
 	root := t.TempDir()

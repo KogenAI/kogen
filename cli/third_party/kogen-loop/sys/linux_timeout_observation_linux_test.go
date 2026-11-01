@@ -73,6 +73,7 @@ func linuxObsWaitAbsent(t *testing.T, pgid int) {
 }
 
 func TestLinuxTimeoutObservationChurn(t *testing.T) {
+	t.Parallel()
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
@@ -108,6 +109,7 @@ func TestLinuxTimeoutObservationChurn(t *testing.T) {
 }
 
 func TestLinuxTimeoutObservationZombie(t *testing.T) {
+	t.Parallel()
 	c := exec.Command("/bin/sh", "-c", "exit 0")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := c.Start(); err != nil {
@@ -162,6 +164,7 @@ func TestLinuxTimeoutObservationMovedHelper(t *testing.T) {
 }
 
 func TestLinuxTimeoutObservationMoved(t *testing.T) {
+	t.Parallel()
 	leader := linuxObsGroup(t, "printf ready; read x")
 	group := leader.Process.Pid
 	member := exec.Command(os.Args[0], "-test.run=^TestLinuxTimeoutObservationMovedHelper$")
@@ -204,6 +207,7 @@ func TestLinuxTimeoutObservationMoved(t *testing.T) {
 }
 
 func TestLinuxTimeoutObservationAgreement(t *testing.T) {
+	t.Parallel()
 	c := linuxObsGroup(t, "printf ready; read x")
 	pgid := c.Process.Pid
 	a1, e1 := timeoutGroupAlive(pgid)

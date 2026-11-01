@@ -88,6 +88,7 @@ func rangeInt(t *testing.T, out map[string]any, key string) int {
 }
 
 func TestLDOCRangeFind(t *testing.T) {
+	t.Parallel()
 	const heading = "## 1-hour cache duration\n"
 	page := rangePage(t, 163840, map[int]string{
 		2000:   "Note: the 1-hour cache duration is optional.\n",
@@ -140,6 +141,7 @@ func TestLDOCRangeFind(t *testing.T) {
 }
 
 func TestLDOCRangePaging(t *testing.T) {
+	t.Parallel()
 	// "€" (3 bytes) occupies bytes 99998..100000; the next rune starts at 100001.
 	page := rangePage(t, 163840, map[int]string{99998: "€\n"[:3]})
 	page = page[:99998] + "€" + page[100001:]
@@ -201,6 +203,7 @@ func TestLDOCRangePaging(t *testing.T) {
 }
 
 func TestLDOCRangeNotFound(t *testing.T) {
+	t.Parallel()
 	page := rangePage(t, 163840, nil)
 	o := rangeOrigin(t, map[string]string{"/p": page})
 	out, _ := rangeFetch(t, Documentation{}, o, "/p", map[string]any{"find": "not present anywhere"})
@@ -216,6 +219,7 @@ func TestLDOCRangeNotFound(t *testing.T) {
 }
 
 func TestLDOCRangeCompatibility(t *testing.T) {
+	t.Parallel()
 	lines := ""
 	for i := 0; len(lines) < 163840; i++ {
 		lines += fmt.Sprintf("line %05d lorem ipsum\n", i)
@@ -290,6 +294,7 @@ func TestLDOCRangeCompatibility(t *testing.T) {
 // Paging a marked page under the fixed 16384-byte result bound reconstructs the whole body,
 // and a late slice of a clean page stays retrieved.
 func TestLDOCRangeFixedBounds(t *testing.T) {
+	t.Parallel()
 	quotes := strings.Repeat(`"`, 3000) + "\n"
 	page := rangePage(t, 163840, map[int]string{0: quotes, 60000: docMarker + "\n", 100000: "late\n"})
 	clean := rangePage(t, 163840, nil)

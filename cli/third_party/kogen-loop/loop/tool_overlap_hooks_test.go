@@ -14,6 +14,7 @@ import (
 // response is validated first, then the calls run one after another, each hook seeing the
 // outputs before it. A BeforeRequest hook alone does not disable overlap.
 func TestToolOverlapHooks(t *testing.T) {
+	t.Parallel()
 	sentinel := errors.New("hook failure")
 
 	// held streams two calls with a pause between them; the pause ends when proceed closes.
@@ -65,6 +66,7 @@ func TestToolOverlapHooks(t *testing.T) {
 	}
 	for name, mk := range hooks {
 		t.Run("serial after the validated response/"+name, func(t *testing.T) {
+			t.Parallel()
 			prov, repo, sent, proceed := held(t)
 			rd, d := setup(t, prov, repo)
 			var order []string
@@ -106,6 +108,8 @@ func TestToolOverlapHooks(t *testing.T) {
 	}
 
 	t.Run("hooks see preceding outputs and intercept", func(t *testing.T) {
+
+		t.Parallel()
 		repo := newOLRepo(t)
 		repo.release("second")
 		rq := &scriptRequester{script: [][]map[string]any{
@@ -146,6 +150,8 @@ func TestToolOverlapHooks(t *testing.T) {
 	})
 
 	t.Run("error precedence", func(t *testing.T) {
+
+		t.Parallel()
 		repo := newOLRepo(t)
 		repo.release("first", "second")
 		for _, hook := range []string{"AfterResponse", "BeforeCall", "HandleCall", "AfterCall"} {
@@ -200,6 +206,8 @@ func TestToolOverlapHooks(t *testing.T) {
 	})
 
 	t.Run("BeforeRequest alone permits overlap", func(t *testing.T) {
+
+		t.Parallel()
 		prov, repo, sent, proceed := held(t)
 		rd, d := setup(t, prov, repo)
 		var requests int

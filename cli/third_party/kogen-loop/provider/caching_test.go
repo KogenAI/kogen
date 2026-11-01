@@ -138,8 +138,10 @@ func frontAndHistory(t *testing.T, body []byte, field string) (front, history st
 }
 
 func TestEveryConversationHasOneCacheIdentityAndAppendOnlyRequests(t *testing.T) {
+	t.Parallel()
 	for _, c := range cachingCases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			_, reqs, recs := conversation(t, c, 3, "build/0")
 			if len(reqs) != 3 {
 				t.Fatalf("%d requests", len(reqs))
@@ -193,11 +195,13 @@ func TestEveryConversationHasOneCacheIdentityAndAppendOnlyRequests(t *testing.T)
 }
 
 func TestDifferentConversationsNeverShareACacheIdentity(t *testing.T) {
+	t.Parallel()
 	for _, c := range cachingCases {
 		if c.name == "anthropic" {
 			continue
 		}
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			cache := NewCache(nil)
 			role := c.role
 			a, b := cache.Identity(role, "builder"), cache.Identity(role, "review 1")
@@ -222,11 +226,13 @@ func TestDifferentConversationsNeverShareACacheIdentity(t *testing.T) {
 }
 
 func TestCacheIdentitySurvivesResumeFromCheckpointStates(t *testing.T) {
+	t.Parallel()
 	for _, c := range cachingCases {
 		if c.name == "anthropic" {
 			continue
 		}
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e, reqs, _ := conversation(t, c, 2, "build")
 			first := c.routing(reqs[0])
 			states := e.c.Cache.States()
@@ -276,6 +282,7 @@ func keyEnvAt(t *testing.T, f *keyFake) *env {
 }
 
 func TestRetriesKeepTheConversationsIdentity(t *testing.T) {
+	t.Parallel()
 	// a transient failure and the retry both carry the routing value of the conversation
 	e, f := keyEnv(t, "opencode-go", jsonAnswer(503, map[string]any{}), cachingCases[2].answer(1))
 	if _, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p", Input: user("x"), Scope: "s"}, nil); err != nil {
@@ -301,6 +308,7 @@ func TestRetriesKeepTheConversationsIdentity(t *testing.T) {
 }
 
 func TestChatGPTSendsStatelessCachedRequestsOnEveryModel(t *testing.T) {
+	t.Parallel()
 	// the old gpt-5.6 split is gone: any model gets the same fields, never cache options
 	for _, model := range []string{"gpt-6.1-sol", "gpt-5.5", "gpt-5.4", "gpt-60", "fixture"} {
 		e, f := chatEnv(t, responsesAnswer(1))
@@ -318,6 +326,7 @@ func TestChatGPTSendsStatelessCachedRequestsOnEveryModel(t *testing.T) {
 // Anthropic: at most four breakpoints, on the last tool, the last system block and the last
 // block of the newest message (which rolls forward), never on thinking blocks.
 func TestAnthropicBreakpointPositionsAndCount(t *testing.T) {
+	t.Parallel()
 	c := cachingCases[3]
 	_, reqs, _ := conversation(t, c, 3, "s")
 	for i, r := range reqs {
@@ -373,8 +382,10 @@ func TestAnthropicBreakpointPositionsAndCount(t *testing.T) {
 }
 
 func TestRequestBytesAreDeterministic(t *testing.T) {
+	t.Parallel()
 	for _, c := range cachingCases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			tools := []any{readTool("write_file"), readTool("read_file"), readTool("shell")}
 			input := []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "x", "z": 1, "a": 2}}},
 				map[string]any{"type": "function_call_output", "call_id": "c", "output": "o"}}
@@ -429,8 +440,10 @@ func TestRequestBytesAreDeterministic(t *testing.T) {
 // Each provider's raw cache fields end up in the usage record, the total input of Anthropic
 // computed from its three counters; usage reports are built from these.
 func TestUsageRecordsKeepEachProvidersRawCacheFields(t *testing.T) {
+	t.Parallel()
 	for _, c := range cachingCases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			_, _, recs := conversation(t, c, 2, "s")
 			want := map[string][4]int{ // input, cached, write(-1 none), output
 				"chatgpt": {1000, 900, -1, 5}, "supergrok": {1000, 900, -1, 5}, "opencode-go": {1000, 900, -1, 5}, "anthropic": {100 + 900 + 0, 900, 0, 12},
@@ -451,6 +464,7 @@ func TestUsageRecordsKeepEachProvidersRawCacheFields(t *testing.T) {
 }
 
 func TestCacheStatesAreSavedPerConversationAndOnlySuperGrokRemembersARefusal(t *testing.T) {
+	t.Parallel()
 	e, _, _ := conversation(t, cachingCases[0], 1, "scope")
 	for _, st := range e.c.Cache.States() {
 		if st.Unsupported || st.Response != "" || st.ID == "" || len(st.ID) > MaxCacheID {

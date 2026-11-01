@@ -11,6 +11,7 @@ import (
 )
 
 func TestDiscardedAttemptStopsYieldedShell(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	tl := &tools.Tools{Root: root, Session: sys.NewWith(os.Environ(), root), Enabled: []string{tools.ShellTool}}
 	defer tl.EndShellRound()

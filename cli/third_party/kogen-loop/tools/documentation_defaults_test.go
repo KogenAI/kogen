@@ -11,6 +11,7 @@ import (
 // The fixed documentation limits keep the exact result bytes: ordinary outcomes unchanged,
 // a long untrusted body fitted into 16384 bytes with its marker and a next offset.
 func TestDocumentationDefaultResults(t *testing.T) {
+	t.Parallel()
 	marker := "UNTRUSTED-DIRECTIVE-7b9acb97"
 	origin := newFixtureOrigin(t, func(w http.ResponseWriter, r *http.Request, base string) {
 		switch {

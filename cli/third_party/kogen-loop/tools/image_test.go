@@ -83,6 +83,7 @@ func view(t *testing.T, tools *Tools, path string) Output {
 }
 
 func TestOriginalBytesStayTypedThroughOutputCutDeletionAndCompleteJSONAccounting(t *testing.T) {
+	t.Parallel()
 	root, tools := imageRoot(t)
 	bytes_ := png(1, 1, []byte{0, 255, 0, 0}, pngChunk("tEXt", []byte("padding\x00"+strings.Repeat("x", 30_000))), nil)
 	path := filepath.Join(root, "pixels.png")
@@ -182,6 +183,7 @@ func TestOriginalBytesStayTypedThroughOutputCutDeletionAndCompleteJSONAccounting
 }
 
 func TestGuardIgnoresAConversationWithoutImages(t *testing.T) {
+	t.Parallel()
 	huge := map[string]any{"input": []any{map[string]any{"type": "function_call_output", "call_id": "c", "output": strings.Repeat("x", 600_000)}}}
 	if err := GuardImages(huge, "build"); err != nil {
 		t.Errorf("text-only request refused: %v", err)
@@ -192,6 +194,7 @@ func TestGuardIgnoresAConversationWithoutImages(t *testing.T) {
 }
 
 func TestBoundedDecoderRejectsMalformedFramingCRCUnsupportedEncodingsFiltersAndBombs(t *testing.T) {
+	t.Parallel()
 	root, tools := imageRoot(t)
 	valid := png(1, 1, []byte{0, 1, 2, 3}, nil, nil)
 	good := deflate([]byte{0, 1, 2, 3})
@@ -216,6 +219,7 @@ func TestBoundedDecoderRejectsMalformedFramingCRCUnsupportedEncodingsFiltersAndB
 	}
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			os.WriteFile(filepath.Join(root, name), data, 0o644)
 			out := view(t, tools, name)
 			if out.Typed() {
@@ -245,6 +249,7 @@ func view2(t *testing.T, tools *Tools, args map[string]any) Output {
 }
 
 func TestDimensionByteAndFilterInclusiveBounds(t *testing.T) {
+	t.Parallel()
 	root, tools := imageRoot(t)
 	ok := func(name string, data []byte) {
 		t.Helper()
@@ -270,6 +275,7 @@ func TestDimensionByteAndFilterInclusiveBounds(t *testing.T) {
 }
 
 func TestCompactEventsDistinguishReadRejectionUncertainTransportAndCompletedDelivery(t *testing.T) {
+	t.Parallel()
 	root, tools := imageRoot(t)
 	path := filepath.Join(root, "pixels")
 	data := png(1, 1, []byte{0, 1, 2, 3}, nil, nil)
@@ -343,6 +349,7 @@ func TestCompactEventsDistinguishReadRejectionUncertainTransportAndCompletedDeli
 }
 
 func TestDeliverReportsNothingWithoutImages(t *testing.T) {
+	t.Parallel()
 	var events []map[string]any
 	input := []any{map[string]any{"role": "user", "content": "hi"}, OutputItem("c", "text")}
 	if _, err := Deliver(input, "build", func(e map[string]any) { events = append(events, e) },
@@ -356,6 +363,7 @@ func TestDeliverReportsNothingWithoutImages(t *testing.T) {
 }
 
 func TestDeliveryStatus(t *testing.T) {
+	t.Parallel()
 	failure := func(facts map[string]any) error { return &sys.Error{ProviderFailure: facts} }
 	for _, c := range []struct {
 		err  error
@@ -380,6 +388,7 @@ func TestDeliveryStatus(t *testing.T) {
 }
 
 func TestImageEntriesNeedExactlyMetadataTextAndImage(t *testing.T) {
+	t.Parallel()
 	meta := `{"sha256":"abc","path":"p.png"}`
 	text := map[string]any{"type": "input_text", "text": meta}
 	image := map[string]any{"type": "input_image", "image_url": "data:image/png;base64,AA=="}
@@ -404,6 +413,7 @@ func TestImageEntriesNeedExactlyMetadataTextAndImage(t *testing.T) {
 }
 
 func TestBoundedTextCutsOnACharacter(t *testing.T) {
+	t.Parallel()
 	if got := boundedText(strings.Repeat("é", 200), 256); got != strings.Repeat("é", 128) {
 		t.Errorf("exact fit: %d bytes", len(got))
 	}
@@ -416,6 +426,7 @@ func TestBoundedTextCutsOnACharacter(t *testing.T) {
 }
 
 func TestViewImageNeedsARegularReadableFile(t *testing.T) {
+	t.Parallel()
 	root, tools := imageRoot(t)
 	good := png(1, 1, []byte{0, 1, 2, 3}, nil, nil)
 	os.WriteFile(filepath.Join(root, "ok.png"), good, 0o644)
@@ -456,6 +467,7 @@ func TestViewImageNeedsARegularReadableFile(t *testing.T) {
 }
 
 func TestViewImageNamesTheCandidateItWasReadFrom(t *testing.T) {
+	t.Parallel()
 	_, root := newRepo(t)
 	write(t, root, "keep.txt", "keep\n")
 	commitAll(t, root)
@@ -486,6 +498,7 @@ func TestViewImageNamesTheCandidateItWasReadFrom(t *testing.T) {
 }
 
 func TestViewImageOutsideARepositoryHasAnUnknownCandidate(t *testing.T) {
+	t.Parallel()
 	root, tools := imageRoot(t)
 	os.WriteFile(filepath.Join(root, "px.png"), png(1, 1, []byte{0, 1, 2, 3}, nil, nil), 0o644)
 	out := view(t, tools, "px.png")

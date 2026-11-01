@@ -17,6 +17,7 @@ import (
 // The optional loop stopping bounds are deleted, not deprecated or replaced: no option, typed
 // stop or constant is left in the loop package.
 func TestDropBoundsRemoved(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		typ   reflect.Type
 		field string
@@ -46,6 +47,7 @@ func TestDropBoundsRemoved(t *testing.T) {
 // A run that keeps getting handled nonterminal calls has no round-count or progress stop; it
 // ends only by a terminal call, a response without a call or an error.
 func TestDropBoundsDefaultBehavior(t *testing.T) {
+	t.Parallel()
 	const repeated = 6
 	handled := loop.Hooks{HandleCall: func(_ context.Context, _ tools.Call) (loop.Handled, error) {
 		return loop.Handled{Handled: true, Output: tools.Output{Text: "handled"}}, nil
@@ -135,6 +137,7 @@ func (f *failingAfter) Request(ctx context.Context, r loop.Request) (*provider.R
 // The bound-only acceptance and the maintained documentation of the removed options are gone;
 // the changelog records the removal.
 func TestDropBoundsDocumentation(t *testing.T) {
+	t.Parallel()
 	for _, gone := range []string{
 		".kogen/intents/l3-round-limit/acceptance.feature",
 		"features/steps/round_limit.js",

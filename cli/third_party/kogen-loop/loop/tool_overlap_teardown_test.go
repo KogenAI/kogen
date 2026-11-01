@@ -38,6 +38,8 @@ func olBackground(path string) string {
 // Every round ends the process groups it started, on success and on every kind of failure,
 // whether the shell was starting, running or had left a background process; groups that
 // existed before the round and processes outside every group are not touched.
+// Serial parent: the starting-shell case installs the process-global sys start hook.
+// The other cases resume in parallel only after that hook has been removed.
 func TestToolOverlapTeardown(t *testing.T) {
 	type fixture struct {
 		root string
@@ -75,6 +77,7 @@ func TestToolOverlapTeardown(t *testing.T) {
 
 	for _, ending := range []string{"terminal", "no call", "failure"} {
 		t.Run("background after "+ending, func(t *testing.T) {
+			t.Parallel()
 			f := setup(t)
 			bg := filepath.Join(f.root, "bg.pid")
 			last := fcall("end", "finish", `{}`)
@@ -111,6 +114,7 @@ func TestToolOverlapTeardown(t *testing.T) {
 
 	// Cancelling mid-stream with a shell running and a background process behind it.
 	t.Run("running shell and background on cancel", func(t *testing.T) {
+		t.Parallel()
 		f := setup(t)
 		bg := filepath.Join(f.root, "bg.pid")
 		dir := t.TempDir()

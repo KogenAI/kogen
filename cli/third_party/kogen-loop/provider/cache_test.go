@@ -12,6 +12,7 @@ import (
 // (mix run --no-start): the fingerprints of the frozen front are the same digests (the
 // request bodies and the conversation key changed with the Intent's caching contract).
 func TestFingerprintsMatchElixirVectors(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("testdata/elixir_prompt_cache.json")
 	if err != nil {
 		t.Fatal(err)
@@ -24,6 +25,7 @@ func TestFingerprintsMatchElixirVectors(t *testing.T) {
 		c := raw.(map[string]any)
 		name := c["name"].(string)
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			input, _ := asList(c["input"])
 			tools, _ := asList(c["tools"])
 			ev := newEvidence("conversation-x", "implicit", nil, false, c["policy"].(string), input, tools)
@@ -36,6 +38,7 @@ func TestFingerprintsMatchElixirVectors(t *testing.T) {
 }
 
 func TestEncodeJSONMatchesElixir(t *testing.T) {
+	t.Parallel()
 	// Expected values were printed by Elixir's JSON.encode!.
 	floats := map[float64]string{
 		0.0001: "0.0001", 0.001: "0.001", 0.00012: "1.2e-4", 1e15: "1.0e15", 1e16: "1.0e16",
@@ -67,6 +70,7 @@ func TestEncodeJSONMatchesElixir(t *testing.T) {
 }
 
 func TestDecodeKeepsIntegersAndFloatsApart(t *testing.T) {
+	t.Parallel()
 	v, _ := decodeJSON([]byte(`{"i":5,"f":5.0,"e":1e3,"big":12345678901234567890}`))
 	if got := string(mustEncode(v)); got != `{"big":12345678901234567890,"e":1.0e3,"f":5.0,"i":5}` {
 		t.Fatalf("roundtrip = %s", got)
@@ -79,6 +83,7 @@ func contractInput(suffix string) []any {
 
 // prompt_cache_test: the fingerprints isolate dynamic bytes from the frozen front.
 func TestStableBoundariesRetainAuthorityAndIsolateDynamicBytes(t *testing.T) {
+	t.Parallel()
 	tools := []any{map[string]any{"type": "function", "parameters": map[string]any{"type": "object"}}}
 	fps := func(policy string, input, tools []any) map[string]any {
 		return newEvidence("c", "implicit", nil, false, policy, input, tools).meta["fingerprints"].(map[string]any)
@@ -98,6 +103,7 @@ func TestStableBoundariesRetainAuthorityAndIsolateDynamicBytes(t *testing.T) {
 }
 
 func TestCacheStatesSurviveACheckpoint(t *testing.T) {
+	t.Parallel()
 	cache := NewCache(map[string]CacheState{"k": {ID: "conversation-1", Response: "resp_1"}, "u": {ID: "conversation-2", Unsupported: true}})
 	data, err := json.Marshal(cache.States())
 	if err != nil {
@@ -124,6 +130,7 @@ func TestCacheStatesSurviveACheckpoint(t *testing.T) {
 
 // prompt_cache_test: optional diagnostics are bounded classified evidence, not text.
 func TestCacheDiagnosticsAreClassifiedEvidence(t *testing.T) {
+	t.Parallel()
 	for _, typ := range []string{"cache_hit", "cache_miss", "comparison_response_not_found", "unavailable"} {
 		got := cacheDiagnostics(map[string]any{"type": typ, "reason": "secret", "raw": "secret"})
 		if !reflect.DeepEqual(got, map[string]any{"type": typ, "reason": "other"}) {
@@ -144,6 +151,7 @@ func TestCacheDiagnosticsAreClassifiedEvidence(t *testing.T) {
 
 // prompt_cache_test: usage validates disjoint writes and subset reasoning without clamping.
 func TestUsageValidatesDisjointWritesAndSubsetReasoning(t *testing.T) {
+	t.Parallel()
 	n := func(i int) *int { return &i }
 	valid := KnownUsage{Input: n(100), Cached: n(20), Write: n(80), Write30m: n(40), Write12h: n(40), Output: n(10), Reasoning: n(10)}
 	if valid.State() != UsageKnown {
@@ -179,6 +187,7 @@ func TestUsageValidatesDisjointWritesAndSubsetReasoning(t *testing.T) {
 // provider_test: Shape includes enabled workers (the role list is the project package's);
 // the provider part is the name of each role.
 func TestRoleNames(t *testing.T) {
+	t.Parallel()
 	roles := []Role{{Model: "m"}, {Provider: "supergrok"}, {Provider: "chatgpt"}, {Provider: ""}, {Provider: "opencode-go"}, {Provider: "anthropic"}}
 	var got []string
 	for _, r := range roles {
@@ -200,6 +209,7 @@ func TestRoleNames(t *testing.T) {
 }
 
 func TestFingerprintHelper(t *testing.T) {
+	t.Parallel()
 	d := Fingerprint("policy text Δ\n")
 	if d == nil || d.Bytes != 15 || d.SHA256 != "146628eb5e4754563588d1a15cd990340d4cf89897d4ecf18be0c0ed2c409489" {
 		t.Fatalf("%+v", d)
@@ -220,6 +230,7 @@ func TestFingerprintHelper(t *testing.T) {
 }
 
 func TestLegacyOptionsSuppressionDoesNotSuppressNewRoutingKey(t *testing.T) {
+	t.Parallel()
 	req := Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Scope: "legacy conversation"}
 	cache := NewCache(nil)
 	key, original := cache.resolve(req)

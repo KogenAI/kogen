@@ -6,6 +6,7 @@ import (
 )
 
 func TestAnthropicInvalidDiagnostics(t *testing.T) {
+	t.Parallel()
 	base := one(start())
 	cases := []struct {
 		name   string
@@ -29,6 +30,7 @@ func TestAnthropicInvalidDiagnostics(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			r := parseMessages(c.stream)
 			if r.kind != resInvalid || !reflect.DeepEqual(r.diag, c.want) {
 				t.Fatalf("%+v", r)

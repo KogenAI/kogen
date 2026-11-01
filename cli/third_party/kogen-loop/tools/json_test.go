@@ -11,6 +11,7 @@ import (
 // TestDecodeAcceptsAndRefusesWhatErlangsJSONDoes lists inputs with the answer Elixir's
 // JSON.decode/1 gave (testdata/gen_tools.exs covers more through the tools).
 func TestDecodeAcceptsAndRefusesWhatErlangsJSONDoes(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		text string
 		ok   bool
@@ -63,6 +64,7 @@ func TestDecodeAcceptsAndRefusesWhatErlangsJSONDoes(t *testing.T) {
 }
 
 func TestDecodeKeepsIntegersAndFloatsApart(t *testing.T) {
+	t.Parallel()
 	v, err := decodeJSON([]byte(`{"i":2,"f":2.0,"e":1e0,"neg":-3,"big":123456789012345678901234567890,"zero":-0,"small":5e-324}`))
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +90,7 @@ func TestDecodeKeepsIntegersAndFloatsApart(t *testing.T) {
 }
 
 func TestEncodeSortsKeysAndEscapesLikeKogenAlwaysHas(t *testing.T) {
+	t.Parallel()
 	got, err := encodeJSON(map[string]any{
 		"b": []any{1, int64(2), 2.5, 1e20, true, nil}, "a": "é\"\\\n\t\x01<>&\u2028", "c": map[string]any{"z": 0.0, "y": []string{"x"}},
 		"d": []map[string]any{{"k": json.Number("7")}}, "e": "\xff",
@@ -113,6 +116,7 @@ func TestEncodeSortsKeysAndEscapesLikeKogenAlwaysHas(t *testing.T) {
 }
 
 func TestFormatFloatIsErlangsShortestForm(t *testing.T) {
+	t.Parallel()
 	for f, want := range map[float64]string{0: "0.0", 1: "1.0", 0.5: "0.5", 1e20: "1.0e20", 123456.789: "123456.789", 1e-7: "1.0e-7", -2.5: "-2.5", 100: "100.0", 1e15: "1.0e15"} {
 		if got := formatFloat(f); got != want {
 			t.Errorf("%v: %s, want %s", f, got, want)

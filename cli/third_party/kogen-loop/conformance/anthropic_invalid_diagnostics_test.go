@@ -8,6 +8,7 @@ import (
 )
 
 func TestAnthropicInvalidDiagnosticsConformance(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile("anthropic-invalid-diagnostics-testdata/invalid-thinking.json")
 	if err != nil {
 		t.Fatal(err)
@@ -18,6 +19,7 @@ func TestAnthropicInvalidDiagnosticsConformance(t *testing.T) {
 	}
 	for _, facade := range []string{"Direct", "Session", "CLI"} {
 		t.Run(facade, func(t *testing.T) {
+			t.Parallel()
 			got := runStreamAnthropic(t, facade, "invalid_later")
 			if len(got.Records) != 1 || !reflect.DeepEqual(got.Records[0]["provider_failure"], want) {
 				t.Fatalf("records: %v", got.Records)

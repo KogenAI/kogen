@@ -16,6 +16,7 @@ import (
 // The five unused options are removed, not deprecated: no field, interface or constant is left
 // for a caller to use, and the retained cache identities are untouched.
 func TestUnusedOptionsRemoved(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		typ   reflect.Type
 		field string

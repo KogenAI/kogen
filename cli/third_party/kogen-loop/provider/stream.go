@@ -65,6 +65,8 @@ type accumulator struct {
 	terminalResponse, terminalOutput, terminalOutputReplaced bool
 	observed                                                 int
 	delta                                                    bool            // a parsed *.delta event was seen
+	visible                                                  int             // visible output bytes counted so far
+	over                                                     bool            // visible output passed visibleLimit; no later event is applied
 	sink                                                     delivery.Sink   // nil: completed items are not delivered early
 	delivered                                                map[string]bool // call_ids already delivered to sink
 }
@@ -113,6 +115,10 @@ func (a *accumulator) feed(chunk string) (invalid string) {
 			a.drop(start)
 			return d
 		}
+		if a.over {
+			a.drop(start)
+			return ""
+		}
 	}
 }
 
@@ -146,6 +152,10 @@ func (a *accumulator) event(text string) string {
 	}
 	if _, has := ev["type"]; !has {
 		return "an event is not JSON"
+	}
+	if a.visible += visibleBytes(ev); a.visible > visibleLimit {
+		a.over, a.delta = true, true
+		return ""
 	}
 	a.apply(ev)
 	return ""

@@ -7,6 +7,7 @@ import (
 )
 
 func TestVersionMatchesChangelog(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile("../CHANGELOG.md")
 	if err != nil {
 		t.Fatal(err)

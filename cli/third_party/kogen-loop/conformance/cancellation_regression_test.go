@@ -15,6 +15,7 @@ import (
 // A successful tool return does not imply the context is still live. In
 // particular, killing a shell group at deadline can unblock its tool call.
 func TestCancellationDuringCallDoesNotPublishResultOrRequestAgain(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	rq := &scripted{responses: []*provider.Response{
@@ -44,8 +45,10 @@ func TestCancellationDuringCallDoesNotPublishResultOrRequestAgain(t *testing.T) 
 }
 
 func TestHookCancellationCannotEndTheRoundOrStartMoreWork(t *testing.T) {
+	t.Parallel()
 	for _, phase := range []string{"AfterResponse", "BeforeCall", "HandleCall", "AfterCall", "AfterTerminal"} {
 		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
 			w := newWorld(t)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()

@@ -7,6 +7,7 @@ import (
 )
 
 func TestReplayPreservesValidSupportedFieldsWithoutManufacturingAbsentLegacyValues(t *testing.T) {
+	t.Parallel()
 	reasoning := map[string]any{"type": "reasoning", "id": "r", "encrypted_content": "opaque", "summary": []any{}, "output_only": true}
 	if got := ReplayItem(reasoning); !reflect.DeepEqual(got, map[string]any{"type": "reasoning", "id": "r", "encrypted_content": "opaque", "summary": []any{}}) {
 		t.Errorf("reasoning %v", got)
@@ -34,6 +35,7 @@ func TestReplayPreservesValidSupportedFieldsWithoutManufacturingAbsentLegacyValu
 }
 
 func TestReplayFiltersMessageContentAndFunctionCallFields(t *testing.T) {
+	t.Parallel()
 	message := map[string]any{
 		"type": "message", "id": "m", "role": "assistant", "status": "completed", "annotations": []any{1},
 		"content": []any{
@@ -79,6 +81,7 @@ func TestReplayFiltersMessageContentAndFunctionCallFields(t *testing.T) {
 }
 
 func TestDecodeArgumentsIsAnObjectOrTheInvalidMarker(t *testing.T) {
+	t.Parallel()
 	invalid := map[string]any{"__invalid__": true}
 	for _, text := range []string{"", "not json", "[1]", "null", `"a"`, "5", "true", `{"a":1} trailing`, `{"a":}`, `{"a":1,}`, "{", `{"a":"\ud800"}`, `{"a":1e999}`} {
 		if got := DecodeArguments(text); !reflect.DeepEqual(got, invalid) {
@@ -100,6 +103,7 @@ func TestDecodeArgumentsIsAnObjectOrTheInvalidMarker(t *testing.T) {
 }
 
 func TestCallsPairWithOutputsInOrder(t *testing.T) {
+	t.Parallel()
 	items := []map[string]any{
 		{"type": "reasoning", "id": "r1", "encrypted_content": "x", "summary": []any{}},
 		{"type": "function_call", "id": "fc1", "call_id": "c1", "name": "read_file", "arguments": `{"path":"a"}`, "status": "completed"},
@@ -159,6 +163,7 @@ func TestCallsPairWithOutputsInOrder(t *testing.T) {
 }
 
 func TestOutputItemCarriesTextOrTypedParts(t *testing.T) {
+	t.Parallel()
 	parts := []any{map[string]any{"type": "input_text", "text": "{}"}, map[string]any{"type": "input_image", "image_url": "data:"}}
 	for _, c := range []struct {
 		result any
@@ -182,6 +187,7 @@ func TestOutputItemCarriesTextOrTypedParts(t *testing.T) {
 }
 
 func TestCallsTakeOnlyFunctionCallsAndTolerateMissingFields(t *testing.T) {
+	t.Parallel()
 	calls := Calls([]map[string]any{
 		{"type": "function_call"},
 		{"type": "function_call", "name": 5, "arguments": 7},
@@ -199,6 +205,7 @@ func TestCallsTakeOnlyFunctionCallsAndTolerateMissingFields(t *testing.T) {
 }
 
 func TestUnansweredMatchesByCallID(t *testing.T) {
+	t.Parallel()
 	input := []any{
 		"a plain string",
 		map[string]any{"type": "function_call", "call_id": "a"},

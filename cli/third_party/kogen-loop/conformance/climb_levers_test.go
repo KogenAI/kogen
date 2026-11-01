@@ -23,6 +23,7 @@ import (
 // The climb levers are deleted, not deprecated: no field, method, constant or option-only
 // file is left, while the measurement fields, the fixed constants and ToolChoice stay.
 func TestClimbLeversRemoved(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		typ   reflect.Type
 		field string
@@ -131,6 +132,7 @@ func markerCount(v any) int {
 // The fixed policy: 524288-byte window, 16384/4096 text cut, 16384/8388608 documentation
 // limits, provider-default parallel calls and three default cache breakpoints.
 func TestClimbLeverConstants(t *testing.T) {
+	t.Parallel()
 	t.Run("window", func(t *testing.T) {
 		// A smaller documented bound of a model family is retained; the maximum is fixed.
 		small := 100000

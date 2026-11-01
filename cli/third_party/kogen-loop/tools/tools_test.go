@@ -35,12 +35,14 @@ var supersededByContainment = map[string]bool{
 // the results: read_file, write_file (protected path), list_files, search_text, unknown
 // tools, argument decoding and view_image, which covers the PNG limits and messages.
 func TestToolsMatchTheElixirResults(t *testing.T) {
+	t.Parallel()
 	g := loadGolden(t)
 	base, root := g.build(t)
 	scrub := scrubber(base, root)
 	tools := newTools(root, g.Tools...)
 	tools.Protected = g.Protected
 
+	// Serial subtests replay calls in order against one shared golden repository.
 	for i, c := range g.Calls {
 		name := fmt.Sprintf("%03d %s %s", i, c.Name, c.Arguments)
 		if len(name) > 100 {

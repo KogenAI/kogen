@@ -96,6 +96,7 @@ func disabled(t *testing.T, body map[string]any) bool {
 // Through the real loop and Direct the provider's own parallel-call behavior is preserved:
 // no request carries a parallel-call control and the automatic tool_choice stays.
 func TestParallelToolCallsLoop(t *testing.T) {
+	t.Parallel()
 	srv := newParallelServer(t, []string{"probe"}, []string{"finish"})
 	client, session := parallelClient(t, srv.srv.URL)
 	d := &Direct{Client: client, Session: session}
@@ -122,6 +123,7 @@ func TestParallelToolCallsLoop(t *testing.T) {
 }
 
 func TestParallelToolCallsBatch(t *testing.T) {
+	t.Parallel()
 	srv := newParallelServer(t, []string{"probe", "finish", "probe"})
 	client, session := parallelClient(t, srv.srv.URL)
 	var ran, after []string

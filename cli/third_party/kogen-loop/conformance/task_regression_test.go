@@ -7,6 +7,7 @@ import (
 )
 
 func TestMalformedTaskObjectIsRefusedBeforeSessionOrRequest(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	base, err := json.Marshal(w.task(nil))
 	if err != nil {

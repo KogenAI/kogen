@@ -22,6 +22,7 @@ import (
 // conversation, bounds, terminal handling and errors as the serial order of a hooked round,
 // legacy requesters work, and no public field, dependency or timing policy changed.
 func TestToolOverlapCompatibility(t *testing.T) {
+	t.Parallel()
 	var lines strings.Builder
 	for i := 0; i < 3000; i++ {
 		lines.WriteString("line of the large file\n")
@@ -66,6 +67,8 @@ func TestToolOverlapCompatibility(t *testing.T) {
 	hooked := Hooks{BeforeCall: func(context.Context, tools.Call, []any) error { return nil }}
 
 	t.Run("same conversation as the serial order", func(t *testing.T) {
+
+		t.Parallel()
 		var results [2]Result
 		var roots [2]string
 		for i, h := range []Hooks{{}, hooked} {
@@ -116,6 +119,8 @@ func TestToolOverlapCompatibility(t *testing.T) {
 	})
 
 	t.Run("no call and legacy requester", func(t *testing.T) {
+
+		t.Parallel()
 		rd, _ := world(t)
 		rq := &scriptRequester{script: [][]map[string]any{prose("all done")}}
 		res, err := Run(context.Background(), rd, []any{userMsg("go")}, rq, Hooks{})
@@ -133,6 +138,7 @@ func TestToolOverlapCompatibility(t *testing.T) {
 
 	// A cancelled context is still returned as the context's error with a legacy requester.
 	t.Run("cancelled before the calls", func(t *testing.T) {
+		t.Parallel()
 		rd, _ := world(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		rq := cancelAfterRequest{cancel: cancel, items: []map[string]any{olSearch("a", "x")}}
@@ -143,6 +149,8 @@ func TestToolOverlapCompatibility(t *testing.T) {
 	})
 
 	t.Run("no new public field, dependency or timing policy", func(t *testing.T) {
+
+		t.Parallel()
 		fields := func(v any) []string {
 			rt := reflect.TypeOf(v)
 			var names []string

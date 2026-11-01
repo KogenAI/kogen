@@ -52,6 +52,7 @@ func claudeText(text string) handler {
 
 // ExUnit anthropic_test: ordered native replay retains opaque blocks once and groups parallel results.
 func TestAnthropicReplayRetainsOpaqueBlocksOnceAndGroupsParallelResults(t *testing.T) {
+	t.Parallel()
 	blocks := []map[string]any{
 		{"type": "thinking", "thinking": "opaque", "signature": "signature"},
 		{"type": "redacted_thinking", "data": "redacted"},
@@ -118,6 +119,7 @@ func TestAnthropicReplayRetainsOpaqueBlocksOnceAndGroupsParallelResults(t *testi
 
 // ExUnit: fragments and cumulative usage merge without adding snapshots.
 func TestAnthropicFragmentsAndCumulativeUsageMergeWithoutAddingSnapshots(t *testing.T) {
+	t.Parallel()
 	evs := flat(
 		one(start("input_tokens", int64(7), "cache_read_input_tokens", int64(2), "cache_creation_input_tokens", int64(3))),
 		one(ev("content_block_start", "index", int64(0), "content_block", map[string]any{"type": "thinking", "thinking": ""})),
@@ -146,6 +148,7 @@ func TestAnthropicFragmentsAndCumulativeUsageMergeWithoutAddingSnapshots(t *test
 
 // ExUnit: complete validation precedes exposing any call.
 func TestAnthropicCompleteValidationPrecedesExposingAnyCall(t *testing.T) {
+	t.Parallel()
 	prefix := flat(one(start()), block(0, use("a")))
 	with1 := func(b map[string]any) map[string]any { return b }
 	for name, later := range map[string][]map[string]any{
@@ -221,6 +224,7 @@ func TestAnthropicCompleteValidationPrecedesExposingAnyCall(t *testing.T) {
 
 // ExUnit: partial and malformed counts remain unknown, never fabricated zeros.
 func TestAnthropicPartialAndMalformedCountsRemainUnknown(t *testing.T) {
+	t.Parallel()
 	if k, bad := anthropicUsage(map[string]any{}); bad || !reflect.DeepEqual(k, KnownUsage{}) {
 		t.Fatalf("%+v", k)
 	}
@@ -249,6 +253,7 @@ func TestAnthropicPartialAndMalformedCountsRemainUnknown(t *testing.T) {
 
 // The wire: key header, version, cache breakpoints, the stream and what is recorded.
 func TestAnthropicWireStreamAndRecord(t *testing.T) {
+	t.Parallel()
 	evs := flat(
 		one(start("input_tokens", int64(30), "cache_read_input_tokens", int64(60), "cache_creation_input_tokens", int64(10))),
 		block(0, map[string]any{"type": "text", "text": "Answer"}), finish("end_turn"))
@@ -315,6 +320,7 @@ func TestAnthropicWireStreamAndRecord(t *testing.T) {
 
 // Messages: the HTTP statuses of the specification.
 func TestAnthropicErrorsAreClassifiedByStatusKeepingOnlyTheBoundedMessage(t *testing.T) {
+	t.Parallel()
 	typed := func(status int, typ string) handler {
 		return jsonAnswer(status, map[string]any{"error": map[string]any{"type": typ, "message": "SECRET_BODY_TEXT\n" + testKey}})
 	}
@@ -335,6 +341,7 @@ func TestAnthropicErrorsAreClassifiedByStatusKeepingOnlyTheBoundedMessage(t *tes
 		{"redirect", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/elsewhere", 303) }, "refused", "Anthropic refused HTTP 303; no route or model fallback", `{"http_status":303}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e, f := keyEnv(t, "anthropic", c.h, claudeText("never"))
 			obs := &observer{}
 			_, err := e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Instructions: "p", Input: user("x")}, obs)
@@ -377,6 +384,7 @@ func TestAnthropicErrorsAreClassifiedByStatusKeepingOnlyTheBoundedMessage(t *tes
 
 // KOGEN-066: a 400 refusal shows the provider's message, bounded and without the key or the request.
 func TestAnthropicRefusalShowsBoundedProviderMessage(t *testing.T) {
+	t.Parallel()
 	long := "messages: tool_use ids were found without tool_result blocks " + testKey + "\n\t" + strings.Repeat("é", 400)
 	e, f := keyEnv(t, "anthropic", jsonAnswer(400, map[string]any{"error": map[string]any{"type": "invalid_request_error", "message": long}}))
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Instructions: "p", Input: user("PRIVATE_REQUEST_PAYLOAD")}, nil)
@@ -396,6 +404,7 @@ func TestAnthropicRefusalShowsBoundedProviderMessage(t *testing.T) {
 }
 
 func TestAnthropicTransientFailuresRetryAndExhaust(t *testing.T) {
+	t.Parallel()
 	cut := sseAnswer(flat(one(start()), block(0, use("a")))...)
 	for name, tc := range map[string][]handler{
 		"cut stream": {cut, cut, claudeText("recovered")}, "429 and 529": {jsonAnswer(429, map[string]any{}), jsonAnswer(529, map[string]any{"error": map[string]any{"type": "overloaded_error"}}), claudeText("recovered")},
@@ -429,6 +438,7 @@ func TestAnthropicTransientFailuresRetryAndExhaust(t *testing.T) {
 
 // Malformed complete output is never retried; an exhausted context window is a definite refusal.
 func TestAnthropicUnreadableAnswersAreNotRetried(t *testing.T) {
+	t.Parallel()
 	maxTokens := sseAnswer(flat(one(start()), block(0, map[string]any{"type": "text", "text": "partial"}), finish("max_tokens"))...)
 	e, f := keyEnv(t, "anthropic", maxTokens, claudeText("never"))
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Instructions: "p"}, nil)
@@ -448,6 +458,7 @@ func TestAnthropicUnreadableAnswersAreNotRetried(t *testing.T) {
 }
 
 func TestAnthropicRefusesImagesBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
 	e, f := keyEnv(t, "anthropic", claudeText("never"))
 	input := []any{map[string]any{"type": "function_call_output", "call_id": "c", "output": []any{map[string]any{"type": "input_image", "image_url": "pixels"}}}}
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: claudeRole, Instructions: "p", Input: input}, nil)
@@ -458,6 +469,7 @@ func TestAnthropicRefusesImagesBeforeAnyRequest(t *testing.T) {
 
 // ExUnit integration anthropic_test: identifiers cannot echo the key; waits close the socket.
 func TestAnthropicOpaqueIdentifiersCannotEchoTheKeyAndWaitsEndTheRequest(t *testing.T) {
+	t.Parallel()
 	// request id and message id equal to the key: nothing is retained
 	echo := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -500,6 +512,7 @@ func TestAnthropicOpaqueIdentifiersCannotEchoTheKeyAndWaitsEndTheRequest(t *test
 }
 
 func TestKeyProviderInterruptEndsTheRequest(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"anthropic", "opencode-go"} {
 		opened, closed := make(chan struct{}), make(chan struct{})
 		h := openEvents(opened, closed, ev("message_start", "message", map[string]any{"id": "m"}))
@@ -544,6 +557,7 @@ func TestKeyProviderInterruptEndsTheRequest(t *testing.T) {
 }
 
 func TestAnthropicCompleteToolBatches(t *testing.T) {
+	t.Parallel()
 	for _, reason := range []string{"end_turn", "tool_use"} {
 		for _, count := range []int{1, 2} {
 			events := one(start())
@@ -559,6 +573,7 @@ func TestAnthropicCompleteToolBatches(t *testing.T) {
 }
 
 func TestAnthropicSyntheticEndTurnDeltas(t *testing.T) {
+	t.Parallel()
 	for _, reason := range []string{"end_turn", "tool_use"} {
 		m := start("input_tokens", int64(12), "cache_read_input_tokens", int64(48000), "cache_creation_input_tokens", int64(300))
 		m["message"].(map[string]any)["id"] = "msg_synthetic_01"
@@ -581,6 +596,7 @@ func TestAnthropicSyntheticEndTurnDeltas(t *testing.T) {
 }
 
 func TestAnthropicAttemptTerminalMetadata(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, reason string
 		blocks       []map[string]any
@@ -593,6 +609,7 @@ func TestAnthropicAttemptTerminalMetadata(t *testing.T) {
 		{"disallowed", "max_tokens", []map[string]any{use("a")}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			m := start()
 			m["message"].(map[string]any)["model"] = testKey
 			events := one(m)

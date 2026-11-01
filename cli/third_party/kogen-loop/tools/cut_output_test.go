@@ -52,6 +52,7 @@ func checkDelivery(t *testing.T, text string) {
 }
 
 func TestSharedDeliveryPreservesFittingTextAndBoundsOversizedTextHonestly(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/tool_output_test.exs: shared delivery preserves fitting text and bounds oversized text honestly
 	for _, size := range []int{16_383, 16_384, 16_385} {
 		for _, unit := range []string{"x", "Δ🙂\r\n\t\"\\\x00"} {
@@ -65,6 +66,7 @@ func TestSharedDeliveryPreservesFittingTextAndBoundsOversizedTextHonestly(t *tes
 }
 
 func TestANumberedSingleLineCustodyReadIsBoundedOnlyAtDelivery(t *testing.T) {
+	t.Parallel()
 	// ExUnit: test/kogen/tool_output_test.exs: a numbered single-line custody read is bounded only at delivery
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".kogen/local"), 0o755); err != nil {
@@ -93,6 +95,7 @@ func TestANumberedSingleLineCustodyReadIsBoundedOnlyAtDelivery(t *testing.T) {
 }
 
 func TestLShellUTF8DeliveryCases(t *testing.T) {
+	t.Parallel()
 	checkDelivery(t, "")
 	for _, size := range []int{16383, 16384, 16385} {
 		for _, unit := range []string{"x", "Δ🙂"} {

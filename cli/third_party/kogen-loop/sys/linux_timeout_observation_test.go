@@ -58,6 +58,7 @@ func lobKill(result error) func(pid, sig int) error {
 }
 
 func TestLinuxTimeoutObservationDecisions(t *testing.T) {
+	t.Parallel()
 	gone := lobSyntheticGroup
 	cases := []struct {
 		name  string
@@ -81,6 +82,7 @@ func TestLinuxTimeoutObservationDecisions(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			alive, err := linuxTimeoutGroupAliveWith(gone, c.proc, lobKill(c.kill))
 			if alive != c.alive {
 				t.Fatalf("alive=%v want %v (err %v)", alive, c.alive, err)
@@ -102,6 +104,7 @@ func TestLinuxTimeoutObservationDecisions(t *testing.T) {
 }
 
 func TestLinuxTimeoutObservationGuard(t *testing.T) {
+	t.Parallel()
 	for _, pgid := range []int{1, 0, -1} {
 		if alive, err := linuxTimeoutGroupAlive(pgid, lobProc{}); alive || err == nil {
 			t.Fatalf("pgid %d: %v %v", pgid, alive, err)

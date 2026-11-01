@@ -31,6 +31,7 @@ func compatibleEnv(t *testing.T, key string, h ...handler) (*env, *keyFake, Role
 }
 
 func TestOpenAICompatibleSendsTheRoleToItsBaseURLWithoutAKey(t *testing.T) {
+	t.Parallel()
 	answer := goAnswer(map[string]any{"role": "assistant", "content": "local answer"}, "stop", "usage",
 		map[string]any{"prompt_tokens": int64(2000), "completion_tokens": int64(5), "prompt_tokens_details": map[string]any{"cached_tokens": int64(1800)}})
 	e, f, role := compatibleEnv(t, "", jsonAnswer(200, answer))
@@ -68,6 +69,7 @@ func TestOpenAICompatibleSendsTheRoleToItsBaseURLWithoutAKey(t *testing.T) {
 }
 
 func TestOpenAICompatibleSendsASavedKeyAndAnyEffort(t *testing.T) {
+	t.Parallel()
 	e, f, role := compatibleEnv(t, testKey, jsonAnswer(200, goText("ok")))
 	role.Effort = "medium"
 	role.BaseURL += "/" // a trailing slash is not doubled
@@ -81,6 +83,7 @@ func TestOpenAICompatibleSendsASavedKeyAndAnyEffort(t *testing.T) {
 }
 
 func TestOpenAICompatibleNeedsNoLoginButShowsItsKeyState(t *testing.T) {
+	t.Parallel()
 	home := t.TempDir()
 	role := Role{Provider: "openai-compatible", Model: "m", Effort: "default", BaseURL: "http://127.0.0.1:1/v1"}
 	if err := RequireLogin(home, []Role{role}); err != nil {
@@ -101,6 +104,7 @@ func TestOpenAICompatibleNeedsNoLoginButShowsItsKeyState(t *testing.T) {
 }
 
 func TestOpenAICompatibleKeyLoginSavesPrivately(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, nil)
 	e.c.Input = &Input{Reader: strings.NewReader("local-secret\n")}
 	if err := e.c.LoginWithBaseURL(context.Background(), e.s, "openai-compatible", "https://models.example/v1", nil); err != nil {
@@ -117,8 +121,10 @@ func TestOpenAICompatibleKeyLoginSavesPrivately(t *testing.T) {
 
 // Every provider takes a model and effort no list knows, unchanged, on the wire.
 func TestAnyModelAndEffortAreSentUnchanged(t *testing.T) {
+	t.Parallel()
 	model, effort := "model-nobody-listed-1", "effort-nobody-listed"
 	t.Run("opencode-go", func(t *testing.T) {
+		t.Parallel()
 		e, f := keyEnv(t, "opencode-go", jsonAnswer(200, goText("ok")))
 		if _, err := e.c.Respond(context.Background(), e.s, Request{Role: Role{Provider: "opencode-go", Model: model, Effort: effort}, Instructions: "p", Input: user("x"), Scope: "s"}, nil); err != nil {
 			t.Fatal(err)
@@ -129,6 +135,7 @@ func TestAnyModelAndEffortAreSentUnchanged(t *testing.T) {
 	})
 	for _, name := range []string{"chatgpt", "supergrok", "anthropic"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			info, _ := Lookup(name)
 			body, err := (&Client{Cache: NewCache(nil)}).Render(Request{Role: Role{Provider: name, Model: model, Effort: effort}, Instructions: "p", Input: user("x"), Scope: "s"})
 			if err != nil {
@@ -150,6 +157,7 @@ func TestAnyModelAndEffortAreSentUnchanged(t *testing.T) {
 
 // A model refusal keeps its first line, adds the fix and is not retried.
 func TestAModelRefusalIsClearAndNotRetried(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		h         handler
@@ -167,6 +175,7 @@ func TestAModelRefusalIsClearAndNotRetried(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			var e *env
 			var f *keyFake
 			role := Role{Provider: c.provider, Model: "kimi-k9", Effort: "high"}
@@ -197,6 +206,7 @@ func TestAModelRefusalIsClearAndNotRetried(t *testing.T) {
 
 // Other provider failures get no model hint.
 func TestNoModelHintOnOtherFailures(t *testing.T) {
+	t.Parallel()
 	e, _ := keyEnv(t, "opencode-go", jsonAnswer(401, map[string]any{}))
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p", Input: user("x"), Scope: "s"}, nil)
 	for _, l := range mustErr(t, err).Lines {
@@ -209,6 +219,7 @@ func TestNoModelHintOnOtherFailures(t *testing.T) {
 // An OpenAI-compatible host's own refusal text is shown, made safe: one line, the key redacted,
 // at most 300 bytes. OpenCode Go's body text stays hidden (TestOpenCodeGoErrorsAreClassifiedWithoutFallbackOrBodyText).
 func TestOpenAICompatibleShowsTheHostsOwnRefusalSafely(t *testing.T) {
+	t.Parallel()
 	e, _, role := compatibleEnv(t, testKey, jsonAnswer(404, map[string]any{"error": "model 'kimi-k9' not found, try pulling it first\n\x1b[31m " + testKey}))
 	role.Model = "kimi-k9"
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: role, Instructions: "p", Input: user("x"), Scope: "s"}, nil)

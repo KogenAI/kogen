@@ -10,6 +10,7 @@ import (
 
 // The per-call shell time limit is deleted, not replaced; the other caller options stay.
 func TestShellTimeoutRemoved(t *testing.T) {
+	t.Parallel()
 	if _, ok := reflect.TypeOf(tools.Tools{}).FieldByName("ShellTimeout"); ok {
 		t.Error("tools.Tools.ShellTimeout must be removed")
 	}

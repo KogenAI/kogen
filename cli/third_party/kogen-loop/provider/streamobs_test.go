@@ -166,7 +166,9 @@ func hist(a, b, c, d, e, f int64) []any { return []any{a, b, c, d, e, f} }
 const ms1 = time.Millisecond
 
 func TestStreamObsTiming(t *testing.T) {
+	t.Parallel()
 	t.Run("responses", func(t *testing.T) {
+		t.Parallel()
 		d := respDelta()
 		fail := frame(map[string]any{"type": "error", "error": map[string]any{"code": "server_error", "message": "x"}})
 		first := ": keepalive\n\n"
@@ -202,6 +204,7 @@ func TestStreamObsTiming(t *testing.T) {
 	})
 
 	t.Run("messages", func(t *testing.T) {
+		t.Parallel()
 		delta := msgDelta()
 		cut := obsAttempt{headersAdvance: 30 * ms1, steps: []obsStep{
 			{advance: 200 * ms1, data: ": ping\n\n" + msgStart()},
@@ -227,6 +230,7 @@ func TestStreamObsTiming(t *testing.T) {
 	})
 
 	t.Run("deltas of every kind and only deltas", func(t *testing.T) {
+		t.Parallel()
 		for _, c := range []struct {
 			name, wire string
 			chunks     []string
@@ -256,6 +260,7 @@ func TestStreamObsTiming(t *testing.T) {
 	})
 
 	t.Run("a stream without bytes", func(t *testing.T) {
+		t.Parallel()
 		for _, wire := range []string{"chatgpt", "anthropic"} {
 			e, _, req := obsEnv(t, wire, obsAttempt{headersAdvance: 7 * ms1, steps: []obsStep{{advance: 3 * ms1}}})
 			obs := &observer{}
@@ -269,6 +274,7 @@ func TestStreamObsTiming(t *testing.T) {
 }
 
 func TestStreamObsGaps(t *testing.T) {
+	t.Parallel()
 	base := time.Unix(1000, 0)
 	s := time.Second
 	for _, c := range []struct {
@@ -294,6 +300,7 @@ func TestStreamObsGaps(t *testing.T) {
 	}
 
 	t.Run("no reads", func(t *testing.T) {
+		t.Parallel()
 		o := newStreamObs(base)
 		o.gotHeaders(base.Add(900 * s))
 		o.beginStream()
@@ -305,6 +312,7 @@ func TestStreamObsGaps(t *testing.T) {
 	})
 
 	t.Run("one read", func(t *testing.T) {
+		t.Parallel()
 		o := newStreamObs(base)
 		o.gotHeaders(base.Add(ms1))
 		o.beginStream()
@@ -316,6 +324,7 @@ func TestStreamObsGaps(t *testing.T) {
 	})
 
 	t.Run("many reads in order", func(t *testing.T) {
+		t.Parallel()
 		o := newStreamObs(base)
 		o.beginStream()
 		at := base
@@ -333,6 +342,7 @@ func TestStreamObsGaps(t *testing.T) {
 }
 
 func TestStreamObsEndReasons(t *testing.T) {
+	t.Parallel()
 	var interrupt func(e *env) func()
 	interrupt = func(e *env) func() { return func() { e.s.Interrupt("SIGINT") } }
 	reset := errors.New("connection reset by peer")
@@ -391,6 +401,7 @@ func TestStreamObsEndReasons(t *testing.T) {
 			return []obsStep{{advance: ms1, data: head}, {advance: 11 * time.Second, err: io.EOF}}
 		}, records: 1, reasons: []string{"budget"}, outcomes: []string{"failed"}, err: "response wait exceeded"},
 	}
+	// Serial subtests append to seen, which the parent checks immediately after the loop.
 	var seen []string
 	for _, wire := range []string{"chatgpt", "anthropic"} {
 		for _, sc := range scenarios {
@@ -435,6 +446,7 @@ func TestStreamObsEndReasons(t *testing.T) {
 	}
 
 	t.Run("a dropped stream keeps the parser's result", func(t *testing.T) {
+		t.Parallel()
 		for _, wire := range []string{"chatgpt", "anthropic"} {
 			head, _ := wireStream(wire)
 			drop := obsAttempt{steps: []obsStep{{advance: ms1, data: head}}}
@@ -453,6 +465,7 @@ func TestStreamObsEndReasons(t *testing.T) {
 	})
 
 	t.Run("unfinished message stop is a dropped stream", func(t *testing.T) {
+		t.Parallel()
 		head, _ := wireStream("anthropic")
 		cut := head + strings.TrimSuffix(sse(ev("message_stop")), "\n\n")
 		e, _, req := obsEnv(t, "anthropic", obsAttempt{steps: []obsStep{{data: cut}}})
@@ -464,6 +477,7 @@ func TestStreamObsEndReasons(t *testing.T) {
 	})
 
 	t.Run("a received refusal is not a transport break", func(t *testing.T) {
+		t.Parallel()
 		e, _, req := obsEnv(t, "chatgpt", obsAttempt{status: 400, steps: []obsStep{{advance: ms1, data: `{"error":{"message":"no"}}`}}})
 		obs := &observer{}
 		if _, err := e.c.Respond(context.Background(), e.s, req, obs); err == nil {
@@ -475,6 +489,7 @@ func TestStreamObsEndReasons(t *testing.T) {
 	})
 
 	t.Run("a failed connection", func(t *testing.T) {
+		t.Parallel()
 		e, _, req := obsEnv(t, "anthropic", obsAttempt{doErr: reset}, obsAttempt{steps: []obsStep{{advance: ms1, data: func() string { h, tl := wireStream("anthropic"); return h + tl }()}}})
 		obs := &observer{}
 		if _, err := e.c.Respond(context.Background(), e.s, req, obs); err != nil {
@@ -494,6 +509,7 @@ func jsonOfErr(err error) string {
 }
 
 func TestStreamObsNonStreaming(t *testing.T) {
+	t.Parallel()
 	nulls := map[string]any{"first_byte_ms": nil, "ttft_ms": nil, "max_gap_ms": nil, "gap_hist": nil, "stream_bytes": nil, "end_reason": nil}
 	check := func(t *testing.T, label string, rec map[string]any, headers, last any) {
 		t.Helper()
@@ -503,6 +519,7 @@ func TestStreamObsNonStreaming(t *testing.T) {
 	good := string(mustEncode(goText("hello")))
 
 	t.Run("chat completions body", func(t *testing.T) {
+		t.Parallel()
 		e, _, req := obsEnv(t, "opencode-go", obsAttempt{headersAdvance: 20 * ms1, steps: []obsStep{
 			{advance: 100 * ms1, data: good[:10]},
 			{advance: 40 * ms1},
@@ -517,6 +534,7 @@ func TestStreamObsNonStreaming(t *testing.T) {
 	})
 
 	t.Run("chat completions error and empty bodies", func(t *testing.T) {
+		t.Parallel()
 		e, _, req := obsEnv(t, "opencode-go", obsAttempt{status: 400, headersAdvance: 5 * ms1, steps: []obsStep{{advance: 30 * ms1, data: `{"error":{"code":"x"}}`}}})
 		obs := &observer{}
 		e.c.Respond(context.Background(), e.s, req, obs)
@@ -528,6 +546,7 @@ func TestStreamObsNonStreaming(t *testing.T) {
 	})
 
 	t.Run("chat completions partial body", func(t *testing.T) {
+		t.Parallel()
 		e, _, req := obsEnv(t, "opencode-go",
 			obsAttempt{headersAdvance: 5 * ms1, steps: []obsStep{{advance: 30 * ms1, data: good[:7]}, {advance: 70 * ms1, err: errors.New("reset")}}},
 			obsAttempt{steps: []obsStep{{advance: ms1, data: good}}})
@@ -542,6 +561,7 @@ func TestStreamObsNonStreaming(t *testing.T) {
 
 	for _, wire := range []string{"chatgpt", "anthropic"} {
 		t.Run(wire+" http error bodies", func(t *testing.T) {
+			t.Parallel()
 			body := `{"error":{"message":"refused","type":"invalid_request_error"}}`
 			e, _, req := obsEnv(t, wire, obsAttempt{status: 400, headersAdvance: 12 * ms1, steps: []obsStep{
 				{advance: 8 * ms1, data: body[:20]}, {advance: 25 * ms1, data: body[20:]}, {advance: 900 * ms1},
@@ -574,6 +594,7 @@ func TestStreamObsNonStreaming(t *testing.T) {
 }
 
 func TestStreamObsCompatibility(t *testing.T) {
+	t.Parallel()
 	// the record's fields before this change, plus the new ones
 	old := []string{"provider", "compatibility", "operation_id", "attempt_id", "timestamp", "provider_response_id", "provider_request_id",
 		"configured_model", "configured_effort", "effective_model", "effective_effort", "requested_service_tier", "effective_service_tier",
@@ -581,6 +602,7 @@ func TestStreamObsCompatibility(t *testing.T) {
 	added := []string{"headers_ms", "first_byte_ms", "last_byte_ms", "last_progress_ms", "max_gap_ms", "gap_hist", "stream_bytes", "end_reason"}
 	for _, wire := range []string{"chatgpt", "anthropic", "opencode-go"} {
 		t.Run(wire, func(t *testing.T) {
+			t.Parallel()
 			var steps []obsStep
 			if wire == "opencode-go" {
 				steps = []obsStep{{advance: 30 * ms1, data: string(mustEncode(goText("hello")))}}
@@ -628,6 +650,7 @@ func TestStreamObsCompatibility(t *testing.T) {
 	}
 
 	t.Run("retries budgets and observers keep their behavior", func(t *testing.T) {
+		t.Parallel()
 		busy := obsAttempt{status: 503, steps: []obsStep{{advance: ms1, data: `{}`}}}
 		e, tr, req := obsEnv(t, "chatgpt", busy, busy, busy, busy)
 		obs := &observer{}

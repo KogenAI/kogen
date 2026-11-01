@@ -19,6 +19,7 @@ const (
 	insideDecoy   = "INSIDE-DECOY"
 )
 
+// Its callers remain serial: the fixture changes HOME, including the random-path subtest group.
 func newReadContainWorld(t *testing.T) readContainWorld {
 	t.Helper()
 	base, root := newRepo(t)
@@ -54,6 +55,7 @@ func wantRefused(t *testing.T, got string, wantReason containError) {
 	}
 }
 
+// Serial: this fixture changes HOME for the parent process.
 func TestReadContainFaults(t *testing.T) {
 	w := newReadContainWorld(t)
 	tools := newTools(w.root, ReadFileTool)
@@ -85,6 +87,7 @@ func TestReadContainFaults(t *testing.T) {
 	}
 }
 
+// Serial: this fixture changes HOME for the parent process.
 func TestReadContainSymlinkEscapes(t *testing.T) {
 	w := newReadContainWorld(t)
 	write(t, w.root, "ok.txt", "ok\n")
@@ -123,6 +126,7 @@ func TestReadContainSymlinkEscapes(t *testing.T) {
 }
 
 func TestReadContainInside(t *testing.T) {
+	t.Parallel()
 	_, root := newRepo(t)
 	write(t, root, "a.txt", "one\ntwo\nthree\n")
 	write(t, root, "sub/b.txt", "bee\n")
@@ -171,6 +175,7 @@ func TestReadContainInside(t *testing.T) {
 		{"root folder", tools, map[string]any{"path": "."}, "error: . is a folder; use list_files"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			if got := run(t, c.tools, ReadFileTool, c.args); got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)
 			}
@@ -281,6 +286,7 @@ func TestReadContainOtherTools(t *testing.T) {
 // Git's worktree can be larger than Tools.Root; top pathspec magic must not
 // let a caller search or list its parent directory.
 func TestReadContainGitTopPathspec(t *testing.T) {
+	t.Parallel()
 	_, root := newRepo(t)
 	write(t, root, "outside.txt", "outside-payload\n")
 	write(t, root, "sub/inside.txt", "inside\n")
@@ -288,6 +294,7 @@ func TestReadContainGitTopPathspec(t *testing.T) {
 	tools := newTools(filepath.Join(root, "sub"), ListFilesTool, SearchTextTool)
 	for _, path := range []string{":(top)outside.txt", ":/outside.txt", ":(top,glob)*"} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			for _, name := range []string{ListFilesTool, SearchTextTool} {
 				got := run(t, tools, name, map[string]any{"path": path, "pattern": "outside-payload"})
 				wantRefused(t, got, errOutside)

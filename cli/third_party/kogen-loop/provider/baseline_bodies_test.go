@@ -42,6 +42,7 @@ var baselineBodies = map[string]string{
 }
 
 func TestDefaultRequestBodies(t *testing.T) {
+	t.Parallel()
 	for _, c := range baselineRoles {
 		got := baselineBody(t, c.role)
 		if got != baselineBodies[c.name] {

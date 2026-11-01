@@ -40,6 +40,7 @@ func tcKey(route string, tools bool) string {
 // Empty ToolChoice sends the bytes captured from the unchanged encoders (testdata was
 // recorded before ToolChoice existed), including the existing automatic tool_choice.
 func TestToolChoiceEmptyBytes(t *testing.T) {
+	t.Parallel()
 	golden := tcGolden(t)
 	for _, r := range tcRoutes {
 		for _, tools := range []bool{true, false} {
@@ -61,6 +62,7 @@ func TestToolChoiceEmptyBytes(t *testing.T) {
 
 // A named choice changes only tool_choice, and only where the route can force it.
 func TestToolChoiceTransport(t *testing.T) {
+	t.Parallel()
 	golden := tcGolden(t)
 	forced := map[string]func(name string) string{
 		"responses": func(n string) string { return `{"type":"function","name":` + quote(n) + `}` },
@@ -107,6 +109,7 @@ func quote(s string) string {
 // Support agrees with the refusal: a route that reports false refuses before any transport,
 // in Render and in Respond, never ignoring the choice.
 func TestToolChoiceUnsupported(t *testing.T) {
+	t.Parallel()
 	for _, r := range tcRoutes {
 		e, role, requests := r.setup(t)
 		want := r.wire != "messages"

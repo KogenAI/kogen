@@ -32,8 +32,10 @@ func lockOwner(t *testing.T, lock string) string {
 
 // lock_test: AUT-4/GPT-6 concurrent stale recovery preserves the live owner.
 func TestConcurrentStaleRecoveryPreservesTheLiveOwner(t *testing.T) {
+	t.Parallel()
 	for _, format := range []string{"pid_file", "directory"} {
 		t.Run(format, func(t *testing.T) {
+			t.Parallel()
 			root := t.TempDir()
 			lock := filepath.Join(root, "build.lock")
 			if format == "pid_file" {
@@ -108,6 +110,7 @@ func TestConcurrentStaleRecoveryPreservesTheLiveOwner(t *testing.T) {
 
 // lock_test: release cannot remove a later acquisition, including a repeated release.
 func TestReleaseCannotRemoveALaterAcquisition(t *testing.T) {
+	t.Parallel()
 	lock := filepath.Join(t.TempDir(), "build.lock")
 	l := Locker{}
 	first, err := l.Acquire(lock)
@@ -130,6 +133,7 @@ func TestReleaseCannotRemoveALaterAcquisition(t *testing.T) {
 }
 
 func TestAcquireHeldByLiveProcessAndObserve(t *testing.T) {
+	t.Parallel()
 	lock := filepath.Join(t.TempDir(), "sub", "x.lock")
 	l := Locker{}
 	a, err := l.Acquire(lock)
@@ -150,6 +154,7 @@ func TestAcquireHeldByLiveProcessAndObserve(t *testing.T) {
 }
 
 func TestStaleLocksOfDeadOrCorruptOwnersAreReplaced(t *testing.T) {
+	t.Parallel()
 	for _, content := range []string{strconv.Itoa(deadPID) + "\n", "not-a-pid\n", "\n"} {
 		lock := filepath.Join(t.TempDir(), "x.lock")
 		os.WriteFile(lock, []byte(content), 0o644)

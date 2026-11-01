@@ -650,6 +650,9 @@ func (r *run) exchangeResponses(token string) (result, error) {
 				r.so.finishCheck(k)
 				return result{}, err
 			}
+			if acc.over {
+				return r.outputLimit(), nil
+			}
 			if acc.done || acc.failure != nil {
 				r.so.finish("complete")
 				return acc.finish(k.info.supergrok()), nil
@@ -685,6 +688,38 @@ const streamLimit = 64 << 20
 func (r *run) overflow() result {
 	r.so.finish("transport")
 	return result{kind: resInvalid, detail: "stream exceeded " + itoa(streamLimit) + " bytes"}
+}
+
+// visibleLimit is the most visible output bytes one streaming attempt may carry: exactly the
+// limit is allowed. It is fixed, not an option.
+const visibleLimit = 128 << 10
+
+// outputLimit ends an attempt whose visible output passed visibleLimit as a transient failure.
+// The caller has not applied the crossing event; the deferred body close ends the transfer.
+func (r *run) outputLimit() result {
+	r.so.finish("output_limit")
+	return result{kind: resTransient, detail: "visible output exceeded " + itoa(visibleLimit) + " bytes"}
+}
+
+// visibleBytes is the UTF-8 length of the visible output a completed Responses or Messages
+// event carries: text, refusal and call-argument deltas. Reasoning, *.done events and any other
+// event count 0, as does a missing or non-string delta.
+func visibleBytes(ev map[string]any) int {
+	var v any
+	switch ev["type"] {
+	case "response.output_text.delta", "response.refusal.delta", "response.function_call_arguments.delta":
+		v = ev["delta"]
+	case "content_block_delta":
+		d, _ := asMap(ev["delta"])
+		switch d["type"] {
+		case "text_delta":
+			v = d["text"]
+		case "input_json_delta":
+			v = d["partial_json"]
+		}
+	}
+	s, _ := v.(string)
+	return len(s)
 }
 
 // exchangeChat is one OpenCode Go request: a JSON POST answered by one JSON body.
@@ -816,7 +851,7 @@ func (r *run) exchangeMessages(key string) (result, error) {
 	}
 	tail := ""
 	buf := make([]byte, 32<<10)
-	total := 0
+	total, visible := 0, 0
 	for {
 		if err := k.check(); err != nil {
 			r.so.finishCheck(k)
@@ -842,6 +877,16 @@ func (r *run) exchangeMessages(key string) (result, error) {
 			tail = pieces[len(pieces)-1]
 			for _, p := range pieces[:len(pieces)-1] {
 				f := decodeFrame(p)
+				if f.event != nil {
+					if visible += visibleBytes(f.event); visible > visibleLimit {
+						r.so.firstDelta(at)
+						if err := k.check(); err != nil {
+							r.so.finishCheck(k)
+							return result{}, err
+						}
+						return r.outputLimit(), nil
+					}
+				}
 				if early != nil {
 					early.frame(f)
 				}

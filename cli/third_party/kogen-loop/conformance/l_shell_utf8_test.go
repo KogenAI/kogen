@@ -71,6 +71,7 @@ func runUTF8Shell(t *testing.T, commands ...string) (*utf8Requester, string) {
 	return r, w.root
 }
 func TestLShellUTF8BinaryRequest(t *testing.T) {
+	t.Parallel()
 	r, root := runUTF8Shell(t, "dd if=/dev/urandom of=random.bin bs=3000 count=1 2>/dev/null; cat random.bin", `printf 'Δ\377🙂\376'`)
 	raw, err := os.ReadFile(filepath.Join(root, "random.bin"))
 	if err != nil {
@@ -87,6 +88,7 @@ func TestLShellUTF8BinaryRequest(t *testing.T) {
 	}
 }
 func TestLShellUTF8ValidAndCutRequest(t *testing.T) {
+	t.Parallel()
 	r, _ := runUTF8Shell(t, `printf 'Δ🙂'`, `i=0; while [ "$i" -lt 4000 ]; do printf 'Δ🙂'; i=$((i+1)); done`)
 	if r.outputs["0"] != "exit status: 0\nΔ🙂" {
 		t.Fatalf("fitting output %q", r.outputs["0"])

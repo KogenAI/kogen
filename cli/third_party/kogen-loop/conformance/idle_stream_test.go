@@ -79,6 +79,7 @@ func (b *idleReadBody) Read(p []byte) (int, error) {
 // stays open ends its attempt as idle, and the run log's request.attempt event shows the last byte
 // beside the last progress; the retry answers and the round ends.
 func TestIdleStreamRunLog(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t).signIn()
 	cmds := make(chan string, 8)
 	open := make(chan struct{})

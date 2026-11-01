@@ -88,8 +88,10 @@ func rbInputText(body map[string]any) string {
 }
 
 func TestRequestBudgetBoundary(t *testing.T) {
+	t.Parallel()
 	for _, model := range []string{"fixture-model", "gpt-6.1-sol"} {
 		t.Run(model, func(t *testing.T) {
+			t.Parallel()
 			_, r0, _, m0 := rbSetup(t, model)
 			base := m0(rbHistory(6, 100, 0))
 			limit := base.InputBudgetBytes
@@ -103,6 +105,7 @@ func TestRequestBudgetBoundary(t *testing.T) {
 
 			for _, delta := range []int{-1, 0} {
 				t.Run(fmt.Sprintf("limit%+d", delta), func(t *testing.T) {
+					t.Parallel()
 					d, r, p, measure := rbSetup(t, model, rbOK)
 					r.Input = sizeAt(delta)
 					if got := measure(r.Input).RenderedBytes; got != limit+delta {
@@ -121,6 +124,8 @@ func TestRequestBudgetBoundary(t *testing.T) {
 			}
 
 			t.Run("limit+1 condenses and then fits", func(t *testing.T) {
+
+				t.Parallel()
 				d, r, p, measure := rbSetup(t, model, rbSummary("SUMMARY keeps FACT-001 to FACT-005"), rbOK)
 				r.Input = sizeAt(1)
 				if got := measure(r.Input).RenderedBytes; got != limit+1 {
@@ -157,6 +162,8 @@ func TestRequestBudgetBoundary(t *testing.T) {
 			})
 
 			t.Run("immutable content that cannot fit is refused without any request", func(t *testing.T) {
+
+				t.Parallel()
 				d, r, p, _ := rbSetup(t, model)
 				// The task alone fills the window; older exchanges exist but cannot make room.
 				in := rbHistory(4, 100, 100)
@@ -177,10 +184,13 @@ func TestRequestBudgetBoundary(t *testing.T) {
 }
 
 func TestRequestBudgetFailures(t *testing.T) {
+	t.Parallel()
 	// eight exchanges of about 90 KB: far over the ceiling, and too large for one summary request.
 	big := func() []any { return rbHistory(8, 90_000, 90_000) }
 
 	t.Run("summary requests fit, carry no tools and include the prior summary", func(t *testing.T) {
+
+		t.Parallel()
 		d, r, p, _ := rbSetup(t, "fixture-model", rbSummary("FIRST SUMMARY covers FACT-001"), rbSummary("SECOND SUMMARY"), rbOK)
 		r.Input = big()
 		var got []Condensation
@@ -212,6 +222,8 @@ func TestRequestBudgetFailures(t *testing.T) {
 	})
 
 	t.Run("a provider failure stops without sending the conversation", func(t *testing.T) {
+
+		t.Parallel()
 		// The script ends after zero answers: the provider refuses the summarization request.
 		d, r, p, _ := rbSetup(t, "fixture-model")
 		r.Input = big()
@@ -229,6 +241,8 @@ func TestRequestBudgetFailures(t *testing.T) {
 	})
 
 	t.Run("cancellation stops at once", func(t *testing.T) {
+
+		t.Parallel()
 		hang := make(chan struct{})
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -260,6 +274,8 @@ func TestRequestBudgetFailures(t *testing.T) {
 	})
 
 	t.Run("a summary that cannot be made shorter ends the attempt", func(t *testing.T) {
+
+		t.Parallel()
 		huge := strings.Repeat("s", 200_000) // above the summary cap, so one merge is tried
 		d, r, p, _ := rbSetup(t, "fixture-model", rbSummary(huge), rbSummary(huge), rbOK)
 		r.Input = big()
@@ -280,6 +296,8 @@ func TestRequestBudgetFailures(t *testing.T) {
 	})
 
 	t.Run("an empty summary is not a finish", func(t *testing.T) {
+
+		t.Parallel()
 		d, r, p, _ := rbSetup(t, "fixture-model", func(s *olStream) { s.text(0, "  "); s.end() }, rbOK)
 		r.Input = big()
 		_, _, err := d.Request(context.Background(), r)
@@ -292,6 +310,8 @@ func TestRequestBudgetFailures(t *testing.T) {
 	})
 
 	t.Run("an exchange that cannot fit a summary request is refused", func(t *testing.T) {
+
+		t.Parallel()
 		in := rbHistory(3, 100, 100)
 		in = append(in[:3:3], rbExchange(9, provider.InputBudgetBytes)...) // older, alone over the ceiling
 		in = append(in, rbExchange(10, 100)...)

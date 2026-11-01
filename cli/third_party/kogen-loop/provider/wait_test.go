@@ -45,9 +45,11 @@ func chatEnv(t *testing.T, h ...handler) (*env, *fake) {
 // Intent prompt caching: ChatGPT never sends prompt_cache_options or prompt_cache_breakpoint, so
 // no HTTP 400 cache-refusal retry exists for it: every such answer is one plain refusal.
 func TestChatGPTRetiredOptionsRefusalsNeverStripTheRoutingKey(t *testing.T) {
+	t.Parallel()
 	for _, single := range []bool{false, true} {
 		for _, param := range []any{"absent", nil, "prompt_cache_options", "prompt_cache_key"} {
 			t.Run(fmt.Sprintf("single=%v/param=%v", single, param), func(t *testing.T) {
+				t.Parallel()
 				errBody := map[string]any{"type": "invalid_request_error", "code": "invalid_parameter", "message": "prompt_cache_options is not supported on this model"}
 				if param != "absent" {
 					errBody["param"] = param
@@ -84,6 +86,7 @@ func TestChatGPTRetiredOptionsRefusalsNeverStripTheRoutingKey(t *testing.T) {
 // SuperGrok keeps the bounded refusal of its prompt_cache_key: one retry without the field
 // (only that field), remembered by the conversation, with the refused attempt retained.
 func TestSuperGrokCacheKeyRefusalRetriesOnceAndIsRemembered(t *testing.T) {
+	t.Parallel()
 	refusal := jsonAnswer(400, map[string]any{"error": map[string]any{"code": "unknown_parameter", "param": "prompt_cache_key", "message": "unsupported"}})
 	completed := events(done(map[string]any{"id": "resp_cache", "model": "grok-4.7", "output": []any{tool()}}))
 	f := newFake(t, refusal, completed, completed)
@@ -138,6 +141,7 @@ func TestSuperGrokCacheKeyRefusalRetriesOnceAndIsRemembered(t *testing.T) {
 
 // Only the exact refusal of SuperGrok's key is a compatibility case.
 func TestOtherSuperGrokRefusalsNeverStripTheKey(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		status int
 		body   map[string]any
@@ -151,6 +155,7 @@ func TestOtherSuperGrokRefusalsNeverStripTheKey(t *testing.T) {
 	}
 	for i, c := range cases {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t, jsonAnswer(c.status, map[string]any{"error": c.body}), textAnswer("never"))
 			e := newEnv(t, f)
 			e.saveCreds("supergrok", e.supergrokCreds())
@@ -166,6 +171,7 @@ func TestOtherSuperGrokRefusalsNeverStripTheKey(t *testing.T) {
 
 // provider_wait_test: unrelated refusal never strips cache fields or reexecutes.
 func TestUnrelatedRefusalNeverStripsOrReexecutes(t *testing.T) {
+	t.Parallel()
 	e, f := chatEnv(t, jsonAnswer(400, map[string]any{"error": map[string]any{"code": "context_length_exceeded", "param": "input", "message": "full"}}))
 	_, err := e.respond(Request{Role: Role{Model: "gpt-6.1-sol", Effort: "medium"}, Instructions: "policy"})
 	if se := mustErr(t, err); se.Reason != "context_too_long" || len(f.requests()) != 1 {
@@ -175,6 +181,7 @@ func TestUnrelatedRefusalNeverStripsOrReexecutes(t *testing.T) {
 
 // provider_wait_test: inconsistent completed usage is retained but not added to totals.
 func TestInconsistentUsageIsRetainedButNotTotalled(t *testing.T) {
+	t.Parallel()
 	e, _ := chatEnv(t, events(done(map[string]any{"output": []any{tool()}, "usage": map[string]any{
 		"input_tokens": int64(10), "input_tokens_details": map[string]any{"cached_tokens": int64(11)}, "output_tokens": int64(2)}})))
 	resp, err := single(e)
@@ -188,6 +195,7 @@ func TestInconsistentUsageIsRetainedButNotTotalled(t *testing.T) {
 
 // provider_wait_test: malformed optional write counts never leak into analytical usage.
 func TestMalformedWriteCountsNeverLeak(t *testing.T) {
+	t.Parallel()
 	e, _ := chatEnv(t, events(done(map[string]any{"output": []any{tool()}, "usage": map[string]any{
 		"input_tokens": int64(10), "input_tokens_details": map[string]any{"cache_write_tokens": map[string]any{"raw": "PRIVATE-WRITE-BODY"}}}})))
 	obs := &observer{}
@@ -206,6 +214,7 @@ func bad() map[string]any { return with(tool(), "arguments", "PRIVATE-invalid-js
 // provider_wait_test: terminal evidence retains sticky guards but describes only effective
 // replacement items.
 func TestTerminalEvidenceRetainsStickyGuards(t *testing.T) {
+	t.Parallel()
 	e, _ := chatEnv(t, events(
 		itemDone(-1, bad()), itemDone(0, bad()),
 		map[string]any{"type": "response.output_item.added", "output_index": int64(2)},
@@ -225,6 +234,7 @@ func TestTerminalEvidenceRetainsStickyGuards(t *testing.T) {
 
 // provider_wait_test: terminal evidence distinguishes effective pending and gap predicates.
 func TestTerminalEvidencePendingAndGap(t *testing.T) {
+	t.Parallel()
 	e, _ := chatEnv(t,
 		events(itemDone(1, tool()), done(map[string]any{})),
 		events(itemDone(0, tool()), map[string]any{"type": "response.output_item.added", "output_index": int64(1)}, done(map[string]any{})))
@@ -243,6 +253,7 @@ func TestTerminalEvidencePendingAndGap(t *testing.T) {
 // provider_wait_test: empty terminal metadata retains ordered multiitem output and usage on
 // an open socket, and the request is cancelled without waiting for the stream to close.
 func TestEmptyTerminalMetadataKeepsOrderedItemsOnAnOpenSocket(t *testing.T) {
+	t.Parallel()
 	items := []map[string]any{
 		{"type": "reasoning", "summary": []any{}},
 		{"type": "message", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "ready", "annotations": []any{}}}},
@@ -282,6 +293,7 @@ func TestEmptyTerminalMetadataKeepsOrderedItemsOnAnOpenSocket(t *testing.T) {
 
 // provider_wait_test: empty final output retains refusal predicates and effective facts.
 func TestEmptyFinalOutputRetainsRefusalPredicates(t *testing.T) {
+	t.Parallel()
 	item := tool()
 	added := map[string]any{"type": "response.output_item.added", "output_index": int64(1)}
 	delta := map[string]any{"type": "response.function_call_arguments.delta", "output_index": int64(0), "delta": "{}"}
@@ -325,6 +337,7 @@ func TestEmptyFinalOutputRetainsRefusalPredicates(t *testing.T) {
 
 // provider_wait_test: failure events win over retained done items and empty completion.
 func TestFailureEventsWinOverRetainedItems(t *testing.T) {
+	t.Parallel()
 	var script []handler
 	kinds := []string{"response.failed", "response.incomplete", "error"}
 	for _, k := range kinds {
@@ -347,6 +360,7 @@ func TestFailureEventsWinOverRetainedItems(t *testing.T) {
 
 // provider_wait_test: an expired invocation does not consume the next invocation's budget.
 func TestExpiredInvocationDoesNotConsumeTheNextBudget(t *testing.T) {
+	t.Parallel()
 	e, f := chatEnv(t, jsonAnswer(500, map[string]any{}), textAnswer("fresh"))
 	e.c.ResponseBudget = time.Second
 	_, err := e.respond(Request{})
@@ -362,6 +376,7 @@ func TestExpiredInvocationDoesNotConsumeTheNextBudget(t *testing.T) {
 
 // provider_wait_test: the second backoff also spends the original budget.
 func TestSecondBackoffSpendsTheOriginalBudget(t *testing.T) {
+	t.Parallel()
 	e, f := chatEnv(t, jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}))
 	e.c.ResponseBudget = 3 * time.Second
 	_, err := e.respond(Request{})
@@ -374,6 +389,7 @@ func TestSecondBackoffSpendsTheOriginalBudget(t *testing.T) {
 }
 
 func TestBudgetIsCappedAtThirtyMinutes(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}), jsonAnswer(500, map[string]any{}))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -399,6 +415,7 @@ func TestBudgetIsCappedAtThirtyMinutes(t *testing.T) {
 
 // provider_wait_test: single attempt does not retry unreadable output or transient failures.
 func TestSingleAttemptDoesNotRetry(t *testing.T) {
+	t.Parallel()
 	e, f := chatEnv(t, events(done(map[string]any{})), jsonAnswer(500, map[string]any{}))
 	if _, err := single(e); mustErr(t, err).Reason != "invalid_response" || len(f.requests()) != 1 {
 		t.Fatal("unreadable output retried")
@@ -412,6 +429,7 @@ func TestSingleAttemptDoesNotRetry(t *testing.T) {
 }
 
 func TestSingleAttemptDetailsAndNoRefreshAfter401(t *testing.T) {
+	t.Parallel()
 	e, f := chatEnv(t, jsonAnswer(401, map[string]any{"error": map[string]any{"code": "unauthorized"}}), httpFail(503, "x", "down"))
 	_, err := single(e)
 	se := mustErr(t, err)
@@ -430,6 +448,7 @@ func TestSingleAttemptDetailsAndNoRefreshAfter401(t *testing.T) {
 
 // provider_wait_test: completed output is validated, ordered and failures win.
 func TestCompletedOutputIsValidatedOrderedAndFailuresWin(t *testing.T) {
+	t.Parallel()
 	item := tool()
 	added := func(i int, it any) map[string]any {
 		return map[string]any{"type": "response.output_item.added", "output_index": int64(i), "item": it}
@@ -480,6 +499,7 @@ func TestCompletedOutputIsValidatedOrderedAndFailuresWin(t *testing.T) {
 }
 
 func TestValidMessageAndReasoningOutput(t *testing.T) {
+	t.Parallel()
 	msg := map[string]any{"type": "message", "id": "m", "role": "assistant", "phase": "commentary", "content": []any{
 		map[string]any{"type": "output_text", "text": "hi"}, map[string]any{"type": "refusal", "refusal": "no"}}}
 	e, _ := chatEnv(t, events(itemDone(0, map[string]any{"type": "reasoning", "id": "r", "encrypted_content": "o", "summary": []any{}}), itemDone(1, msg), done(map[string]any{})))
@@ -497,6 +517,7 @@ func TestValidMessageAndReasoningOutput(t *testing.T) {
 
 // provider_wait_test: a validated open stream is cancelled before the caller exits.
 func TestValidatedOpenStreamIsCancelled(t *testing.T) {
+	t.Parallel()
 	opened, closed := make(chan struct{}), make(chan struct{})
 	e, _ := chatEnv(t, openEvents(opened, closed, done(map[string]any{"output": []any{tool()}})))
 	e.realClock()
@@ -514,6 +535,7 @@ func TestValidatedOpenStreamIsCancelled(t *testing.T) {
 
 // provider_wait_test: expiry is checked while data keeps arriving and closes the request.
 func TestExpiryIsCheckedWithBusyStreamAndClosesTheRequest(t *testing.T) {
+	t.Parallel()
 	opened, closed := make(chan struct{}), make(chan struct{})
 	busy := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -554,6 +576,7 @@ func TestExpiryIsCheckedWithBusyStreamAndClosesTheRequest(t *testing.T) {
 
 // provider_wait_test: unreadable output retries once within the same invocation.
 func TestUnreadableOutputRetriesOnce(t *testing.T) {
+	t.Parallel()
 	e, f := chatEnv(t, events(done(map[string]any{"output": []any{tool()}, "usage": "bad"})), textAnswer("retry"))
 	resp, err := e.respond(Request{})
 	if err != nil || resp.Items[0]["content"].([]any)[0].(map[string]any)["text"] != "retry" || len(f.requests()) != 2 {
@@ -562,6 +585,7 @@ func TestUnreadableOutputRetriesOnce(t *testing.T) {
 }
 
 func TestEventFramingTolerance(t *testing.T) {
+	t.Parallel()
 	// CRLF framing, data: without space, a multi-line data field, comment lines, [DONE], and a
 	// completion split across chunks.
 	completed := string(mustEncode(done(map[string]any{"output": []any{tool()}})))
@@ -588,6 +612,7 @@ func TestEventFramingTolerance(t *testing.T) {
 }
 
 func TestResponseFailedEventCodesRetryOrRefuse(t *testing.T) {
+	t.Parallel()
 	for _, code := range []string{"server_error", "rate_limit_exceeded", "subscription_sharing_usage_unavailable", "subscription_sharing_user_unavailable"} {
 		e, f := chatEnv(t,
 			events(map[string]any{"type": "response.failed", "response": map[string]any{"error": map[string]any{"code": code, "message": "temp", "type": "capacity"}}}), textAnswer("ok"))
@@ -598,6 +623,7 @@ func TestResponseFailedEventCodesRetryOrRefuse(t *testing.T) {
 }
 
 func TestMarshalOfUsageRecord(t *testing.T) {
+	t.Parallel()
 	n := 3
 	b, _ := json.Marshal(KnownUsage{Input: &n})
 	if string(b) != `{"input":3,"cached":null,"write":null,"write_30m":null,"write_12h":null,"output":null,"reasoning":null}` {
@@ -609,9 +635,11 @@ var _ = sys.Fail
 
 // The public Responses key has its own narrowly scoped compatibility policy.
 func TestChatGPTExactKeyRefusalRetriesOnceAndPersistsAcrossRestore(t *testing.T) {
+	t.Parallel()
 	for _, single := range []bool{false, true} {
 		for _, code := range []string{"unknown_parameter", "unsupported_parameter", "invalid_parameter"} {
 			t.Run(fmt.Sprintf("single=%v/code=%s", single, code), func(t *testing.T) {
+				t.Parallel()
 				refusal := jsonAnswer(400, map[string]any{"error": map[string]any{"code": code, "param": "prompt_cache_key", "message": "prompt_cache_key is not supported on this model"}})
 				e, f := chatEnv(t, refusal, textAnswer("accepted"), textAnswer("restored"))
 				req := Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "complete policy", Input: user("complete contract"), Scope: "same conversation", Single: single}

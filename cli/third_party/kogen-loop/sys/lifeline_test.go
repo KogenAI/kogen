@@ -26,6 +26,7 @@ func TestPsGroupOthersIgnoresItsOwnListing(t *testing.T) {
 		fmt.Printf("PSGO member %v %v\n", others, err)
 		return
 	}
+	t.Parallel()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestPsGroupOthersIgnoresItsOwnListing$", "-test.count=1")
 	cmd.Env = append(os.Environ(), "PSGO_HELPER=1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

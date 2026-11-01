@@ -85,6 +85,7 @@ func respondIdle(t *testing.T, e *env, req Request, obs Observer) (*Response, er
 }
 
 func TestStreamIdleFirstByte(t *testing.T) {
+	t.Parallel()
 	for _, w := range idleWires {
 		first := w.first
 		head, tail := idleAnswer(w.name)
@@ -111,6 +112,7 @@ func TestStreamIdleFirstByte(t *testing.T) {
 				continue
 			}
 			t.Run(w.name+"/"+st.name, func(t *testing.T) {
+				t.Parallel()
 				ok := obsAttempt{steps: []obsStep{{advance: ms1, data: full}}}
 				// just before the limit: the first attempt answers
 				e, tr, req := idleEnv(t, w.name, st.onTime)
@@ -150,6 +152,7 @@ func TestStreamIdleFirstByte(t *testing.T) {
 	}
 
 	t.Run("single", func(t *testing.T) {
+		t.Parallel()
 		head, tail := idleAnswer("chatgpt")
 		late := obsAttempt{headersAdvance: 90 * time.Second, steps: []obsStep{{data: head + tail}}}
 		e, tr, req := idleEnv(t, "chatgpt", late, obsAttempt{steps: []obsStep{{data: head + tail}}})
@@ -164,6 +167,7 @@ func TestStreamIdleFirstByte(t *testing.T) {
 }
 
 func TestStreamIdleGap(t *testing.T) {
+	t.Parallel()
 	for _, w := range idleWires {
 		head, tail := idleAnswer(w.name)
 		beat := idleBeat(w.name)
@@ -200,6 +204,7 @@ func TestStreamIdleGap(t *testing.T) {
 		}
 		for _, c := range cases {
 			t.Run(w.name+"/"+c.name, func(t *testing.T) {
+				t.Parallel()
 				hdr := time.Duration(0)
 				if !w.stream {
 					hdr = w.first - ms1
@@ -236,8 +241,10 @@ func TestStreamIdleGap(t *testing.T) {
 }
 
 func TestStreamIdleLongStream(t *testing.T) {
+	t.Parallel()
 	for _, wire := range []string{"chatgpt", "anthropic"} {
 		t.Run(wire, func(t *testing.T) {
+			t.Parallel()
 			head, tail := idleAnswer(wire)
 			beat := idleBeat(wire)
 			// progress events with keep-alives between them, through 880 simulated seconds
@@ -263,6 +270,7 @@ func TestStreamIdleLongStream(t *testing.T) {
 }
 
 func TestStreamIdleAbsoluteBudget(t *testing.T) {
+	t.Parallel()
 	// streamingFor is an answer that keeps sending progress every 100 s and never completes
 	streamingFor := func(wire string, n int) []obsStep {
 		head, _ := idleAnswer(wire)
@@ -274,6 +282,7 @@ func TestStreamIdleAbsoluteBudget(t *testing.T) {
 	}
 	for _, wire := range []string{"chatgpt", "anthropic"} {
 		t.Run(wire+"/progress cannot renew", func(t *testing.T) {
+			t.Parallel()
 			e, tr, req := idleEnv(t, wire, obsAttempt{steps: streamingFor(wire, 20)}, obsAttempt{steps: streamingFor(wire, 20)})
 			obs := &observer{}
 			_, err := respondIdle(t, e, req, obs)
@@ -293,6 +302,7 @@ func TestStreamIdleAbsoluteBudget(t *testing.T) {
 		})
 
 		t.Run(wire+"/shared across retry and backoff", func(t *testing.T) {
+			t.Parallel()
 			first := idleWires[0].first
 			if wire == "anthropic" {
 				first = 45 * time.Second
@@ -316,6 +326,7 @@ func TestStreamIdleAbsoluteBudget(t *testing.T) {
 		})
 
 		t.Run(wire+"/budget wins an overlapping timeout", func(t *testing.T) {
+			t.Parallel()
 			for _, c := range []struct {
 				name string
 				a    obsAttempt
@@ -346,8 +357,10 @@ func idleFirst(wire string) time.Duration {
 }
 
 func TestStreamIdleCompatibility(t *testing.T) {
+	t.Parallel()
 	for _, w := range idleWires {
 		t.Run(w.name, func(t *testing.T) {
+			t.Parallel()
 			head, tail := idleAnswer(w.name)
 			late := obsAttempt{headersAdvance: w.first, steps: []obsStep{{data: head + tail}}}
 			ok := obsAttempt{steps: []obsStep{{advance: ms1, data: head + tail}}}
@@ -386,6 +399,7 @@ func TestStreamIdleCompatibility(t *testing.T) {
 	}
 
 	t.Run("a healthy answer keeps its record", func(t *testing.T) {
+		t.Parallel()
 		good := string(mustEncode(goText("hello")))
 		e, _, req := idleEnv(t, "opencode-go", obsAttempt{headersAdvance: 20 * ms1, steps: []obsStep{{advance: 30 * ms1, data: good}}})
 		obs := &observer{}
@@ -396,6 +410,7 @@ func TestStreamIdleCompatibility(t *testing.T) {
 	})
 
 	t.Run("budget ceiling and public options are unchanged", func(t *testing.T) {
+		t.Parallel()
 		if ResponseBudget != 30*time.Minute {
 			t.Fatalf("ResponseBudget = %v", ResponseBudget)
 		}
@@ -507,6 +522,7 @@ func (tr *blockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: 200, Header: http.Header{}, Body: b, Request: req}, nil
 }
 
+// Serial: idlePoll and liveWatches are package globals; the top-level barrier excludes parallel watchdogs.
 func TestStreamIdleBlocked(t *testing.T) {
 	old := idlePoll
 	idlePoll = 5 * time.Millisecond

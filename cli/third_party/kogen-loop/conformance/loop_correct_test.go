@@ -70,6 +70,7 @@ func lcFailedWriteChild(root string) {
 }
 
 func TestLoopCorrectFailedWrite(t *testing.T) {
+	t.Parallel()
 	if root := os.Getenv(lcChildEnv); root != "" {
 		lcFailedWriteChild(root)
 	}
@@ -119,6 +120,7 @@ func TestLoopCorrectFailedWrite(t *testing.T) {
 }
 
 func TestLoopCorrectCompatibility(t *testing.T) {
+	t.Parallel()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	tl := lcTools(root, "protected.txt")
 	readAll := func(path string) string {
@@ -319,6 +321,7 @@ func lcWire(t *testing.T, v any) any {
 }
 
 func TestLoopCorrectRefusal(t *testing.T) {
+	t.Parallel()
 	answer := lcRefusalMessage(lcRefuse(lcRefusal))
 	ev := lcEndedClaim(t, answer)
 	if ev["claim"] != lcRefusal {
@@ -335,6 +338,7 @@ func TestLoopCorrectRefusal(t *testing.T) {
 }
 
 func TestLoopCorrectMixed(t *testing.T) {
+	t.Parallel()
 	answer := lcRefusalMessage(lcText("Before"), lcRefuse(lcRefusal), lcText("After"))
 	ev := lcEndedClaim(t, answer)
 	if want := "Before\n" + lcRefusal + "\nAfter"; ev["claim"] != want {
@@ -364,6 +368,7 @@ func (c *lcCounting) RoundTrip(*http.Request) (*http.Response, error) {
 }
 
 func TestLoopCorrectMissingSession(t *testing.T) {
+	t.Parallel()
 	transport := &lcCounting{}
 	client := provider.NewClient("host")
 	client.HTTP = &http.Client{Transport: transport}

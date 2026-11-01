@@ -10,8 +10,10 @@ import (
 // A call that is complete in the stream starts before the response ends; argument fragments
 // never execute, nor does a Chat Completions answer before its whole body is validated.
 func TestToolOverlapEarly(t *testing.T) {
+	t.Parallel()
 	for _, wire := range []string{"responses", "messages"} {
 		t.Run(wire, func(t *testing.T) {
+			t.Parallel()
 			repo := newOLRepo(t)
 			fragments := make(chan struct{})
 			proceed := make(chan struct{})
@@ -73,6 +75,7 @@ func TestToolOverlapEarly(t *testing.T) {
 	// Chat Completions has no per-call completion marker: nothing runs until the whole
 	// answer is read and validated, then the calls run together.
 	t.Run("chat", func(t *testing.T) {
+		t.Parallel()
 		repo := newOLRepo(t)
 		half := make(chan struct{})
 		proceed := make(chan struct{})
@@ -105,6 +108,7 @@ func TestToolOverlapEarly(t *testing.T) {
 	// The completed response is the authority: when its output is not what the stream
 	// delivered, the early call's work is joined and discarded and the response's calls run.
 	t.Run("replaced output", func(t *testing.T) {
+		t.Parallel()
 		repo := newOLRepo(t)
 		replaced := fcall("a", "search_text", `{"pattern":"second"}`)
 		prov := newOLProvider(t, "responses",

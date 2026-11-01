@@ -111,6 +111,7 @@ func custodyWaitFile(t *testing.T, path string) {
 // neither postpone its timer's signals nor prevent the caller from stopping.
 func TestTimeoutCustodyBlockedObservation(t *testing.T) {
 	if os.Getenv("TIMEOUT_CUSTODY_HELPER") != "1" {
+		t.Parallel()
 		binary := custodyObserverBinary(t)
 		for _, stop := range []string{"context", "interrupt"} {
 			t.Run(stop, func(t *testing.T) {
@@ -196,10 +197,12 @@ func TestTimeoutCustodyBlockedObservation(t *testing.T) {
 
 func TestTimeoutCustodyObservationError(t *testing.T) {
 	if os.Getenv("TIMEOUT_CUSTODY_HELPER") != "1" {
+		t.Parallel()
 		binary := custodyObserverBinary(t)
 		for _, fault := range []string{"native query failed", "native timeout custody observation unsupported on this platform"} {
 			for _, stop := range []string{"", "context", "deadline", "interrupt"} {
 				t.Run(fault+"/"+stop, func(t *testing.T) {
+					t.Parallel()
 					custodyObserverChild(t, binary, "TestTimeoutCustodyObservationError", fault, stop)
 				})
 			}
@@ -286,6 +289,7 @@ func TestTimeoutCustodyMembership(t *testing.T) {
 		time.Sleep(30 * time.Second)
 		os.Exit(0)
 	}
+	t.Parallel()
 	// An exited but deliberately unreaped child still belongs to its group.
 	cmd := exec.Command("true")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -345,6 +349,7 @@ func TestTimeoutCustodyMembership(t *testing.T) {
 // A dispatched timer whose Stop fails still cannot label ordinary completion as
 // timed out unless its callback actually claimed teardown first.
 func TestTimeoutCustodyCompletionArbitration(t *testing.T) {
+	t.Parallel()
 	var ordinary commandLifecycle
 	ordinary.complete()
 	if ordinary.timeout() || ordinary.timedOut() {

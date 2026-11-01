@@ -217,8 +217,10 @@ func unrelatedHost(t *testing.T) owned {
 
 // Successful runs stop their background shells only at the end of the run.
 func TestShellLifecycleSuccessCleanup(t *testing.T) {
+	t.Parallel()
 	for _, ending := range []string{"no_call", "terminal"} {
 		t.Run(ending, func(t *testing.T) {
+			t.Parallel()
 			l := newLifecycleRun(t)
 			pre, _ := l.preRound(t)
 			host := unrelatedHost(t)
@@ -259,6 +261,7 @@ func TestShellLifecycleSuccessCleanup(t *testing.T) {
 
 // A round without an explicitly supplied session still owns its shell groups.
 func TestShellLifecycleImplicitSessionCleanup(t *testing.T) {
+	t.Parallel()
 	l := newLifecycleRun(t)
 	l.rd.Tools.Session = nil
 	rq := &scripted{responses: []*provider.Response{
@@ -282,9 +285,11 @@ func TestShellLifecycleImplicitSessionCleanup(t *testing.T) {
 
 // Ordinary failures stop their background shells and return the error unchanged.
 func TestShellLifecycleFailureCleanup(t *testing.T) {
+	t.Parallel()
 	sentinel := errors.New("ordinary failure")
 	for _, source := range []string{"requester", "hook"} {
 		t.Run(source, func(t *testing.T) {
+			t.Parallel()
 			l := newLifecycleRun(t)
 			pre, _ := l.preRound(t)
 			host := unrelatedHost(t)
@@ -329,6 +334,7 @@ func TestShellLifecycleFailureCleanup(t *testing.T) {
 
 // Normal shell results and the between-call lifetime of background processes stay unchanged.
 func TestShellLifecycleCompatibility(t *testing.T) {
+	t.Parallel()
 	l := newLifecycleRun(t)
 	rq := &scripted{responses: []*provider.Response{
 		respond("r1",
@@ -347,7 +353,7 @@ func TestShellLifecycleCompatibility(t *testing.T) {
 		}
 	}
 	def, ok := tools.Definition(tools.ShellTool)
-	if !ok || !strings.Contains(fmt.Sprint(def["description"]), "Each call waits up to one second") {
+	if !ok || !strings.Contains(fmt.Sprint(def["description"]), "retrieval waits up to 30 seconds") {
 		t.Errorf("shell definition %v", def)
 	}
 	props := def["parameters"].(map[string]any)["properties"].(map[string]any)
@@ -360,6 +366,15 @@ func TestShellLifecycleCompatibility(t *testing.T) {
 
 // startupRound runs a round whose second shell call is held at one stage of the shell-start
 // boundary while the context ends, then released. Both ends of the context must stop it.
+//
+// startupRound installs shellStartHook, the test seam linked to the process-wide
+// kogen-loop/sys.startHook. That hook fires for every in-process shell start in the test
+// binary and counts "enter" stages, so another test's concurrent in-process shell would be
+// counted or held instead of the round's second call. The tests that call startupRound
+// therefore stay serial (no t.Parallel, in them or in their subtests): Go runs non-parallel
+// top-level tests to completion before it releases the parallel ones, so these never overlap
+// another test. The 200 ms hold after the context ends is the window under test: the round
+// must react to the ended context while the shell start is held.
 func startupRound(t *testing.T, stage string, end func() (context.Context, func(), func())) {
 	t.Helper()
 	l := newLifecycleRun(t)
@@ -452,7 +467,7 @@ func startupRound(t *testing.T, stage string, end func() (context.Context, func(
 	}
 }
 
-// Cancellation during startup cannot miss a shell or hang the round.
+// Cancellation during startup cannot miss a shell or hang the round. Serial: see startupRound.
 func TestShellLifecycleCancelStartup(t *testing.T) {
 	for _, stage := range []string{"enter", "starting", "started"} {
 		t.Run(stage, func(t *testing.T) {
@@ -464,7 +479,7 @@ func TestShellLifecycleCancelStartup(t *testing.T) {
 	}
 }
 
-// Deadline during startup cannot miss late registration.
+// Deadline during startup cannot miss late registration. Serial: see startupRound.
 func TestShellLifecycleDeadlineStartup(t *testing.T) {
 	for _, stage := range []string{"enter", "starting", "started"} {
 		t.Run(stage, func(t *testing.T) {
@@ -512,11 +527,13 @@ func TestShellLifecycleDeadlineStartup(t *testing.T) {
 // A killed host's supervisor completes whole-group escalation although the direct shell
 // exits on SIGTERM and a descendant ignores it, and also stops what a finished shell left.
 func TestShellLifecycleKilledHostDescendants(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		finished bool
 	}{{"running shell", false}, {"finished shell", true}} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			w := newWorld(t).signIn()
 			command := `echo $$ > shell.pid; ` + resistant(w.root, "desc") + ` wait`
 			script := []exchange{{Items: []map[string]any{call("c1", "shell", map[string]any{"command": command})}}}

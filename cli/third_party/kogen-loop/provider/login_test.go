@@ -87,6 +87,7 @@ func login(e *env, name string, redirect RedirectFunc) error {
 }
 
 // features/08-chatgpt: browser login, private credentials and the status command (GPT-2/3/4).
+// Serial: process-wide umask must not overlap file creation.
 func TestChatGPTBrowserLogin(t *testing.T) {
 	old := syscall.Umask(0o022)
 	defer syscall.Umask(old)
@@ -173,6 +174,7 @@ func TestChatGPTBrowserLogin(t *testing.T) {
 
 // features/08-chatgpt: a redirect with the wrong state is ignored and the right one succeeds.
 func TestChatGPTLoginIgnoresRedirectWithWrongState(t *testing.T) {
+	t.Parallel()
 	br := newBrowser(t)
 	br.sendWrongState = 2
 	f := newFake(t).authScript(br.tokens())
@@ -190,6 +192,7 @@ func TestChatGPTLoginIgnoresRedirectWithWrongState(t *testing.T) {
 
 // features/08-chatgpt: a login without plan usage granted keeps nothing.
 func TestChatGPTLoginWithoutPlanUsageKeepsNothing(t *testing.T) {
+	t.Parallel()
 	br := newBrowser(t)
 	br.scope = "openid profile email offline_access"
 	f := newFake(t).authScript(br.tokens())
@@ -203,6 +206,7 @@ func TestChatGPTLoginWithoutPlanUsageKeepsNothing(t *testing.T) {
 }
 
 func TestChatGPTLoginFailures(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		setup  func(b *browser, f *fake)
@@ -224,6 +228,7 @@ func TestChatGPTLoginFailures(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			br := newBrowser(t)
 			f := newFake(t).authScript(br.tokens())
 			tc.setup(br, f)
@@ -248,6 +253,7 @@ func TestChatGPTLoginFailures(t *testing.T) {
 }
 
 func TestChatGPTLoginTimesOutAfterThreeHundredSeconds(t *testing.T) {
+	t.Parallel()
 	f := newFake(t)
 	e := newEnv(t, f)
 	block := make(chan struct{})
@@ -266,15 +272,17 @@ func TestChatGPTLoginTimesOutAfterThreeHundredSeconds(t *testing.T) {
 }
 
 func TestChatGPTLoginInterrupt(t *testing.T) {
+	t.Parallel()
 	f := newFake(t)
 	e := newEnv(t, f).realClock()
 	block := make(chan struct{})
 	defer close(block)
+	ready := make(chan struct{})
 	go func() {
-		time.Sleep(50 * time.Millisecond)
+		<-ready
 		e.s.Interrupt("SIGINT")
 	}()
-	err := login(e, "chatgpt", func(string) (url.Values, error) { <-block; return nil, nil })
+	err := login(e, "chatgpt", func(string) (url.Values, error) { close(ready); <-block; return nil, nil })
 	if in, ok := err.(*sys.Interrupted); !ok || in.ExitCode() != 130 {
 		t.Fatalf("err = %v (%T)", err, err)
 	}
@@ -282,6 +290,7 @@ func TestChatGPTLoginInterrupt(t *testing.T) {
 }
 
 func TestChatGPTLoginRedirectErrors(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, newFake(t))
 	err := login(e, "chatgpt", func(string) (url.Values, error) { return nil, os.ErrClosed })
 	if se := mustErr(t, err); se.Reason != "login_failed" || se.Detail != os.ErrClosed.Error() {
@@ -294,6 +303,7 @@ func TestChatGPTLoginRedirectErrors(t *testing.T) {
 }
 
 func TestLoginRefusesNonLoopbackSeamAndUnknownProvider(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, nil)
 	e.s.Env = append(e.s.Env, "KOGEN_PROVIDER_URL=http://example.com:80")
 	se := mustErr(t, login(e, "chatgpt", nil))
@@ -325,6 +335,7 @@ func oauthError(status int, code string) handler {
 }
 
 // supergrok_test: absent scope and interval use RFC defaults; id token never persists.
+// Serial: process-wide umask must not overlap file creation.
 func TestSuperGrokLoginDefaultsAndStorage(t *testing.T) {
 	old := syscall.Umask(0o022)
 	defer syscall.Umask(old)
@@ -379,6 +390,7 @@ func TestSuperGrokLoginDefaultsAndStorage(t *testing.T) {
 }
 
 func TestSuperGrokLoginPrefersCompleteURIAndGrantFields(t *testing.T) {
+	t.Parallel()
 	f := newFake(t).authScript(
 		device("verification_uri_complete", "https://example.test/verify?code=USER", "interval", int64(2)),
 		grant("scope", "openid api:access", "expires_in", int64(120), "id_token", "garbage"))
@@ -396,6 +408,7 @@ func TestSuperGrokLoginPrefersCompleteURIAndGrantFields(t *testing.T) {
 }
 
 func TestSuperGrokPollPacing(t *testing.T) {
+	t.Parallel()
 	f := newFake(t).authScript(device("interval", int64(2)), oauthError(400, "authorization_pending"), oauthError(400, "slow_down"), oauthError(400, "authorization_pending"), grant())
 	e := newEnv(t, f)
 	if err := login(e, "supergrok", nil); err != nil {
@@ -414,6 +427,7 @@ func TestSuperGrokPollPacing(t *testing.T) {
 }
 
 func TestSuperGrokLoginFailures(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		script   []handler
@@ -441,6 +455,7 @@ func TestSuperGrokLoginFailures(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t).authScript(tc.script...)
 			e := newEnv(t, f)
 			e.saveCreds("supergrok", e.supergrokCreds())
@@ -461,6 +476,7 @@ func TestSuperGrokLoginFailures(t *testing.T) {
 }
 
 func TestSuperGrokDeviceRequestNetworkFailure(t *testing.T) {
+	t.Parallel()
 	f := newFake(t)
 	e := newEnv(t, f)
 	f.srv.Close()
@@ -471,6 +487,7 @@ func TestSuperGrokDeviceRequestNetworkFailure(t *testing.T) {
 
 // supergrok_test: device lifetime expires while a token poll is still in flight.
 func TestSuperGrokDeviceLifetimeExpiresWhileAPollIsInFlight(t *testing.T) {
+	t.Parallel()
 	opened, closed := make(chan struct{}), make(chan struct{})
 	hang := func(w http.ResponseWriter, r *http.Request) {
 		close(opened)
@@ -506,6 +523,7 @@ func TestSuperGrokDeviceLifetimeExpiresWhileAPollIsInFlight(t *testing.T) {
 }
 
 func TestSuperGrokNoPollAtOrAfterTheLifetime(t *testing.T) {
+	t.Parallel()
 	f := newFake(t).authScript(device("expires_in", int64(2), "interval", int64(1)), oauthError(400, "authorization_pending"), grant())
 	e := newEnv(t, f)
 	se := mustErr(t, login(e, "supergrok", nil))
@@ -516,12 +534,14 @@ func TestSuperGrokNoPollAtOrAfterTheLifetime(t *testing.T) {
 }
 
 func TestSuperGrokLoginInterrupt(t *testing.T) {
+	t.Parallel()
 	f := newFake(t).authScript(device("interval", int64(30)))
 	e := newEnv(t, f).realClock()
-	go func() {
-		time.Sleep(100 * time.Millisecond)
+	e.c.Sleep = func(ctx context.Context, d time.Duration) error {
 		e.s.Interrupt("SIGHUP")
-	}()
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	err := login(e, "supergrok", nil)
 	if in, ok := err.(*sys.Interrupted); !ok || in.ExitCode() != 129 {
 		t.Fatalf("err = %v (%T)", err, err)

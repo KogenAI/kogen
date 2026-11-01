@@ -8,6 +8,7 @@ import (
 
 // Every Messages breakpoint is the default five-minute {"type":"ephemeral"} with no ttl.
 func TestMessagesBreakpointsAreTheDefaultFiveMinutes(t *testing.T) {
+	t.Parallel()
 	e, f := keyEnv(t, "anthropic", claudeText("ok"))
 	obs := &observer{}
 	req := Request{Role: claudeRole, Instructions: "policy", Input: user("hi"), Tools: []any{goTool("read_file")}, CacheID: "fixed-cache-id"}

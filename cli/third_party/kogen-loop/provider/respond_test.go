@@ -27,6 +27,7 @@ func readTool(name string) map[string]any {
 }
 
 func TestRespondHappyPathWithFunctionCall(t *testing.T) {
+	t.Parallel()
 	call := map[string]any{"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "read_file", "arguments": `{"path":"a.txt"}`, "status": "completed"}
 	reasoning := map[string]any{"type": "reasoning", "id": "rs_1", "encrypted_content": "opaque", "summary": []any{}}
 	f := newFake(t, events(
@@ -162,6 +163,7 @@ func TestRespondHappyPathWithFunctionCall(t *testing.T) {
 }
 
 func TestRespondSuperGrokRequestAndHeaders(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, textAnswer("hello"))
 	e := newEnv(t, f)
 	e.saveCreds("supergrok", e.supergrokCreds())
@@ -212,6 +214,7 @@ func TestRespondSuperGrokRequestAndHeaders(t *testing.T) {
 }
 
 func TestRespondWithoutLoginSendsNothing(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, textAnswer("x"))
 	e := newEnv(t, f)
 	_, err := e.respond(Request{})
@@ -224,6 +227,7 @@ func TestRespondWithoutLoginSendsNothing(t *testing.T) {
 }
 
 func TestRespondRefusesNonLoopbackSeams(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, nil)
 	e.s.Env = append(e.s.Env, "KOGEN_AUTH_URL=https://example.com")
 	_, err := e.respond(Request{})
@@ -235,6 +239,7 @@ func TestRespondRefusesNonLoopbackSeams(t *testing.T) {
 }
 
 func TestStreamCutIsRetriedAfterTwoSeconds(t *testing.T) {
+	t.Parallel()
 	cut := rawStream(frame(itemDone(0, tool())) + `data: {"type":"response.completed"`) // no blank line, no completion
 	f := newFake(t, cut, textAnswer("fresh"))
 	e := newEnv(t, f)
@@ -265,6 +270,7 @@ func TestStreamCutIsRetriedAfterTwoSeconds(t *testing.T) {
 }
 
 func TestThreeTransientFailuresStopWithBackoff(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, httpFail(503, "overloaded", "try later"), httpFail(503, "overloaded", "try later"), httpFail(503, "overloaded", "try later"), textAnswer("never"))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -285,6 +291,7 @@ func TestThreeTransientFailuresStopWithBackoff(t *testing.T) {
 }
 
 func TestTransientNetworkFailureWithoutAnswer(t *testing.T) {
+	t.Parallel()
 	f := newFake(t)
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -300,6 +307,7 @@ func TestTransientNetworkFailureWithoutAnswer(t *testing.T) {
 }
 
 func TestRateLimit429IsRetriedButUsageLimitIsNot(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, httpFail(429, "rate_limit_exceeded", "slow down"), textAnswer("ok"))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -324,6 +332,7 @@ func TestRateLimit429IsRetriedButUsageLimitIsNot(t *testing.T) {
 }
 
 func TestUsageLimitResetForms(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		resets any
 		want   string
@@ -334,6 +343,7 @@ func TestUsageLimitResetForms(t *testing.T) {
 		"float":   {1.5, "ChatGPT usage limit reached"},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			body := map[string]any{"code": "subscription_sharing_usage_limit_exceeded", "message": "limit"}
 			if tc.resets != nil {
 				body["resets_at"] = tc.resets
@@ -351,6 +361,7 @@ func TestUsageLimitResetForms(t *testing.T) {
 }
 
 func TestRequestErrorsAreClassified(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		h       handler
@@ -373,6 +384,7 @@ func TestRequestErrorsAreClassified(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t, tc.h, textAnswer("never"))
 			e := newEnv(t, f)
 			e.saveCreds("chatgpt", e.chatgptCreds())
@@ -389,6 +401,7 @@ func TestRequestErrorsAreClassified(t *testing.T) {
 }
 
 func TestSuperGrokBillingAndAccessRefusalsDoNotRetry(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		status int
 		body   handler
@@ -401,6 +414,7 @@ func TestSuperGrokBillingAndAccessRefusalsDoNotRetry(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprint(tc.status, "/", i), func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t, tc.body, textAnswer("never"))
 			e := newEnv(t, f)
 			e.saveCreds("supergrok", e.supergrokCreds())
@@ -417,6 +431,7 @@ func TestSuperGrokBillingAndAccessRefusalsDoNotRetry(t *testing.T) {
 }
 
 func TestSuperGrokErrorMessages(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, reason, detail string
 		h                    []handler
@@ -431,6 +446,7 @@ func TestSuperGrokErrorMessages(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t, tc.h...)
 			e := newEnv(t, f)
 			e.saveCreds("supergrok", e.supergrokCreds())
@@ -444,6 +460,7 @@ func TestSuperGrokErrorMessages(t *testing.T) {
 }
 
 func TestSuperGrokBudgetMessage(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, httpFail(500, "e", "x"))
 	e := newEnv(t, f)
 	e.saveCreds("supergrok", e.supergrokCreds())
@@ -455,6 +472,7 @@ func TestSuperGrokBudgetMessage(t *testing.T) {
 }
 
 func TestSuperGrokRefusesCacheRefusalHandling(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, httpFail(400, "unknown_parameter", "x"))
 	e := newEnv(t, f)
 	e.saveCreds("supergrok", e.supergrokCreds())
@@ -465,6 +483,7 @@ func TestSuperGrokRefusesCacheRefusalHandling(t *testing.T) {
 }
 
 func TestInvalidResponsesRetryOnceThenFail(t *testing.T) {
+	t.Parallel()
 	bad := rawStream("data: not json\n\n")
 	f := newFake(t, bad, bad, textAnswer("never"))
 	e := newEnv(t, f)
@@ -477,6 +496,7 @@ func TestInvalidResponsesRetryOnceThenFail(t *testing.T) {
 }
 
 func TestRespondInterrupt(t *testing.T) {
+	t.Parallel()
 	opened, closed := make(chan struct{}), make(chan struct{})
 	f := newFake(t, openEvents(opened, closed, itemDone(0, tool())))
 	e := newEnv(t, f).realClock()
@@ -515,6 +535,7 @@ func TestRespondInterrupt(t *testing.T) {
 }
 
 func TestSecretsNeverAppearInErrorsOutputOrRecords(t *testing.T) {
+	t.Parallel()
 	f := newFake(t, httpFail(400, "invalid_request_error", "bad"), jsonAnswer(401, map[string]any{}), jsonAnswer(401, map[string]any{}))
 	e := newEnv(t, f)
 	e.saveCreds("chatgpt", e.chatgptCreds())
@@ -542,6 +563,7 @@ func sysRender(err error) string {
 }
 
 func TestBodyDoesNotSendToolsWhenThereAreNone(t *testing.T) {
+	t.Parallel()
 	c := &Client{Cache: NewCache(nil)}
 	b := c.Body(Request{Role: Role{Model: "gpt-5.4", Effort: "low"}, Instructions: "policy", Input: []any{map[string]any{"role": "user", "content": "x"}}})
 	if _, has := b["tools"]; has {
@@ -559,6 +581,7 @@ func TestBodyDoesNotSendToolsWhenThereAreNone(t *testing.T) {
 }
 
 func TestRefusalNamesEditableRoleSelection(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ role, mapping string }{
 		{"shape", "models.shape"},
 		{"build", "models.build"},
@@ -568,6 +591,7 @@ func TestRefusalNamesEditableRoleSelection(t *testing.T) {
 		{"draft", "shape_workers.draft"},
 	} {
 		t.Run(tc.role, func(t *testing.T) {
+			t.Parallel()
 			f := newFake(t, httpFail(400, "invalid_request_error", "model not found"), textAnswer("never"))
 			e := newEnv(t, f)
 			e.saveCreds("supergrok", e.supergrokCreds())
@@ -596,6 +620,7 @@ func TestRefusalNamesEditableRoleSelection(t *testing.T) {
 
 // KOGEN-066: a ChatGPT HTTP refusal's text shares the one-line, 300-byte bound of the other routes.
 func TestChatGPTRefusalMessageIsBounded(t *testing.T) {
+	t.Parallel()
 	long := "bad\nrequest\t" + strings.Repeat("é", 400)
 	f := newFake(t, jsonAnswer(400, map[string]any{"error": map[string]any{"type": "invalid_request_error", "message": long}}), textAnswer("never"))
 	e := newEnv(t, f)

@@ -25,6 +25,7 @@ type streamEvidence struct {
 }
 
 func TestProviderStreamConformance(t *testing.T) {
+	t.Parallel()
 	var directChat, resume streamEvidence
 	t.Run("ChatGPT_Direct", func(t *testing.T) {
 		w := streamWorld(t, false)

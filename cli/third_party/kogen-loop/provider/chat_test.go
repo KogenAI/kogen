@@ -37,6 +37,7 @@ func goTool(name string) map[string]any {
 // ExUnit open_code_go_transport/login/transport: the fixed route, Kogen's own identity, the
 // session header and the rendered body.
 func TestOpenCodeGoWireRecordAndUsage(t *testing.T) {
+	t.Parallel()
 	raw := map[string]any{"role": "assistant", "content": "checking", "reasoning": "private scalar",
 		"reasoning_details": []any{map[string]any{"type": "reasoning.text", "index": int64(0), "text": "r"}}, "tool_calls": []any{goCall("b"), goCall("a")}}
 	answer := goAnswer(raw, "tool_calls", "usage", map[string]any{"prompt_tokens": int64(100), "completion_tokens": int64(20),
@@ -117,6 +118,7 @@ func TestOpenCodeGoWireRecordAndUsage(t *testing.T) {
 
 // ExUnit: lossless ordered raw replay suppresses duplicate text and all normalized calls.
 func TestOpenCodeGoRawReplayIsLosslessAndOrdered(t *testing.T) {
+	t.Parallel()
 	raw := map[string]any{"role": "assistant", "content": "unchanged Δ", "reasoning": "private scalar",
 		"reasoning_details": []any{map[string]any{"type": "reasoning.text", "index": int64(0), "vendor": []any{int64(2), int64(1)}}},
 		"tool_calls":        []any{goCall("b"), goCall("a")}}
@@ -147,6 +149,7 @@ func TestOpenCodeGoRawReplayIsLosslessAndOrdered(t *testing.T) {
 }
 
 func TestOpenCodeGoMalformedAnswersReturnNoExecutableItems(t *testing.T) {
+	t.Parallel()
 	raw := map[string]any{"role": "assistant", "content": nil, "tool_calls": []any{goCall("a"), goCall("b")}}
 	badArgs := goCall("b")
 	badArgs["function"] = map[string]any{"name": "read_file", "arguments": "[]"}
@@ -194,6 +197,7 @@ func TestOpenCodeGoMalformedAnswersReturnNoExecutableItems(t *testing.T) {
 // The raw provider fields of cached input are kept: chat-compatible routes name them in
 // three ways, the first one reported counts; unknown counts stay null, never zero.
 func TestOpenCodeGoUsageNormalization(t *testing.T) {
+	t.Parallel()
 	text := map[string]any{"role": "assistant", "content": "ok"}
 	n := func(v int) *int { return &v }
 	for name, tc := range map[string]struct {
@@ -222,6 +226,7 @@ func TestOpenCodeGoUsageNormalization(t *testing.T) {
 }
 
 func TestOpenCodeGoErrorsAreClassifiedWithoutFallbackOrBodyText(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name         string
 		h            handler
@@ -236,6 +241,7 @@ func TestOpenCodeGoErrorsAreClassifiedWithoutFallbackOrBodyText(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e, f := keyEnv(t, "opencode-go", c.h, jsonAnswer(200, goText("never")))
 			obs := &observer{}
 			_, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p", Input: user("x")}, obs)
@@ -261,6 +267,7 @@ func TestOpenCodeGoErrorsAreClassifiedWithoutFallbackOrBodyText(t *testing.T) {
 }
 
 func TestOpenCodeGoRejectedKeyIsNotRefreshedOrRetried(t *testing.T) {
+	t.Parallel()
 	e, f := keyEnv(t, "opencode-go", jsonAnswer(401, map[string]any{"error": map[string]any{"code": "invalid_key", "type": "auth_error", "message": "SECRET"}}), jsonAnswer(200, goText("never")))
 	obs := &observer{}
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p"}, obs)
@@ -283,6 +290,7 @@ func TestOpenCodeGoRejectedKeyIsNotRefreshedOrRetried(t *testing.T) {
 }
 
 func TestOpenCodeGoTransientFailuresRetryThreeTimesWithTheStandardBackoff(t *testing.T) {
+	t.Parallel()
 	e, f := keyEnv(t, "opencode-go", jsonAnswer(429, map[string]any{"error": map[string]any{"code": "rate_limit"}}), jsonAnswer(503, map[string]any{}), textHandlerGo("recovered"))
 	resp, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p", Input: user("x")}, nil)
 	if err != nil || len(f.requests()) != 3 || !reflect.DeepEqual(e.clk.slept(), []time.Duration{2 * time.Second, 8 * time.Second}) {
@@ -313,6 +321,7 @@ func TestOpenCodeGoTransientFailuresRetryThreeTimesWithTheStandardBackoff(t *tes
 func textHandlerGo(text string) handler { return jsonAnswer(200, goText(text)) }
 
 func TestOpenCodeGoNetworkFailureIsTransientAndNamesNoAddress(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := srv.URL
 	srv.Close()
@@ -328,6 +337,7 @@ func TestOpenCodeGoNetworkFailureIsTransientAndNamesNoAddress(t *testing.T) {
 
 // ExUnit open_code_go_transport_test: a redirect cannot carry the key to the paid route.
 func TestOpenCodeGoRedirectCannotCarryTheKeyToThePaidRoute(t *testing.T) {
+	t.Parallel()
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
@@ -347,6 +357,7 @@ func TestOpenCodeGoRedirectCannotCarryTheKeyToThePaidRoute(t *testing.T) {
 }
 
 func TestOpenCodeGoRefusesImagesBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
 	e, f := keyEnv(t, "opencode-go", jsonAnswer(200, goText("never")))
 	input := []any{map[string]any{"type": "function_call_output", "call_id": "c", "output": []any{map[string]any{"type": "input_image", "image_url": "pixels"}}}}
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p", Input: input}, nil)
@@ -366,11 +377,13 @@ func TestOpenCodeGoRefusesImagesBeforeAnyRequest(t *testing.T) {
 
 // ExUnit: the complete selected adapter's bytes, 524287 and 524288 fit, 524289 does not.
 func TestRequestBoundaryIsMeasuredOnTheCompleteBodyOfEachAdapter(t *testing.T) {
+	t.Parallel()
 	for _, role := range []Role{
 		{Model: "gpt-6.1-sol", Effort: "high"}, grokRole, goRole,
 		{Provider: "anthropic", Model: "claude-opus-5-5", Effort: "high"},
 	} {
 		t.Run(Name(role), func(t *testing.T) {
+			t.Parallel()
 			c := &Client{}
 			mk := func(n int) Request {
 				return Request{Role: role, Instructions: "policy Δ", Input: []any{map[string]any{"role": "user", "content": strings.Repeat("x", n)}}}

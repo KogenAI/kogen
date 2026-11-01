@@ -253,6 +253,7 @@ func checkStalled(t *testing.T, c idleCase) {
 	})
 }
 
+// Serial: idlePoll and liveWatches are package globals; the top-level barrier excludes parallel watchdogs.
 func TestIdleStreamSilentServer(t *testing.T) {
 	good := string(mustEncode(goText("hello")))
 	chatHead, _ := idleAnswer("chatgpt")
@@ -275,6 +276,7 @@ func TestIdleStreamSilentServer(t *testing.T) {
 	}
 }
 
+// Serial: idlePoll and liveWatches are package globals; the top-level barrier excludes parallel watchdogs.
 func TestIdleStreamKeepAlive(t *testing.T) {
 	good := string(mustEncode(goText("hello")))
 	chatHead, _ := idleAnswer("chatgpt")
@@ -310,6 +312,7 @@ func TestIdleStreamKeepAlive(t *testing.T) {
 // ---- progress at the boundaries, with the scripted transport ----
 
 func TestIdleStreamProgress(t *testing.T) {
+	t.Parallel()
 	// answered runs one script and wants a completed answer in one request; stalled wants an idle
 	// first attempt retried to a completed one.
 	answered := func(t *testing.T, wire string, steps []obsStep, hdr time.Duration) map[string]any {
@@ -347,6 +350,7 @@ func TestIdleStreamProgress(t *testing.T) {
 		head, tail := idleAnswer(wire)
 		prog := idleProgress(wire)
 		t.Run(wire+"/boundary", func(t *testing.T) {
+			t.Parallel()
 			// progress 1 ms before the limit renews the clock; at the limit it is too late
 			rec := answered(t, wire, []obsStep{{advance: ms1, data: head}, {advance: idleLimit - ms1, data: tail}}, 0)
 			wantFields(t, "in time", rec, map[string]any{"last_progress_ms": int64(180000), "last_byte_ms": int64(180000)})
@@ -355,12 +359,14 @@ func TestIdleStreamProgress(t *testing.T) {
 			wantFields(t, "late", rec, map[string]any{"last_progress_ms": int64(1), "last_byte_ms": int64(180001)})
 		})
 		t.Run(wire+"/first progress boundary", func(t *testing.T) {
+			t.Parallel()
 			first := idleFirst(wire)
 			answered(t, wire, []obsStep{{advance: first - ms1, data: head}, {advance: ms1, data: tail}}, 0)
 			rec := stalled(t, wire, []obsStep{{advance: first, data: head}}, 0)
 			wantFields(t, "late first", rec, map[string]any{"last_progress_ms": nil})
 		})
 		t.Run(wire+"/partial event", func(t *testing.T) {
+			t.Parallel()
 			// the unfinished event renews the clock in the read that carries its blank line
 			p1, p2 := prog[:5], prog[5:]
 			rec := answered(t, wire, []obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: p1}, {advance: 79999 * ms1, data: p2}, {advance: 179999 * ms1, data: tail}}, 0)
@@ -371,12 +377,14 @@ func TestIdleStreamProgress(t *testing.T) {
 			wantFields(t, "unfinished at the limit", rec, map[string]any{"last_progress_ms": int64(1)})
 		})
 		t.Run(wire+"/crlf framing", func(t *testing.T) {
+			t.Parallel()
 			crlf := strings.ReplaceAll(prog, "\n", "\r\n")
 			cut := len(crlf) - 3 // between the \r and \n of the blank line
 			answered(t, wire, []obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: crlf[:cut]}, {advance: 79999 * ms1, data: crlf[cut:]}, {advance: 179999 * ms1, data: tail}}, 0)
 			stalled(t, wire, []obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: strings.ReplaceAll(": keepalive\n\n", "\n", "\r\n")}, {advance: 80 * time.Second, data: tail}}, 0)
 		})
 		t.Run(wire+"/long stream", func(t *testing.T) {
+			t.Parallel()
 			// 800+ simulated seconds with progress gaps under 180 s and keep-alives between
 			steps := []obsStep{{advance: 20 * time.Second, data: idleBeat(wire)}, {advance: 20 * time.Second, data: head}}
 			for i := 0; i < 5; i++ {
@@ -392,6 +400,7 @@ func TestIdleStreamProgress(t *testing.T) {
 	}
 
 	t.Run("responses ping-typed data is progress", func(t *testing.T) {
+		t.Parallel()
 		// only Messages treats a ping as a keep-alive
 		head, tail := idleAnswer("chatgpt")
 		ping := "event: ping\ndata: {\"type\":\"ping\"}\n\n"
@@ -399,6 +408,7 @@ func TestIdleStreamProgress(t *testing.T) {
 	})
 
 	t.Run("messages events other than a ping are progress", func(t *testing.T) {
+		t.Parallel()
 		head, tail := idleAnswer("anthropic")
 		note := "data: {\"type\":\"message_note\"}\n\n" // a data object that is not a ping
 		answered(t, "anthropic", []obsStep{{advance: ms1, data: head}, {advance: 100 * time.Second, data: note}, {advance: 179999 * ms1, data: tail}}, 0)
@@ -410,6 +420,7 @@ func TestIdleStreamProgress(t *testing.T) {
 	})
 
 	t.Run("chat completions body", func(t *testing.T) {
+		t.Parallel()
 		good := string(mustEncode(goText("hello")))
 		hdr := 20 * ms1
 		// non-whitespace bytes within the limit complete; the record's progress is the last body read
@@ -425,6 +436,7 @@ func TestIdleStreamProgress(t *testing.T) {
 	})
 
 	t.Run("http error bodies", func(t *testing.T) {
+		t.Parallel()
 		for _, wire := range []string{"chatgpt", "anthropic", "opencode-go"} {
 			// the headers are the first byte and start the idle clock; a whitespace-only read does not renew it
 			e, tr, req := idleEnv(t, wire, obsAttempt{status: 400, steps: []obsStep{{advance: 100 * time.Second, data: " \n"}, {advance: 80 * time.Second, data: `{}`}}},

@@ -159,9 +159,11 @@ func memRespond(t *testing.T, wire string, mk func() *genBody) (*Response, error
 }
 
 func TestLStreamMemory(t *testing.T) {
+	t.Parallel()
 	wires := []string{"chatgpt", "supergrok", "anthropic"}
 
 	t.Run("answers at and below the ceiling are kept", func(t *testing.T) {
+		t.Parallel()
 		for _, wire := range wires {
 			for _, size := range []int{memLimit - 1, memLimit} {
 				resp, err, tr := memRespond(t, wire, padded(wire, size))
@@ -204,6 +206,7 @@ func TestLStreamMemory(t *testing.T) {
 	for _, c := range over {
 		for _, wire := range c.wires {
 			t.Run(c.name+"/"+wire, func(t *testing.T) {
+				t.Parallel()
 				resp, err, tr := memRespond(t, wire, c.mk(wire))
 				if resp != nil || err == nil {
 					t.Fatalf("response %v, error %v; want a failure", resp, err)
@@ -230,6 +233,7 @@ func TestLStreamMemory(t *testing.T) {
 
 // A frame break split across reads, in any line-ending style, is found as in one read.
 func TestLStreamMemoryFrameBreaks(t *testing.T) {
+	t.Parallel()
 	head, tail := wireStream("chatgpt")
 	for _, nl := range []string{"\n", "\r\n"} {
 		stream := strings.ReplaceAll(head+": c"+"\n\n"+tail, "\n", nl)

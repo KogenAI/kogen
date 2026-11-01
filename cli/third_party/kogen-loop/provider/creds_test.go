@@ -10,6 +10,7 @@ import (
 )
 
 func TestStatusLines(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, nil)
 	check := func(want ...string) {
 		t.Helper()
@@ -48,6 +49,7 @@ func TestStatusLines(t *testing.T) {
 // supergrok_test: selected roles check only their own providers; a saved borrowed login is
 // refused offline.
 func TestRequireLoginChecksOnlyUsedProviders(t *testing.T) {
+	t.Parallel()
 	f := newFake(t)
 	e := newEnv(t, f)
 	grok := []Role{grokRole}
@@ -85,6 +87,7 @@ func TestRequireLoginChecksOnlyUsedProviders(t *testing.T) {
 	}
 }
 
+// Serial: process-wide umask must not overlap file creation.
 func TestCredentialsAreWrittenPrivatelyAndAtomically(t *testing.T) {
 	old := syscall.Umask(0o022)
 	defer syscall.Umask(old)
@@ -115,6 +118,7 @@ func TestCredentialsAreWrittenPrivatelyAndAtomically(t *testing.T) {
 }
 
 func TestHostIDIsStable(t *testing.T) {
+	t.Parallel()
 	home := t.TempDir()
 	a, err := hostID(home)
 	if err != nil || !strings.HasPrefix(a, "urn:uuid:") || len(a) != len("urn:uuid:")+36 {

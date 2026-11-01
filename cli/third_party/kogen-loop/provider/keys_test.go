@@ -33,8 +33,10 @@ func piped(text string) Input { return Input{Reader: strings.NewReader(text)} }
 // ExUnit open_code_go_login_test / anthropic: own input trims whitespace without requiring a
 // vendor prefix; invalid and interrupted input preserve the exact old bytes.
 func TestKeyLoginTrimsStoresPrivatelyAndPreservesBytesOnRejectedInput(t *testing.T) {
+	t.Parallel()
 	for _, p := range keyProviders {
 		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, nil)
 			if err := e.loginWith(p.name, piped("  arbitrary-key\t\r\n")); err != nil {
 				t.Fatal(err)
@@ -89,14 +91,27 @@ func TestKeyLoginTrimsStoresPrivatelyAndPreservesBytesOnRejectedInput(t *testing
 	}
 }
 
+// readyReader signals when login has begun reading before the test interrupts it.
+type readyReader struct {
+	io.Reader
+	ready chan struct{}
+}
+
+func (r readyReader) Read(p []byte) (int, error) {
+	close(r.ready)
+	return r.Reader.Read(p)
+}
+
 type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 func TestKeyLoginInterruptedInputKeepsTheOldKey(t *testing.T) {
+	t.Parallel()
 	for _, p := range keyProviders {
 		for _, signal := range []string{"SIGINT", "SIGTERM", "SIGHUP"} {
 			t.Run(p.name+"/"+signal, func(t *testing.T) {
+				t.Parallel()
 				e := newEnv(t, nil)
 				if err := e.loginWith(p.name, piped("old-key\n")); err != nil {
 					t.Fatal(err)
@@ -105,8 +120,9 @@ func TestKeyLoginInterruptedInputKeepsTheOldKey(t *testing.T) {
 				pr, pw := io.Pipe()
 				defer pw.Close()
 				done := make(chan error, 1)
-				go func() { done <- e.loginWith(p.name, Input{Reader: pr}) }()
-				time.Sleep(20 * time.Millisecond)
+				ready := make(chan struct{})
+				go func() { done <- e.loginWith(p.name, Input{Reader: readyReader{pr, ready}}) }()
+				<-ready
 				e.s.Interrupt(signal)
 				select {
 				case err := <-done:
@@ -123,6 +139,7 @@ func TestKeyLoginInterruptedInputKeepsTheOldKey(t *testing.T) {
 			})
 		}
 		t.Run(p.name+"/read error", func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, nil)
 			se := mustErr(t, e.loginWith(p.name, Input{Reader: failingReader{}}))
 			if se.Detail != p.label+" input interrupted; saved login unchanged" {
@@ -135,8 +152,10 @@ func TestKeyLoginInterruptedInputKeepsTheOldKey(t *testing.T) {
 // A held lock, a failing replacement and a stray directory all end in one message that never
 // carries the key and leave the old bytes and no temporary file.
 func TestKeyLoginSaveFailuresPreserveBytesAndCleanUp(t *testing.T) {
+	t.Parallel()
 	for _, p := range keyProviders {
 		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
 			e := newEnv(t, nil)
 			if err := e.loginWith(p.name, piped("old-key\n")); err != nil {
 				t.Fatal(err)
@@ -193,8 +212,10 @@ func (s *ssty) run(args ...string) (string, error) {
 }
 
 func TestKeyLoginTerminalEchoIsOffWhileTypingAndRestoredOnEveryPath(t *testing.T) {
+	t.Parallel()
 	for _, p := range keyProviders {
 		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
 			restored := []string{"-g", "-echo", "saved:state"}
 			// success: one line is read, the rest of the stream is not waited for
 			e := newEnv(t, nil)
@@ -226,8 +247,11 @@ func TestKeyLoginTerminalEchoIsOffWhileTypingAndRestoredOnEveryPath(t *testing.T
 				st = &ssty{}
 				pr, pw := io.Pipe()
 				done := make(chan error, 1)
-				go func() { done <- e2.loginWith(p.name, Input{Reader: pr, Terminal: true, Stty: st.run}) }()
-				time.Sleep(20 * time.Millisecond)
+				ready := make(chan struct{})
+				go func() {
+					done <- e2.loginWith(p.name, Input{Reader: readyReader{pr, ready}, Terminal: true, Stty: st.run})
+				}()
+				<-ready
 				e2.s.Interrupt(signal)
 				if err := <-done; err == nil || err.(*sys.Interrupted).Signal != signal {
 					t.Fatalf("%s: %v", signal, err)
@@ -246,6 +270,7 @@ type blockingReader struct{}
 func (blockingReader) Read([]byte) (int, error) { select {} }
 
 func TestKeyStatusAndRequiredLogin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, nil)
 	line := func(name string) string {
 		for _, l := range Status(e.home) {
@@ -308,6 +333,7 @@ func TestKeyStatusAndRequiredLogin(t *testing.T) {
 }
 
 func TestStatusIsFourLinesInCatalogOrder(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, nil)
 	got := Status(e.home)
 	want := []string{"chatgpt: not signed in", "supergrok: not signed in", "opencode-go: not signed in", "anthropic: not signed in"}
@@ -317,6 +343,7 @@ func TestStatusIsFourLinesInCatalogOrder(t *testing.T) {
 }
 
 func TestLoginRefusesNonLoopbackSeamForKeyProvidersToo(t *testing.T) {
+	t.Parallel()
 	for _, p := range keyProviders {
 		e := newEnv(t, nil)
 		e.s = sys.NewWith([]string{"HOME=" + e.home, "KOGEN_PROVIDER_URL=https://example.com"}, e.home)
@@ -328,6 +355,7 @@ func TestLoginRefusesNonLoopbackSeamForKeyProvidersToo(t *testing.T) {
 }
 
 func TestClaudeCodeTokenValidation(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{"", "abc def", "abc\ndef", "ab\x01c", `a"b`, `a\b`, "a\u2028b"} {
 		if validToken(in) {
 			t.Errorf("%q accepted", in)

@@ -26,6 +26,7 @@ func readPidFile(t *testing.T, path string) int {
 }
 
 func TestRunContextDoneStartsNothing(t *testing.T) {
+	t.Parallel()
 	s := session(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -42,6 +43,7 @@ func TestRunContextDoneStartsNothing(t *testing.T) {
 }
 
 func TestRunContextStopsAndJoinsARunningGroup(t *testing.T) {
+	t.Parallel()
 	s := session(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -77,6 +79,7 @@ func TestRunContextStopsAndJoinsARunningGroup(t *testing.T) {
 }
 
 func TestLiveGroupsAndRetireKeepALeftoverGroup(t *testing.T) {
+	t.Parallel()
 	s := session(t)
 	if r, err := s.Run(`true`, s.Cwd, Options{}); err != nil || r.Status != 0 {
 		t.Fatalf("%+v %v", r, err)

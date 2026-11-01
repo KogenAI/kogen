@@ -50,10 +50,13 @@ func marshal(t *testing.T, v any) string {
 }
 
 func TestNoCallEndsRound(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	start := []any{userMsg("go")}
 
 	t.Run("no_call", func(t *testing.T) {
+
+		t.Parallel()
 		rq := &scriptRequester{script: [][]map[string]any{prose("done"), prose("never sent")}}
 		res, err := Run(ctx, Round{Terminal: []string{"submit"}}, start, rq, Hooks{})
 		if err != nil {
@@ -68,6 +71,8 @@ func TestNoCallEndsRound(t *testing.T) {
 	})
 
 	t.Run("terminal_first", func(t *testing.T) {
+
+		t.Parallel()
 		for _, name := range []string{"submit", "finish"} {
 			rq := &scriptRequester{script: [][]map[string]any{call(name)}}
 			res, err := Run(ctx, Round{Terminal: []string{"submit", "finish"}}, start, rq, Hooks{})
@@ -86,6 +91,8 @@ func TestNoCallEndsRound(t *testing.T) {
 	})
 
 	t.Run("session_events", func(t *testing.T) {
+
+		t.Parallel()
 		var n atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
