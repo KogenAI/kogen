@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// A native shell call that writes nothing for a while yields after the loop's one-second wait
-// (LOOP-5): the model gets a running status and an opaque handle, retrieves that handle to
-// completion, and nothing stops: no command_no_progress event.
-const silentCommand = "sleep 2; printf 'done\\n'"
+// A native shell call that writes nothing for a while yields after the loop's 45-second wait
+// (LOOP-5), which this command outlasts: the model gets a running status and an opaque
+// handle, retrieves that handle to completion, and nothing stops: no command_no_progress event.
+const silentCommand = "sleep 47; printf 'done\\n'"
 
 // continueSilent answers the provider's turn after the silent shell call. While the command
 // runs it retrieves the actual handle it observed; once it completed it checks the cumulative

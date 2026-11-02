@@ -77,9 +77,9 @@ Feature: Building
   @LOOP-5 @LOOP-11
   Scenario: Default shell calls remain unbounded
     Given the Intent "is-even" from fixture "is-even" is approved
-    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 2"
+    And the fake ChatGPT server plays script "build-runs-command" with command "sleep 47"
     When the caller runs "kogen intent build is-even"
-    Then the tool result for "shell sleep 2" contains "running"
+    Then the tool result for "shell sleep 47" contains "running"
     And the tool result for "shell continuation" contains "completed"
     And the exit code is 0
 

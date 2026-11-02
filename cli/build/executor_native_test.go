@@ -169,7 +169,7 @@ func (d *nativeDriver) Prepare(t *testing.T, root string, s conformance.Script) 
 	d.prov = newFakeProvider(t)
 	for _, r := range s.Rounds {
 		if len(s.Rounds) == 1 && (s.CancelAfterSeconds > 0 || s.DeadlineSeconds > 0) {
-			// The shell yields after one second: keep retrieving the observed handle, so the
+			// The shell yields after its 45-second wait: keep retrieving the observed handle, so the
 			// cancellation or deadline interrupts a command that is still running.
 			d.prov.then(d.roundActions(r), d.continueRound())
 		} else {

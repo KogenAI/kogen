@@ -565,7 +565,7 @@ class FakeServers {
       const command = args.command || 'true';
       const first = this.toolOutput(record, 'shell', value => value.command === command);
       if (!first) return { items: [functionCall('shell', { command }, `build_shell_${ordinal}`)] };
-      // A command still running after the loop's one-second wait answers with JSON and a
+      // A command still running after the loop's 45-second wait answers with JSON and a
       // handle: retrieve that observed handle until it completes. A fast one answers with text.
       let result;
       try { result = JSON.parse(first.output); } catch { return calls(correct); }
