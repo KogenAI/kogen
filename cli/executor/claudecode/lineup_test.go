@@ -270,7 +270,7 @@ func TestClaudeLineupRoleCustody(t *testing.T) {
 				t.Fatal(err)
 			}
 			started := h.eventsNamed("executor_started")[0]
-			if started["role"] != role || started["session_id"] != id || started["claude_code_version"] != "2.1.306 (Claude Code)" || started["model"] != "claude-sonnet-5-5" {
+			if started["role"] != role || started["session_id"] != id || started["claude_code_version"] != "2.1.312 (Claude Code)" || started["model"] != "claude-sonnet-5-5" {
 				t.Fatalf("%s started %v", role, started)
 			}
 			if auth := started["auth"].(map[string]any); auth["auth_method"] != "claude.ai" || auth["api_provider"] != "firstParty" {
@@ -306,10 +306,11 @@ func TestClaudeLineupRoleCustody(t *testing.T) {
 			s.Close()
 			for _, kv := range h.f.env(1) {
 				k, _, _ := strings.Cut(kv, "=")
-				if slices.Contains(stripEnv, k) {
+				if slices.Contains(stripEnv, k) && !managedEnv[k] {
 					t.Errorf("%s: %s reached the child", role, k)
 				}
 			}
+			wantManagedEnv(t, h.f.env(1), ConfigDir(h.f.options().Home))
 			for name, cfg := range map[string]fakeConfig{
 				"logged out":   {Auth: `{"loggedIn":false}`},
 				"api key":      {Auth: `{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty"}`},

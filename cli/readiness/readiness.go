@@ -4,11 +4,12 @@
 package readiness
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -38,7 +39,6 @@ type Input struct {
 
 const (
 	reinstall      = "reinstall Kogen"
-	installClaude  = "npm install -g @anthropic-ai/claude-code"
 	gitIdentityFix = `run git config user.name "<name>" and git config user.email "<email>" (global or repository)`
 )
 
@@ -205,20 +205,25 @@ func dedupe(list []string) []string {
 	return out
 }
 
+// checkClaude examines Kogen's own Claude Code. It never downloads: a runtime that is not
+// installed yet is no problem by itself.
 func checkClaude(in Input) (problems, fixes []string) {
-	bin, err := exec.LookPath("claude")
-	if err != nil {
-		return []string{"claude-code: no claude binary on PATH"}, []string{installClaude}
+	if _, ok := claudecode.Supported(); !ok {
+		return []string{"claude-code: " + claudecode.UnsupportedMessage(runtime.GOOS, runtime.GOARCH)}, []string{"run Kogen on macOS on Apple Silicon or Linux x86-64"}
 	}
-	out, err := exec.Command(bin, "--version").Output()
-	version := strings.TrimSpace(string(out))
-	switch {
-	case err != nil:
-		problems = append(problems, "claude-code: `claude --version` does not run")
-		fixes = append(fixes, installClaude)
-	case !claudecode.VersionAtLeast(version, claudecode.MinVersion):
-		problems = append(problems, "claude-code: found claude "+version+", minimum "+claudecode.MinVersion)
-		fixes = append(fixes, installClaude)
+	path := claudecode.RuntimePath(in.Home)
+	_, err := os.Lstat(path)
+	present := err == nil
+	if present {
+		out, err := claudecode.Probe(context.Background(), in.Home, "--version")
+		answer := strings.TrimSpace(string(out))
+		if err != nil {
+			answer = err.Error()
+		}
+		if err != nil || !claudecode.Pinned(answer) {
+			problems = append(problems, "claude-code: "+claudecode.NotPinnedMessage(path, answer))
+			fixes = append(fixes, "rm -rf "+claudecode.RuntimeDir(in.Home))
+		}
 	}
 	if _, stored := provider.ClaudeCodeToken(in.Home); stored {
 		return
@@ -227,8 +232,12 @@ func checkClaude(in Input) (problems, fixes []string) {
 		LoggedIn   bool   `json:"loggedIn"`
 		AuthMethod string `json:"authMethod"`
 	}
-	status, _ := exec.Command(bin, "auth", "status", "--json").Output()
-	if json.Unmarshal(status, &info) != nil || !info.LoggedIn || info.AuthMethod != "claude.ai" {
+	signedIn := false
+	if present {
+		status, _ := claudecode.Probe(context.Background(), in.Home, "auth", "status", "--json")
+		signedIn = json.Unmarshal(status, &info) == nil && info.LoggedIn && info.AuthMethod == "claude.ai"
+	}
+	if !signedIn {
 		problems = append(problems, "claude-code: no stored token and no claude.ai subscription sign-in")
 		fixes = append(fixes, "kogen provider login claude-code")
 	}

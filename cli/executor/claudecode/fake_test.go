@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 type fakeConfig struct {
 	Script conformance.Script `json:"script"`
 	State  string             `json:"state"`
-	// Version is the `claude --version` output (default "2.1.306 (Claude Code)").
+	// Version is the `claude --version` output (default "2.1.312 (Claude Code)").
 	Version string `json:"version"`
 	// Auth is the raw `auth status --json` output (default: signed in with claude.ai).
 	Auth string `json:"auth"`
@@ -122,7 +122,7 @@ func fakeClaude(cfgPath string, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		v := cfg.Version
 		if v == "" {
-			v = "2.1.306 (Claude Code)"
+			v = "2.1.312 (Claude Code)"
 		}
 		fmt.Println(v)
 		return 0
@@ -192,7 +192,7 @@ func fakeClaude(cfgPath string, args []string) int {
 	init := map[string]any{
 		"type": "system", "subtype": "init", "cwd": cwd, "session_id": sessionID, "mcp_servers": []any{},
 		"model": "claude-sonnet-5-5", "permissionMode": "acceptEdits", "apiKeySource": "none",
-		"claude_code_version": "2.1.306", "uuid": "00000000-0000-4000-8000-000000000001",
+		"claude_code_version": "2.1.312", "uuid": "00000000-0000-4000-8000-000000000001",
 	}
 	if rs.APIKeyAuth {
 		init["apiKeySource"] = "ANTHROPIC_API_KEY"
@@ -427,14 +427,24 @@ func (f *fakeEnv) write() {
 	}
 }
 
-// options point the adapter at this test binary as claude and as the hook command.
+// options point the adapter at this test binary as Kogen's Claude Code (installed under a
+// temporary home) and as the hook command.
 func (f *fakeEnv) options(extraEnv ...string) Options {
 	exe, err := os.Executable()
 	if err != nil {
 		f.t.Fatal(err)
 	}
+	home := filepath.Join(f.cfgDir, "home")
+	if _, err := os.Lstat(RuntimePath(home)); err != nil {
+		if err := os.MkdirAll(RuntimeDir(home), 0o700); err != nil {
+			f.t.Fatal(err)
+		}
+		if err := os.Symlink(exe, RuntimePath(home)); err != nil {
+			f.t.Fatal(err)
+		}
+	}
 	env := append(os.Environ(), "KOGEN_FAKE_CLAUDE="+filepath.Join(f.cfgDir, "config.json"))
-	return Options{Binary: exe, HookCommand: []string{exe}, Env: append(env, extraEnv...), KillGrace: 2 * time.Second}
+	return Options{Home: home, HookCommand: []string{exe}, Env: append(env, extraEnv...), KillGrace: 2 * time.Second}
 }
 
 func (f *fakeEnv) argv(round int) []string {

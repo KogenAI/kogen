@@ -17,7 +17,7 @@ Feature: Claude Code wakeups stay within Build rounds
 
   @LOOP-14 @LOOP-15
   Scenario: A scheduled wakeup cannot escape the builder round
-    Given a fake claude with script "wakeup-scheduled" is on PATH
+    Given a fake claude with script "wakeup-scheduled" is installed as Kogen's Claude Code
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
     And HEAD has 1 new commit
@@ -30,7 +30,7 @@ Feature: Claude Code wakeups stay within Build rounds
 
   @LOOP-14 @LOOP-15
   Scenario: A long command returns its result within the builder round
-    Given a fake claude with script "wakeup-long" is on PATH
+    Given a fake claude with script "wakeup-long" is installed as Kogen's Claude Code
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
     And HEAD has 1 new commit
@@ -39,7 +39,7 @@ Feature: Claude Code wakeups stay within Build rounds
 
   @LOOP-14 @LOOP-15
   Scenario: A non-scheduling event after result still stops the Build
-    Given a fake claude with script "wakeup-trailing" is on PATH
+    Given a fake claude with script "wakeup-trailing" is installed as Kogen's Claude Code
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
     And stdout contains "executor/protocol"

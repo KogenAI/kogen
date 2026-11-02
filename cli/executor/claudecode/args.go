@@ -81,16 +81,20 @@ var stripEnv = []string{
 	"CLAUDE_CODE_EFFORT_LEVEL",
 	// Kogen never sets the scrub variable: with a token it makes Claude Code report mode default.
 	"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB",
+	// Kogen's runtime has its own configuration directory (set by childEnv) and updates are
+	// always disabled: an inherited value of either never reaches the child.
+	"CLAUDE_CONFIG_DIR", "DISABLE_UPDATES",
 }
 
 // setEnv is set in the child: no background work keeps `-p` open, no auto-memory writes under
-// the user's ~/.claude.
-var setEnv = []string{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"}
+// the user's ~/.claude, no update ever swaps the executable.
+var setEnv = []string{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "DISABLE_UPDATES=1"}
 
-// childEnv is base minus the strip list, plus setEnv, HOME when home is not empty and
-// CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3 when a stored token is given (the strip list always
-// applies first). The token itself travels on fd 3 (see tokenPipe), never in the env.
-func childEnv(base []string, home, token string) []string {
+// childEnv is base minus the strip list, plus setEnv, CLAUDE_CONFIG_DIR=configDir, HOME when home
+// is not empty and CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3 when a stored token is given (the
+// strip list always applies first). The token itself travels on fd 3 (see tokenPipe), never in
+// the env.
+func childEnv(base []string, home, token, configDir string) []string {
 	drop := map[string]bool{"HOME": home != ""}
 	for _, k := range stripEnv {
 		drop[k] = true
@@ -106,6 +110,7 @@ func childEnv(base []string, home, token string) []string {
 		}
 	}
 	out = append(out, setEnv...)
+	out = append(out, "CLAUDE_CONFIG_DIR="+configDir)
 	if home != "" {
 		out = append(out, "HOME="+home)
 	}

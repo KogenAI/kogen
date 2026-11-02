@@ -100,47 +100,28 @@ func TestDescribe(t *testing.T) {
 	if d.Name != executor.ClaudeCode || d.Contract != executor.Contract || !reflect.DeepEqual(d.Capabilities, want) {
 		t.Fatalf("descriptor %+v", d)
 	}
-	if d.Version != "claude-code 2.1.306 (Claude Code)" {
+	if d.Version != "claude-code 2.1.312 (Claude Code)" {
 		t.Fatalf("version %q", d.Version)
 	}
 }
 
 func TestDescribeNeverFails(t *testing.T) {
 	t.Parallel()
-	d := New(Options{Binary: filepath.Join(t.TempDir(), "no-such-claude")}).Describe()
+	d := New(Options{Home: t.TempDir()}).Describe()
 	if d.Version != "claude-code unknown" || d.Name != executor.ClaudeCode {
 		t.Fatalf("descriptor %+v", d)
 	}
 }
 
-func TestStartBinaryMissingIsUnavailable(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t, fakeConfig{})
-	o := h.f.options()
-	o.Binary = filepath.Join(t.TempDir(), "no-such-claude")
-	_, err := h.start(o)
-	wantError(t, err, "executor/unavailable")
-}
-
 func TestUnavailableAndRefusedMessagesNameTheFix(t *testing.T) {
 	t.Parallel()
-	const install = "npm install -g @anthropic-ai/claude-code"
-	t.Run("missing executable", func(t *testing.T) {
+	t.Run("not the pinned version", func(t *testing.T) {
 		t.Parallel()
-		h := newHarness(t, fakeConfig{})
+		h := newHarness(t, fakeConfig{Version: "2.1.314 (Claude Code)", Script: oneRound(finishRound)})
 		o := h.f.options()
-		o.Binary = filepath.Join(t.TempDir(), "no-such-claude")
 		_, err := h.start(o)
-		want := "the Claude Code executable (no-such-claude) was not found; install it with " + install + ", then sign in with `claude auth login` or save a token with kogen provider login claude-code"
-		if got := wantError(t, err, "executor/unavailable").Detail; got != want {
-			t.Fatalf("detail %q, want %q", got, want)
-		}
-	})
-	t.Run("too old", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t, fakeConfig{Version: "2.1.294", Script: oneRound(finishRound)})
-		_, err := h.start(h.f.options())
-		want := "Claude Code 2.1.294 is older than the qualified minimum " + MinVersion + "; update it with " + install
+		path := RuntimePath(o.Home)
+		want := "Kogen's Claude Code at " + path + " reports 2.1.314 (Claude Code), not the pinned 2.1.312; remove " + RuntimeDir(o.Home) + " to reinstall it"
 		if got := wantError(t, err, "executor/unavailable").Detail; got != want {
 			t.Fatalf("detail %q, want %q", got, want)
 		}
@@ -149,7 +130,7 @@ func TestUnavailableAndRefusedMessagesNameTheFix(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t, fakeConfig{Auth: `{"loggedIn":false}`, Script: oneRound(finishRound)})
 		_, err := h.start(h.f.options())
-		want := "Claude Code is not signed in; run `claude auth login` with your subscription, or save a token from claude setup-token with kogen provider login claude-code"
+		want := "Kogen's Claude Code is not signed in; make a token with `claude setup-token` and save it with `kogen provider login claude-code`"
 		if got := wantError(t, err, "executor/auth_refused").Detail; got != want {
 			t.Fatalf("detail %q, want %q", got, want)
 		}
@@ -171,13 +152,14 @@ func TestVersionGate(t *testing.T) {
 		version string
 		ok      bool
 	}{
-		{"2.1.294 (Claude Code)", false},
-		{"2.1.295 (Claude Code)", true},
-		{"2.1.306 (Claude Code)", true},
-		{"2.2.0 (Claude Code)", true},
-		{"3.0.0", true},
-		{"2.0.999 (Claude Code)", false},
-		{"1.9.9999", false},
+		{"2.1.312 (Claude Code)", true},
+		{"2.1.312", true},
+		{"2.1.314 (Claude Code)", false},
+		{"2.1.295 (Claude Code)", false},
+		{"2.1.3120 (Claude Code)", false},
+		{"2.2.0 (Claude Code)", false},
+		{"3.0.0", false},
+		{"v2.1.312", false},
 		{"not a version", false},
 		{" ", false},
 	}
@@ -239,7 +221,7 @@ func TestStartedEventKeepsOnlySafeAuthFields(t *testing.T) {
 	if auth["auth_method"] != "claude.ai" || auth["api_provider"] != "firstParty" || auth["logged_in"] != true || auth["subscription_type"] != "max" {
 		t.Fatalf("auth %v", auth)
 	}
-	if started[0]["claude_code_version"] != "2.1.306 (Claude Code)" || started[0]["session_id"] != s.Handle().SessionID {
+	if started[0]["claude_code_version"] != "2.1.312 (Claude Code)" || started[0]["session_id"] != s.Handle().SessionID {
 		t.Fatalf("event %v", started[0])
 	}
 }
@@ -260,7 +242,7 @@ func TestStartPreparesTaskDirectory(t *testing.T) {
 		}
 	}
 	hd := s.Handle()
-	if !uuidRe.MatchString(hd.SessionID) || hd.Executor != executor.ClaudeCode || hd.Resume != executor.ResumeNone || hd.Version != "claude-code 2.1.306 (Claude Code)" {
+	if !uuidRe.MatchString(hd.SessionID) || hd.Executor != executor.ClaudeCode || hd.Resume != executor.ResumeNone || hd.Version != "claude-code 2.1.312 (Claude Code)" {
 		t.Fatalf("handle %+v", hd)
 	}
 	var pol policy
@@ -440,6 +422,26 @@ func TestEarlyExitBeforeReadingStdin(t *testing.T) {
 	}
 }
 
+// managedEnv are the stripped names Kogen sets itself to its own values.
+var managedEnv = map[string]bool{"CLAUDE_CONFIG_DIR": true, "DISABLE_UPDATES": true}
+
+// wantManagedEnv requires exactly one CLAUDE_CONFIG_DIR=config and one DISABLE_UPDATES=1.
+func wantManagedEnv(t *testing.T, env []string, config string) {
+	t.Helper()
+	var dirs, updates []string
+	for _, kv := range env {
+		switch k, v, _ := strings.Cut(kv, "="); k {
+		case "CLAUDE_CONFIG_DIR":
+			dirs = append(dirs, v)
+		case "DISABLE_UPDATES":
+			updates = append(updates, v)
+		}
+	}
+	if !reflect.DeepEqual(dirs, []string{config}) || !reflect.DeepEqual(updates, []string{"1"}) {
+		t.Errorf("CLAUDE_CONFIG_DIR %v and DISABLE_UPDATES %v, want exactly [%s] and [1]", dirs, updates, config)
+	}
+}
+
 func TestEnvStripping(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, fakeConfig{Script: oneRound(finishRound)})
@@ -462,10 +464,11 @@ func TestEnvStripping(t *testing.T) {
 		env[k] = v
 	}
 	for _, k := range stripEnv {
-		if _, ok := env[k]; ok {
+		if _, ok := env[k]; ok && !managedEnv[k] {
 			t.Errorf("%s reached the child", k)
 		}
 	}
+	wantManagedEnv(t, h.f.env(1), ConfigDir(h.f.options().Home))
 	if env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] != "1" || env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] != "1" {
 		t.Errorf("disable variables: %v %v", env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"], env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"])
 	}
@@ -489,8 +492,8 @@ func TestEnvStripping(t *testing.T) {
 func TestEnvStrippingInPreflight(t *testing.T) {
 	t.Parallel()
 	// The auth status and version probes must run without credentials too.
-	got := childEnv([]string{"ANTHROPIC_API_KEY=k", "PATH=/bin", "CLAUDECODE=1"}, "", "")
-	if !reflect.DeepEqual(got, []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"}) {
+	got := childEnv([]string{"ANTHROPIC_API_KEY=k", "PATH=/bin", "CLAUDECODE=1", "CLAUDE_CONFIG_DIR=/users/own", "DISABLE_UPDATES=0"}, "", "", "/cfg")
+	if !reflect.DeepEqual(got, []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "DISABLE_UPDATES=1", "CLAUDE_CONFIG_DIR=/cfg"}) {
 		t.Fatalf("env %v", got)
 	}
 }
@@ -519,7 +522,7 @@ func TestCloudCredentialsDoNotReachClaude(t *testing.T) {
 	if _, err := s.Round(context.Background(), executor.Input{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, env := range [][]string{childEnv(extra, "", ""), h.f.env(1)} {
+	for _, env := range [][]string{childEnv(extra, "", "", "/cfg"), h.f.env(1)} {
 		for _, kv := range env {
 			key, _, _ := strings.Cut(kv, "=")
 			for _, forbidden := range keys {
@@ -818,7 +821,7 @@ func TestRoundResultsAndEvents(t *testing.T) {
 	}
 	e := ended[0]
 	if e["ending"] != "finish" || e["num_turns"] != 3 || e["permission_denials"] != 1 || e["session_id"] != s.Handle().SessionID ||
-		e["model"] != "claude-sonnet-5-5" || e["claude_code_version"] != "2.1.306" {
+		e["model"] != "claude-sonnet-5-5" || e["claude_code_version"] != "2.1.312" {
 		t.Fatalf("round_ended %v", e)
 	}
 	if u := e["usage"].(map[string]any); u["state"] != "complete" || u["source"] != "harness" || u["input"] != 10 {
@@ -1015,8 +1018,8 @@ func TestMalformedTrailingJSONIsProtocolFailure(t *testing.T) {
 
 func TestChildEnvStoredToken(t *testing.T) {
 	t.Parallel()
-	got := childEnv([]string{"CLAUDE_CODE_OAUTH_TOKEN=inherited", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=9", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR=9", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1", "ANTHROPIC_API_KEY=k", "PATH=/bin"}, "/h", "sk-ant-oat01-SYNTHETIC-STORED")
-	want := []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "HOME=/h", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3"}
+	got := childEnv([]string{"CLAUDE_CODE_OAUTH_TOKEN=inherited", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=9", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR=9", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1", "ANTHROPIC_API_KEY=k", "PATH=/bin"}, "/h", "sk-ant-oat01-SYNTHETIC-STORED", "/cfg")
+	want := []string{"PATH=/bin", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "DISABLE_UPDATES=1", "CLAUDE_CONFIG_DIR=/cfg", "HOME=/h", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("env %v", got)
 	}
@@ -1081,7 +1084,7 @@ func TestOAuthTokenMethodNeedsStoredToken(t *testing.T) {
 
 func TestChildEnvScrubOnlyWithToken(t *testing.T) {
 	t.Parallel()
-	for _, kv := range childEnv([]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0", "PATH=/bin"}, "/h", "") {
+	for _, kv := range childEnv([]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0", "PATH=/bin"}, "/h", "", "/cfg") {
 		if strings.HasPrefix(kv, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") {
 			t.Fatalf("scrub set without a token: %s", kv)
 		}

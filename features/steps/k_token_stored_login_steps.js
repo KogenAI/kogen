@@ -28,7 +28,7 @@ function run(file, args, cwd, env, input = '') {
   });
 }
 
-// The shim is the `claude` first on PATH. It records the argv and the credential-relevant
+// The shim is Kogen's Claude Code runtime under HOME. It records the argv and the credential-relevant
 // environment of every invocation, answers `auth status --json` itself from the token it
 // received (signed in only when that token equals the accepted one), and otherwise runs the
 // repository's fake claude with the scripted Shape questions.
@@ -59,10 +59,10 @@ async function setup(world, accepted) {
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-ktoken-')));
   const home = path.join(d, 'home'), repo = path.join(d, 'repo'), bin = path.join(d, 'bin'), state = path.join(d, 'state');
   for (const x of [home, repo, bin, state]) fs.mkdirSync(x, {recursive: true});
-  put(path.join(bin, 'claude'), SHIM, 0o755);
+  put(path.join(home, '.kogen/claude-code/2.1.312/claude'), SHIM, 0o755);
   put(path.join(state, 'accepted'), accepted);
   put(path.join(home, '.gitconfig'), '');
-  const env = {...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'), PATH: bin + path.delimiter + process.env.PATH, KT_STATE: state};
+  const env = {...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'), KT_STATE: state};
   for (const k of Object.keys(env)) if (/^(ANTHROPIC_|CLAUDE_CODE_|AWS_|GOOGLE_)/.test(k)) delete env[k];
   put(path.join(repo, 'README.md'), '# Fixture\n');
   put(path.join(repo, '.gitignore'), '.kogen/local/\n');

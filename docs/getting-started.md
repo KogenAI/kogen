@@ -18,7 +18,7 @@ kogen <version>
 
 Kogen has no separate check command. Readiness comes from two places: the readiness lines that end `kogen init` (step 4), and the error each command prints when it cannot proceed, which names what is missing and the fix. The readiness lines make no model call and change nothing.
 
-The readiness lines are `install` (the program and its bundled node, cucumber and quint run; fix: reinstall), `git` (you are inside a Git repository and Git has a `user.name` and `user.email`), `config` (`.kogen/project.yaml` exists and is valid) and `models` (every role has a stored login for its provider; fix: `kogen provider login <provider>`, step 3). Each failing line is followed by one `  fix:` line.
+The readiness lines are `install` (the program and its bundled node, cucumber and quint run; fix: reinstall), `git` (you are inside a Git repository and Git has a `user.name` and `user.email`), `config` (`.kogen/project.yaml` exists and is valid) and `models` (every role has a stored login for its provider; fix: `kogen provider login <provider>`, step 3; for `claude-code` roles a stored token or a claude.ai sign-in of Kogen's own runtime, fix: `kogen provider login claude-code`). Each failing line is followed by one `  fix:` line.
 
 A command that cannot proceed prints one of these errors instead:
 
@@ -28,7 +28,7 @@ A command that cannot proceed prints one of these errors instead:
 - An invalid configuration: `environment/project_config_invalid` with one `  line <n>: <message>` line per problem. Correct those lines in `.kogen/project.yaml`.
 - No model login: `provider/login: not signed in; run kogen provider login <provider>`. Sign in (step 3).
 - No Git identity: `environment/git_identity_missing: no Git user.name and user.email; run git config user.name "<name>" and git config user.email "<email>" (global or repository)`.
-- Claude Code as an executor: the executable is missing (`install it with npm install -g @anthropic-ai/claude-code`), older than 2.1.295 (`update it with npm install -g @anthropic-ai/claude-code`), or not signed in (`run claude auth login` with your subscription, or save a token from `claude setup-token` with `kogen provider login claude-code`).
+- Claude Code as an executor: Kogen installs and runs its own pinned Claude Code (`2.1.312`, under `~/.kogen/claude-code/`) at the first role that needs it, never the `claude` on your `PATH`. A runtime that reports another version stops with `Kogen's Claude Code at <path> reports <answer>, not the pinned 2.1.312; remove <dir> to reinstall it`; a download that fails or does not match the pinned SHA-256 installs nothing (`executor/unavailable`); and a runtime without a token is not signed in (``make a token with `claude setup-token` and save it with `kogen provider login claude-code` ``). Without an own Claude Code, make the token with `CLAUDE_CONFIG_DIR="$HOME/.kogen/claude-code/config" "$HOME/.kogen/claude-code/2.1.312/claude" setup-token` once the runtime is installed. `kogen init` never downloads: a runtime that is not installed yet is no problem by itself, and a present one that does not report `2.1.312` is a `claude-code:` problem with the fix `rm -rf <home>/.kogen/claude-code/2.1.312`.
 
 If a check fails on your unchanged tree, a Build still starts and records the failure as a baseline, but it can only land when every configured check passes, so the Intent has to repair that check as well (or you fix the project first).
 
@@ -260,3 +260,5 @@ Everything Kogen records about your runs stays on your machine under `.kogen/loc
 ```sh
 kogen uninstall
 ```
+
+It also removes `~/.kogen/claude-code`, Kogen's own Claude Code runtime, and keeps your saved logins (including the Claude Code token), `~/.claude` and your own Claude Code.

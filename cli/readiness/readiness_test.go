@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"kogen-loop/sys"
+	"kogen/executor/claudecode"
 	"kogen/project"
 	"kogen/verify"
 )
@@ -19,52 +20,96 @@ func TestText(t *testing.T) {
 	}
 }
 
-func fakeClaude(t *testing.T, version, auth string) {
+// managedClaude installs a fake Kogen Claude Code in home that answers --version and
+// `auth status --json`, and puts a decoy `claude` first on PATH that must never run.
+func managedClaude(t *testing.T, home, version, auth string) (decoyRan func() bool) {
 	t.Helper()
-	dir := t.TempDir()
-	script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo '" + version + " (Claude Code)'; exit 0; fi\necho '" + auth + "'\n"
-	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755); err != nil {
+	dir := filepath.Dir(claudecode.RuntimePath(home))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo '" + version + "'; exit 0; fi\necho '" + auth + "'\n"
+	if err := os.WriteFile(claudecode.RuntimePath(home), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	ran := filepath.Join(bin, "ran")
+	decoy := "#!/bin/sh\necho ran > '" + ran + "'\necho '2.1.312 (Claude Code)'\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(decoy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	return func() bool { _, err := os.Stat(ran); return err == nil }
+}
+
+func storeToken(t *testing.T, home string) {
+	t.Helper()
+	dir := filepath.Join(home, ".kogen", "credentials")
+	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "claude-code.json"), []byte(`{"provider":"claude-code","api_key":"sk-ant-oat01-synthetic"}`), 0o600)
 }
 
 func TestClaudeChecks(t *testing.T) {
-	home := t.TempDir()
 	signedIn := `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}`
-	t.Run("older claude names both versions", func(t *testing.T) {
-		fakeClaude(t, "2.0.0", signedIn)
+	const pinned = "2.1.312 (Claude Code)"
+	const signInFix = "kogen provider login claude-code"
+	const noSignIn = "claude-code: no stored token and no claude.ai subscription sign-in"
+	t.Run("another version names the path and the fix", func(t *testing.T) {
+		home := t.TempDir()
+		decoy := managedClaude(t, home, "2.1.314 (Claude Code)", signedIn)
+		storeToken(t, home)
 		p, f := checkClaude(Input{Home: home})
-		if len(p) != 1 || !strings.Contains(p[0], "2.0.0") || !strings.Contains(p[0], "2.1.295") || len(f) != 1 {
-			t.Fatalf("%v %v", p, f)
+		path := claudecode.RuntimePath(home)
+		if len(p) != 1 || p[0] != "claude-code: Kogen's Claude Code at "+path+" reports 2.1.314 (Claude Code), not the pinned 2.1.312" ||
+			len(f) != 1 || f[0] != "rm -rf "+claudecode.RuntimeDir(home) || decoy() {
+			t.Fatalf("%q %q", p, f)
 		}
 	})
-	t.Run("minimum with subscription sign-in", func(t *testing.T) {
-		fakeClaude(t, "2.1.295", signedIn)
-		if p, f := checkClaude(Input{Home: home}); len(p)+len(f) != 0 {
+	t.Run("pinned with subscription sign-in", func(t *testing.T) {
+		home := t.TempDir()
+		decoy := managedClaude(t, home, pinned, signedIn)
+		if p, f := checkClaude(Input{Home: home}); len(p)+len(f) != 0 || decoy() {
 			t.Fatalf("%v %v", p, f)
 		}
 	})
 	t.Run("not signed in", func(t *testing.T) {
-		fakeClaude(t, "2.1.295", `{"loggedIn":false}`)
-		if _, f := checkClaude(Input{Home: home}); len(f) != 1 || f[0] != "kogen provider login claude-code" {
-			t.Fatalf("%v", f)
+		home := t.TempDir()
+		managedClaude(t, home, pinned, `{"loggedIn":false}`)
+		if p, f := checkClaude(Input{Home: home}); len(p) != 1 || p[0] != noSignIn || len(f) != 1 || f[0] != signInFix {
+			t.Fatalf("%q %q", p, f)
+		}
+	})
+	t.Run("another sign-in route is no subscription", func(t *testing.T) {
+		home := t.TempDir()
+		managedClaude(t, home, pinned, `{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty"}`)
+		if p, _ := checkClaude(Input{Home: home}); len(p) != 1 || p[0] != noSignIn {
+			t.Fatalf("%q", p)
 		}
 	})
 	t.Run("stored token replaces sign-in", func(t *testing.T) {
-		fakeClaude(t, "2.1.295", `{"loggedIn":false}`)
-		h := t.TempDir()
-		dir := filepath.Join(h, ".kogen", "credentials")
-		os.MkdirAll(dir, 0o700)
-		os.WriteFile(filepath.Join(dir, "claude-code.json"), []byte(`{"provider":"claude-code","api_key":"sk-ant-oat01-synthetic"}`), 0o600)
-		if p, _ := checkClaude(Input{Home: h}); len(p) != 0 {
-			t.Fatalf("%v", p)
+		home := t.TempDir()
+		managedClaude(t, home, pinned, `{"loggedIn":false}`)
+		storeToken(t, home)
+		if p, f := checkClaude(Input{Home: home}); len(p)+len(f) != 0 {
+			t.Fatalf("%v %v", p, f)
 		}
 	})
-	t.Run("missing binary", func(t *testing.T) {
-		t.Setenv("PATH", t.TempDir())
-		if _, f := checkClaude(Input{Home: home}); len(f) != 1 || f[0] != installClaude {
-			t.Fatalf("%v", f)
+	t.Run("not installed yet is no problem with a token and never downloads", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv(claudecode.SeamEnv, "http://127.0.0.1:1")
+		storeToken(t, home)
+		if p, f := checkClaude(Input{Home: home}); len(p)+len(f) != 0 {
+			t.Fatalf("%v %v", p, f)
+		}
+		if _, err := os.Stat(claudecode.Root(home)); err == nil {
+			t.Fatal("readiness created Kogen's Claude Code folder")
+		}
+	})
+	t.Run("not installed and no token", func(t *testing.T) {
+		home := t.TempDir()
+		decoy := managedClaude(t, t.TempDir(), pinned, signedIn)
+		if p, f := checkClaude(Input{Home: home}); len(p) != 1 || p[0] != noSignIn || len(f) != 1 || f[0] != signInFix || decoy() {
+			t.Fatalf("%q %q", p, f)
 		}
 	})
 }

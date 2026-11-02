@@ -31,7 +31,7 @@ function run(file, args, cwd, env, input = '') {
   });
 }
 
-// POSIX-sh shim, the `claude` first on PATH. For `auth status` and `-p` it records argv, the
+// POSIX-sh shim, Kogen's Claude Code runtime under HOME. For `auth status` and `-p` it records argv, the
 // credential-relevant environment and, if fd 3 is open, everything readable from fd 3. It
 // answers `auth status --json` itself (signed in only when fd 3 held the accepted token) and
 // otherwise runs the repository's fake claude.
@@ -66,11 +66,11 @@ async function setup(world, accepted) {
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-ktoken2-')));
   const home = path.join(d, 'home'), repo = path.join(d, 'repo'), bin = path.join(d, 'bin'), state = path.join(d, 'state');
   for (const x of [home, repo, bin, state]) fs.mkdirSync(x, {recursive: true});
-  put(path.join(bin, 'claude'), SHIM, 0o755);
+  put(path.join(home, '.kogen/claude-code/2.1.312/claude'), SHIM, 0o755);
   put(path.join(state, 'accepted'), accepted);
   put(path.join(state, 'script.json'), JSON.stringify(SCRIPT));
   put(path.join(home, '.gitconfig'), '');
-  const env = {...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'), PATH: bin + path.delimiter + process.env.PATH, KT_STATE: state, KOGEN_FAKE_CLAUDE_SCRIPT: path.join(state, 'script.json'), KOGEN_FAKE_CLAUDE_STATE: path.join(state, 'fake')};
+  const env = {...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'), KT_STATE: state, KOGEN_FAKE_CLAUDE_SCRIPT: path.join(state, 'script.json'), KOGEN_FAKE_CLAUDE_STATE: path.join(state, 'fake')};
   for (const k of Object.keys(env)) if (/^(ANTHROPIC_|CLAUDE_CODE_|AWS_|GOOGLE_)/.test(k)) delete env[k];
   put(path.join(repo, 'README.md'), '# Fixture\n');
   put(path.join(repo, '.gitignore'), '.kogen/local/\n');

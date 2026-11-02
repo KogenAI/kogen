@@ -228,7 +228,7 @@ Feature: Building
   Scenario: The Claude Code executor produces the candidate and Kogen's own review and single commit land it
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-correct-first-try" is on PATH
+    And a fake claude with script "claude-correct-first-try" is installed as Kogen's Claude Code
     And the environment variable "ANTHROPIC_API_KEY" is "sk-ant-fake-not-a-key"
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
@@ -248,7 +248,7 @@ Feature: Building
   Scenario: A finish claim on a red tree returns Kogen's feedback to the same Claude session
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-wrong-then-correct" is on PATH
+    And a fake claude with script "claude-wrong-then-correct" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
@@ -265,7 +265,7 @@ Feature: Building
   Scenario: The Claude Code hook refuses an Edit of a protected path and the Build still lands
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-edits-protected-then-correct" is on PATH
+    And a fake claude with script "claude-edits-protected-then-correct" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 0
@@ -278,7 +278,7 @@ Feature: Building
   Scenario: A protected file changed through Bash is not prevented but is detected and nothing is committed
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-bash-writes-protected" is on PATH
+    And a fake claude with script "claude-bash-writes-protected" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
@@ -292,7 +292,7 @@ Feature: Building
   Scenario: A credential route that is not the subscription sign-in is refused before any edit
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-api-key-auth" is on PATH
+    And a fake claude with script "claude-api-key-auth" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
@@ -303,14 +303,15 @@ Feature: Building
     And the fake ChatGPT server received 0 requests
 
   @LOOP-15
-  Scenario: A Claude Code older than the qualified version is unavailable before any edit
+  Scenario: A Claude Code that is not the pinned version is unavailable before any edit
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-too-old" is on PATH
+    And a fake claude with script "claude-unpinned" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
     And stdout contains "executor/unavailable"
+    And stdout contains "not the pinned 2.1.312"
     And the fake claude ran 0 rounds
     And the file "calc.py" is unchanged
     And HEAD is unchanged
@@ -320,7 +321,7 @@ Feature: Building
   Scenario: max_rounds leaves the candidate in place and the external checkpoint cannot be resumed
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 2}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-wrong-forever" is on PATH
+    And a fake claude with script "claude-wrong-forever" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kogen/executor/claudecode"
 	"kogen/internal/testrelease"
 	"os"
 	"os/exec"
@@ -39,7 +40,6 @@ func usageLimitInstalledFrom(t *testing.T, limit int, root string) {
 	project := t.TempDir()
 	home := t.TempDir()
 	state := t.TempDir()
-	fakebin := t.TempDir()
 	copyFile := func(from, to string, mode os.FileMode) {
 		t.Helper()
 		b, err := os.ReadFile(from)
@@ -124,10 +124,13 @@ models:
 		t.Fatal(err)
 	}
 	shim := fmt.Sprintf("#!/bin/sh\nKOGEN_FAKE_CLAUDE_SCRIPT='%s' KOGEN_FAKE_CLAUDE_STATE='%s' exec '%s' '%s' \"$@\"\n", script, state, node, fake)
-	if err := os.WriteFile(filepath.Join(fakebin, "claude"), []byte(shim), 0755); err != nil {
+	if err := os.MkdirAll(claudecode.RuntimeDir(home), 0700); err != nil {
 		t.Fatal(err)
 	}
-	env := isolatedGit(home, "PATH="+fakebin+string(os.PathListSeparator)+os.Getenv("PATH"), "KOGEN_FAKE_CLAUDE_SCRIPT="+script, "KOGEN_FAKE_CLAUDE_STATE="+state)
+	if err := os.WriteFile(claudecode.RuntimePath(home), []byte(shim), 0755); err != nil {
+		t.Fatal(err)
+	}
+	env := isolatedGit(home, "KOGEN_FAKE_CLAUDE_SCRIPT="+script, "KOGEN_FAKE_CLAUDE_STATE="+state)
 	run := func(name string, args ...string) (string, int) { return runIn(t, project, env, name, args...) }
 	for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", "Fixture"}, {"config", "user.email", "fixture@example.invalid"}, {"add", "."}, {"commit", "-qm", "fixture"}} {
 		if out, code := run("git", args...); code != 0 {

@@ -156,7 +156,6 @@ class AcceptanceWorld extends World {
     pieces.push(path.dirname(PYTHON_BIN));
     if (this.projectFixture === 'ex-app') pieces.push(...ELIXIR_DIRS);
     if (this.toolPath) pieces.unshift(this.toolPath);
-    if (this.fakeClaude) pieces.unshift(this.fakeClaude.binDir);
     if (this.gitPath) pieces.push(path.dirname(this.gitPath));
     pieces.push('/usr/bin', '/bin', '/usr/sbin', '/sbin');
     const hidden = this.hiddenPrograms || new Set();

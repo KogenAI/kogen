@@ -36,7 +36,7 @@ func (k k16Undeclared) Describe() executor.Descriptor {
 const k16Script = `#!/bin/sh
 state="$KOGEN_K16_STATE"
 case "$1" in
---version) echo "2.1.306 (Claude Code)"; exit 0;;
+--version) echo "2.1.312 (Claude Code)"; exit 0;;
 auth) echo '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'; exit 0;;
 esac
 n=$(cat "$state/calls" 2>/dev/null || echo 0)
@@ -50,7 +50,7 @@ for a in "$@"; do
   prev=$a
 done
 cwd=$(pwd -P)
-printf '{"type":"system","subtype":"init","cwd":"%s","session_id":"%s","mcp_servers":[],"model":"claude-sonnet-5-5","permissionMode":"acceptEdits","apiKeySource":"none","claude_code_version":"2.1.306"}\n' "$cwd" "$sid"
+printf '{"type":"system","subtype":"init","cwd":"%s","session_id":"%s","mcp_servers":[],"model":"claude-sonnet-5-5","permissionMode":"acceptEdits","apiKeySource":"none","claude_code_version":"2.1.312"}\n' "$cwd" "$sid"
 if [ -f "$state/round-$n.sh" ]; then sh "$state/round-$n.sh"; fi
 sed "s/@SID@/$sid/" "$state/result-$n.json"
 `
@@ -67,7 +67,11 @@ func k16Fake(t *testing.T, base []string, rounds []k16Round) (claudecode.Options
 	if err := os.MkdirAll(state, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	bin := filepath.Join(dir, "claude")
+	home := filepath.Join(dir, "home")
+	bin := claudecode.RuntimePath(home)
+	if err := os.MkdirAll(filepath.Dir(bin), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(bin, []byte(k16Script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +98,7 @@ func k16Fake(t *testing.T, base []string, rounds []k16Round) (claudecode.Options
 		}
 	}
 	env := append(append([]string{}, base...), "PATH="+os.Getenv("PATH"), "KOGEN_K16_STATE="+state)
-	return claudecode.Options{Binary: bin, HookCommand: []string{"/bin/true"}, Env: env}, state
+	return claudecode.Options{Home: home, HookCommand: []string{"/bin/true"}, Env: env}, state
 }
 
 func TestK16Observation(t *testing.T) {

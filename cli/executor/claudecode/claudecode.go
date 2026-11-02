@@ -1,5 +1,5 @@
 // Package claudecode is the Claude Code executor adapter (docs/executor-contract.md): it runs
-// the user's installed Claude Code CLI headless, on the user's own subscription sign-in, as
+// Kogen's own pinned Claude Code (runtime.go) headless, on a subscription token Kogen saved, as
 // Kogen's Build role. Every round is a claim: Kogen keeps the protected baseline, verification,
 // review and the commit. The adapter is the only place that knows Claude Code's argv, event
 // stream and hook protocol.
@@ -12,10 +12,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,13 +26,12 @@ import (
 	"kogen/executor"
 )
 
-// MinVersion is the lowest qualified Claude Code version: hook onFailure:"block" needs 2.1.295.
-const MinVersion = "2.1.295"
-
 // Options configure the adapter. The zero value is production-ready except HookCommand.
 type Options struct {
-	// Binary is the Claude Code executable (default: `claude` resolved on PATH).
-	Binary string
+	// Home is the user's home directory: Kogen's Claude Code lives under <Home>/.kogen/claude-code.
+	Home string
+	// Stderr receives the two installation progress lines (default os.Stderr).
+	Stderr io.Writer
 	// HookCommand is the Kogen binary and hidden subcommand that run the hooks, e.g.
 	// [os.Executable(), HookSubcommand]. Required for prevention; Start refuses without it.
 	HookCommand []string
@@ -52,9 +52,6 @@ type Options struct {
 
 // New returns the Claude Code executor.
 func New(opts Options) executor.Executor {
-	if opts.Binary == "" {
-		opts.Binary = "claude"
-	}
 	if opts.MaxTurns <= 0 {
 		opts.MaxTurns = 150
 	}
@@ -64,11 +61,12 @@ func New(opts Options) executor.Executor {
 	if opts.KillGrace <= 0 {
 		opts.KillGrace = 5 * time.Second
 	}
-	return &adapter{opts: opts}
+	return &adapter{opts: opts, goos: runtime.GOOS, goarch: runtime.GOARCH}
 }
 
 type adapter struct {
-	opts Options
+	opts         Options
+	goos, goarch string
 
 	mu      sync.Mutex
 	version string // exact `claude --version` output, trimmed
@@ -129,13 +127,22 @@ func roleCapabilities() map[string]executor.RoleCapabilities {
 	return map[string]executor.RoleCapabilities{executor.RoleShape: shape, executor.RoleBuild: build, executor.RoleReview: review}
 }
 
-// binary resolves the executable.
+// binary is the one executable Kogen runs, never resolved on PATH.
 func (a *adapter) binary() (string, error) {
-	p, err := exec.LookPath(a.opts.Binary)
-	if err != nil {
-		return "", executor.Fail(executor.ReasonUnavailable, "the Claude Code executable ("+filepath.Base(a.opts.Binary)+") was not found; install it with npm install -g @anthropic-ai/claude-code, then sign in with `claude auth login` or save a token with kogen provider login claude-code")
+	if a.opts.Home == "" {
+		return "", unavailable("cannot locate your home directory for Kogen's Claude Code runtime")
+	}
+	p := RuntimePath(a.opts.Home)
+	if _, err := os.Stat(p); err != nil {
+		return "", unavailable("Kogen's Claude Code " + Version + " is not installed at " + p)
 	}
 	return p, nil
+}
+
+// childEnv is the environment of every child: the existing rules plus Kogen's configuration
+// directory and disabled updates.
+func (a *adapter) childEnv(home, token string) []string {
+	return childEnv(a.opts.Env, home, token, ConfigDir(a.opts.Home))
 }
 
 // claudeVersion is the cached exact `claude --version` output.
@@ -175,7 +182,7 @@ func (a *adapter) redact(s string) string {
 // run runs a no-model-call claude subcommand with the stripped environment and a bounded output.
 func (a *adapter) run(ctx context.Context, bin string, env []string, token string, args ...string) ([]byte, error) {
 	if env == nil {
-		env = childEnv(a.opts.Env, "", "")
+		env = a.childEnv("", "")
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -236,34 +243,6 @@ func startWithToken(cmd *exec.Cmd, token string, start func() error) error {
 	return start()
 }
 
-var versionRe = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
-
-// versionAtLeast reports whether the output of `claude --version` starts with a version >= min.
-func versionAtLeast(output, min string) bool {
-	parse := func(s string) ([3]int, bool) {
-		m := versionRe.FindStringSubmatch(strings.TrimSpace(s))
-		var v [3]int
-		if m == nil {
-			return v, false
-		}
-		for i := range v {
-			v[i], _ = strconv.Atoi(m[i+1])
-		}
-		return v, true
-	}
-	got, ok := parse(output)
-	want, _ := parse(min)
-	if !ok {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return got[i] > want[i]
-		}
-	}
-	return true
-}
-
 // authInfo is the only part of `claude auth status --json` the adapter keeps (never the
 // account's email or organization).
 type authInfo struct {
@@ -304,6 +283,9 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	if ctx.Err() != nil {
 		return nil, classify(ctx)
 	}
+	if err := a.ensureRuntime(ctx); err != nil {
+		return nil, err
+	}
 	bin, err := a.binary()
 	if err != nil {
 		return nil, err
@@ -312,10 +294,10 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 	if err != nil {
 		return nil, err
 	}
-	if !versionAtLeast(version, MinVersion) {
-		return nil, executor.Fail(executor.ReasonUnavailable, "Claude Code "+version+" is older than the qualified minimum "+MinVersion+"; update it with npm install -g @anthropic-ai/claude-code")
+	if !Pinned(version) {
+		return nil, unavailable(NotPinnedMessage(bin, version) + "; remove " + RuntimeDir(a.opts.Home) + " to reinstall it")
 	}
-	env := childEnv(a.opts.Env, t.Home, a.opts.Token)
+	env := a.childEnv(t.Home, a.opts.Token)
 	if t.Role == executor.RoleShape {
 		env = shapeEnv(env)
 	}
@@ -392,6 +374,9 @@ func (a *adapter) Start(ctx context.Context, t executor.Task, emit executor.Sink
 // tokenRefusedHint is the auth_refused detail when Claude Code does not accept the stored token.
 const tokenRefusedHint = "Claude Code did not accept the stored token; run `claude setup-token` and `kogen provider login claude-code`"
 
+// kogenLogin is the one way to sign Kogen's own Claude Code in.
+const kogenLogin = "make a token with `claude setup-token` and save it with `kogen provider login claude-code`"
+
 // tokenAuthMethod is the auth method Claude Code reports for a CLAUDE_CODE_OAUTH_TOKEN sign-in.
 const tokenAuthMethod = "oauth_token"
 
@@ -405,7 +390,7 @@ func (a *adapter) authStatus(ctx context.Context, bin string, env []string) (aut
 	var info authInfo
 	if err := json.Unmarshal(out, &info); err != nil {
 		if runErr != nil {
-			return info, executor.Fail(executor.ReasonUnavailable, "`claude auth status --json` failed; sign in with `claude auth login`")
+			return info, executor.Fail(executor.ReasonUnavailable, "`claude auth status --json` failed; "+kogenLogin)
 		}
 		return info, executor.Fail(executor.ReasonAuthRefused, "`claude auth status --json` did not answer with JSON")
 	}
@@ -413,14 +398,14 @@ func (a *adapter) authStatus(ctx context.Context, bin string, env []string) (aut
 	case !info.LoggedIn && a.opts.Token != "":
 		return info, executor.Fail(executor.ReasonAuthRefused, tokenRefusedHint)
 	case !info.LoggedIn:
-		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code is not signed in; run `claude auth login` with your subscription, or save a token from claude setup-token with kogen provider login claude-code")
+		return info, executor.Fail(executor.ReasonAuthRefused, "Kogen's Claude Code is not signed in; "+kogenLogin)
 	case info.AuthMethod != "claude.ai" && !(a.opts.Token != "" && info.AuthMethod == tokenAuthMethod):
 		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code's sign-in route is "+quoteBound(info.AuthMethod)+", not the claude.ai subscription")
 	case info.APIProvider != "firstParty":
 		return info, executor.Fail(executor.ReasonAuthRefused, "Claude Code's API provider is "+quoteBound(info.APIProvider)+", not Anthropic's own (firstParty)")
 	}
 	if runErr != nil {
-		return info, executor.Fail(executor.ReasonUnavailable, "`claude auth status --json` failed; sign in with `claude auth login`")
+		return info, executor.Fail(executor.ReasonUnavailable, "`claude auth status --json` failed; "+kogenLogin)
 	}
 	return info, nil
 }
@@ -545,6 +530,3 @@ func bound(s string, n int) string {
 func isRuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
 func quoteBound(s string) string { return strconv.Quote(bound(s, 60)) }
-
-// VersionAtLeast reports whether the output of `claude --version` starts with a version >= min.
-func VersionAtLeast(output, min string) bool { return versionAtLeast(output, min) }

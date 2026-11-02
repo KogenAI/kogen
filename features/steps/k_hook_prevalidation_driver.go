@@ -43,7 +43,7 @@ func init() {
 
 func khpClaude(args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Println("2.1.314 (Claude Code)")
+		fmt.Println("2.1.312 (Claude Code)")
 		return 0
 	}
 	if len(args) >= 2 && args[0] == "auth" && args[1] == "status" {
@@ -84,7 +84,7 @@ func khpClaude(args []string) int {
 		w.Flush()
 	}
 	out(map[string]any{"type": "system", "subtype": "init", "cwd": cwd, "mcp_servers": []any{}, "model": "claude-sonnet-5-5",
-		"permissionMode": "acceptEdits", "apiKeySource": "none", "claude_code_version": "2.1.314"})
+		"permissionMode": "acceptEdits", "apiKeySource": "none", "claude_code_version": "2.1.312"})
 	toolUse := func(id, name string, input map[string]any) {
 		out(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "model": "claude-sonnet-5-5",
 			"content": []any{map[string]any{"type": "tool_use", "id": id, "name": name, "input": input}}}})
@@ -176,8 +176,15 @@ func TestKHookPrevalidationObservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	home := filepath.Join(t.TempDir(), "home")
+	if err := os.MkdirAll(claudecode.RuntimeDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(exe, claudecode.RuntimePath(home)); err != nil {
+		t.Fatal(err)
+	}
 	env := append(append([]string{}, e.git...), "KOGEN_KHP_AS=claude", "KOGEN_KHP_MODE="+mode, "KOGEN_KHP_STATE="+state)
-	x := claudecode.New(claudecode.Options{Binary: exe, HookCommand: []string{exe}, Env: env, KillGrace: 2 * time.Second})
+	x := claudecode.New(claudecode.Options{Home: home, HookCommand: []string{exe}, Env: env, KillGrace: 2 * time.Second})
 	a := e.build(func(in *Input) {
 		in.External = func(role project.Role) (executor.Executor, error) { return x, nil }
 	})

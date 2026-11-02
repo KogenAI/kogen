@@ -417,7 +417,31 @@ func uninstall(root string) error {
 		return sys.Fail("environment", "uninstall_failed", err.Error(), 3)
 	}
 	fmt.Print("Uninstalled kogen from " + prefix + "\n")
+	if err := removeClaudeRuntime(); err != nil {
+		return err
+	}
 	fmt.Print("Kept your ChatGPT, SuperGrok, OpenCode Go, Anthropic, Claude Code and OpenAI-compatible logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock ~/.kogen/credentials/claude-code.json ~/.kogen/credentials/claude-code.lock ~/.kogen/credentials/openai-compatible.json ~/.kogen/credentials/openai-compatible.lock\n")
+	return nil
+}
+
+// removeClaudeRuntime removes Kogen's own Claude Code folder with everything in it. It never
+// touches ~/.kogen/credentials, ~/.claude, ~/.claude.json or the user's own Claude Code.
+func removeClaudeRuntime() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	dir := claudecode.Root(home)
+	if _, err := os.Lstat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return sys.Fail("environment", "uninstall_failed", err.Error(), 3)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return sys.Fail("environment", "uninstall_failed", err.Error(), 3)
+	}
+	fmt.Print("Removed Kogen's Claude Code runtime from " + dir + "\n")
 	return nil
 }
 

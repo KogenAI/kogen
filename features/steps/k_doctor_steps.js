@@ -1,6 +1,6 @@
 'use strict';
 // K-DOCTOR: `kogen doctor` and the summary at the end of `kogen init`, through the installed `kogen` command in scratch
-// Git repositories with an empty HOME, a minimal PATH (git and sh only, plus an optional fake `claude`), and synthetic
+// Git repositories with an empty HOME, a minimal PATH (git and sh only, plus an optional fake Kogen Claude Code runtime under HOME), and synthetic
 // credentials only. No model call, no real provider.
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -50,9 +50,9 @@ async function fixture(world, { yaml, identity, chatgpt, claude }) {
   fs.symlinkSync('/bin/sh', path.join(bin, 'sh'));
   let pathValue = bin;
   if (claude) {
-    const cdir = path.join(root, 'claude-bin'); fs.mkdirSync(cdir);
-    fs.writeFileSync(path.join(cdir, 'claude'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo '${claude} (Claude Code)'; exit 0; fi\necho '{}'\nexit 0\n`, { mode: 0o755 });
-    pathValue = cdir + ':' + bin;
+    // Kogen's own Claude Code runtime, never a `claude` on PATH.
+    const rdir = path.join(w.home, '.kogen', 'claude-code', '2.1.312'); fs.mkdirSync(rdir, { recursive: true });
+    fs.writeFileSync(path.join(rdir, 'claude'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo '${claude} (Claude Code)'; exit 0; fi\necho '{}'\nexit 0\n`, { mode: 0o755 });
   }
   w.pathValue = pathValue;
   w.gitconfig = path.join(w.home, '.gitconfig'); fs.writeFileSync(w.gitconfig, '');

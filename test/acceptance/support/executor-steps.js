@@ -11,24 +11,39 @@ function shell(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
-// Installs an executable `claude` first on the scenario's PATH. It runs the Node fake with the
-// named script; the state folder lives outside the project, so it never joins Build custody.
+const PINNED = '2.1.312';
+
+function runtimePath(world) {
+  assert.ok(world.home, 'the scenario has no home directory');
+  return path.join(world.home, '.kogen', 'claude-code', PINNED, 'claude');
+}
+
+// Installs the fake as Kogen's Claude Code, $HOME/.kogen/claude-code/2.1.312/claude: the one
+// executable Kogen runs, never one on PATH. It runs the Node fake with the named script; the state
+// folder lives outside the project, so it never joins Build custody.
 function installFakeClaude(world, name) {
   const script = path.join(FIXTURES, `${name}.json`);
   assert.ok(fs.existsSync(script), `no fake claude script named ${name}`);
   const root = path.join(world.workspace, 'fake-claude');
-  const binDir = path.join(root, 'bin');
   const stateDir = path.join(root, 'state');
-  mkdirp(binDir);
+  mkdirp(path.dirname(runtimePath(world)));
   mkdirp(stateDir);
-  const shim = path.join(binDir, 'claude');
+  const shim = runtimePath(world);
   fs.writeFileSync(shim, `#!/bin/sh\nKOGEN_FAKE_CLAUDE_SCRIPT=${shell(script)} KOGEN_FAKE_CLAUDE_STATE=${shell(stateDir)} exec ${shell(process.execPath)} ${shell(path.join(FIXTURES, 'fake-claude.js'))} "$@"\n`);
   fs.chmodSync(shim, 0o755);
-  world.fakeClaude = { binDir, stateDir, script };
+  world.fakeClaude = { stateDir, script };
+}
+
+// A runtime that cannot run at all.
+function installBrokenClaude(world) {
+  const file = runtimePath(world);
+  mkdirp(path.dirname(file));
+  fs.writeFileSync(file, '#!/bin/sh\nexit 97\n');
+  fs.chmodSync(file, 0o755);
 }
 
 function stateDir(world) {
-  assert.ok(world.fakeClaude, 'no fake claude was put on PATH');
+  assert.ok(world.fakeClaude, 'no fake claude was installed as Kogen\'s Claude Code');
   return world.fakeClaude.stateDir;
 }
 
@@ -168,6 +183,10 @@ async function executorSteps(world, label, args, latestRunDir) {
   if (lineupSteps(world, label, args, latestRunDir)) return true;
   if (label.startsWith('a fake claude with script ')) {
     installFakeClaude(world, args[0]);
+    return true;
+  }
+  if (label === 'a broken Kogen Claude Code runtime is installed') {
+    installBrokenClaude(world);
     return true;
   }
   if (label.startsWith('the fake claude ran ')) {

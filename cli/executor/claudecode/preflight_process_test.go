@@ -29,7 +29,7 @@ func TestPreflightStopsOwnedChildren(t *testing.T) {
 			if cancelRun {
 				script += "wait\n"
 			} else {
-				script += "echo '2.1.306 (Claude Code)'\n"
+				script += "echo '2.1.312 (Claude Code)'\n"
 			}
 			if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
 				t.Fatal(err)

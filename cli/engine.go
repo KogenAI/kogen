@@ -28,7 +28,7 @@ type engineJob struct {
 }
 
 // externalExecutor is the program's external build executors (docs/executor-contract.md):
-// Claude Code, run on the user's own sign-in, with this binary's hidden hook subcommand as its
+// Claude Code, Kogen's own pinned runtime on the saved token, with this binary's hidden hook subcommand as its
 // write-prevention hook. Any other executor name is refused when the configuration is read.
 func externalExecutor(role project.Role) (executor.Executor, error) {
 	if role.Executor != project.ExecutorClaudeCode {
@@ -40,7 +40,7 @@ func externalExecutor(role project.Role) (executor.Executor, error) {
 	}
 	home, _ := os.UserHomeDir()
 	token, _ := provider.ClaudeCodeToken(home)
-	return claudecode.New(claudecode.Options{HookCommand: []string{exe, claudecode.HookSubcommand}, Token: token}), nil
+	return claudecode.New(claudecode.Options{Home: home, HookCommand: []string{exe, claudecode.HookSubcommand}, Token: token}), nil
 }
 
 // runEngine runs the Intent commands and init and returns the exit code.
