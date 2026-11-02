@@ -127,6 +127,9 @@ func approveLocked(ctx context.Context, s *sys.Session, in ApproveInput, repo *g
 		return 0, err
 	}
 	before := project.Hash(root, baseline)
+	if err := approveContractContradictions(root, slug, before); err != nil {
+		return 0, err
+	}
 	if approval != nil && approval.Base != "" && approval.Base != repo.Head() && approval.SHA256 != before {
 		return 0, sys.Fail("intent", "changed_since_approval", "package changed on the new base; use kogen intent refine "+slug+" "+before+" <correction-file> or kogen intent shape "+slug+" <request-file>", 1)
 	}

@@ -157,6 +157,7 @@ func (w *forceWire) newShape(t *testing.T, steps ...shpStep) *shpFx {
 	t.Helper()
 	f := newShpFx(t, steps...)
 	w.configure(f)
+	f.Prov.contractWire = func(call map[string]any) shpStep { return w.calls(call) }
 	return f
 }
 

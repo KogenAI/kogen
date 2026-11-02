@@ -166,7 +166,8 @@ func shapeRun(ctx context.Context, s *sys.Session, in ShapeInput) (exit int, err
 		client = provider.NewClient("")
 	}
 	sh := &shaping{s: s, in: in, repo: repo, root: root, slug: slug, cfg: cfg, role: cfg.Models["shape"], ev: ev, ext: ext, extMax: extMax,
-		rd: rd, client: client, stateDir: stateDir, originals: map[string]original{}, proposed: map[string]string{}}
+		rd: rd, client: client, stateDir: stateDir, originals: map[string]original{}, proposed: map[string]string{},
+		contractSessions: map[string]int{}, contractChecked: map[string]bool{}, contractRefused: map[string][]string{}}
 	return sh.shape(ctx, st)
 }
 
@@ -543,6 +544,16 @@ type shaping struct {
 	decisionChecks int            // decision check calls made
 	decisionUsage  provider.Usage // the native decision checks' tokens
 	decisionRounds int            // the external decision check sessions' rounds
+
+	contractUsage    provider.Usage      // the native contract review and confirmation calls' tokens
+	contractRounds   int                 // the external contract review and confirmation sessions' rounds
+	contractSessions map[string]int      // external sessions started per kind (review, confirmation)
+	contractChecked  map[string]bool     // package hashes checked without a refusal
+	contractRefused  map[string][]string // package hash to the item lines of its refusal
+	contractLines    []string            // the item lines of the last contract refusal
+	lastGate         string              // the gate of the last refused submission
+	lastFresh        bool                // the last certify ran readiness
+	lastObservations string              // the readiness observations of that check; "" when green
 }
 
 func (sh *shaping) elapsed() int64 { return time.Since(sh.started).Milliseconds() / 1000 }
@@ -629,7 +640,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 		var x *extSession
 		res, x, err = sh.converseExternal(ctx, blocks)
 		if x != nil {
-			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds+sh.auditRounds+sh.decisionRounds, time.Since(t0).Milliseconds())
+			usageLine = fmt.Sprintf("shape %s/%s %s %d round(s) wall_ms=%d", role.Model, role.Effort, executor.ClaudeCode, x.rounds+sh.auditRounds+sh.decisionRounds+sh.contractRounds, time.Since(t0).Milliseconds())
 		}
 		if err != nil {
 			return 0, err
@@ -643,12 +654,17 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 			}
 			return 0, err
 		}
-		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, sh.auditUsage.Add(sh.decisionUsage).Add(usage).Line(), time.Since(t0).Milliseconds())
+		usageLine = fmt.Sprintf("shape %s/%s %s wall_ms=%d", role.Model, role.Effort, sh.auditUsage.Add(sh.decisionUsage).Add(sh.contractUsage).Add(usage).Line(), time.Since(t0).Milliseconds())
 	}
 
 	switch res.kind {
 	case outInvalid:
 		if len(sh.originals) > 0 {
+			if sh.lastGate == contractGate {
+				if err := sh.writeContractContradictions(sh.contractLines); err != nil {
+					return 0, err
+				}
+			}
 			e := sys.Fail("intent", "not_ready", "the Intent is not ready to build", 1)
 			e.Lines = res.problems
 			return 0, e
@@ -697,6 +713,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	}
 	os.Remove(filepath.Join(sh.stateDir, "state.json"))
 	os.Remove(filepath.Join(sh.stateDir, questionsFile))
+	os.Remove(filepath.Join(sh.stateDir, contractContradictionsFile))
 	var added []string
 	for p, o := range sh.originals {
 		if o.absent {
@@ -1157,6 +1174,7 @@ func (sh *shaping) submit(ctx context.Context, args map[string]any) (string, out
 
 // refused records one submission_refused event with its problem lines bounded.
 func (sh *shaping) refused(gate string, problems []string) {
+	sh.lastGate = gate
 	if len(problems) > 20 {
 		problems = problems[:20]
 	}
@@ -1318,6 +1336,13 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 	if err := sh.fixAttempt(ctx, files); err != nil {
 		return "", outcome{}, err
 	}
+	hash, err := sh.packageHash()
+	if err != nil {
+		return "", outcome{}, err
+	}
+	if text, out, refused := sh.contractRefusal(hash); refused {
+		return text, out, nil
+	}
 	if sh.cfg.ShapeDecisionCheck.Enabled {
 		text, err := os.ReadFile(filepath.Join(sh.root, project.IntentMDPath(sh.slug)))
 		if err != nil {
@@ -1372,10 +1397,26 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 		}
 		return "", outcome{}, err
 	}
+	if sh.lastFresh && !sh.contractChecked[hash] {
+		lines, err := sh.contractCheck(ctx, hash, sh.lastObservations)
+		if err != nil {
+			return "", outcome{}, err
+		}
+		if lines != nil {
+			// The refused candidate supplies no readiness evidence and is never acknowledged.
+			sh.ready = nil
+			sh.contractRefused[hash] = lines
+			sh.contractLines = lines
+			sh.refused(contractGate, lines)
+			return contractFeedback(lines), outcome{kind: outInvalid, problems: lines}, nil
+		}
+		sh.contractChecked[hash] = true
+	}
 	return text, result, nil
 }
 
 func (sh *shaping) certify(ctx context.Context, files []string) (string, outcome, error) {
+	sh.lastFresh, sh.lastObservations = false, ""
 	if _, err := project.SourceComparison(sh.root, sh.slug); err != nil {
 		return "", outcome{}, err
 	}
@@ -1402,10 +1443,13 @@ func (sh *shaping) certify(ctx context.Context, files []string) (string, outcome
 	}
 	sh.ready = ready
 	reference := filepath.Join(sh.root, ".kogen/local/shaping", sh.slug, fmt.Sprintf("observations-%d.txt", sh.requests))
-	if err := os.WriteFile(reference, []byte(verify.Observations(sh.slug, ready, reference)), 0o666); err != nil {
+	observations := verify.Observations(sh.slug, ready, reference)
+	if err := os.WriteFile(reference, []byte(observations), 0o666); err != nil {
 		return "", outcome{}, err
 	}
+	sh.lastFresh = true
 	if ready.Failures() {
+		sh.lastObservations = observations
 		return verify.Acknowledgment(sh.slug, ready, reference), outcome{kind: outObservations}, nil
 	}
 	return "accepted: the Intent is ready", outcome{kind: outReady}, nil

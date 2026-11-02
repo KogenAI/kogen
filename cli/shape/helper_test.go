@@ -46,6 +46,14 @@ type shpProvider struct {
 	// route, when set, chooses the answer by what the request says; nil falls back to the
 	// sequence.
 	route func(req map[string]any) *shpStep
+	// contract are the answers to the contract review and confirmation requests in order, which
+	// are not part of seq; once used up (or when empty) every review answers no finding and every
+	// confirmation no verdict.
+	contract     []shpStep
+	contractNext int
+	// contractWire renders the default contract answer (a call) on the provider's wire; nil: the
+	// Responses wire.
+	contractWire func(call map[string]any) shpStep
 }
 
 // shpRaw is one request as it arrived: the exact body bytes and the headers.
@@ -80,7 +88,21 @@ func (p *shpProvider) serve(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 	}
 	if !routed {
-		if n := p.takeLocked(); n < len(p.seq) {
+		if kind := contractKind(req); kind != "" {
+			if p.contractNext < len(p.contract) {
+				step = p.contract[p.contractNext]
+				p.contractNext++
+			} else {
+				call := shpCall("contract-review", SubmitContractReviewTool, map[string]any{"findings": []any{}})
+				if kind == SubmitContractConfirmationTool {
+					call = shpCall("contract-confirmation", SubmitContractConfirmationTool, map[string]any{"verdicts": []any{}})
+				}
+				step = shpAnswer(call)
+				if p.contractWire != nil {
+					step = p.contractWire(call)
+				}
+			}
+		} else if n := p.takeLocked(); n < len(p.seq) {
 			step = p.seq[n]
 		} else {
 			step = shpStep{status: 400, code: "invalid_request_error"}
@@ -126,15 +148,64 @@ func shpFrame(w io.Writer, ev any) {
 	fmt.Fprintf(w, "data: %s\n\n", b)
 }
 
+// contractKind is the submit tool of a contract review or confirmation request ("" for any other
+// request): the request offers that tool.
+func contractKind(req map[string]any) string {
+	list, _ := req["tools"].([]any)
+	for _, t := range list {
+		m, _ := t.(map[string]any)
+		if fn, ok := m["function"].(map[string]any); ok {
+			m = fn
+		}
+		if m["name"] == SubmitContractReviewTool || m["name"] == SubmitContractConfirmationTool {
+			return m["name"].(string)
+		}
+	}
+	return ""
+}
+
+// requests are the shaper's requests in order, without the contract review and confirmation
+// requests.
 func (p *shpProvider) requests() []map[string]any {
+	var out []map[string]any
+	for _, r := range p.allRequests() {
+		if contractKind(r) == "" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// contractRequests are the contract review and confirmation requests in order.
+func (p *shpProvider) contractRequests() []map[string]any {
+	var out []map[string]any
+	for _, r := range p.allRequests() {
+		if contractKind(r) != "" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// allRequests are every request in order, the contract requests included.
+func (p *shpProvider) allRequests() []map[string]any {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]map[string]any(nil), p.reqs...)
 }
+
+// rawRequests are the exact bodies and headers received, in order, without the contract
+// requests.
 func (p *shpProvider) rawRequests() []shpRaw {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return append([]shpRaw(nil), p.raws...)
+	var out []shpRaw
+	for i, r := range p.raws {
+		if contractKind(p.reqs[i]) == "" {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // shpCall is a function call item.

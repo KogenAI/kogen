@@ -27,6 +27,17 @@ type shapeExec struct {
 	startErr error
 	seq      int
 	calls    int // rounds over every session
+	// contract, when set, answers the contract review and confirmation sessions in order (the
+	// last repeats); they do not count in rounds or calls, and starts holds only the other
+	// sessions. Without it every review finds no contradiction.
+	contract       []func(n int, root string) (executor.RoundResult, error)
+	contractCalls  int // contract review and confirmation rounds
+	contractStarts []executor.Task
+}
+
+// isContractTask is whether a session is a contract review or confirmation.
+func isContractTask(t executor.Task) bool {
+	return strings.Contains(string(t.Schema), `"findings"`) || strings.Contains(string(t.Schema), `"verdicts"`)
 }
 
 func (x *shapeExec) Describe() executor.Descriptor {
@@ -42,7 +53,11 @@ func (x *shapeExec) Start(_ context.Context, t executor.Task, emit executor.Sink
 	if x.startErr != nil {
 		return nil, x.startErr
 	}
-	x.starts = append(x.starts, t)
+	if isContractTask(t) {
+		x.contractStarts = append(x.contractStarts, t)
+	} else {
+		x.starts = append(x.starts, t)
+	}
 	x.seq++
 	emit(map[string]any{"event": "executor_started", "role": t.Role, "model": t.Model, "session_id": fmt.Sprintf("shape-session-%d", x.seq)})
 	return &shapeSession{x: x, task: t, id: fmt.Sprintf("shape-session-%d", x.seq), emit: emit}, nil
@@ -62,6 +77,24 @@ func (s *shapeSession) Handle() executor.Handle {
 func (s *shapeSession) Close() error { return nil }
 func (s *shapeSession) Round(_ context.Context, in executor.Input) (executor.RoundResult, error) {
 	s.n++
+	if isContractTask(s.task) {
+		s.x.mu.Lock()
+		s.x.contractCalls++
+		fn := result(map[string]any{"findings": []any{}})
+		if strings.Contains(string(s.task.Schema), `"verdicts"`) {
+			fn = result(map[string]any{"verdicts": []any{}})
+		}
+		if len(s.x.contract) > 0 {
+			fn = s.x.contract[min(s.x.contractCalls-1, len(s.x.contract)-1)]
+		}
+		s.x.mu.Unlock()
+		res, err := fn(s.n, s.task.Root)
+		if err != nil {
+			return executor.RoundResult{}, err
+		}
+		res.Ending, res.Handle = executor.EndFinish, s.Handle()
+		return res, nil
+	}
 
 	s.x.mu.Lock()
 	s.x.inputs = append(s.x.inputs, in)
@@ -149,7 +182,7 @@ func TestClaudeLineupShapeSubmission(t *testing.T) {
 		lines := strings.Split(strings.TrimSuffix(f.Stdout.String(), "\n"), "\n")
 		shpEq(t, "line count", len(lines), 7)
 		shpEq(t, "scenarios line", lines[4], "Scenarios: 2 (2 fail now, 0 pass now)")
-		shpMatch(t, "usage line", lines[5], `^shape claude-opus-5-5/xhigh claude-code 2 round\(s\) wall_ms=\d+$`)
+		shpMatch(t, "usage line", lines[5], `^shape claude-opus-5-5/xhigh claude-code 3 round\(s\) wall_ms=\d+$`)
 		shpEq(t, "feature", f.read(".kogen/intents/is-even/acceptance.feature"), shpFeature)
 		shpEq(t, "steps", f.read("features/steps/is_even_steps.js"), shpSteps)
 		shpEq(t, "intent", f.read(".kogen/intents/is-even/intent.md"), shpIntentMD)

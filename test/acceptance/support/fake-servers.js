@@ -73,6 +73,7 @@ class FakeServers {
     this.authUrl = null;
     this.script = null;
     this.requests = [];
+    this.contractChecks = [];
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -136,6 +137,7 @@ class FakeServers {
     this.commandObserver = null;
     this.script = null;
     this.requests = [];
+    this.contractChecks = [];
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -157,6 +159,7 @@ class FakeServers {
     this.pauseAt = pauseAt;
     this.kindCounts.clear();
     this.requests = [];
+    this.contractChecks = [];
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -260,6 +263,20 @@ class FakeServers {
     }
     const body = await decodeRequest(req);
     const tools = (body.tools || []).map(tool => tool.name);
+    const contract = tools.includes('submit_contract_review') ? ['submit_contract_review', { findings: [] }] : tools.includes('submit_contract_confirmation') ? ['submit_contract_confirmation', { verdicts: [] }] : null;
+    if (contract) {
+      // Shape's contract check (SHP-8) is answered apart from the scripted conversation: it finds no
+      // contradiction, and it is not among the requests the scenarios number or count.
+      this.contractChecks.push({ body, text: flatten(body).join('\n') });
+      const item = functionCall(contract[0], contract[1], `contract_check_${this.contractChecks.length}`);
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      res.write(responseEvent('response.created', { response: { id: `resp_contract_check_${this.contractChecks.length}` } }));
+      res.write(responseEvent('response.output_item.done', { output_index: 0, item }));
+      res.end(responseEvent('response.completed', {
+        response: { usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } } },
+      }));
+      return;
+    }
     const kind = !Array.isArray(body.tools) ? 'unknown' : tools.includes('submit_configuration') ? 'init' : tools.includes('submit_review') ? 'review' : tools.includes('submit_refinement') ? 'refine' : tools.includes('submit') ? 'shape' : 'build';
     const record = { order: this.requests.length + 1, kind, body, tools, text: flatten(body).join('\n'), receivedAt: Date.now() };
     this.requests.push(record);

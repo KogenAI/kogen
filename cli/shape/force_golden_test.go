@@ -78,6 +78,7 @@ func forceOrdinary(t *testing.T, w *forceWire, owner string) []forceCapture {
 	}
 	f := newShpFxRun(t, "./accept.sh", w.shapeSubmit("c1", shpFiles()), w.shapeAck("c2"))
 	w.configure(f)
+	f.Prov.contractWire = func(call map[string]any) shpStep { return w.calls(call) }
 	if exit, err := f.shape("Add calc.is_even(n)."); err != nil || exit != 0 {
 		t.Fatalf("exit %d: %v", exit, err)
 	}

@@ -303,7 +303,43 @@ async function main() {
   process.exitCode = exit;
 }
 
-readPrompt().then(prompt => { begin(prompt); return main(); }).catch(error => {
+// Shape's contract check (SHP-8) asks for its own schema: a list of findings or of verdicts. It is
+// answered apart from the scripted roles, finding no contradiction, and stays out of the counters,
+// prompts, sessions and cost the scenarios read (contract-checks.jsonl records it).
+function contractCheckAnswer() {
+  try {
+    const props = JSON.parse(flag('--json-schema')).properties || {};
+    if (props.verdict) return null; // Review's schema also has findings
+    if (props.findings) return { findings: [] };
+    if (props.verdicts) return { verdicts: [] };
+  } catch { /* not a contract check */ }
+  return null;
+}
+
+function answerContractCheck(prompt, structured) {
+  fs.mkdirSync(state, { recursive: true });
+  const session = flag('--session-id') || flag('--resume');
+  fs.appendFileSync(path.join(state, 'contract-checks.jsonl'), `${JSON.stringify({ session, prompt })}\n`);
+  out({
+    type: 'system', subtype: 'init', cwd: fs.realpathSync(process.cwd()), session_id: session, tools: ['Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Read', 'Write'],
+    mcp_servers: [], model: flag('--model') || 'claude-sonnet-5-5', permissionMode: 'acceptEdits',
+    apiKeySource: 'none', claude_code_version: String(script.version || '2.1.306').split(' ')[0],
+    uuid: '00000000-0000-4000-8000-ffffffffffff',
+  });
+  out({
+    type: 'result', subtype: 'success', is_error: false, duration_ms: 1000, duration_api_ms: 900, num_turns: 1,
+    result: 'Done.', stop_reason: 'end_turn', terminal_reason: 'completed', session_id: session, total_cost_usd: 0,
+    usage: { input_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 5 }, permission_denials: [],
+    structured_output: structured,
+  });
+}
+
+readPrompt().then(prompt => {
+  const structured = contractCheckAnswer();
+  if (structured) return answerContractCheck(prompt, structured);
+  begin(prompt);
+  return main();
+}).catch(error => {
   process.stderr.write(`fake claude: ${error && error.stack || error}\n`);
   process.exitCode = 70;
 });
