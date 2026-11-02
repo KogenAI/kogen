@@ -55,6 +55,8 @@ type Attempt struct {
 	ext *externalBuild
 	// watch is the no-progress evidence of the native builder's rounds (noprogress.go).
 	watch progressWatch
+	// env is the previous builder pass's environment failures (envfailure.go).
+	env envMemory
 	// invalid is the review that just ended without a valid verdict (review_retry.go).
 	invalid *invalidReview
 	// force is the tool the request being sent must call (RequestSpec.ForceTool), so that the

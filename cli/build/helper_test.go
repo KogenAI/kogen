@@ -484,11 +484,18 @@ func (e *env) events(id string) []map[string]any {
 	return out
 }
 
+// eventsNamed are the events with that name, without the timestamp every logged event carries.
 func eventsNamed(events []map[string]any, name string) []map[string]any {
 	var out []map[string]any
 	for _, ev := range events {
 		if ev["event"] == name {
-			out = append(out, ev)
+			bare := make(map[string]any, len(ev))
+			for k, v := range ev {
+				if k != "at" {
+					bare[k] = v
+				}
+			}
+			out = append(out, bare)
 		}
 	}
 	return out

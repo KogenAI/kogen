@@ -244,7 +244,7 @@ func (b *Attempt) roundEnd(ctx context.Context) (feedback string, landed bool, e
 	if b.StageProgress != nil && b.StageProgress.Phase == phaseStage {
 		return b.stageGate(ctx)
 	}
-	return b.verifyAndReview(ctx)
+	return b.verifyAndReview(ctx, true)
 }
 
 // stageGate is the scoped gate of the active stage after a builder round: a pass of the
@@ -275,6 +275,9 @@ func (b *Attempt) stageGate(ctx context.Context) (string, bool, error) {
 	} else {
 		b.s.Progress("kogen: stage " + stage.ID + " gate failed")
 	}
+	if err := b.hostOrBaseStop(pass); err != nil {
+		return "", false, err
+	}
 	notice, err := b.stalled(stage.ID, pass)
 	if err != nil {
 		return "", false, err
@@ -301,7 +304,7 @@ func (b *Attempt) stageGate(ctx context.Context) (string, bool, error) {
 		if err := b.Save(b.Continuation); err != nil {
 			return "", false, err
 		}
-		return b.verifyAndReview(ctx)
+		return b.verifyAndReview(ctx, true)
 	}
 	// The verified milestone and its navigation are durable before the next request.
 	feedback := "Stage " + stage.ID + " passed. Continue the next stage. " + b.State.navigation()
@@ -340,10 +343,18 @@ func withNotice(notice, feedback string) string {
 	return notice + "\n\n" + feedback
 }
 
-func (b *Attempt) verifyAndReview(ctx context.Context) (string, bool, error) {
+// verifyAndReview is the whole-Intent pass, review and commit. A builder pass (after a builder
+// round) is also checked for a repeated host or base failure; a pass that only restarts
+// verification after a drifted review is not.
+func (b *Attempt) verifyAndReview(ctx context.Context, builderPass bool) (string, bool, error) {
 	pass, err := b.Verify(ctx)
 	if err != nil {
 		return "", false, err
+	}
+	if builderPass {
+		if err := b.hostOrBaseStop(pass); err != nil {
+			return "", false, err
+		}
 	}
 	notice, err := b.stalled("", pass)
 	if err != nil {

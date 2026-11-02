@@ -44,7 +44,7 @@ func (b *Attempt) commitApproved(ctx context.Context, ap Approved, restart bool)
 			return "", false, resumeRefused("the candidate is no longer the reviewed tree " + pass.Tree + "; " + b.treeDrift(tree, pass.Tree))
 		}
 		// Something changed after the reviewed pass: verify and review again.
-		return b.verifyAndReview(ctx)
+		return b.verifyAndReview(ctx, false)
 	}
 	headTree, err := b.repo.Resolve(b.Start + "^{tree}")
 	if err != nil {
