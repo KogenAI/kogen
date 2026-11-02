@@ -270,7 +270,8 @@ func (s *Session) emit(typ string, fields map[string]any) {
 }
 
 // Round runs one round. The first round opens the conversation with text as the user
-// message. Later rounds append text as feedback: the output of the terminal call the previous
+// message, followed by the workspace snapshot of a small repository (tools.Tools.Snapshot).
+// Later rounds append text as feedback: the output of the terminal call the previous
 // round ended with, or a user message when it ended without a tool call. After a completed
 // round the transcript is written (when the session has a directory). A round that fails
 // leaves the conversation as it was after the last completed round.
@@ -368,11 +369,16 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 	return res, nil
 }
 
-// next is the conversation that opens the round: the opening user message, the feedback
+// next is the conversation that opens the round: the opening user message (and, in a small
+// repository, the workspace snapshot, see tools.Tools.Snapshot), the feedback
 // that answers the previous terminal call(s), or a user message after a no-call ending.
 func (s *Session) next(text string) []any {
 	if len(s.input) == 0 {
-		return []any{map[string]any{"role": "user", "content": text}}
+		input := []any{map[string]any{"role": "user", "content": text}}
+		if snapshot := s.tools.Snapshot(); snapshot != "" {
+			input = append(input, map[string]any{"role": "user", "content": snapshot})
+		}
+		return input
 	}
 	input := slices.Clone(s.input)
 	if s.pending != nil {

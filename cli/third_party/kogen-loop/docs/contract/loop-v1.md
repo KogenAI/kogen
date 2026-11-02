@@ -261,8 +261,10 @@ type SessionConfig struct {
 }
 func NewSession(cfg SessionConfig) (*Session, error)
 func ResumeSession(cfg SessionConfig) (*Session, error) // loads Dir/session.json; refuses mismatch (protocol, role, instructions/definitions digest)
-func (s *Session) Round(ctx context.Context, text string) (Result, error) // first: opening user message; later: feedback per the rule above
+func (s *Session) Round(ctx context.Context, text string) (Result, error) // first: opening user message (plus the workspace snapshot of a small repository, see below); later: feedback per the rule above
 ```
+
+**Workspace snapshot.** When a `Session` round starts with an empty conversation (the first round of `NewSession`, or a later round after rounds that all failed), the opening is the task text `{"role":"user","content":<task>}` followed by one more user message, the snapshot, computed before the first request by `tools.Tools.Snapshot()`. It is `tools.SnapshotHeader`, `\n\nlist_files:\n` and the `list_files` output (no arguments), then for every listed file shown `\n\nread_file <Go-quoted real path>:\n` and its `read_file` output, both as delivered to the model (after the 16384-byte bound); nothing follows the last section. A file is shown when `read_file` reads it, it is a regular file (in-root symlinks are followed), has at most 4096 bytes, no NUL byte and valid UTF-8; every other listed file appears in the listing only, and building the snapshot never waits on a FIFO. There is no snapshot, and the opening is the task alone, unless `list_files` and `read_file` are both enabled, `list_files` lists at least one path (not a non-Git root or an empty repository), at most 64 paths are listed and the shown files total at most 32768 bytes (never truncated). The snapshot becomes part of the conversation: it is carried once by every later request, written to `session.json` and kept exact by condensation. `ResumeSession` rounds and later rounds add none, and `loop.Run` never adds one. There is no option, event or field for it.
 
 ## 3. Process protocol (`kogen-loop/v1`)
 
