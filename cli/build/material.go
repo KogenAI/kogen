@@ -62,6 +62,9 @@ type materialSet struct {
 	// Hunks (on_demand only) are the lines each changed hunk occupies: the pinned parts that
 	// cover one of them are required reads before a verdict.
 	Hunks []materialHunkRange `json:"hunk_ranges,omitempty"`
+	// texts are the changed or added text files as they appear in Source (the external
+	// reviewer's parts keep a path's text whole).
+	texts []materialFileText
 }
 
 // materialHunkRange is the lines (1-based, inclusive) of one changed hunk: kind "diff" within
@@ -207,7 +210,7 @@ func (b *Attempt) materialOf(pass verify.Pass) (materialSet, error) {
 	// U+FFFD, as the provider request would make them.
 	source = strings.ToValidUTF8(source, "�")
 
-	set := materialSet{Authority: authority, Source: source, Files: catalog, Checks: results}
+	set := materialSet{Authority: authority, Source: source, Files: catalog, Checks: results, texts: texts}
 	if b.onDemand() {
 		if set.Manifest, set.Segments, set.Hunks, err = b.materialManifest(pass.Tree, catalog, texts, source); err != nil {
 			return materialSet{}, err

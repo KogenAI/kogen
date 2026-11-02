@@ -42,11 +42,12 @@ type session struct {
 	role         string // shape | build | review
 	schema       string // JSON schema of the structured submission (shape, review)
 
-	mu       sync.Mutex // one round at a time
-	round    int
-	failed   bool
-	prevCost float64
-	model    string
+	mu        sync.Mutex // one round at a time
+	round     int
+	promptLen int // bytes of the round's prompt, for a refusal's report
+	failed    bool
+	prevCost  float64
+	model     string
 
 	closed atomic.Bool
 	live   atomic.Int64 // process group of the running round, 0 if none
@@ -80,6 +81,7 @@ func (s *session) Round(ctx context.Context, in executor.Input) (executor.RoundR
 	s.round++
 	n := s.round
 	prompt := s.prompt(n, in)
+	s.promptLen = len(prompt)
 	if n > 1 && in.Feedback == "" {
 		s.failed = true
 		return executor.RoundResult{}, executor.Fail(executor.ReasonFailed, "round "+strconv.Itoa(n)+" needs Kogen's feedback")
@@ -110,9 +112,23 @@ func (s *session) Round(ctx context.Context, in executor.Input) (executor.RoundR
 // prompt is round 1's preface and task, or a later round's feedback.
 func (s *session) prompt(n int, in executor.Input) string {
 	if n == 1 {
-		return constraintsFor(s.role) + "\n\n" + s.task.Brief.Stable + "\n\n" + s.task.Brief.Dynamic
+		return firstPrompt(s.role, s.task.Brief)
 	}
 	return feedbackPreface + "\n\n" + in.Feedback
+}
+
+// firstPrompt is round 1's complete prompt for a role and brief: the role's framing, the stable
+// authority and the dynamic evidence.
+func firstPrompt(role string, brief executor.Brief) string {
+	return constraintsFor(role) + promptSep + brief.Stable + promptSep + brief.Dynamic
+}
+
+const promptSep = "\n\n"
+
+// FirstPromptBytes is the exact length of firstPrompt, the prompt a session writes to stdin in
+// its first round (executor.PromptSizer).
+func (a *adapter) FirstPromptBytes(role string, brief executor.Brief) int {
+	return len(constraintsFor(role)) + len(promptSep) + len(brief.Stable) + len(promptSep) + len(brief.Dynamic)
 }
 
 func (s *session) runRound(ctx context.Context, n int, prompt string) (executor.RoundResult, error) {

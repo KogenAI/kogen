@@ -216,6 +216,14 @@ type Executor interface {
 	Start(ctx context.Context, t Task, emit Sink) (Session, error)
 }
 
+// PromptSizer is an optional method of an Executor: the exact byte length of the first-round
+// prompt it sends for a role and a brief, so that Kogen can measure what the model must accept
+// before sending it. An executor without it is measured by len(Stable) + len(Dynamic). Later
+// rounds of a session send only Kogen's feedback.
+type PromptSizer interface {
+	FirstPromptBytes(role string, brief Brief) int
+}
+
 // Session is one executor conversation within a Build.
 type Session interface {
 	Round(ctx context.Context, in Input) (RoundResult, error)

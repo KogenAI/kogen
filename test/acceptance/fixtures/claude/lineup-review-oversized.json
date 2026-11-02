@@ -17,7 +17,7 @@
               }
             },
             {
-              "bash": "yes 'oversized line' | head -c 17000000 > big.txt"
+              "bash": "yes 'oversized line' | head -c 17000000 > README.md"
             }
           ],
           "claim": "BUILDER-CLAIM-MARKER-7f3a implemented is_even."

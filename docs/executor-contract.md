@@ -62,6 +62,13 @@ type Executor interface {
     Start(ctx context.Context, t Task, emit Sink) (Session, error)
 }
 
+// PromptSizer is an optional method of an Executor.
+type PromptSizer interface {
+    // FirstPromptBytes is the exact byte length of the first-round prompt the executor sends
+    // for a role and a brief.
+    FirstPromptBytes(role string, brief Brief) int
+}
+
 type Session interface {
     // Round runs one round. First: in.Brief is the task. Later: in.Feedback is Kogen's
     // deterministic verification/stage/review feedback for the same session.
@@ -80,6 +87,8 @@ type Session interface {
 - `Usage{Input, Cached, Output, Reasoning *int; State; Source; CostUSD *float64; Model string}`
 - `Handle{Executor, Version, SessionID string; Resume string}`
 
+**Prompt size.** An executor may report, with the optional `PromptSizer` method `FirstPromptBytes(role, brief)`, the exact byte length of the first-round prompt it sends for a role and a brief; Kogen measures that before it sends anything, so the measured and the sent bytes are identical. An executor without the method is measured by `len(Stable) + len(Dynamic)`. Later rounds of a session send only Kogen's feedback. The Claude Code adapter implements it with its real rendering (`constraintsFor(role) + "\n\n" + Stable + "\n\n" + Dynamic`, the function the session's first round sends over stdin).
+
 Events go to `Sink` as run-log maps with an `event` key of the form `executor_*`.
 
 ## 3. Capabilities
@@ -88,7 +97,7 @@ Events go to `Sink` as run-log maps with an `event` key of the form `executor_*`
 
 Claude Code (all three roles) supports same-session continuation only within a running role invocation, harness usage and its existing process custody. It does **not** support exact persistent resume, Kogen-custodied typed images, Kogen scratch `probe`, native working-window replay or Shape workers; a Claude Code shaper with enabled workers is refused before inference. Claude's own Bash, research, images and subagents are not relabelled as those Kogen capabilities, and research through them is harness-observed only, never a Kogen documentation record.
 
-Shape and Review (`structured`: true) receive `Task.Schema` and request schema-constrained output (`--json-schema`). The submission is the **final successful result's `structured_output` object** (`RoundResult.Structured`), complete and unclipped; text, intermediate tool input or a missing/malformed object is `executor/protocol`, never completion. The Shape schema carries the existing `submit` payload and the Review schema the existing `submit_review` payload, revalidated by Kogen's semantic validators. Every role starts a fresh session (`--session-id`, never `--resume`, `--continue` or `--fork-session`); only that role's later feedback rounds `--resume` it. A prompt over the inclusive 16 MiB bound stops `candidate/context_budget_exceeded` before it is sent. Shape is read-only (the PreToolUse hook denies every write; Kogen detects checkout, index and HEAD changes independently); Review keeps the Build protected-path prevention and detection.
+Shape and Review (`structured`: true) receive `Task.Schema` and request schema-constrained output (`--json-schema`). The submission is the **final successful result's `structured_output` object** (`RoundResult.Structured`), complete and unclipped; text, intermediate tool input or a missing/malformed object is `executor/protocol`, never completion. The Shape schema carries the existing `submit` payload and the Review schema the existing `submit_review` payload, revalidated by Kogen's semantic validators. Every role starts a fresh session (`--session-id`, never `--resume`, `--continue` or `--fork-session`); only that role's later feedback rounds `--resume` it. A prompt over the inclusive 16 MiB sanity bound stops `candidate/context_budget_exceeded` before it is sent, for every role. **Review prompt size and parts.** Kogen measures the complete first prompt of every review session, source included, against the existing inclusive 524288-byte input ceiling (the byte proxy the native reviewer uses; it is not raised) before sending it. A prompt that fits is one review in one fresh session, as before. A larger one is reviewed in ordered parts of the exact source, each in its own fresh session whose complete prompt fits (the complete authority, a parts review task and one part: the check results, every changed path and one consecutive piece of the source), one after another; an approval of an earlier part does not commit and the next part reviews the pass that approval bound, only the last part's approval is the review's, a `changes` verdict of any part stops the Build and a part that ends without a valid verdict ends the whole review without one. Mandatory material that leaves fewer than 6000 bytes for source stops `candidate/context_budget_exceeded` before any session starts. The evidence is under the run's `executor-review/` (`review-<n>-part-<k>.txt`, `review_parts` of `review-<n>-material.json`, a `review_parts` event). **Provider refusal.** In every role, a Claude Code result with `is_error: true` whose `terminal_reason` is `blocking_limit` or whose text contains `Prompt is too long` (checked after the authentication check and before the usage-limit check) is `candidate/context_budget_exceeded` (the `executor_round_failed` event carries reason `context_budget_exceeded`), never an ordinary `executor/failed`; it is not retried and nothing is clipped. Shape is read-only (the PreToolUse hook denies every write; Kogen detects checkout, index and HEAD changes independently); Review keeps the Build protected-path prevention and detection.
 
 | field | native | claude-code (build; see the per-role paragraph above) |
 |---|---|---|
@@ -115,6 +124,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 - `executor/deadline`
 - `executor/interrupted`: maps to the existing interruption exit codes.
 - `candidate/executor_round_limit`
+- `candidate/context_budget_exceeded`: a prompt over the adapter's 16 MiB sanity bound; mandatory review material that leaves fewer than 6000 bytes for source under the 524288-byte ceiling (nothing is sent); or Claude Code's own "Prompt is too long" refusal.
 - `candidate/build_blocked`: builder-reported only (native `report_blocker`, or the structured `blocker` of an executor whose build role declares `blocker`; same validation and BUILDER-REPORTED label).
 - The existing `candidate/*` custody stops (`baseline_changed`, `head_moved`, …) apply unchanged after any round.
 

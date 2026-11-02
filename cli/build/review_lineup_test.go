@@ -320,7 +320,7 @@ func TestClaudeLineupReviewExactTree(t *testing.T) {
 // stops safely without clipping or a commit.
 func TestClaudeLineupReviewMaterialDelivery(t *testing.T) {
 	t.Parallel()
-	big := strings.Repeat("line of a large changed file ✓\n", 20000) // about 600 KB: far over a native window
+	big := strings.Repeat("line of a large changed file ✓\n", 12000) // about 400 KB: a large source that still fits one review prompt
 	t.Run("complete exact delivery", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t)

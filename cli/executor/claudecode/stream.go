@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"kogen-loop/sys"
 	"kogen/executor"
 )
 
@@ -341,6 +342,13 @@ func (r *roundRun) finish(exit int, killed bool, stderrPath string) (executor.Ro
 				d += ": " + bound(first, 200)
 			}
 		}
+		// Claude Code refuses a prompt over the model's context: a context result, not an
+		// ordinary failure, and never retried or clipped.
+		if isErr && !r.authFailed && !authFailedText(res["result"]) && (terminal == "blocking_limit" || promptTooLongText(res["result"])) {
+			text, _ := res["result"].(string)
+			return executor.RoundResult{}, sys.Fail("candidate", "context_budget_exceeded", "Claude Code refused the "+s.role+" prompt as too long for the model's context (terminal reason "+
+				quoteBound(terminal)+": "+bound(text, 200)+"); the round's prompt was "+strconv.Itoa(s.promptLen)+" bytes; nothing was clipped or retried", 1)
+		}
 		reason := executor.ReasonFailed
 		if isErr && !r.authFailed && !authFailedText(res["result"]) && ((subtype == "success" && terminal == "api_error" && r.rateLimited) || usageLimitText(res["result"]) || usageLimitText(res["errors"])) {
 			if len(r.pending) != 0 {
@@ -512,6 +520,12 @@ func stderrTail(path string, redact func(string) string) string {
 		return ""
 	}
 	return "; stderr: " + strings.ReplaceAll(bound(s, n), "\n", " | ")
+}
+
+// promptTooLongText reports whether a result text is Claude Code's refusal of an oversized prompt.
+func promptTooLongText(v any) bool {
+	t, _ := v.(string)
+	return strings.Contains(t, "Prompt is too long")
 }
 
 // authFailedText reports whether a result text is Claude Code's 401 authentication failure.
