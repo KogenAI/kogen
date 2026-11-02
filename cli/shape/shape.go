@@ -632,7 +632,7 @@ func (sh *shaping) shape(ctx context.Context, st *state) (int, error) {
 	sh.window = newShapeWindow(sh.root, sh.slug, input)
 	sh.cacheID = startConversation(sh.ev, "shape")
 	sh.rd.BeforeRecord = func() error { return sh.window.validate(sh.root) }
-	sh.rd.Gate = unwrittenTestsGate
+	sh.rd.Gate = readinessGate
 
 	var res outcome
 	var usageLine string
@@ -1384,6 +1384,11 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 		sh.refused("unwritten_tests", unwritten.items)
 		return unwritten.text(), outcome{kind: outInvalid, problems: unwritten.items}, nil
 	}
+	var observer *runnerObserverError
+	if errors.As(err, &observer) {
+		sh.refused("runner_observer", observer.items)
+		return observer.text(), outcome{kind: outInvalid, problems: observer.items}, nil
+	}
 	if err != nil {
 		e, ok := sys.AsError(err)
 		if ok && (e.Reason == "not_ready" || e.Reason == "parse" || e.Reason == "lint") {
@@ -1483,6 +1488,49 @@ func unwrittenTestsGate(ready *verify.Ready) error {
 		for _, l := range sc.Unwritten {
 			e.items = append(e.items, fmt.Sprintf("- %s (line %d): %s", sc.Name, sc.Line, l))
 		}
+	}
+	if e.scenarios == 0 {
+		return nil
+	}
+	return e
+}
+
+// runnerObserverError is the refusal of a candidate with a step that rejects the real output of
+// the test runner it observes: it fails although the run passed, or gives an anchored regular
+// expression as a name filter the runner matched literally.
+type runnerObserverError struct {
+	scenarios int
+	items     []string
+}
+
+func (e *runnerObserverError) Error() string { return strings.SplitN(e.text(), "\n", 2)[0] }
+
+func (e *runnerObserverError) text() string {
+	return fmt.Sprintf("Acceptance rejects the test runner's real output: %d scenario(s) fail although the test runner reported a passing run, or pass an anchored regular expression as a name filter the runner matches literally; nothing was published. "+
+		"A step that observes a test runner must accept the summary the runner really prints on the unchanged tree (minitest's default reporter prints \"N runs\", other reporters \"N tests\") "+
+		"and give a literal name filter (minitest's -n and -i) only the plain test name. Rewrite these steps; resubmitting them unchanged is refused again.", e.scenarios) +
+		"\n" + strings.Join(e.items, "\n")
+}
+
+// readinessGate judges the complete checked result of a candidate: the unwritten-tests refusal
+// wins, and the runner-observer refusal is judged only when no scenario has an unwritten test.
+func readinessGate(ready *verify.Ready) error {
+	if err := unwrittenTestsGate(ready); err != nil {
+		return err
+	}
+	return runnerObserverGate(ready)
+}
+
+// runnerObserverGate refuses a ready result in which a failed scenario's runner-observer
+// analysis has a result.
+func runnerObserverGate(ready *verify.Ready) error {
+	e := &runnerObserverError{}
+	for _, sc := range ready.Scenarios {
+		if sc.Status != "failed" || sc.RunnerObserver == "" {
+			continue
+		}
+		e.scenarios++
+		e.items = append(e.items, fmt.Sprintf("- %s (line %d): %s", sc.Name, sc.Line, sc.RunnerObserver))
 	}
 	if e.scenarios == 0 {
 		return nil

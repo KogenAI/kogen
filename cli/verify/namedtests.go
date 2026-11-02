@@ -70,6 +70,16 @@ func parseGoRows(msg string) goRows {
 	return g
 }
 
+// failureMessage is the failure message of the worst step result: its message, else its
+// exception's message.
+func failureMessage(bad *stepResult) string {
+	msg := str0(get(bad.result, "message"))
+	if msg == "" {
+		msg = str0(get(bad.result, "exception", "message"))
+	}
+	return msg
+}
+
 // missingNamedTests is the feedback block for a failed step whose required tests did not run,
 // or "" when the step names no tests or they all ran. The ids come from the step's arguments
 // and from `-run` selectors in the failure message. unwritten is the lines of the tests that
@@ -80,10 +90,7 @@ func missingNamedTests(tc jmap, results []stepResult, defs map[string]stepDefini
 	if bad == nil {
 		return "", nil
 	}
-	msg := str0(get(bad.result, "message"))
-	if msg == "" {
-		msg = str0(get(bad.result, "exception", "message"))
-	}
+	msg := failureMessage(bad)
 	var step jmap
 	for _, ts := range list(get(tc, "testSteps")) {
 		if m, ok := ts.(jmap); ok && m["id"] == bad.step {

@@ -339,10 +339,14 @@ const namedTestGuidance = "Named-test helpers: when a step or helper requires na
 // Shape refuses a candidate whose named tests did not run on the unchanged tree.
 const unwrittenTestGuidance = "Unwritten tests: acceptance must not depend on test names or files the Build has to invent. A step may run a named test only when that test already exists before the Build; Shape refuses a candidate whose acceptance runs a named test that did not run on the unchanged tree. Observe behaviour that any correct implementation produces instead.\n"
 
+// runnerObserverGuidance tells the shaper that a step observing a test runner must accept the
+// runner's real output; Shape refuses a candidate whose step rejects a passing run.
+const runnerObserverGuidance = "Test-runner observers: a step that runs a test runner and judges its output must accept that runner's real output on the unchanged tree, in the environment acceptance runs in. Derive the summary wording and the name-filter semantics from a real run of an existing passing test there, not from memory; an observer control's known-good input is that real output, not hand-written runner text. For example, minitest's default reporter (bin/rails test with CI_PROGRESS_BAR=0) prints \"1 runs, 7 assertions, 0 failures, 0 errors, 0 skips\" where other reporters print \"1 tests, ...\", so match \"N (runs|tests)\"; minitest's -n and -i match a plain name literally, so pass the test name itself, never ^name$. Shape refuses a candidate whose step fails although the test runner it ran reported a passing run, or whose anchored name filter made the runner run nothing.\n"
+
 // ShaperInstructions is the shaper's policy: its instructions, the context guidance, the
-// named-test helper guidance and the unwritten-tests guidance.
+// named-test helper guidance, the unwritten-tests guidance and the test-runner observer guidance.
 func ShaperInstructions() string {
-	return agent.Prompt(agent.Shaper) + contextGuidance() + "\n" + namedTestGuidance + unwrittenTestGuidance
+	return agent.Prompt(agent.Shaper) + contextGuidance() + "\n" + namedTestGuidance + unwrittenTestGuidance + runnerObserverGuidance
 }
 
 // selectionEvent is the context_selection event of one request: what the context carried,
