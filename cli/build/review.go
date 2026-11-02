@@ -652,6 +652,17 @@ func (r *reviewRun) validate(args map[string]any, input []any) (*reviewVerdict, 
 	case verdict == "approve" && blocking > 0:
 		problems = append(problems, "an approve verdict cannot have blocking findings")
 	}
+	uncovered, err := b.uncoveredDataStores()
+	if err != nil {
+		return nil, nil, err
+	}
+	if slices.ContainsFunc(uncovered, func(file string) bool {
+		return !slices.ContainsFunc(findings, func(f map[string]any) bool {
+			return f["severity"] == "blocking" && f["path"] == file
+		})
+	}) {
+		problems = append(problems, "each data store the approved Intent omits needs a blocking finding at its path; the Intent neither scopes it nor excludes it by a Decision: "+strings.Join(uncovered, ", "))
+	}
 	for _, f := range findings {
 		// A blocker at a protected path reports a protected fixture defect (the documented stop),
 		// which may well say that the product is not at fault.

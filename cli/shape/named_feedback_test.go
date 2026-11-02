@@ -27,11 +27,17 @@ func TestNamedFeedbackShapeGuidance(t *testing.T) {
 	if !strings.Contains(instructions, unwrittenTestGuidance+runnerObserverGuidance) {
 		t.Fatal("the test-runner observers paragraph does not follow the unwritten-tests guidance")
 	}
-	if !strings.HasSuffix(instructions, runnerObserverGuidance) || !strings.HasPrefix(runnerObserverGuidance, "Test-runner observers: ") {
-		t.Fatal("the test-runner observers paragraph is not the end of Shape's instructions")
+	if !strings.HasPrefix(runnerObserverGuidance, "Test-runner observers: ") {
+		t.Fatal("the test-runner observers guidance is not the test-runner observers paragraph")
+	}
+	if !strings.HasSuffix(instructions, runnerObserverGuidance+dataStoresGuidance) || !strings.HasPrefix(dataStoresGuidance, "Data stores: ") || !strings.HasSuffix(dataStoresGuidance, "\n") {
+		t.Fatal("the data stores paragraph is not the end of Shape's instructions")
 	}
 	if strings.Contains(refineInstructions(), "Test-runner observers:") {
 		t.Fatal("refine instructions carry the test-runner observers guidance")
+	}
+	if strings.Contains(refineInstructions(), "Data stores:") {
+		t.Fatal("refine instructions carry the data stores guidance")
 	}
 	if strings.Contains(refineInstructions(), "Unwritten tests:") {
 		t.Fatal("refine instructions carry the unwritten-tests guidance")

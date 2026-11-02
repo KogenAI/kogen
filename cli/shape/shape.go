@@ -1343,6 +1343,13 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 	if text, out, refused := sh.contractRefusal(hash); refused {
 		return text, out, nil
 	}
+	if problems, err := sh.dataStoreProblems(); err != nil {
+		return "", outcome{}, err
+	} else if len(problems) > 0 {
+		sh.refused(dataStoresGate, problems)
+		return strings.Join(append([]string{project.DataStoresHeadline(len(problems))}, problems...), "\n"),
+			outcome{kind: outInvalid, problems: problems}, nil
+	}
 	if sh.cfg.ShapeDecisionCheck.Enabled {
 		text, err := os.ReadFile(filepath.Join(sh.root, project.IntentMDPath(sh.slug)))
 		if err != nil {
@@ -1418,6 +1425,24 @@ func (sh *shaping) checkSubmission(ctx context.Context, files []string) (string,
 		sh.contractChecked[hash] = true
 	}
 	return text, result, nil
+}
+
+// dataStoresGate is the gate of a candidate whose ## Data stores section leaves a file that
+// references a declared key uncovered, or is itself invalid.
+const dataStoresGate = "data_stores"
+
+// dataStoreProblems checks the written and formatted intent.md's ## Data stores section
+// against the files tracked at HEAD; nil for a candidate without the section.
+func (sh *shaping) dataStoreProblems() ([]string, error) {
+	intent, err := project.ReadIntent(sh.root, sh.slug, nil)
+	if err != nil {
+		return nil, nil
+	}
+	report, declared, err := project.ScanDataStores(sh.repo, "HEAD", intent)
+	if err != nil || !declared {
+		return nil, err
+	}
+	return report.Problems(), nil
 }
 
 func (sh *shaping) certify(ctx context.Context, files []string) (string, outcome, error) {

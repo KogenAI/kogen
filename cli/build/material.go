@@ -188,6 +188,12 @@ func (b *Attempt) materialOf(pass verify.Pass) (materialSet, error) {
 	if b.Config.Acceptance != nil {
 		acceptanceRun = b.Config.Acceptance.Run
 	}
+	dataStores := ""
+	if report, err := b.dataStoresReport(); err != nil {
+		return materialSet{}, err
+	} else if report != nil {
+		dataStores = report.DataStoresEvidence()
+	}
 	authority := "# Intent\n\n" + b.intent.Text + "\n" +
 		"# acceptance.feature\n\n" + string(feature) + "\n" +
 		modelText + "\n" +
@@ -198,7 +204,7 @@ func (b *Attempt) materialOf(pass verify.Pass) (materialSet, error) {
 		"The approved baseline cannot change: " + strings.Join(b.Baseline, ", ") + ".\n" +
 		"Fixers: " + strings.Join(b.Config.Fix, "; ") + ".\n" +
 		"Project checks: " + strings.Join(checks, "; ") + ".\n" +
-		"Acceptance: " + acceptanceRun + ".\n\n"
+		"Acceptance: " + acceptanceRun + ".\n\n" + dataStores
 
 	results := pass.Results()
 	source := "# Check results of the final pass\n\n" + results + "\n\n" +
@@ -217,6 +223,29 @@ func (b *Attempt) materialOf(pass verify.Pass) (materialSet, error) {
 		}
 	}
 	return set, nil
+}
+
+// dataStoresReport is the approved Intent's ## Data stores section checked against the files
+// tracked at the Build's start commit; nil without the section.
+func (b *Attempt) dataStoresReport() (*project.DataStoresReport, error) {
+	if b.intent == nil {
+		return nil, nil
+	}
+	report, declared, err := project.ScanDataStores(b.repo, b.Start, b.intent)
+	if err != nil || !declared {
+		return nil, err
+	}
+	return report, nil
+}
+
+// uncoveredDataStores are the files the approved Intent's ## Data stores section leaves
+// uncovered, in path order.
+func (b *Attempt) uncoveredDataStores() ([]string, error) {
+	report, err := b.dataStoresReport()
+	if err != nil || report == nil {
+		return nil, err
+	}
+	return report.UncoveredFiles(), nil
 }
 
 var materialHunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)

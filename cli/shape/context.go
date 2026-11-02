@@ -343,10 +343,16 @@ const unwrittenTestGuidance = "Unwritten tests: acceptance must not depend on te
 // runner's real output; Shape refuses a candidate whose step rejects a passing run.
 const runnerObserverGuidance = "Test-runner observers: a step that runs a test runner and judges its output must accept that runner's real output on the unchanged tree, in the environment acceptance runs in. Derive the summary wording and the name-filter semantics from a real run of an existing passing test there, not from memory; an observer control's known-good input is that real output, not hand-written runner text. For example, minitest's default reporter (bin/rails test with CI_PROGRESS_BAR=0) prints \"1 runs, 7 assertions, 0 failures, 0 errors, 0 skips\" where other reporters print \"1 tests, ...\", so match \"N (runs|tests)\"; minitest's -n and -i match a plain name literally, so pass the test name itself, never ^name$. Shape refuses a candidate whose step fails although the test runner it ran reported a passing run, or whose anchored name filter made the runner run nothing.\n"
 
+// dataStoresGuidance tells the shaper to establish where an entity's data lives before it
+// scopes; Shape refuses a candidate whose ## Data stores section leaves a referencing file
+// uncovered. It belongs to Shape alone.
+const dataStoresGuidance = "Data stores: for a request about an entity's data (for example deleting, exporting or moving an account's data), establish where that data lives before you write scope and acceptance: its schemas, the associations its model reaches, and every other store keyed by the entity's id (other tables, files, directories, indexes), found by searching the repository for each spelling of the id key. Record them in a ## Data stores section of intent.md: a line - key `<key>` for each spelling, then, for each file or directory (a path ending in /) that references a key, either - `<path>`: in scope, observed by `<text>`, where acceptance.feature or a step file listed under Acceptance contains <text>, or - `<path>`: excluded by decision <n>, where line <n> of ## Decisions names <path> and keeps its source. Shape refuses a candidate whose section leaves uncovered a file tracked at HEAD that references a declared key; the Build's independent review checks the candidate against the same scan.\n"
+
 // ShaperInstructions is the shaper's policy: its instructions, the context guidance, the
-// named-test helper guidance, the unwritten-tests guidance and the test-runner observer guidance.
+// named-test helper guidance, the unwritten-tests guidance, the test-runner observer guidance and
+// the data stores guidance.
 func ShaperInstructions() string {
-	return agent.Prompt(agent.Shaper) + contextGuidance() + "\n" + namedTestGuidance + unwrittenTestGuidance + runnerObserverGuidance
+	return agent.Prompt(agent.Shaper) + contextGuidance() + "\n" + namedTestGuidance + unwrittenTestGuidance + runnerObserverGuidance + dataStoresGuidance
 }
 
 // selectionEvent is the context_selection event of one request: what the context carried,

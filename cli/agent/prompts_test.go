@@ -168,7 +168,7 @@ func TestReviewerBatchPromptBytesAndUnchangedSchema(t *testing.T) {
 	if strings.Contains(text, reviewerOldSentence) || strings.Count(text, reviewerBatchParagraph) != 1 {
 		t.Fatal("reviewer must replace exactly the old batching sentence")
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(text))); got != "1ab7ff81c6b94254ac71958230859fd9c76ffc15baa25ad2552017cbd11cceb9" {
+	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(text))); got != "016a1e8dbb776685c6de5d0cf3c60e4527c342ac296e0e8a3c0adc4ab5af906b" {
 		t.Fatalf("reviewer hash = %s", got)
 	}
 	defs, err := os.ReadFile("defs.go")
