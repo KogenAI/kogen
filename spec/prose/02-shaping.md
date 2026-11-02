@@ -28,7 +28,7 @@ calc.is_even(n) returns True for even integers and False for odd ones; non-integ
 - `1.5 % 2` returns 1.5 in python3 instead of raising, so is_even checks the type itself. (probe 1: exit 0, 0.1 s)
 ```
 
-`## Tests` lists, for each behavioral rule the request adds, changes or removes, the test to update or add, chosen by the table of `docs/testing-rules.md` (SET-6): one line `- <rule>: <test to add or update> (<layer>)`, where `<layer>` is `unit`, `integration`, `scenario`, `regression` or `existing`; or `- none: <reason>` for a change with no executable behavior (copy, documentation).
+`## Tests` lists, for each behavioral rule the request adds, changes or removes, the test to update or add, chosen by the table of `docs/testing-rules.md` (SET-6): one line `- <rule>: <test to add or update> (<layer>)`, where `<layer>` is `unit`, `integration`, `scenario`, `regression` or `existing`; or `- none: <reason>` for a change with no executable behavior (copy, documentation). A `## Tests` line or a `## Decisions` item may end with one period directly after its closing parenthesis; Kogen accepts it with or without that period and keeps the line as written.
 
 With a model: `Model: .kogen/intents/<slug>/model.qnt invariants=<Name>[,<Name>...] seed=<n> samples=<n> steps=<n>`. For direct probes use a Boolean expression, e.g. `quint run model.qnt --backend=typescript --invariant='A and B'`; commas belong only to Intent metadata `invariants=A,B`.
 

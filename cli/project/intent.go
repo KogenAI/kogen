@@ -239,8 +239,8 @@ func CheckIntent(root, slug string, overlay map[string][]byte) (*Intent, []Scena
 }
 
 var (
-	sourceRe   = regexp.MustCompile(`\(source: (request|answer \d+)\)\s*$`)
-	testLineRe = regexp.MustCompile(`^- (none: \S.*|.+: .+ \((unit|integration|scenario|regression|existing)\))$`)
+	sourceRe   = regexp.MustCompile(`\(source: (request|answer \d+)\)\.?\s*$`)
+	testLineRe = regexp.MustCompile(`^- (none: \S.*|.+: .+ \((unit|integration|scenario|regression|existing)\)\.?)$`)
 )
 
 func lintIntent(i *Intent, scenarios []Scenario) []string {
