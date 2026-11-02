@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/KogenAI/kogen-coordinator/project"
 	"kogen-loop/sys"
-	"kogen/project"
 )
 
 // Observation only: mounted as a test with go -overlay; it changes no production source. It runs one

@@ -12,9 +12,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/KogenAI/kogen-executor/agent"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
-	"kogen/agent"
 )
 
 // K-CRED-ORIGIN: `kogen provider login openai-compatible` reads the base URL the key is for,

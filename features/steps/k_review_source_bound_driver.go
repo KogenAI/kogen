@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"kogen-loop/sys"
-	"kogen/executor"
-	"kogen/executor/claudecode"
-	"kogen/project"
 )
 
 // Observation only: mounted as a test with go -overlay; it changes no production source. Each

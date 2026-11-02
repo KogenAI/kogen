@@ -24,9 +24,9 @@ import (
 	"path/filepath"
 
 	"kogen-loop/tools"
-	"kogen/git"
-	"kogen/project"
-	"kogen/shape"
+	"github.com/KogenAI/kogen-coordinator/git"
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-shaping/shape"
 )
 
 func must(err error) {

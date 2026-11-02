@@ -469,7 +469,13 @@ async function goDriver(name, source) {
   const key = `go:${name}:${sha(source)}`;
   const bin = await once(key, async () => {
     const dir = path.join(workDir(), `go-${name}-${sha(source).slice(0, 8)}`); fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'go.mod'), `module driver\n\ngo 1.27.2\n\nrequire kogen v0.0.0\n\nrequire kogen-loop v0.0.0\n\nreplace kogen => ${path.join(ROOT, 'cli')}\n\nreplace kogen-loop => ${path.join(ROOT, 'cli', 'third_party', 'kogen-loop')}\n`);
+    // Kogen's packages now come from the component modules cli/go.mod pins: the driver requires the same versions
+    // (and, during local qualification only, the same replacements) and reuses cli/go.sum.
+    const cliMod = fs.readFileSync(path.join(ROOT, 'cli', 'go.mod'), 'utf8');
+    const components = [...cliMod.matchAll(/^\s*(github\.com\/KogenAI\/kogen-[a-z]+) (v\S+)$/gm)].map(m => `require ${m[1]} ${m[2]}\n\n`).join('')
+      + [...cliMod.matchAll(/^replace (github\.com\/KogenAI\/kogen-[a-z]+) => (\S+)$/gm)].map(m => `replace ${m[1]} => ${path.resolve(ROOT, 'cli', m[2])}\n\n`).join('');
+    fs.writeFileSync(path.join(dir, 'go.mod'), `module driver\n\ngo 1.27.2\n\nrequire kogen v0.0.0\n\nrequire kogen-loop v0.0.0\n\n${components}replace kogen => ${path.join(ROOT, 'cli')}\n\nreplace kogen-loop => ${path.join(ROOT, 'cli', 'third_party', 'kogen-loop')}\n`);
+    if (fs.existsSync(path.join(ROOT, 'cli', 'go.sum'))) fs.copyFileSync(path.join(ROOT, 'cli', 'go.sum'), path.join(dir, 'go.sum'));
     fs.writeFileSync(path.join(dir, 'main.go'), source);
     const env = { ...process.env, GOFLAGS: '-buildvcs=false', GOPROXY: 'off', GOTOOLCHAIN: 'local', GOWORK: 'off', HOME: process.env.HOME || dir };
     const out = path.join(dir, 'driver');

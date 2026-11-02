@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"kogen/git"
+	"github.com/KogenAI/kogen-coordinator/git"
 	"os"
 	"os/exec"
 	"path/filepath"

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/sys"
-	"kogen/executor/claudecode"
-	"kogen/project"
-	"kogen/verify"
 )
 
 func TestText(t *testing.T) {

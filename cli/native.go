@@ -17,9 +17,9 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
-	"kogen/executor/claudecode"
 )
 
 // runNative runs the commands implemented in Go. ok is false for commands that are not.

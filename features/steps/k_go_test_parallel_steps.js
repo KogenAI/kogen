@@ -13,7 +13,7 @@ import (
  "path/filepath"
  "testing"
  "time"
- "kogen/testproc"
+ "github.com/KogenAI/kogen-executor/testproc"
 )
 func note(t *testing.T, phase, tmp string) {
  t.Helper()

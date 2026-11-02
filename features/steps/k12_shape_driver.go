@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KogenAI/kogen-executor/executor"
 	"kogen-loop/sys"
-	"kogen/executor"
 )
 
 // Observation only: it mounts as a test with go -overlay, changes no production source and
@@ -61,11 +61,11 @@ func TestK12ShapeObservation(t *testing.T) {
 	out := map[string]any{
 		"mode": mode, "exit": exit, "error_class": "", "error_reason": "", "error_text": "",
 		"index_changed_by_round": indexBefore != indexAfter,
-		"published": f.exists(".kogen/intents/is-even/intent.md"),
-		"keep_note_exists": f.exists("features/steps/.keep-note"),
-		"preexisting_content": nil,
-		"status": strings.Split(strings.TrimSpace(f.git("status", "--porcelain", "-uall")), "\n"),
-		"removed_events": []any{},
+		"published":              f.exists(".kogen/intents/is-even/intent.md"),
+		"keep_note_exists":       f.exists("features/steps/.keep-note"),
+		"preexisting_content":    nil,
+		"status":                 strings.Split(strings.TrimSpace(f.git("status", "--porcelain", "-uall")), "\n"),
+		"removed_events":         []any{},
 	}
 	if err != nil {
 		out["error_text"] = err.Error()

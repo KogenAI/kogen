@@ -3,9 +3,9 @@ package main
 import (
 	"testing"
 
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/executor"
 	"kogen-loop/sys"
-	"kogen/executor"
-	"kogen/project"
 )
 
 func TestExternalExecutorWiring(t *testing.T) {

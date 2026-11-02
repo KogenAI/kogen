@@ -17,10 +17,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/KogenAI/kogen-executor/agent"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
-	"kogen/agent"
 )
 
 // testdata/loop_knobs_golden.json holds knobFixtureRequests and the cuts of knobFixtureRaw through

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/sys"
-	"kogen/verify"
 )
 
 // Observation driver: runs two probes in one session through verify.RunProbe, the way one Shape round does,

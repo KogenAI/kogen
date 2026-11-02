@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"os"
 
-	"kogen/build"
+	"github.com/KogenAI/kogen-build/build"
 )
 
 // Reads a JSON array of candidate diagnostic data and prints "accepted" or "rejected" for each.

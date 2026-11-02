@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/project"
+	"github.com/KogenAI/kogen-coordinator/project"
 )
 
 // Observation only: it mounts as a test with go -overlay and changes no production source. It

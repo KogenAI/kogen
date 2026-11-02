@@ -84,13 +84,13 @@ None of this executes a scenario. Parsing features and matching step patterns on
 
 ## Where this lives
 
-This folder is `spec/` of the Kogen repository, next to the Go program under `cli/`, which is all of Kogen.
+This folder is `spec/` of the Kogen repository, next to the Go program under `cli/`, which assembles Kogen's pinned component modules.
 
 ### Continuation trace
 
 LOOP-10 continuation uses the CLI-1 command and AUT-4 lock. The maintained
 `04-building.feature` unknown-checkpoint scenario and installed resume Intent
-scenarios exercise the real CLI; the Go tests of `cli/build` (`resume_test.go`,
+scenarios exercise the real CLI; the Go tests of kogen-build's `build` package (`resume_test.go`,
 `review_test.go`) cover pending final verification and same-reviewer custody,
 `blocker_test.go` covers refusal of protected contradictions, and `legacy_test.go`
 covers decoding of saved checkpoints.
@@ -104,7 +104,7 @@ continue to cover commit eligibility, independent review and live-owner refusal.
 
 LOOP-7/LOOP-10 explicit recovery is covered through the installed command by
 `.kogen/intents/build-unblocking-recovery/acceptance.feature` and its independent
-archive/lifecycle controls. The Go tests in `cli/build/recover_test.go` exercise raw
+archive/lifecycle controls. The Go tests in kogen-build's `build/recover_test.go` exercise raw
 Git filters, binary/mode/symlink custody and publication before a controlled filesystem
 cleanup failure. `quint/recovery.qnt` models archive-before-cleanup, non-reapproval
 and fresh final-commit proof (`Preserved`, `NoReapproval`, `SafeCommit`). Its bounded

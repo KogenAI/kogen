@@ -151,9 +151,10 @@ layer under concurrent local work; focused checks remain the development loop.
 
 | Path | What |
 | --- | --- |
-| `cli/` | the `kogen` program (Go, standard library plus the in-tree kogen-loop module, also standard library only): the command line, shaping, the Build, executors, verification, review and commit, project commands in process groups under a watchdog; its packages sit beside `main` and carry their own tests |
+| `cli/` | the `kogen` program (Go: the standard library, the component modules below and the in-tree kogen-loop module, which use only the standard library): the command line, the `kogen init` readiness report, usage and local facts, and the assembly of the component modules that `cli/go.mod` pins at exact versions |
+| component modules | `github.com/KogenAI/kogen-coordinator` (project configuration, Intents, approval baseline and provenance, Git and the target commit), `kogen-executor` (the executor contract, the Claude Code executor, the native agent definitions), `kogen-verification` (deterministic verification and evidence), `kogen-shaping` (init, shape, refine, approve) and `kogen-build` (the Build, review and repair, commit, resume and recovery); each carries its own tests |
 | `cli/third_party/kogen-loop/` | the pinned copy of kogen-loop: providers and sign-in, tools, the round engine and process custody. Written only by `packaging/sync-kogen-loop.sh`; `cli/loop-pin.json` holds its digest |
-| `cli/executor/` | the [executor contract](docs/executor-contract.md), its conformance scripts and the Claude Code executor |
+| `docs/executor-contract.md` | the [executor contract](docs/executor-contract.md), implemented in `kogen-executor` |
 | `packaging/` | `package.sh`, `install.sh`, `sync-kogen-loop.sh`, the release README, the pinned Quint and Cucumber packages, third-party licences |
 | `spec/` | prose, Gherkin and Quint specification, and its checks |
 | `docs/` | `configuration.md`, `testing-rules.md` (the test-selection rules Kogen gives its models and follows itself), `testing-strategy.md` (Kogen's own test layers and gates) |

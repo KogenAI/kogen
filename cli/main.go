@@ -7,10 +7,10 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+	"github.com/KogenAI/kogen-build/build"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"io"
 	"kogen-loop/sys"
-	"kogen/build"
-	"kogen/executor/claudecode"
 	"os"
 	"path/filepath"
 	"regexp"

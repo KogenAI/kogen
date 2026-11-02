@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/sys"
 	"kogen/readiness"
-	"kogen/verify"
 )
 
 // printReadiness ends a successful `kogen init` with the readiness lines. A failing line never

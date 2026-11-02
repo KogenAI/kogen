@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KogenAI/kogen-coordinator/project"
 	"kogen-loop/sys"
-	"kogen/project"
 )
 
 // Observation only: installed package tests supply the real Build/fake-provider fixture.

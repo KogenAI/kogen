@@ -13,12 +13,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/KogenAI/kogen-coordinator/git"
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
-	"kogen/executor/claudecode"
-	"kogen/git"
-	"kogen/project"
-	"kogen/verify"
 )
 
 // Check is one line of the report.

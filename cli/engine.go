@@ -5,14 +5,14 @@ import (
 	"errors"
 	"os"
 
+	"github.com/KogenAI/kogen-build/build"
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
+	"github.com/KogenAI/kogen-shaping/shape"
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
-	"kogen/build"
-	"kogen/executor"
-	"kogen/executor/claudecode"
-	"kogen/project"
-	"kogen/shape"
-	"kogen/verify"
 )
 
 // engineJob is an Intent command or init after the command line and the caller's files were

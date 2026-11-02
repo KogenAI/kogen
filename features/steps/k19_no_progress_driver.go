@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/sys"
-	"kogen/executor"
-	"kogen/project"
-	"kogen/verify"
 )
 
 // Observation only: it mounts as a test with go -overlay and changes no production source. It

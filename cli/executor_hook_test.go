@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/executor/claudecode"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
 )
 
 // hookFixture is a checkout with a protected file and the hook policy Claude Code's hooks

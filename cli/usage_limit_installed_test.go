@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"kogen/executor/claudecode"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"kogen/internal/testrelease"
 	"os"
 	"os/exec"
@@ -53,7 +53,7 @@ func usageLimitInstalledFrom(t *testing.T, limit int, root string) {
 			t.Fatal(err)
 		}
 	}
-	fixture := filepath.Join(root, "cli/build/testdata/legacy/project")
+	fixture := filepath.Join(root, "cli/testdata/legacy/project")
 	err = filepath.Walk(fixture, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

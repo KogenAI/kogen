@@ -5,13 +5,14 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/KogenAI/kogen-executor/agent"
 	"kogen-loop/provider"
-	"kogen/agent"
 )
 
 // responseBudgetSupport are the package-local tests that observe the real clients of every
@@ -22,7 +23,7 @@ var responseBudgetSupport = []struct {
 	pkg   string
 	tests []string
 }{
-	{"./shape", []string{
+	{"github.com/KogenAI/kogen-shaping/shape", []string{
 		"TestShapeBudgetRolesShape",
 		"TestShapeBudgetRolesShape/shape sends every request under thirty minutes and records it once",
 		"TestShapeBudgetRolesShape/a stalled shape expires unavailable naming thirty minutes, is not retried and records once",
@@ -31,13 +32,13 @@ var responseBudgetSupport = []struct {
 		"TestShapeBudgetRolesShape/shape workers send under the same thirty minutes within the one record",
 		"TestShapeBudgetRolesShape/the setup conversation of init sends under thirty minutes",
 	}},
-	{"./build", []string{
+	{"github.com/KogenAI/kogen-build/build", []string{
 		"TestShapeBudgetRolesBuild",
 		"TestShapeBudgetRolesBuild/the builder and the independent reviewer send under ten minutes and the run records it once",
 		"TestShapeBudgetRolesBuild/a stalled builder expires unavailable naming ten minutes and its resume lands under a new budget",
 		"TestShapeBudgetRolesBuild/a stalled review expires unavailable naming ten minutes and its resume answers it",
 	}},
-	{"./agent", []string{
+	{"github.com/KogenAI/kogen-executor/agent", []string{
 		"TestBudgetRoleConstants",
 		"TestNameBudgetExpiryNamesTheTenMinuteExpiry",
 		"TestNameBudgetExpiryEndsUnavailableNamingTenMinutes",
@@ -136,6 +137,15 @@ func TestShapeBudgetRoleContract(t *testing.T) {
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "go", args...)
 		cmd.Env = responseBudgetStartEnv
+		// shape's TestMain found the real Cucumber beside the package in this repository; from the
+		// pinned module it is given the same one, and only when the suite did not set one.
+		if !strings.Contains("\x00"+strings.Join(cmd.Env, "\x00"), "\x00KOGEN_CUCUMBER=") {
+			if dir, err := filepath.Abs(filepath.Join("..", "test", "acceptance", "node_modules")); err == nil {
+				if st, err := os.Stat(dir); err == nil && st.IsDir() {
+					cmd.Env = append(append([]string{}, cmd.Env...), "KOGEN_CUCUMBER="+dir)
+				}
+			}
+		}
 		var out bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &out
 		if err := cmd.Run(); err != nil {

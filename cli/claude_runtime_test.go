@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/executor/claudecode"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
 )
 
 func saveClaudeToken(t *testing.T, home string) string {

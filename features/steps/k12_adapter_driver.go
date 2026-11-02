@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"kogen/executor"
-	"kogen/executor/conformance"
+	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-executor/executor/conformance"
 )
 
 // Observation only: it mounts as a test with go -overlay and changes no production source. It

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/sys"
-	"kogen/executor"
-	"kogen/verify"
 )
 
 // Observation only: it mounts as a test with go -overlay, changes no production source and

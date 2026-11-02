@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/sys"
-	"kogen/verify"
 )
 
 // Probe driver for k-probe-mix-home: runs one Shape probe through verify.RunProbe from a caller session whose

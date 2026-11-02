@@ -1,3 +1,0 @@
-{"name":"deadline","only":"","needs":[],"deadline_seconds":1,
- "rounds":[{"actions":[{"shell":"sleep 20"}],"end":"finish","claim":"late","usage":null}],
- "expect":{"rounds":[],"error":"executor/deadline"}}

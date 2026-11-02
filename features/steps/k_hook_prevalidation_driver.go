@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"kogen-loop/sys"
-	"kogen/executor"
-	"kogen/executor/claudecode"
-	"kogen/project"
 )
 
 // Observation only: it mounts as a test with go -overlay and changes no production source. It

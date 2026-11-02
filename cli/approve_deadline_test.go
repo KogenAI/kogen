@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"kogen/project"
+	"github.com/KogenAI/kogen-coordinator/project"
 )
 
 // The tests below drive the real built kogen binary on a temporary Git project through

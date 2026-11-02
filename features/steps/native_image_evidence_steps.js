@@ -151,9 +151,9 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
-	"kogen/agent"
-	"kogen/build"
-	"kogen/project"
+	"github.com/KogenAI/kogen-executor/agent"
+	"github.com/KogenAI/kogen-build/build"
+	"github.com/KogenAI/kogen-coordinator/project"
 )
 
 func encode(v any) string {

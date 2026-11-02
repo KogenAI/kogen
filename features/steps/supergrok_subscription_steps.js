@@ -452,7 +452,7 @@ import (
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 	"kogen-loop/tools"
-	"kogen/project"
+	"github.com/KogenAI/kogen-coordinator/project"
 )
 
 type m = map[string]any

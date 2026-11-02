@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen/executor"
+	"github.com/KogenAI/kogen-executor/executor"
 )
 
 // Observation only: it is mounted as a test with go -overlay and changes no production source.

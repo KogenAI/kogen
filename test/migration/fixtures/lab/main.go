@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"kogen/agent"
-	"kogen/project"
+	"github.com/KogenAI/kogen-coordinator/project"
+	"github.com/KogenAI/kogen-executor/agent"
 )
 
 // first keeps the program valid whether agent.Prompt answers with a value alone or with a value and an error.

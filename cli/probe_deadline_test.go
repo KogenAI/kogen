@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen/verify"
+	"github.com/KogenAI/kogen-verification/verify"
 )
 
 // TestInstalledProbeDeadline is invoked by the acceptance suite's compiled Go test binary

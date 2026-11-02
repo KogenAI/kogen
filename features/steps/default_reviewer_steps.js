@@ -10,7 +10,7 @@ When('I read reviewer defaults from {string}', function (source) {
   try {
     const file = path.join(dir, 'main.go');
     fs.writeFileSync(file, `package main
-import ("encoding/json"; "os"; "kogen/project")
+import ("encoding/json"; "os"; "github.com/KogenAI/kogen-coordinator/project")
 func main() {
   roles := project.DefaultModels()
   if os.Args[1] != "builtin" {
