@@ -26,7 +26,7 @@ commands:
   acceptance:
     run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
     steps_dir: 'features/steps'
-protect: ['cli/third_party/kogen-loop/**', 'cli/loop-pin.json']
+protect: ['cli/third_party/kogen-loop/**', 'cli/loop-pin.json', 'cli/go.mod', 'cli/go.sum']
 models:
   shape:
     provider: chatgpt
