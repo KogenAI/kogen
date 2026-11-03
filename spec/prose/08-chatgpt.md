@@ -81,11 +81,11 @@ exercise login/refusals, Shape/Refine/Build/fresh Review, limits and legacy resu
 
 ### Selection and identity
 
-Every model role and Shape worker accepts optional `provider: chatgpt|supergrok|opencode-go|anthropic|openai-compatible`.
+Every model role accepts optional `provider: chatgpt|supergrok|opencode-go|anthropic|openai-compatible`.
 Omission preserves exact legacy maps and version-3 checkpoint comparisons and produces exactly the same request as an explicit `chatgpt` role (both carry the caching fields above); explicit ChatGPT adds only the selected provider key.
 No provider has a model or effort allowlist: any nonempty `model` and `effort` is accepted and sent unchanged. SuperGrok recommends `grok-4.7` with effort `low|medium|high|xhigh`; these are defaults and hints, not validation. Invalid provider
 values report `models.<role>.provider must be chatgpt, supergrok, opencode-go, anthropic or openai-compatible`
-(workers use `shape_workers.<role>`). A role naming a provider needs a nonempty `model` and `effort`. It uses the existing
+A role naming a provider needs a nonempty `model` and `effort`. It uses the existing
 line-numbered `environment/project_config_invalid`, exit 3. A provider edit changes
 approval and refuses resume; no migration of existing saved configuration occurs.
 

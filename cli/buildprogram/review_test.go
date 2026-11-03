@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KogenAI/kogen-executor/agent"
+	"github.com/KogenAI/kogen-review/review"
 )
 
 // reviewRequests are the provider requests of the reviewer, in order.
 func (f *fakeProvider) reviewRequests() []map[string]any {
 	var out []map[string]any
 	for _, req := range f.requests() {
-		if text := requestInstructions(req); text == agent.Prompt(agent.Reviewer) || text == reviewerPrompt(true) {
+		if text := requestInstructions(req); text == review.ReviewerInstructions() {
 			out = append(out, req)
 		}
 	}

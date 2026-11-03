@@ -50,6 +50,13 @@
               }
             }
           ]
+        },
+        {
+          "structured": {
+            "verdict": "approve",
+            "findings": []
+          },
+          "actions": []
         }
       ]
     }

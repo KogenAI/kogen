@@ -96,7 +96,8 @@ Feature: Claude Code serves a complete independent lineup
     Then the exit code is 0
     And HEAD has 1 new commit
     And the committed contents of "calc.py" contain "isinstance"
-    And fake claude role "review" ran 2 invocations
+    And fake claude role "review" ran 3 invocations
+    And fake claude role "review" invocation 3 resumed the session of its invocation 1
     And fake claude role "review" invocation 2 resumed the session of its invocation 1
     And fake claude role "review" invocation 2 received a prompt containing "Final verification of your repairs failed"
     And fake claude role "build" ran 1 invocation
@@ -272,7 +273,7 @@ Feature: Claude Code serves a complete independent lineup
     And fake claude role "shape" invocation 2 received a prompt containing "undefined step"
     And fake claude role "shape" invocation 3 received a prompt containing "Readiness observations"
     And the fake claude roles used 1 distinct sessions
-    And the file "features/steps/is_even_steps.js" exists
+    And the file "features/steps/is-even__steps.js" exists
     And the file ".kogen/local/approvals/is-even.json" does not exist
     And the fake ChatGPT server received 0 requests
 
@@ -284,12 +285,12 @@ Feature: Claude Code serves a complete independent lineup
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
-      Add calc.is_even(n). Non-integers raise TypeError.
+      Add calc.is_even(n) and show its result to the user; choose the visual presentation. Non-integers raise TypeError.
       """
     Then the exit code is 5
     And stdout contains "Questions for is-even:"
-    And stdout contains "1. What should is_even do with a non-integer?"
-    And stdout contains "a) raise TypeError (recommended)"
+    And stdout contains "1. How should the result be presented to the user?"
+    And stdout contains "a) show a text label (recommended)"
     And no Intent named is-even exists
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
@@ -361,7 +362,7 @@ Feature: Claude Code serves a complete independent lineup
 
 
   @LOOP-14 @LOOP-15 @SET-14
-  Scenario: Missing changed or oversized review material stops safely without clipping or commit
+  Scenario: Changed custody stops safely and candidate README is not review authority
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-opus-5-5, effort: high}"
     And the project config sets "models.review" to "{executor: claude-code, model: claude-opus-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
@@ -374,17 +375,15 @@ Feature: Claude Code serves a complete independent lineup
     Given the caller discards the edits listed in the last Build output
     And a fake claude with script "lineup-review-oversized" is installed as Kogen's Claude Code
     When the caller runs "kogen intent build is-even"
-    Then the exit code is 1
-    And stdout contains "candidate/context_budget_exceeded"
-    And HEAD is unchanged
-    And fake claude role "review" ran 1 invocation
+    Then the exit code is 0
+    And HEAD has 1 new commit
     And the fake ChatGPT server received 0 requests
 
 
   @LOOP-14 @LOOP-15 @SET-14
   Scenario: External round caps preserve the candidate and do not restart another role
     Given the project config sets "models.build" to "{executor: claude-code, model: claude-opus-5-5, effort: high}"
-    And the project config sets "models.review" to "{executor: claude-code, model: claude-opus-5-5, effort: high, max_rounds: 1}"
+    And the project config sets "models.review" to "{executor: claude-code, model: claude-opus-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
     And a fake claude with script "lineup-review-red-forever" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
@@ -393,7 +392,7 @@ Feature: Claude Code serves a complete independent lineup
     And stdout contains "candidate/executor_round_limit"
     And stdout contains "  edited: calc.py"
     And HEAD is unchanged
-    And fake claude role "review" ran 1 invocation
+    And fake claude role "review" ran 6 invocations
     And fake claude role "build" ran 1 invocation
 
 
@@ -434,20 +433,10 @@ Feature: Claude Code serves a complete independent lineup
 
 
   @LOOP-14 @LOOP-15 @SET-14 @SHP-1
-  Scenario: Unsupported workers probes and images stay explicit and research is not a native record
+  Scenario: Unsupported probes and images stay explicit and research is not a native record
     Given the project config sets "models.shape" to "{executor: claude-code, model: claude-opus-5-5, effort: high}"
-    And the project config sets "shape_workers" to "{enabled: true, read: {model: r, effort: low}, probe: {model: p, effort: low}, draft: {model: d, effort: low}}"
     And a fake claude with script "lineup-shape-research" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
-    When the caller runs "kogen intent shape is-even -" with stdin:
-      """
-      Add calc.is_even(n). Non-integers raise TypeError.
-      """
-    Then the exit code is 1
-    And stdout contains "shape workers are not supported"
-    And fake claude role "shape" ran 0 invocations
-    And no Intent named is-even exists
-    Given the project config sets "shape_workers" to "{enabled: false}"
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
       Add calc.is_even(n). Non-integers raise TypeError.

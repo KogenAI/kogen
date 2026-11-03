@@ -318,20 +318,22 @@ Feature: Building
     And the fake ChatGPT server received 0 requests
 
   @LOOP-14 @LOOP-10
-  Scenario: max_rounds leaves the candidate in place and the external checkpoint cannot be resumed
-    Given the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 2}"
+  Scenario: Identical red passes leave the candidate in place and the external checkpoint cannot be resumed
+    Given the project config sets "commands.checks" to "[{name: test, run: '! grep -q is_even calc.py'}]"
+    And the project config sets "models.build" to "{executor: claude-code, model: claude-sonnet-5-5, effort: high}"
     And the Intent "is-even" from fixture "is-even" is approved
-    And a fake claude with script "claude-wrong-forever" is installed as Kogen's Claude Code
+    And a fake claude with script "claude-correct-first-try" is installed as Kogen's Claude Code
     And the fake ChatGPT server plays script "build-correct-first-try"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
     And stdout contains "candidate/executor_round_limit"
     And stdout contains "  edited: calc.py"
-    And the fake claude ran 2 rounds
+    And the fake claude ran 3 rounds
     And HEAD is unchanged
     And no review request was sent
     When the caller runs "kogen intent resume {build_id}"
     Then the exit code is 1
     And stdout contains "candidate/resume_refused"
-    And the fake claude ran 2 rounds
+    And the fake claude ran 3 rounds
+    And the file "calc.py" contains "def is_even"
     And HEAD is unchanged

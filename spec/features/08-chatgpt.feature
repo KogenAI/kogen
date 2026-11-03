@@ -306,7 +306,7 @@ Feature: ChatGPT connection
       Add calc.is_even(n).
       """
     Then the exit code is 5
-    And stdout contains "1. What should is_even do with a non-integer?"
+    And stdout contains "1. How should the result be presented to the user?"
     And the fake ChatGPT server received 1 requests
     And the file ".kogen/intents/is-even/intent.md" does not exist
     And HEAD is unchanged

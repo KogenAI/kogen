@@ -45,44 +45,12 @@ Successful readiness with ordinary baseline failures returns their actual bounde
 
 Every Shape runs a contract check on each new candidate that readiness accounted for, with no setting: after the fresh readiness check and before the observations are returned, one fresh read-only review looks for acceptance expectations that contradict the candidate `intent.md` or the unchanged behaviour of repository code and text (native: a conversation on the shape route with `read_file`, `list_files`, `search_text` and `submit_contract_review`, at most 8 requests and 32 tool calls; `executor: claude-code`: one read-only session, directory `executor-contract-review-<n>`). Kogen keeps only findings whose quotes it finds in the cited files, and a second independent confirmation (`submit_contract_confirmation`, `executor-contract-confirm-<n>`) must confirm them; only confirmed findings refuse the candidate, as an invalid submission with gate `contract_review` (`Contract check: N acceptance expectation(s) contradict ...`). An unchanged resubmission is refused again without a new review, and a contradiction kept to the third submission ends Shape `intent/not_ready`; `kogen intent approve` then refuses that unchanged package with `intent/contract_contradicts` (the record is `.kogen/local/shaping/<slug>/contract-contradictions.json`). An invalid answer, a reached bound or a session without a result leaves the candidate unrefused. Each review records one `contract_review` event, and its tokens or rounds join the usage line. See SHP-8.
 
-### Optional request audit
+### Shape and review defaults
 
-`shape_audit: {enabled: true}` (default off; `enabled` must be a Boolean, other keys are refused) adds, once per `kogen intent shape` that reaches the model conversation, one fresh read-only call on the shape route that sees only the request text. It lists examples, rules and their cells and reports defects: `conflict` (two statements, different results for one input), `precedence` (no stated winner) and `undefined` (a missing name). The answer is recorded as one `request_audit` event, given to the shaper as lower-authority data, and its tokens or round count join the usage line. An answer that is not a valid `submit_audit` payload stops Shape with `shape/audit_invalid`.
-
-`shape_decision_check: {enabled: true}` (default off; `enabled` must be a Boolean, other keys are refused) adds, after each complete candidate that passes submission validation, the request audit coverage gate and the package check, and before the step self-check, one fresh read-only call on the shape route (native: only the `submit_decision_check` tool; `executor: claude-code`: one read-only session with the same schema) that sees only the request text and the candidate `intent.md`. It returns one item per `## Decisions` line and per explicit result for a concrete input, each with the exact `statement`, exact `request_quotes`, a verdict (`follows`, `contradicts`, `unsupported`) and `why`. Kogen checks mechanically: a statement not in `intent.md` or a quote not in the request counts as `unsupported`; an item whose statement contains `(assumption:` is never fed back (mark an assumption with `(assumption: <what the user must confirm>)` before the required trailing tag; the line keeps its trailing `(source: request)` or `(source: answer N)`, and the card strips that tag); every other `contradicts` or `unsupported` item is a problem, nothing is published, and one `Decision check: N stated decisions are not supported by the request; ...` list goes back as an invalid submission (three in a row end Shape as usual). Each call records one `decision_check` event and its tokens or rounds join the usage line. An answer that is not a valid payload stops Shape with `shape/decision_check_invalid`. With the key enabled, the approval card lists `(assumption: ...)` Decisions under `Assumptions to confirm`.
-
-`review_material: {mode: parts | on_demand}` is experimental and off by default (absent or `parts` is today's behaviour): with `on_demand`, a native review whose candidate source does not fit inline still pins the same hash-bound parts, but its opening carries a manifest (per-file diff stat and hunks, per-part covered line ranges, and `required_parts`: every part whose covered ranges overlap a changed hunk on the same path and side, that is diff parts spanning a hunk and file-text parts overlapping its candidate lines, including a deleted path's diff hunks and an added file's synthesized hunk) and no part body. Every required part must be read completely before any verdict (approve or changes), across working-window resets; the reviewer then judges the candidate on the evidence read and requests any other part by id when a claim depends on it, and nothing beyond that is required. A verdict with unread required parts is sent back as invalid feedback, not a product finding. A source that fits inline, or a binary/gitlink-only change, requires no part. The run log records `review_source_evidence` with the review's `required_parts` and a `review_material` event with the mode, the parts read (`parts_read`), `required_parts` and the completed `read_parts`. In every mode, a blocking finding that explicitly asserts no product defect (such as an inspection-not-completed blocker) is invalid feedback through the ordinary rejected-verdict allowance and fresh-review handling, never `review_blocked` (a blocker naming a protected path, the protected-fixture stop, is unaffected). Any other key or mode value is refused at config load.
-
-With defects, every questions or files submission is checked by exact substrings before anything is written: a defect is covered by a `## Decisions` line holding its `exposing_input` and not both its results, or by a question holding both quotes. Otherwise the submission is invalid with `Request audit: N defects are not decided or asked; decide each with its exposing input or ask with both quotes:` and one line per uncovered defect. Blocked reports are not gated. With the key absent Shape is unchanged.
-
-### Optional native Shape workers
-
-Workers are an opt-in trial, not an initialization default. No worker is enabled
-when `shape_workers` is absent or `enabled: false`. Supplied roles must always
-contain exactly nonempty `model` and `effort` strings; enabling requires all three.
-Unknown keys are configuration errors with source line numbers.
-
-```yaml
-models:
-  shape: {model: gpt-6.1-sol, effort: high}
-  build: {model: gpt-6.1-sol, effort: medium}
-  review: {model: gpt-6.1-sol, effort: high}
-shape_workers:
-  enabled: true
-  read: {model: gpt-6-luna, effort: medium}
-  probe: {model: gpt-6-luna, effort: medium}
-  draft: {model: gpt-6-luna, effort: max}
-```
-
-Only native Shape advertises `shape_batch`; refinement, Build and review do not.
-The main shaper integrates evidence and submits one merged package through normal
-readiness. Sequential work remains valid, especially for small or coupled tasks.
-Luna read/probe medium and draft max are experimental settings, not performance
-or quality claims. Each conversation has one blocking batch, one to three jobs,
-six calls, twelve ordinary tools and two probes per job. Provider HTTP can overlap;
-the main shaper alone runs probes, serially. Worker failure is not retried.
-Workers cannot write, submit, approve or publish. A complete common brief and exact
-disjoint draft ownership are required before dispatch. Drift invalidates drafts.
+Shape runs without workers, a request audit, or an optional decision check.
+Review uses hash-bound source parts when needed. External executors use their
+capability round bounds, and unchanged red candidates retain the existing
+no-progress stop.
 
 Native Shape's generated dynamic block is exactly `Context navigation: ` followed
 by single-line JSON and a newline. It has exactly `root` (resolved checkout root),
@@ -202,8 +170,7 @@ Native shell/read_file tools remain text-only; explicit view_image alone deliver
 
 ## Providers
 
-`models.shape`, `models.build`, `models.review` and each `shape_workers.read`,
-`probe`, `draft` selection accept optional `provider: chatgpt`, `provider: supergrok`, `provider: opencode-go`,
+`models.shape`, `models.build` and `models.review` accept optional `provider: chatgpt`, `provider: supergrok`, `provider: opencode-go`,
 `provider: anthropic` or `provider: openai-compatible`.
 Omission preserves the exact legacy `{model, effort}` map and defaults; explicit
 `chatgpt` routes identically. No template migration is required. An unknown provider
@@ -221,12 +188,10 @@ models:
   shape: {provider: supergrok, model: grok-4.7, effort: high}
   build: {provider: supergrok, model: grok-4.7, effort: medium}
   review: {provider: supergrok, model: grok-4.7, effort: high}
-shape_workers:
-  enabled: false
 ```
 
 This repository retains its existing ChatGPT bootstrap configuration. Automatic command discovery with bare `kogen init`
-still requires ChatGPT; configuration-first bootstrap below does not. Shape checks its role and enabled workers, Refine checks
+still requires ChatGPT; configuration-first bootstrap below does not. Shape checks its role, Refine checks
 Shape, and Build/resume checks Build and Review; unused providers need no login.
 
 `kogen provider login supergrok` uses Kogen's own device-code authorization with
@@ -467,7 +432,7 @@ separate, unclaimed obligations.
 
 No provider has a list of allowed models: any nonempty `model` is accepted and sent
 unchanged. Known models are only recommended defaults and hints. Efforts are checked
-when `.kogen/project.yaml` is read, for every `models` role and `shape_workers` role,
+when `.kogen/project.yaml` is read, for every `models` role,
 by exact case-sensitive match: `provider: anthropic` and `executor: claude-code`
 accept `low`, `medium`, `high`, `xhigh`, `max`; `provider: supergrok` accepts `low`,
 `medium`, `high`, `xhigh`. ChatGPT, OpenCode Go and OpenAI-compatible have no known
@@ -577,14 +542,15 @@ Each of `models.shape` (Shape and Refine), `models.build` and `models.review` ma
 models:
   shape: {executor: claude-code, model: claude-sonnet-5-5, effort: high}
   review: {executor: claude-code, model: claude-sonnet-5-5, effort: high}
-  build: {executor: claude-code, model: claude-sonnet-5-5, effort: high, max_rounds: 6}
+  build: {executor: claude-code, model: claude-sonnet-5-5, effort: high}
 ```
 
 - **`executor`** is `native` (the default; Kogen's own builder with the provider settings above, byte for byte as before) or `claude-code`. Any other name is a configuration error. A role that omits `executor` stays native; no role takes another role\'s executor, shares a session with it or falls back to the native path. Written out, `executor: native` reads exactly like leaving the key out.
 - **`claude-code`** runs Kogen's own pinned Claude Code (see **Prerequisites**) headless as that role (Build as a textual claim; Shape and Review through schema-constrained structured output). `provider` and `base_url` are refused with it; `model` and `effort` are required; the effort must be `low`, `medium`, `high`, `xhigh` or `max` and is passed to Claude Code unchanged (`--model` and `--effort`).
-- **`max_rounds`** (a positive integer, `claude-code` only) caps how many rounds Kogen gives that role's session. The default is 6 per role. A Build that reaches the cap without a verified, reviewed candidate stops with `candidate/executor_round_limit`; the candidate stays in the checkout. The Build also stops the same way, after recording `executor_no_progress`, when three consecutive verification passes fail identically over an unchanged candidate tree; any change or a green pass resets the count.
+External sessions use their capability round bounds. A Build that reaches the bound without a verified, reviewed candidate stops with `candidate/executor_round_limit`, preserving edits. Three consecutive identical red passes on an unchanged tree also stop it.
 
-**Delivery status.** The configuration, the v2 contract, the adapter's structured Shape/Review protocol and the independent **Review** role are in place. Review by Claude Code starts a fresh session (never the builder's), receives the complete exact authority, source and diff as Kogen-owned prompt data (retained privately under the run's `executor-review/` with hashes; the complete first prompt is measured against the inclusive 524288-byte ceiling and a source that does not fit one prompt is reviewed in ordered parts, each in its own fresh session, or, when mandatory material leaves no room for source, stops `candidate/context_budget_exceeded` before anything is sent; Claude Code's own "Prompt is too long" refusal is the same result, see the executor contract), may repair within the Intent, and its verdict goes through the same validation and exact-tree verification as the native reviewer. Red verification returns to the same reviewer; an unresolved blocker stops `candidate/review_blocked`; `intent resume` of an external review checkpoint never revives that session: it starts one fresh review of the recorded green base, and a blocking verdict or a checkpoint without that base is `candidate/resume_refused` (start a fresh Build from a Build-clean checkout under the current approval; see **Resume** below). **Shape and Refine** with Claude Code start a fresh read-only session; its final structured result is the existing `submit` / `submit_refinement` payload, routed through the same validation, readiness, red acknowledgment and publication, and Kogen's feedback returns to the same session. Kogen compares the checkout (tracked, tracked-ignored and nonignored files, modes), the raw index and HEAD around every round: a change stops with `candidate/baseline_changed` or `candidate/head_moved` before publication and is left as it is. Questions keep their numbered CLI; the next invocation is a new session (there is no persistent Claude resume). Enabled `shape_workers` with a Claude Code shaper are refused (`executor/unavailable`) before inference; Kogen's probe, typed images and documentation records are not provided, and research through Claude's own tools is harness-observed only. This is source capability, not live qualification.
+
+**Delivery status.** The configuration, the v2 contract, the adapter's structured Shape/Review protocol and the independent **Review** role are in place. Review by Claude Code starts a fresh session (never the builder's), receives the complete exact authority, source and diff as Kogen-owned prompt data (retained privately under the run's `executor-review/` with hashes; the complete first prompt is measured against the inclusive 524288-byte ceiling and a source that does not fit one prompt is reviewed in ordered parts, each in its own fresh session, or, when mandatory material leaves no room for source, stops `candidate/context_budget_exceeded` before anything is sent; Claude Code's own "Prompt is too long" refusal is the same result, see the executor contract), may repair within the Intent, and its verdict goes through the same validation and exact-tree verification as the native reviewer. Red verification returns to the same reviewer; an unresolved blocker stops `candidate/review_blocked`; `intent resume` of an external review checkpoint never revives that session: it starts one fresh review of the recorded green base, and a blocking verdict or a checkpoint without that base is `candidate/resume_refused` (start a fresh Build from a Build-clean checkout under the current approval; see **Resume** below). **Shape and Refine** with Claude Code start a fresh read-only session; its final structured result is the existing `submit` / `submit_refinement` payload, routed through the same validation, readiness, red acknowledgment and publication, and Kogen's feedback returns to the same session. Kogen compares the checkout (tracked, tracked-ignored and nonignored files, modes), the raw index and HEAD around every round: a change stops with `candidate/baseline_changed` or `candidate/head_moved` before publication and is left as it is. Questions keep their numbered CLI; the next invocation is a new session (there is no persistent Claude resume). Kogen's probe, typed images and documentation records are not provided, and research through Claude's own tools is harness-observed only. This is source capability, not live qualification.
 
 **Managed runtime.** Kogen no longer runs whatever `claude` is first on `PATH`. Every Claude Code role (Shape, Refine, Build, Review and a resumed Build) runs one pinned, tested Claude Code, `2.1.312`, that Kogen installs itself under `~/.kogen/claude-code/` (directories 0700): `2.1.312/claude` (the executable, 0755), `config/` (Kogen's own Claude Code configuration directory), `install.lock` and a `.partial-<random>/` folder while an installation is unfinished. Every child runs with exactly one `CLAUDE_CONFIG_DIR=~/.kogen/claude-code/config` and exactly one `DISABLE_UPDATES=1` (inherited values of both are removed), so your own Claude Code install, settings, plugins, skills, hooks, memory and credentials neither affect Kogen's executor nor are changed by it, and an auto-update can never swap the executable mid-run. `HOME`, Kogen's hooks (`--settings`) and the Kogen task framing are unchanged. Nothing selects another version: a newer Kogen release pins a newly tested version and installs it into its own directory at its first Claude Code role; older version directories stay until `kogen uninstall`, so runs of an older Kogen that are still active keep their executable. Supported platforms are macOS on Apple Silicon and Linux x86-64 (glibc); any other stops the role with `executor/unavailable`.
 

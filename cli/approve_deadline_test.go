@@ -454,8 +454,20 @@ func TestApproveDeadlineSplitCLI(t *testing.T) {
 	if after := c.gitState(); after != before {
 		t.Fatalf("approval changed HEAD or the index:\n%s\n---\n%s", before, after)
 	}
-	if entries, _ := os.ReadDir(filepath.Join(c.Root, ".kogen/local/readiness/attempts")); len(entries) != 0 {
-		t.Errorf("a successful approval retained %d refused attempts", len(entries))
+	entries, err := os.ReadDir(filepath.Join(c.Root, ".kogen/local/readiness/attempts"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("successful readiness attempts: %d, %v", len(entries), err)
+	}
+	raw, err := os.ReadFile(filepath.Join(c.Root, ".kogen/local/readiness/attempts", entries[0].Name(), "attempt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attempt evidenceRecord
+	if err := json.Unmarshal(raw, &attempt); err != nil {
+		t.Fatal(err)
+	}
+	if attempt.Kind != "approval_attempt" || attempt.Outcome != "passed" || attempt.Slug != approveSlug {
+		t.Errorf("unexpected successful attempt: %+v", attempt)
 	}
 }
 
@@ -487,7 +499,7 @@ func TestApproveDeadlineHungCLI(t *testing.T) {
 	if !regexp.MustCompile(`setup-1: timed out after \d+\.\ds`).MatchString(res.Stdout) {
 		t.Errorf("the refusal gives no numeric elapsed time for setup-1:\n%s", res.Stdout)
 	}
-	requireContains(t, "the refusal", res.Stdout, "names no cause")
+	requireContains(t, "the refusal", res.Stdout, "Load alone does not establish the cause.")
 
 	_, rec := c.readEvidence(res.Stdout)
 	setup := rec.step("setup-1")

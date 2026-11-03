@@ -277,6 +277,20 @@ class FakeServers {
       }));
       return;
     }
+    if (tools.includes('submit_question_check')) {
+      const text = flatten(body).join('\n');
+      const handoff = text.includes('Sign in to the provider');
+      const technical = text.includes('Which protocol and endpoint');
+      const count = text.includes('Which visual emphasis') ? 2 : 1;
+      const cls = handoff ? 'handoff' : technical ? 'technical' : 'ui_ux';
+      const why = handoff ? 'authentication must be completed by the caller' : technical ? 'the repository and documentation can establish the protocol' : 'the request leaves this interface choice open';
+      const item = functionCall('submit_question_check', { items: Array.from({ length: count }, (_, i) => ({ number: i + 1, class: cls, why })) }, 'question_check');
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      res.write(responseEvent('response.created', { response: { id: 'resp_question_check' } }));
+      res.write(responseEvent('response.output_item.done', { output_index: 0, item }));
+      res.end(responseEvent('response.completed', { response: { usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 5 }, output_tokens: 20, output_tokens_details: { reasoning_tokens: 10 } } } }));
+      return;
+    }
     const kind = !Array.isArray(body.tools) ? 'unknown' : tools.includes('submit_configuration') ? 'init' : tools.includes('submit_review') ? 'review' : tools.includes('submit_refinement') ? 'refine' : tools.includes('submit') ? 'shape' : 'build';
     const record = { order: this.requests.length + 1, kind, body, tools, text: flatten(body).join('\n'), receivedAt: Date.now() };
     this.requests.push(record);
@@ -446,9 +460,10 @@ class FakeServers {
     if (record.kind === 'refine') {
       if (name === 'refine-constraint') return { items: [functionCall('submit_refinement', { constraint: 'This correction needs a new step file; refinement changes existing files only.' }, 'refine_constraint')] };
       const file = intentFiles('is-even').find(file => file.path.endsWith('/intent.md'));
+      file.content = file.content.replace('features/steps/is-even__steps.js', 'features/steps/is_even_steps.js');
       if (name === 'refine-narrow-retry') {
         const corrected = { ...file, content: file.content.replace('# Add an is-even helper', '# Clarify the is-even helper') };
-        const feature = intentFiles('is-even').find(file => file.path.endsWith('/acceptance.feature'));
+        const feature = { path: '.kogen/intents/is-even/acceptance.feature', content: fs.readFileSync(path.join(__dirname, '../fixtures/intents/is-even/acceptance.feature'), 'utf8') };
         const files = ordinal === 1
           ? [{ ...corrected, content: corrected.content.replace('(source: request)', '') }, { ...feature, content: feature.content.replace('Feature: calc.is_even', 'Feature: Corrected is_even') }]
           : [corrected];
@@ -495,28 +510,28 @@ class FakeServers {
       }
       case 'shape-observed-repair':
         if (ordinal === 1) {
-          const step = files.find(file => file.path.endsWith('_steps.js'));
+          const step = files.find(file => file.path.includes('__steps.js'));
           step.content += "\nrequire('@cucumber/cucumber').Before(function () { throw new Error('unique fixture failure observation'); });\n";
         }
         return inspectedSubmit({ files }, `shape_observation_${ordinal}`);
       case 'shape-asks-one':
-        return { items: [functionCall('submit', { questions: [{ question: 'What should is_even do with a non-integer?', options: [{ label: 'raise TypeError', recommended: true }, { label: 'return False' }] }] }, `shape_q_${ordinal}`)] };
+        return { items: [functionCall('submit', { questions: [{ question: 'How should the result be presented to the user?', options: [{ label: 'show a text label', recommended: true }, { label: 'show an icon' }] }] }, `shape_q_${ordinal}`)] };
       case 'shape-asks-two':
         return { items: [functionCall('submit', { questions: [
-          { question: 'What should is_even do with a non-integer?', options: [{ label: 'raise TypeError', recommended: true }, { label: 'return False' }] },
-          { question: 'Should the helper accept booleans?', options: [{ label: 'follow Python integer behavior', recommended: true }, { label: 'raise TypeError' }] },
+          { question: 'How should the result be presented to the user?', options: [{ label: 'show a text label', recommended: true }, { label: 'show an icon' }] },
+          { question: 'Which visual emphasis should the result use?', options: [{ label: 'normal emphasis', recommended: true }, { label: 'strong emphasis' }] },
         ] }, `shape_q2_${ordinal}`)] };
       case 'shape-asks-one-then-writes':
         return record.text.includes('1: a')
-          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: answer 1)' }) }, `shape_answer_${ordinal}`)
+          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- Show a text label for the result. (source: answer 1)' }) }, `shape_answer_${ordinal}`)
           : this.shapeResponse('shape-asks-one', ordinal, record);
       case 'shape-asks-two-then-writes':
         return record.text.includes('1: a') && record.text.includes('2: a')
-          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: answer 1)\n- Booleans follow Python integer behavior. (source: answer 2)' }) }, `shape_answers_${ordinal}`)
+          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- Show a text label for the result. (source: answer 1)\n- Use normal emphasis. (source: answer 2)' }) }, `shape_answers_${ordinal}`)
           : this.shapeResponse('shape-asks-two', ordinal, record);
       case 'shape-not-ready-then-asks':
-        return record.text.includes('undefined step: When the caller doubles 4')
-          ? { items: [functionCall('submit', { questions: [{ question: 'What should is_even do with a non-integer?', options: [{ label: 'raise TypeError', recommended: true }, { label: 'return False' }] }] }, `shape_after_not_ready_${ordinal}`)] }
+        return record.text.includes('undefined step: When is-even: the caller doubles 4')
+          ? { items: [functionCall('submit', { questions: [{ question: 'How should the result be presented to the user?', options: [{ label: 'show a text label', recommended: true }, { label: 'show an icon' }] }] }, `shape_after_not_ready_${ordinal}`)] }
           : inspectedSubmit({ files: intentFiles('is-even', { undefinedStep: true }) }, `shape_not_ready_${ordinal}`);
       case 'shape-uninspected-submit':
         return { items: [functionCall('submit', { files }, `shape_uninspected_${ordinal}`)] };
@@ -738,8 +753,10 @@ function waitForAuthorizationUrl(record, timeoutMs = 10000) {
 function intentFiles(slug, options = {}) {
   let feature = options.undefinedStep ? undefinedFeature() : isEvenFeature(options.skipTag);
   if (options.failedFirst) feature = feature.replace('    When the caller doubles 4', '    When I check is_even\n    Then result is True\n    When the caller doubles 4');
-  const acceptance = [`.kogen/intents/${slug}/acceptance.feature`, 'features/steps/is_even_steps.js'];
-  if (options.extraStep) acceptance.push('features/steps/calc_steps.js');
+  feature = feature.replace(/^(\s*(?:Given|When|Then|And|But) )(.*)$/gm, `$1${slug}: $2`);
+  const stepPath = `features/steps/${slug}__steps.js`;
+  const acceptance = [`.kogen/intents/${slug}/acceptance.feature`, stepPath];
+  if (options.extraStep) acceptance.push('features/steps/is-even__existing.js');
   const decision = options.decision || '(source: request)';
   const feasibility = options.feasibility || '- none';
   const title = options.period ? 'Add an is-even helper.' : 'Add an is-even helper';
@@ -747,10 +764,10 @@ function intentFiles(slug, options = {}) {
   const files = [
     { path: `.kogen/intents/${slug}/intent.md`, content: intent },
     { path: `.kogen/intents/${slug}/acceptance.feature`, content: feature },
-    { path: 'features/steps/is_even_steps.js', content: isEvenSteps() },
+    { path: stepPath, content: isEvenSteps().replace(/(Given|When|Then)\('/g, `$1('${slug}: `) },
   ];
   if (options.extraStep) {
-    files.push({ path: 'features/steps/calc_steps.js', content: `${fs.readFileSync(path.join(__dirname, '../fixtures/projects/py-calc/features/steps/calc_steps.js'), 'utf8')}\n// Shaping added a harmless helper registration.\n` });
+    files.push({ path: 'features/steps/is-even__existing.js', content: `${fs.readFileSync(path.join(__dirname, '../fixtures/projects/py-calc/features/steps/is-even__existing.js'), 'utf8')}\n// Shaping added a harmless helper registration.\n` });
   }
   return files;
 }
@@ -782,15 +799,15 @@ function wrongFiles() {
 }
 
 function counterFiles(failing) {
-  const feature = `Feature: counter\n\n  Scenario: Counter starts at zero\n    Given the counter is initialized\n    Then its value is non-negative\n`;
+  const feature = `Feature: counter\n\n  Scenario: Counter starts at zero\n    Given counter: the counter is initialized\n    Then counter: its value is non-negative\n`;
   const model = `module counter {\n  var count: int\n  action init = all { count' = 0 }\n  action step = any { init, all { count' = count + 1 } }\n  val NeverNegative = ${failing ? 'false' : 'count >= 0'}\n}\n`;
-  const intent = `# Add a bounded counter\n\nSlug: counter\nModel: .kogen/intents/counter/model.qnt invariants=NeverNegative seed=7 samples=500 steps=30\nAcceptance:\n- .kogen/intents/counter/acceptance.feature\n- features/steps/counter_steps.js\n\nA counter starts at zero and stays non-negative.\n\n## Decisions\n- The counter begins at zero. (source: request)\n\n## Tests\n- Counter state initializes at zero and remains non-negative through increments: add test_counter_state in tests/test_counter.py (unit)\n\n## Source comparison\n- addressed: source request counter state; contract Tests, acceptance.feature and model.qnt.\n\n## Feasibility\n- none\n`;
-  const steps = `const { Given, Then } = require('@cucumber/cucumber');\nGiven('the counter is initialized', function () {});\nThen('its value is non-negative', function () {});\n`;
+  const intent = `# Add a bounded counter\n\nSlug: counter\nModel: .kogen/intents/counter/model.qnt invariants=NeverNegative seed=7 samples=500 steps=30\nAcceptance:\n- .kogen/intents/counter/acceptance.feature\n- features/steps/counter__steps.js\n\nA counter starts at zero and stays non-negative.\n\n## Decisions\n- The counter begins at zero. (source: request)\n\n## Tests\n- Counter state initializes at zero and remains non-negative through increments: add test_counter_state in tests/test_counter.py (unit)\n\n## Source comparison\n- addressed: source request counter state; contract Tests, acceptance.feature and model.qnt.\n\n## Feasibility\n- none\n`;
+  const steps = `const { Given, Then } = require('@cucumber/cucumber');\nGiven('counter: the counter is initialized', function () {});\nThen('counter: its value is non-negative', function () {});\n`;
   return [
     { path: '.kogen/intents/counter/intent.md', content: intent },
     { path: '.kogen/intents/counter/acceptance.feature', content: feature },
     { path: '.kogen/intents/counter/model.qnt', content: model },
-    { path: 'features/steps/counter_steps.js', content: steps },
+    { path: 'features/steps/counter__steps.js', content: steps },
   ];
 }
 

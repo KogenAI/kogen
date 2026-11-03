@@ -62,10 +62,10 @@ Feature: Shaping
       Add the existing is-even request and keep settled artifacts when correcting lint.
       """
     Then the exit code is 0
-    And request 2 contains "decision has no source"
+    And request 2 contains "must end with"
     And request 3 contains "Readiness observations"
     And stdout contains "3 fail now"
-    And the file "features/steps/is_even_steps.js" contains "Given"
+    And the file "features/steps/is-even__steps.js" contains "Given"
     And the file ".kogen/local/approvals/is-even.json" does not exist
     And the fake ChatGPT server received 3 requests
 
@@ -108,7 +108,7 @@ Feature: Shaping
     And the file ".kogen/intents/is-even/acceptance.feature" contains "Feature: Corrected is_even"
     And the file "features/steps/is_even_steps.js" is unchanged
     And the file ".kogen/local/approvals/is-even.json" does not exist
-    And request 2 contains "decision has no source"
+    And request 2 contains "must end with"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 5
     And stdout contains "intent/not_approved"
@@ -162,7 +162,7 @@ Feature: Shaping
       """
       Intent: {abs:.kogen/intents/is-even/intent.md}
       Acceptance test: {abs:.kogen/intents/is-even/acceptance.feature}
-      Step files: features/steps/is_even_steps.js (new)
+      Step files: features/steps/is-even__steps.js (new)
       Model: not applicable — a pure function without state
       Scenarios: 3 (3 fail now, 0 pass now)
       shape {model}/{effort} input={n} cached={n} output={n} reasoning={n} wall_ms={n}
@@ -261,9 +261,9 @@ Feature: Shaping
       Add calc.is_even(n).
       """
     Then the exit code is 0
-    And the path "features/steps/calc_steps.js" has uncommitted changes
+    And the path "features/steps/is-even__existing.js" has uncommitted changes
     When the caller runs "kogen intent approve is-even"
-    Then stdout contains "  - features/steps/calc_steps.js"
+    Then stdout contains "  - features/steps/is-even__existing.js"
 
   @SHP-5
   Scenario Outline: Intent rules
@@ -275,7 +275,7 @@ Feature: Shaping
     Examples:
       | fixture                | message                                              |
       | is-even-title-period   | title: the title must not end with a period          |
-      | is-even-unsourced      | decisions: a decision has no source                  |
+      | is-even-unsourced      | decisions: - Non-integers raise TypeError instead of returning False. must end with                  |
       | is-even-skip-tag       | acceptance: scenario Odd numbers is tagged @skip     |
       | is-even-broken-gherkin | acceptance.feature line 7:                           |
       | is-even-no-tests       | tests: the ## Tests section is missing or empty      |
@@ -285,16 +285,16 @@ Feature: Shaping
     Given the fake ChatGPT server plays script "shape-asks-one"
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
-      Add calc.is_even(n).
+      Add calc.is_even(n) and show its result to the user; choose the visual presentation.
       """
     Then the exit code is 5
     And request 1 contains "material UI/UX"
     And stdout is:
       """
       Questions for is-even:
-      1. What should is_even do with a non-integer?
-         a) raise TypeError (recommended)
-         b) return False
+      1. How should the result be presented to the user?
+         a) show a text label (recommended)
+         b) show an icon
       Answer one per line as <n>: <letter or your words>, e.g. printf '1: a\n' | kogen intent shape is-even -
       Or enter all: recommended to use every question's recommended option.
       """
@@ -303,13 +303,13 @@ Feature: Shaping
   @SHP-6 @SHP-7 @model:shaping
   Scenario: Answers continue shaping and the decision records its source
     Given the fake ChatGPT server plays script "shape-asks-one-then-writes"
-    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n)."
+    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n) and show its result to the user; choose the visual presentation."
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
       1: a
       """
     Then the exit code is 0
-    And request 2 contains "What should is_even do with a non-integer?"
+    And request 2 contains "How should the result be presented to the user?"
     And request 2 contains "1: a"
     And the file ".kogen/intents/is-even/intent.md" contains "(source: answer 1)"
     And the file ".kogen/local/approvals/is-even.json" does not exist
@@ -317,7 +317,7 @@ Feature: Shaping
   @SHP-6 @SHP-7 @model:shaping
   Scenario: All recommended answers continue shaping
     Given the fake ChatGPT server plays script "shape-asks-two-then-writes"
-    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n)."
+    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n) and show its result to the user; choose the visual presentation."
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
       all: recommended
@@ -331,7 +331,7 @@ Feature: Shaping
   @SHP-6
   Scenario Outline: Pending questions reject input the caller cannot use
     Given the fake ChatGPT server plays script "shape-asks-one"
-    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n)."
+    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n) and show its result to the user; choose the visual presentation."
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
       <answer>
@@ -348,7 +348,7 @@ Feature: Shaping
   @SHP-6
   Scenario: Missing answers are asked again without a model request
     Given the fake ChatGPT server plays script "shape-asks-two"
-    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n)."
+    And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n) and show its result to the user; choose the visual presentation."
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
       1: a
@@ -367,7 +367,7 @@ Feature: Shaping
     Then the exit code is 1
     And the fake ChatGPT server received 3 requests
     And stdout contains "intent/not_ready: the Intent is not ready to build"
-    And stdout contains "  acceptance.feature line <line>: undefined step: When the caller doubles 4"
+    And stdout contains "  acceptance.feature line <line>: undefined step: When is-even: the caller doubles 4"
     And the file ".kogen/intents/is-even/acceptance.feature" exists
     When the caller runs "kogen intent approve is-even"
     Then the exit code is 1
@@ -484,7 +484,7 @@ Feature: Shaping
 
   @SHP-4 @SET-8
   Scenario: Shaping formats the files it writes with the project's fixers and leaves other files alone
-    Given the project config sets "commands.fix" to "['f=features/steps/is_even_steps.js; if [ -f $f ]; then grep -q formatted $f || echo // formatted >> $f; fi; grep -q formatted README.md || echo formatted >> README.md']"
+    Given the project config sets "commands.fix" to "['f=features/steps/is-even__steps.js; if [ -f $f ]; then grep -q formatted $f || echo // formatted >> $f; fi; grep -q formatted README.md || echo formatted >> README.md']"
     And the fake ChatGPT server plays script "shape-ready-is-even"
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
@@ -492,7 +492,7 @@ Feature: Shaping
       """
     Then the exit code is 0
     And stderr contains "kogen: running fix-1"
-    And the file "features/steps/is_even_steps.js" contains "// formatted"
+    And the file "features/steps/is-even__steps.js" contains "// formatted"
     And the file "README.md" is unchanged
 
   @SHP-12

@@ -11,14 +11,14 @@
           "structured": {
             "questions": [
               {
-                "question": "What should is_even do with a non-integer?",
+                "question": "How should the result be presented to the user?",
                 "options": [
                   {
-                    "label": "raise TypeError",
+                    "label": "show a text label",
                     "recommended": true
                   },
                   {
-                    "label": "return False"
+                    "label": "show an icon"
                   }
                 ]
               }

@@ -1,61 +1,48 @@
 package main
 
 import (
-	"os"
-	"regexp"
-	"runtime/debug"
+	"debug/buildinfo"
+	"os/exec"
+	"path/filepath"
 	"testing"
+
+	"kogen/internal/testrelease"
 )
 
-// componentRequire is a component module cli/go.mod requires, with its exact version.
-var componentRequire = regexp.MustCompile(`(?m)^\s*(?:require\s+)?(github\.com/KogenAI/kogen-[a-z]+) (v\S+)$`)
-
-// The program is assembled from the component modules cli/go.mod pins. This test binary is built
-// from the same module and go.sum as the program, so it must contain every component at exactly
-// the pinned version and unreplaced: no stale internal copy or local checkout stands in for one.
+// TestAssemblyUsesThePinnedComponents inspects the executable from the release archive,
+// rather than inferring its dependencies from the test binary.
 func TestAssemblyUsesThePinnedComponents(t *testing.T) {
-	mod, err := os.ReadFile("go.mod")
+	want := map[string]string{
+		"github.com/KogenAI/kogen-coordinator":  "v0.0.0-20261103160727-e26a4d75cdcc",
+		"github.com/KogenAI/kogen-verification": "v0.0.0-20261103160936-f0884fde435a",
+		"github.com/KogenAI/kogen-shaping":      "v0.0.0-20261103154530-f04edcea9896",
+		"github.com/KogenAI/kogen-build":        "v0.0.0-20261103154529-b9990a3d0903",
+		"github.com/KogenAI/kogen-executor":     "v0.0.0-20261103153914-97892f55ed4f",
+		"github.com/KogenAI/kogen-setup":        "v0.0.0-20261103140900-9316891471b5",
+		"github.com/KogenAI/kogen-review":       "v0.0.0-20261103161351-e5005fa1daf8",
+	}
+	archive := testrelease.Package(t, repoRoot(t))
+	dir := t.TempDir()
+	if out, err := exec.Command("tar", "-xzf", archive, "-C", dir).CombinedOutput(); err != nil {
+		t.Fatalf("extract: %v\n%s", err, out)
+	}
+	binaries, err := filepath.Glob(filepath.Join(dir, "*", "bin", "kogen"))
+	if err != nil || len(binaries) != 1 {
+		t.Fatalf("packaged binaries %v: %v", binaries, err)
+	}
+	info, err := buildinfo.ReadFile(binaries[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	pins := map[string]string{}
-	for _, m := range componentRequire.FindAllStringSubmatch(string(mod), -1) {
-		pins[m[1]] = m[2]
-	}
-	want := []string{"github.com/KogenAI/kogen-coordinator", "github.com/KogenAI/kogen-executor",
-		"github.com/KogenAI/kogen-verification", "github.com/KogenAI/kogen-setup", "github.com/KogenAI/kogen-shaping",
-		"github.com/KogenAI/kogen-build"}
-	for _, path := range want {
-		if pins[path] == "" {
-			t.Errorf("cli/go.mod does not pin %s", path)
-		}
-	}
-	if regexp.MustCompile(`(?m)^replace github\.com/KogenAI/`).Match(mod) {
-		t.Error("cli/go.mod replaces a component module")
-	}
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		t.Fatal("no build information in the test binary")
-	}
-	built := map[string]*debug.Module{}
 	for _, dep := range info.Deps {
-		built[dep.Path] = dep
-	}
-	for _, path := range want {
-		dep := built[path]
-		switch {
-		case dep == nil:
-			t.Errorf("%s is not in the build", path)
-		case dep.Replace != nil:
-			t.Errorf("%s is replaced by %s %s", path, dep.Replace.Path, dep.Replace.Version)
-		case dep.Version != pins[path]:
-			t.Errorf("%s is built at %s, cli/go.mod pins %s", path, dep.Version, pins[path])
+		if version, ok := want[dep.Path]; ok {
+			if dep.Version != version || dep.Replace != nil {
+				t.Errorf("%s: version %s replacement %v, want %s unreplaced", dep.Path, dep.Version, dep.Replace, version)
+			}
+			delete(want, dep.Path)
 		}
 	}
-	// The moved packages exist only in their component modules.
-	for _, dir := range []string{"agent", "build", "durable", "executor", "git", "project", "shape", "testproc", "thinking", "verify"} {
-		if _, err := os.Stat(dir); err == nil {
-			t.Errorf("cli/%s still exists beside the pinned component", dir)
-		}
+	for path := range want {
+		t.Errorf("%s missing from packaged executable", path)
 	}
 }

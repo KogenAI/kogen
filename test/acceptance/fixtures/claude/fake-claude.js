@@ -278,6 +278,7 @@ async function main() {
       const { intentFiles } = require('../../support/fake-servers');
       const spec = round.structured_intent;
       let files = intentFiles(spec.name || 'is-even', spec.options || {});
+      if (spec.existingIntent) files = files.map(file => file.path.endsWith('/intent.md') ? { ...file, content: fs.readFileSync(file.path, 'utf8') + '\n## Source comparison\n- addressed: the existing behavior remains unchanged; only the title is clarified.\n' } : file);
       if (spec.only) files = files.filter(file => spec.only.some(suffix => file.path.endsWith(suffix)));
       if (spec.replace) files = files.map(file => (file.path.endsWith(spec.replace.path) ? { ...file, content: file.content.replace(spec.replace.old, spec.replace.new) } : file));
       result.structured_output = spec.key ? { [spec.key]: files } : { files };
@@ -306,9 +307,10 @@ async function main() {
 // Shape's contract check (SHP-8) asks for its own schema: a list of findings or of verdicts. It is
 // answered apart from the scripted roles, finding no contradiction, and stays out of the counters,
 // prompts, sessions and cost the scenarios read (contract-checks.jsonl records it).
-function contractCheckAnswer() {
+function contractCheckAnswer(prompt) {
   try {
     const props = JSON.parse(flag('--json-schema')).properties || {};
+    if (props.items && prompt.includes('How should the result be presented to the user?')) return { items: [{ number: 1, class: 'ui_ux', why: 'the request leaves this interface choice open' }] };
     if (props.verdict) return null; // Review's schema also has findings
     if (props.findings) return { findings: [] };
     if (props.verdicts) return { verdicts: [] };
@@ -335,7 +337,7 @@ function answerContractCheck(prompt, structured) {
 }
 
 readPrompt().then(prompt => {
-  const structured = contractCheckAnswer();
+  const structured = contractCheckAnswer(prompt);
   if (structured) return answerContractCheck(prompt, structured);
   begin(prompt);
   return main();
