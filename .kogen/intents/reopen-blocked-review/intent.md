@@ -18,7 +18,7 @@ Compatibility includes real version 2 blocked runs produced by retained signed c
 - Use the existing explicit resume command; no new option, operator context input, automatic recovery or approval. KOGEN-033 diagnostic input is separate. (source: request)
 - Keep Sol 6.1 high shaping/review and medium building, with the saved reviewer as targeted repair owner. No new model role or policy. (source: request)
 - Qualify only synthetic local projects, Git and fake provider fixtures; never read/copy ElixirDrops logs or credentials, mutate global host configuration, recover the live app, release/deploy/push, approve or Build this repair during shaping. (source: request)
-- Cross-version qualification uses `/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-dev/failfast-c3ee2a8e/bin/kogen` only as the retained old executable input, never a production dependency. The reusable acceptance fixture accepts `KOGEN_REOPEN_OLD_BIN` and `KOGEN_REOPEN_NEW_BIN`; ordinary maintained tests must be portable and need neither that absolute path nor private artifacts. (source: request)
+- Cross-version qualification uses `<home>/Areas/Kogen/studio-work/kogen-dev/failfast-c3ee2a8e/bin/kogen` only as the retained old executable input, never a production dependency. The reusable acceptance fixture accepts `KOGEN_REOPEN_OLD_BIN` and `KOGEN_REOPEN_NEW_BIN`; ordinary maintained tests must be portable and need neither that absolute path nor private artifacts. (source: request)
 
 ## Tests
 - Explicit resume replaces terminal changes replay with fresh verification and same-reviewer explicit clearance: installed-CLI clear scenario, reproducing earlier green/approval then final setup failure and changes (regression)

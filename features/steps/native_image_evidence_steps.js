@@ -481,7 +481,7 @@ func fallback(items, tools []any) (m, m) {
 }
 `;
 function retainedEvidence() {
-  const dir = '/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-repairs/native-image-evidence-20261021';
+  const dir = path.join(os.homedir(), 'Areas/Kogen/studio-work/kogen-repairs/native-image-evidence-20261021');
   const bytes = fs.readFileSync(path.join(dir, 'attempt-01/result.json'));
   assert.equal(sha(bytes), '3d1df30ef18bf31afa23024e75e36909a9ee3f2f53bf165ab2a5c73977ec8f55');
   const d = JSON.parse(bytes); assert.equal(d.status, 'content_discrimination_passed');

@@ -79,10 +79,6 @@ not cache, proposal, approval or shared-artifact authority. Supplied input bytes
 not tokens. Usage can be unknown; model/probe phase times are interval unions,
 not additive elapsed-time components. No monetary savings are inferred.
 
-Issue attribution: DELIVERY-20261018, “Shaping decomposition follow-up”, external
-knowledge workspace `research/benchmarks/proposals/studio-driven-delivery-2026-10-18.md`.
-That workspace is not a repository dependency or a new register.
-
 An unexecuted paired validation plan could compare sequential and opt-in arms on
 identical frozen requests, baselines and settings: preparation, failures/corrections,
 overlap-aware elapsed time, known usage and unknowns, fixture validity and independently

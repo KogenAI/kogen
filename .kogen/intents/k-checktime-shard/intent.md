@@ -23,7 +23,7 @@ Acceptance measures mechanism on a small real Go race fixture, not the full slow
 
 ## Source comparison
 - Addressed: Request K-CHECKTIME-SHARD What/Acceptance: compile-once race binaries, fixed shards, exact top-level coverage and wall-time reporting are specified above and exercised by acceptance; singleton shards are the settled technical partition policy.
-- Addressed: Why records Linux eu2 GOMAXPROCS=2 taking over ten minutes for `go test -race ./build`; no Linux timing claim is substituted for MacBook delivery measurement. Regression tests exercise the mechanism without running that reproducer during approval.
+- Addressed: Why records Linux <host> GOMAXPROCS=2 taking over ten minutes for `go test -race ./build`; no Linux timing claim is substituted for MacBook delivery measurement. Regression tests exercise the mechanism without running that reproducer during approval.
 - Addressed: Must stay, Out of scope and Host safety: unchanged CLI, timeouts/retries/limits/checks, no clock edits or package splitting, owned-process-only safety and temporary artifacts as above.
 - Addressed: Protected configuration dated 31 October: no edit to `.kogen/project.yaml`; separate reviewed delivery commit remains required. Current configured host wrappers remain unchanged.
 - Addressed: 31 October acceptance revision: two small fixture passes inside the 120-second approval command, ten real passes only after landing; no full stability run in Intent acceptance.

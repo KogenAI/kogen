@@ -16,7 +16,7 @@ Feature: Bounded native Shape repository navigation
       Kogen shas to investigate everything it can't be retarded like that :/
 
       ### human-steering-14.txt
-      Almir, 22 October 2026 (exact user message):
+      The owner, 22 October 2026 (exact user message):
 
       I won't be there to check on you tonight, so please have some kind of 30 minute interval check for how it's going. But still, the old rules apply: you shouldn't interfere if possible and if you do make sure the Kogen is fixed so you don't have to in the future.
 
@@ -25,7 +25,7 @@ Feature: Bounded native Shape repository navigation
       - On installed `kogen 44c2e06d`, a real native Shape of the large `go-core-migration` request (ChatGPT `gpt-6.1-sol` high) ran 1553 s and 64 responses with 11 Shape working-window resets. It then stopped honestly: `candidate/context_budget_exceeded: Shape complete next request 586149 bytes; mandatory 435251; ceiling 524288; reserve 131072 tokens`, with exact unsent input retained in custody.
       - In that unsent input, the first (mandatory, never-reset) user message is 247586 bytes. Its `# Protection contract` section contains a `Context index:` JSON (directories and files of this repository at the current tree) of about 188 KB. The request text itself is about 17 KB; README and testing-rules sections are a few KB each. The next largest items were the reset handoff (80580 bytes) and the package submission function call (51940 bytes).
       - The 524288-byte ceiling and 131072-token reserve are delivered guarantees and must stay. Shape working windows (`44c2e06d`) cannot reduce mandatory material. Kogen's own repository has grown (many Intents, spec features, step files), so its index scales with the repository. Large repositories therefore leave little room for large Shapes.
-      - Evidence: `/Users/almirsarajcic/Areas/Kogen/studio-work/provider-subscriptions-20261022/go-migration-native/shape-2/`. The irreducible stop archive is `native-working-context-custody/12.json` there.
+      - Evidence: `<home>/Areas/Kogen/studio-work/provider-subscriptions-20261022/go-migration-native/shape-2/`. The irreducible stop archive is `native-working-context-custody/12.json` there.
 
       ## Boundaries
       - Keep the ceiling/reserve guard, full rendered measurement, authority (exact request, Q&A, README, testing rules, protection/automatic baseline) and their non-clipping, the inspection and documentation gates and evidence, source provenance, readiness identity and reviewer independence. Repository facts remain discoverable by Shape's own tools.

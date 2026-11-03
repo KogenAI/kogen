@@ -13,7 +13,7 @@ Delete cli/internal/research/research_test.go, cli/loop_knobs_test.go and cli/lo
 Update README, CHANGELOG and docs/configuration.md or a Kogen-owned loop contract to stop advertising removed options; historical evidence may remain explicitly historical. All configured checks must pass. Do not remove public options from the pinned loop: this removes Kogen's internal option layer only.
 
 ## Decisions
-- Apply Almir's principle confirmed 29 Oct 2026: "don't overengineer, simpler is always better". Options are wrong by default; hardcode the finding's winner, otherwise today's default, or delete unused code. No new option or CLI change. (source: request)
+- Apply the owner's principle confirmed 29 Oct 2026: "don't overengineer, simpler is always better". Options are wrong by default; hardcode the finding's winner, otherwise today's default, or delete unused code. No new option or CLI change. (source: request)
 - Running climbs keep their pinned frozen SHA and executable; never replace a binary a live run executes. Queued climbs re-register as uncommitted patches on the new SHA. Experiments are patch lanes, and a yes result returns as a new Intent. (source: request)
 - Land before LI-4; Re-pin 2 follows LI-4. C1/C3/C4 lanes remain on frozen SHAs. Live C3 AuthorityBoundary, C4 InputBudgetBytes, UT4 DisableParallelToolCalls and K-REVOD review_material are patch experiments. Queued UT8, C5, #15, L-NUDGE and K11 run as patches on 16102c9. This Intent does not operate those lanes. (source: request)
 - Never edit cli/third_party/kogen-loop/** or cli/loop-pin.json; those change only by re-pin. Shared-host work uses temporary directories, no synthetic CPU load and stops only PIDs it started, never process names/patterns. (source: request)

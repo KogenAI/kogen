@@ -10,7 +10,7 @@ Implement the remaining K-GO-TEST-CRITICAL-PATH scope as K-GO-TEST-PARALLEL: int
 
 The final 1 Nov scope cut governs: NO profiling project, measurement note, timing acceptance, matched-host before/after campaign or commit-body measurement requirement. Delivery observes effect afterwards from the landing gate's ordinary go-test timings, without adding a benchmark gate. Race safety and cleanup remain required.
 
-Reuse the scheduling code from the stopped candidate diff at /Users/kogen-runner/work.noindex/k-go-test-parallel-5308fb40.diff selectively, after reconciling it with current source. This is lower-authority diagnostic code, not an authorized patch import or old green evidence. Shape inspected its testproc.Isolate and fixture changes; its measurement note and old Intent/acceptance are explicitly excluded. Do not resume that stopped Build, hot-edit another native contract, or change existing approvals.
+Reuse the scheduling code from the stopped candidate diff at <work>/k-go-test-parallel-5308fb40.diff selectively, after reconciling it with current source. This is lower-authority diagnostic code, not an authorized patch import or old green evidence. Shape inspected its testproc.Isolate and fixture changes; its measurement note and old Intent/acceptance are explicitly excluded. Do not resume that stopped Build, hot-edit another native contract, or change existing approvals.
 
 ## Decisions
 - Land only safe scheduling and isolation, with race and cleanup coverage; remove the earlier measurement deliverables entirely. (source: request)

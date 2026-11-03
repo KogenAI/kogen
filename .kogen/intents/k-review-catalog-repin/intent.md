@@ -17,7 +17,7 @@ The following are explicit required CLI outcomes, not merely references to histo
 
 ## Source comparison
 - Addressed: the original K-REVIEW-CATALOG-REPIN request's spec/features/06-reviewing.feature:33 and :44 outcomes are copied into acceptance.feature and specified explicitly above. Preserve af456d5 and both protected paths; allow Kogen-side fixture repair without weakening scenarios.
-- Superseded: initial likely review-request-shape diagnosis is not assumed proven. Read repository code shows the fake emits oversized argument deltas and the pinned loop bounds them. Build 99d4c402's retry/ordinal diagnosis remains builder-reported, not independent execution evidence. The host-local ~/work.noindex/old/k-review-catalog-repin-1427b/.kogen/local/runs/99d4c402 is historical diagnostic evidence, not a runtime input.
+- Superseded: initial likely review-request-shape diagnosis is not assumed proven. Read repository code shows the fake emits oversized argument deltas and the pinned loop bounds them. Build 99d4c402's retry/ordinal diagnosis remains builder-reported, not independent execution evidence. The host-local <work>/old/k-review-catalog-repin-1427b/.kogen/local/runs/99d4c402 is historical diagnostic evidence, not a runtime input.
 - Addressed: reported main ecde7c0 266/264/2 results, c81cea3, re-pin 63aac76 and adaptation bc54c65 explain the regression but confer no current green evidence. Configured checks must pass and the complete suite is delivery's post-landing measurement.
 - Omitted deliberately: six Builds in approval acceptance, which exceeded the 120 s step limit on 1 Nov 09:14Z. Three repetitions per original selector remain required implementation evidence below, not repeated acceptance rows. No product outcome is omitted.
 

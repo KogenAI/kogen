@@ -49,7 +49,7 @@ Feature: Native bounded continuity and faithful provenance
   Scenario: Preserve the complete successful request and actual numbered answer
     When I exercise native continuity "provenance" with:
       """json
-      {"request":"  Synthetic provenance request — Δ🙂\r\n\nKeep the exact HTML title suffix \"— Almir Δ🙂\".\nPreserve this literal path: /synthetic fixtures/診断.txt\n\nThis complete test request is diagnostic provenance, not approved scope.\n  Preserve leading and trailing whitespace.  \n","selected_context":"ONE core continuity/provenance delivery; Studio owns repeated Playwright/browser/package acquisition. No automatic Intent splitting, new provider dependency, planner/critic, Go resumption, 014 Build or image feature. Use fresh Build --context FILE for selective native production reuse under NEW approval. Full originals are private diagnostic data, never approved scope.","question":"Choose the settled HTML title suffix","answer":"1: Keep exactly — Almir Δ🙂\n","literal":"— Almir Δ🙂","wrong_example":"wrong personal-repository example must not silently replace the supplied literal","omission":"HTML title suffix omitted; ordinary Refine and new exact approval required","correction":"Add exactly the settled HTML title suffix — Almir Δ🙂; preserve the original request as diagnostic, not new authority."}
+      {"request":"  Synthetic provenance request — Δ🙂\r\n\nKeep the exact HTML title suffix \"— Owner Δ🙂\".\nPreserve this literal path: /synthetic fixtures/診断.txt\n\nThis complete test request is diagnostic provenance, not approved scope.\n  Preserve leading and trailing whitespace.  \n","selected_context":"ONE core continuity/provenance delivery; Studio owns repeated Playwright/browser/package acquisition. No automatic Intent splitting, new provider dependency, planner/critic, Go resumption, 014 Build or image feature. Use fresh Build --context FILE for selective native production reuse under NEW approval. Full originals are private diagnostic data, never approved scope.","question":"Choose the settled HTML title suffix","answer":"1: Keep exactly — Owner Δ🙂\n","literal":"— Owner Δ🙂","wrong_example":"wrong personal-repository example must not silently replace the supplied literal","omission":"HTML title suffix omitted; ordinary Refine and new exact approval required","correction":"Add exactly the settled HTML title suffix — Owner Δ🙂; preserve the original request as diagnostic, not new authority."}
       """
     Then the native continuity observations include:
       """json
@@ -59,7 +59,7 @@ Feature: Native bounded continuity and faithful provenance
   Scenario Outline: Native correction preserves original lineage and approval safety
     When I exercise native continuity "<mode>" with:
       """json
-      {"request":"Keep exact source and HTML title suffix — Almir Δ🙂\n","selected_context":"Originals are private diagnostic provenance; approved Intent remains authority.","question":"Choose the settled HTML title suffix","answer":"1: Keep exactly — Almir Δ🙂\n","literal":"— Almir Δ🙂","wrong_example":"wrong personal-repository example","omission":"HTML title suffix omitted; ordinary Refine and new exact approval required","correction":"Add exactly the settled HTML title suffix — Almir Δ🙂; preserve the original request as diagnostic, not new authority."}
+      {"request":"Keep exact source and HTML title suffix — Owner Δ🙂\n","selected_context":"Originals are private diagnostic provenance; approved Intent remains authority.","question":"Choose the settled HTML title suffix","answer":"1: Keep exactly — Owner Δ🙂\n","literal":"— Owner Δ🙂","wrong_example":"wrong personal-repository example","omission":"HTML title suffix omitted; ordinary Refine and new exact approval required","correction":"Add exactly the settled HTML title suffix — Owner Δ🙂; preserve the original request as diagnostic, not new authority."}
       """
     Then the native continuity observations include:
       """json
@@ -73,7 +73,7 @@ Feature: Native bounded continuity and faithful provenance
   Scenario: A changed bound source is not legacy source absence
     When I exercise native continuity "source-drift" with:
       """json
-      {"request":"Keep exact source and HTML title suffix — Almir Δ🙂\n","selected_context":"Originals are private diagnostic provenance; approved Intent remains authority.","question":"Choose the settled HTML title suffix","answer":"1: Keep exactly — Almir Δ🙂\n","literal":"— Almir Δ🙂","wrong_example":"wrong personal-repository example","omission":"HTML title suffix omitted; ordinary Refine and new exact approval required","correction":"Add exactly the settled HTML title suffix — Almir Δ🙂; preserve the original request as diagnostic, not new authority."}
+      {"request":"Keep exact source and HTML title suffix — Owner Δ🙂\n","selected_context":"Originals are private diagnostic provenance; approved Intent remains authority.","question":"Choose the settled HTML title suffix","answer":"1: Keep exactly — Owner Δ🙂\n","literal":"— Owner Δ🙂","wrong_example":"wrong personal-repository example","omission":"HTML title suffix omitted; ordinary Refine and new exact approval required","correction":"Add exactly the settled HTML title suffix — Owner Δ🙂; preserve the original request as diagnostic, not new authority."}
       """
     Then the native continuity observations include:
       """json

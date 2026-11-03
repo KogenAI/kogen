@@ -1,12 +1,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { When, Then } = require('@cucumber/cucumber');
 
 const ROOT = path.resolve(__dirname, '../..');
 const HEAD = '33e7f4ec8ba899fc4aa621127379e5cb26b77648';
-const DEFAULT_SOURCE = '/Users/almirsarajcic/Areas/Kogen/delivery/kogen-loop';
+const DEFAULT_SOURCE = path.join(os.homedir(), 'Areas/Kogen/delivery/kogen-loop');
 const EXCLUDED = p => p.startsWith('.kogen/') || p.startsWith('features/');
 
 function walk(dir, base = dir, out = []) {

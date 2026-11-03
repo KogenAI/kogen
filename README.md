@@ -1,5 +1,7 @@
 # Kogen
 
+This repository is `kogen`, the command-line program that is Kogen's small core. It takes one requested feature through Shape, Build, Verify, Review and Commit in your own Git repository. For Kogen as a whole, see [kogen.dev](https://kogen.dev).
+
 Kogen takes one requested feature through five steps in your own Git repository:
 
 1. **Shape**: a model writes the feature as short prose, executable Gherkin with step definitions, and a Quint model when the change has meaningful state. It inspects the repository and settles material technical questions itself. It finds and retrieves current authoritative external documentation when a task depends on it. It keeps a native record of each documentation lookup. It asks you only about open UI/UX choices.
@@ -51,8 +53,8 @@ Build/medium and Review/high, plus Sonnet 5.5 Review/medium on their normal rout
 Other selections remain experimental and are not blocked. `kogen provider list --json`
 publishes the offline profile/limits/settings catalog and row-level evidence. See
 [qualified model-family profiles](docs/model-family-qualification.md) for the
-separate historical evidence scopes, current wire policy and experimental remainder
-of KOGEN-057; recommended defaults and saved logins do not establish qualification.
+separate historical evidence scopes, current wire policy and experimental remainder;
+recommended defaults and saved logins do not establish qualification.
 
 Kogen runs its own pinned Claude Code `2.1.312`, never the `claude` on your `PATH`: the first Claude Code role installs it under `~/.kogen/claude-code/` (a download checked against a pinned SHA-256), with its own configuration directory and updates disabled, so your own Claude Code install, settings, plugins, skills, hooks, memory and credentials neither affect it nor are changed by it; `kogen provider list` shows `claude-code runtime: ...` and `kogen uninstall` removes it. It signs in with a long-lived subscription token: make one with `claude setup-token` (without an own Claude Code: `CLAUDE_CONFIG_DIR="$HOME/.kogen/claude-code/config" "$HOME/.kogen/claude-code/2.1.312/claude" setup-token`), then save it with `kogen provider login claude-code` (stdin or echo-suppressed terminal; `kogen provider list` shows `claude-code: token saved (not verified)`). It is kept privately in `~/.kogen/credentials/claude-code.json`, passed to Claude Code on an inherited pipe at fd 3 (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3`) only from that file, is how Kogen's runtime signs in, and an inherited environment token is still ignored. Remove it with `rm -f ~/.kogen/credentials/claude-code.json ~/.kogen/credentials/claude-code.lock`. See [the Claude Code executor](docs/configuration.md).
 
@@ -78,13 +80,18 @@ no paid sweeps or fallback. Linux and release real-use gates remain separate.
 
 ## Status
 
-Kogen is in active development. There is no published release yet: you build the release archive from this repository. It runs on macOS on Apple Silicon and on Linux x86-64 with glibc. Release qualification requires the deterministic suite on both platforms and real use: the installed candidate builds a feature in the example app in `examples/` and a change to Kogen itself. Uncommitted local builds remain development candidates until those gates pass.
+Kogen is in active development. Development prereleases are published at https://github.com/KogenAI/kogen/releases and `packaging/install-kogen.sh` installs them; you can also build the release archive from this repository. It runs on macOS on Apple Silicon and on Linux x86-64 with glibc. Release qualification requires the deterministic suite on both platforms and real use: the installed candidate builds a feature in the example app in `examples/` and a change to Kogen itself. Uncommitted local builds remain development candidates until those gates pass.
 
 ## Getting started
 
 For a step-by-step guide from install to your first landed feature, see [docs/getting-started.md](docs/getting-started.md). Kogen is one Go program. You need Git, a supported subscription (bare `kogen init` discovery requires ChatGPT; see [configuration-first bootstrap](docs/configuration.md#opencode-go-and-role-presets)), and to build it Go 1.27 and Node 24 (for Quint and Cucumber); no Erlang or Elixir. The toolchain is in `.tool-versions`, for example with [mise](https://mise.jdx.dev): `mise install` (it also lists Elixir for the Elixir fixture project and the Tiny Tasks example, which are projects Kogen builds, not part of Kogen).
 
+To build it from source, start from a plain clone and install the toolchain from `.tool-versions` (`mise install` above):
+
 ```sh
+git clone https://github.com/KogenAI/kogen
+cd kogen
+mise install                                   # Go and Node from .tool-versions
 sh packaging/package.sh                        # builds dist/kogen-<version>-<platform>.tar.gz
 tar -xzf dist/kogen-*.tar.gz -C /tmp
 sh /tmp/kogen-*/install.sh                     # installs into ~/.local; needs no administrator rights
@@ -115,9 +122,11 @@ For a generated project, commit the runnable scaffold first; `kogen init` then m
 
 ## Development
 
-Set up once, with the toolchain from `.tool-versions` on `PATH`:
+Set up once from a plain clone, with the toolchain from `.tool-versions` (Go and Node) on `PATH`. The component modules in `cli/go.mod` are public Go modules on github.com/KogenAI and need no setup:
 
 ```sh
+git clone https://github.com/KogenAI/kogen
+cd kogen
 (cd spec && npm ci)
 (cd test/acceptance && npm ci)
 ```
@@ -143,9 +152,7 @@ sh examples/tiny_tasks-qualification/qualify.sh               # qualifies the ex
 
 During development, fix Kogen directly with an external coding agent when needed. Self-hosting is a qualification path, not a prerequisite for repairing the tool. Preserve failed-attempt evidence and verify the candidate independently. An uncommitted development build is not a qualified release; the release checks above still apply.
 
-The scenarios run Python from `.tool-versions`; set `KOGEN_TEST_PYTHON_BIN` to use another Python 3.13. Read `sh test/suite.sh` layer timings for the actual scope and host load. The
-24 October migration candidate took 516.8 seconds for that complete deterministic
-layer under concurrent local work; focused checks remain the development loop.
+The scenarios run Python from `.tool-versions`; set `KOGEN_TEST_PYTHON_BIN` to use another Python 3.13. Read `sh test/suite.sh` layer timings for the actual scope and host load; focused checks remain the development loop.
 
 ## Folder map
 
@@ -241,7 +248,7 @@ Resume requires the user's index to record exactly the saved staging. A plain `g
 only refreshed entries' stat cache (timestamps, inode, size) after the stop is not a change and is
 reported; any staged path, mode, object, stage, flag or extension change (including Git's
 cache-tree, so even restaging identical content refuses), a version 4 or split index, or a
-damaged index still refuses (Studio Build 543748f1). Fail closed means setups whose `git status`
+damaged index still refuses. Fail closed means setups whose `git status`
 also rewrites an extension (untracked cache, fsmonitor) or that write index version 4 or a zero
 checksum (`feature.manyFiles`, `index.skipHash`) still refuse after a status. `kogen intent recover`
 keeps exact index byte equality.
@@ -270,7 +277,7 @@ source-data message carrying that exact text, in a completed continuation before
 pinned-part tree and whether it is current, delivered count and unread part numbers, and
 every image this review was given, as of its newest delivery (path, SHA-256, read candidate,
 current, pixels still in the next window). A reviewer that could not tell what it already
-received rebuilt it in every window (Studio Build 543748f1); these facts are not findings or
+received rebuilt it in every window; these facts are not findings or
 approval. Native current-tree checks alone determine eligibility.
 
 Native Refine also preflights complete rendered requests within one invocation.

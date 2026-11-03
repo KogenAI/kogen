@@ -1,6 +1,6 @@
 Feature: Reopen a blocked independent reviewer by explicit resume
   Background:
-    Given the blocked review qualification uses retained executable "/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-dev/failfast-c3ee2a8e/bin/kogen"
+    Given the blocked review qualification uses retained executable "<home>/Areas/Kogen/studio-work/kogen-dev/failfast-c3ee2a8e/bin/kogen"
 
   Scenario: Fresh green then explicit same-reviewer clearance
     When I qualify blocked review retry "clear" using "candidate"

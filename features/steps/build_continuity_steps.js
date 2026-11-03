@@ -265,7 +265,7 @@ if (require.main === module && process.argv[2] === '--control') {
     const input = path.join(c.root, 'original request.txt');
     const request = `${spec.request}\nSelected settled context:\n${spec.selected_context}\nWrong-example counterexample: ${spec.wrong_example}\n`;
     fs.writeFileSync(input, request);
-    const question = { question: spec.question, options: [{ label: 'Keep exactly — Almir Δ🙂', recommended: true }, { label: 'Obsolete suffix' }] };
+    const question = { question: spec.question, options: [{ label: 'Keep exactly — Owner Δ🙂', recommended: true }, { label: 'Obsolete suffix' }] };
     const dir = H.intentDir(slug), step = 'features/steps/captured.js';
     const feature = 'Feature: Source fixture\n  Scenario: Approved scope stays bounded\n    Then the approved fixture stays bounded\n';
     const body = "const {Then}=require('@cucumber/cucumber');const fs=require('node:fs');const assert=require('node:assert/strict');Then('the approved fixture stays bounded',()=>assert.equal(fs.readFileSync('app.txt','utf8'),'baseline\\n'));\n";
@@ -284,7 +284,7 @@ if (require.main === module && process.argv[2] === '--control') {
     const approval = read(H.approvalPath(c.repo, slug));
     const basic = {
       successful_source: true, exact_request: doc.request.text === request,
-      exact_answer: (doc.rounds || []).some(r => r.input === spec.answer && same(r.questions, [question]) && JSON.stringify(r.answers).includes('Almir')),
+      exact_answer: (doc.rounds || []).some(r => r.input === spec.answer && same(r.questions, [question]) && JSON.stringify(r.answers).includes('Owner')),
       source_identity: doc.request.source_path === input && doc.request.sha256 === digest(request) && doc.contract_sha256 === hash,
       private: isPrivate([source]), card_comparison: card.includes(spec.omission) && card.includes('provenance') && card.includes(digest(bytes)),
       card_no_raw_request: !card.includes(request), approval_bound: approval.includes(digest(bytes)),

@@ -951,7 +951,7 @@ async function exerciseMode(mode, s) {
     return { ...d, mode, version_id: versionId };
   } finally { await fake.stop(); H.cleanupSuite(suite); }
 }
-const PRECHECK = '/Users/almirsarajcic/Areas/Kogen/studio-work/provider-subscriptions-20261022/account-precheck';
+const PRECHECK = path.join(os.homedir(), 'Areas/Kogen/studio-work/provider-subscriptions-20261022/account-precheck');
 function retainedEvidence() {
   const receipt = JSON.parse(fs.readFileSync(path.join(PRECHECK, 'receipt.json'), 'utf8'));
   const referrer = JSON.parse(fs.readFileSync(path.join(PRECHECK, 'kogen-referrer-preflight.json'), 'utf8'));

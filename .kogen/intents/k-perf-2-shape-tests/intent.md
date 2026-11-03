@@ -6,7 +6,7 @@ Acceptance:
 - .kogen/intents/k-perf-2-shape-tests/acceptance.feature
 - features/steps/k_perf_2_shape_tests_steps.js
 
-`go test -race -count=1 ./...` in `cli`: package `kogen/shape` took 131–140 s on eu2 (2 CPUs) and hit the 10-minute timeout on the Mac Studio under load. The slow package stalls every Kogen build's verification. Make it take at most half of that (at most 65 s package time with `GOMAXPROCS=2 -race`, measured with the same command before and after in the Build) by removing repeated work, keeping every test and assertion.
+`go test -race -count=1 ./...` in `cli`: package `kogen/shape` took 131–140 s on <host> (2 CPUs) and hit the 10-minute timeout on the Mac Studio under load. The slow package stalls every Kogen build's verification. Make it take at most half of that (at most 65 s package time with `GOMAXPROCS=2 -race`, measured with the same command before and after in the Build) by removing repeated work, keeping every test and assertion.
 
 Profile (see Feasibility): 222 top-level tests, none uses `t.Parallel`; the package spends its time in about 19,600 `git` subprocesses, repeated fixture construction (`newShpFx`: git init/config/add/commit; `newRefFx`: a full `verify.Readiness.Check` per test, though the acceptance runner is a stub script), and race-instrumented Go. Per-test top: three tests at 6–7 s, then a long tail of 1–4 s tests (Refine fixtures).
 
@@ -27,7 +27,7 @@ Must stay: no timeout, retry or limit raised (including `go test -timeout`, and 
 - Remove repeated work (shared ready state, git memoization, smaller scratch fixtures, t.Parallel): addressed as expected remedies in prose; the speed result is the contract.
 - Same coverage, nothing skipped/deleted/tagged: addressed by scenarios 1–3 (names hash and count, skip/tag count, every listed test passed).
 - No timeout/retry/limit raised: addressed by scenario 2 (go-test command unchanged, no -timeout in configuration).
-- Halve 131–140 s on eu2: addressed by scenario 3 with an absolute 65 s package time; the shaper host baseline was 100–114 s. Host load can add noise; omitted: Mac Studio measurement.
+- Halve 131–140 s on <host>: addressed by scenario 3 with an absolute 65 s package time; the shaper host baseline was 100–114 s. Host load can add noise; omitted: Mac Studio measurement.
 - Host safety rules: restated in prose; not executable.
 - "All configured checks pass": covered by normal Build verification.
 
