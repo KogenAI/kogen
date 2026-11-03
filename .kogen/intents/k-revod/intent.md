@@ -5,7 +5,6 @@ Model: not applicable — a configuration lever and a choice of what the reviewe
 Acceptance:
 - .kogen/intents/k-revod/acceptance.feature
 - features/steps/krevod_steps.js
-- features/steps/krevod_driver.go
 
 Add the optional `.kogen/project.yaml` key `review_material: {mode: parts | on_demand}`. Absent or `parts` is exactly today's behaviour. The default is off; the mode is experimental. This is the K-REVOD lever: on long reviews the candidate source overflows the working window and moves into private, hash-bound pinned parts of about 6 KB (`cli/build/material.go`) that the reviewer must read in full before any verdict (`cli/build/review.go`). With `on_demand` the reviewer instead gets a manifest and reads what it needs.
 

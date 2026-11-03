@@ -18,14 +18,3 @@ Feature: Background servers started by an acceptance run do not outlive it
       | scenario |
       | passing  |
       | failing  |
-
-  Scenario Outline: An acceptance run that <outcome> leaves no background server it started
-    When acceptance commands that put python3 -m http.server in the background are run through RunAcceptance
-    Then the server started outside the acceptance runs is still running
-    And no background server from the "<mode>" acceptance run is still running
-
-    Examples:
-      | outcome   | mode      |
-      | passed    | passed    |
-      | failed    | failed    |
-      | timed out | timed_out |

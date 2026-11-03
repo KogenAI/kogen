@@ -5,7 +5,6 @@ Model: not applicable — two line-grammar rules of a stateless validator; no st
 Acceptance:
 - .kogen/intents/k-intent-line-period/acceptance.feature
 - features/steps/k_intent_line_period_steps.js
-- features/steps/k_intent_line_period_driver.go
 
 The Intent check (`project.CheckIntent`, `lintIntent` in `cli/project/intent.go`) refuses a `## Tests` line or a `## Decisions` item whose only deviation from the grammar is one sentence period after the closing parenthesis (Kogen issue a2f1c80c: 2,597 of 2,659 recorded tests-line problems were otherwise-valid lines ending in ".", 2,427 of them exactly "(layer)."; each costs the shaper a retry turn, and one of 20 AoR base shape cells on e746e82 ended refused because of it). After this change such a line passes, and the same line without the period still passes. Nothing else is loosened: every other malformed line fails exactly as now, with the same problem text.
 

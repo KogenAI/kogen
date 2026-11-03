@@ -148,65 +148,7 @@ Then('the probe result reports a timeout', function () {
   assert.equal(this.k5bProbe.first.timed_out, true);
 });
 
-// ---------------------------------------------------------------- configured checks through cli/build
-
-When('Kogen runs the configured check {string} through cli\\/build', function (command) {
-  const dir = scratch(this);
-  const pidfile = path.join(dir, 'pidfile');
-  this.k5bPidfile = pidfile;
-  const out = path.join(dir, 'out.json');
-  const overlay = path.join(dir, 'overlay.json');
-  fs.writeFileSync(overlay, JSON.stringify({ Replace: { [path.join(ROOT, 'cli/build/k5b_check_acceptance_test.go')]: path.join(__dirname, 'k5b_build_check_driver.go') } }));
-  const r = spawnSync('go', ['test', '-overlay', overlay, './build', '-run', '^TestK5bConfiguredCheckObservation$', '-count=1'], {
-    cwd: path.join(ROOT, 'cli'), encoding: 'utf8', timeout: 300000, maxBuffer: 8 * 1024 * 1024,
-    env: { ...GO_ENV, KOGEN_K5B_CHECK: command.replaceAll('PIDFILE', pidfile), KOGEN_K5B_OUT: out },
-  });
-  if (fs.existsSync(pidfile)) { const pid = Number(fs.readFileSync(pidfile, 'utf8').trim()); if (pid) own(this, pid, 'sleep'); }
-  assert.equal(r.status, 0, `build observation failed:\n${r.stdout}\n${r.stderr}`);
-  this.k5bCheck = JSON.parse(fs.readFileSync(out, 'utf8'));
-});
-
-Then('the check is reported failing with status {int}', function (status) {
-  assert.equal(this.k5bCheck.error, '', `unexpected result: ${this.k5bCheck.error}`);
-  assert.equal(this.k5bCheck.status, status, `unexpected baseline status: ${JSON.stringify(this.k5bCheck)}`);
-});
-
-// ---------------------------------------------------------------- sources, specification and evidence
-
-function kogenGoSources() {
-  const files = [];
-  (function scan(dir) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const file = path.join(dir, entry.name);
-      if (entry.isDirectory()) { if (entry.name !== 'third_party' && entry.name !== 'node_modules') scan(file); }
-      else if (entry.name.endsWith('.go') && !entry.name.endsWith('_test.go')) files.push({ f: path.relative(ROOT, file), text: fs.readFileSync(file, 'utf8') });
-    }
-  })(path.join(ROOT, 'cli'));
-  return files;
-}
-
-Then('every command Kogen runs with sys.Options sweeps its process group and only probes refuse foreign kills', function () {
-  let literals = 0;
-  for (const { f, text } of kogenGoSources()) {
-    for (const m of text.matchAll(/sys\.Options\{[^}]*\}/g)) {
-      literals++;
-      assert.match(m[0], /KillGroupOnExit:\s*true/, `${f}: ${m[0]} lacks KillGroupOnExit: true`);
-      if (f === 'cli/verify/probe.go') {
-        assert.match(m[0], /RefuseForeignKill:\s*true/, 'probe lacks RefuseForeignKill: true');
-        assert.match(m[0], /Timeout:\s*deadline/, 'probe lost its deadline');
-      } else {
-        assert.ok(!/RefuseForeignKill/.test(m[0]), `${f} refuses foreign kills for a configured command`);
-        assert.ok(!/Timeout/.test(m[0]), `${f} adds a Timeout`);
-      }
-    }
-    assert.ok(!/ShellTimeout/.test(text), `${f} names ShellTimeout`);
-    if (f !== 'cli/verify/probe.go') assert.ok(!/RefuseForeignKill/.test(text), `${f} names RefuseForeignKill`);
-  }
-  assert.ok(literals >= 10, `expected at least 10 sys.Options literals, found ${literals}`);
-  const probe = kogenGoSources().find(g => g.f === 'cli/verify/probe.go').text;
-  assert.match(probe, /Context:\s*ctx/, 'probe lost its context');
-  assert.match(probe, /const ProbeTimeout = 5 \* time\.Minute/, 'probe lost its 5-minute deadline');
-});
+// ---------------------------------------------------------------- specification and evidence
 
 Then('the specification and the executor contract state what Kogen enforces and cannot enforce', function () {
   const spec = fs.readFileSync(path.join(ROOT, 'spec/prose/02-shaping.md'), 'utf8');

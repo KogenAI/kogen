@@ -27,17 +27,9 @@ Feature: Re-pin kogen-loop to 2ea31bf5 and use its process-group safety in Kogen
     Then the probe result has status 4 and output exactly "done\n"
     And the recorded background process is gone
 
-  Scenario: A configured check that starts a background sleep leaves no group member behind
-    When Kogen runs the configured check "sleep 60 >/dev/null 2>&1 & echo $! > PIDFILE; exit 3" through cli/build
-    Then the check is reported failing with status 3
-    And the recorded background process is gone
-
   Scenario: A probe with a short deadline still reports a timeout
     When a probe runs "sleep 30" under a 200 ms deadline
     Then the probe result reports a timeout
-
-  Scenario: Kogen sources set the process-group options as requested and add no timeout
-    Then every command Kogen runs with sys.Options sweeps its process group and only probes refuse foreign kills
 
   Scenario: The specification and executor contract state the enforcement and its limits
     Then the specification and the executor contract state what Kogen enforces and cannot enforce

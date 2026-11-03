@@ -40,33 +40,6 @@ func usageLimitInstalledFrom(t *testing.T, limit int, root string) {
 	project := t.TempDir()
 	home := t.TempDir()
 	state := t.TempDir()
-	copyFile := func(from, to string, mode os.FileMode) {
-		t.Helper()
-		b, err := os.ReadFile(from)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(filepath.Dir(to), 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(to, b, mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	fixture := filepath.Join(root, "cli/testdata/legacy/project")
-	err = filepath.Walk(fixture, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			rel, _ := filepath.Rel(fixture, path)
-			copyFile(path, filepath.Join(project, rel), info.Mode())
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	write := func(path, text string, mode os.FileMode) {
 		t.Helper()
 		p := filepath.Join(project, path)
@@ -77,6 +50,47 @@ func usageLimitInstalledFrom(t *testing.T, limit int, root string) {
 			t.Fatal(err)
 		}
 	}
+	write("README.md", "# Fixture project\n", 0644)
+	write(".gitignore", ".kogen/local/\n", 0644)
+	write(".kogen/intents/fixture/intent.md", `# Preserve the fixture
+
+Slug: fixture
+Model: not applicable — no model for this fixture
+
+Acceptance:
+- .kogen/intents/fixture/acceptance.feature
+- features/steps/integration_steps.js
+
+## Tests
+- the fixture stays as it is: the acceptance scenario (existing)
+
+## Source comparison
+- addressed: preserve app.txt fixture behavior; source request; contract Tests and acceptance.feature.
+
+## Feasibility
+- none
+`, 0644)
+	write(".kogen/intents/fixture/acceptance.feature", `Feature: Integration fixture
+  Scenario: First
+    Given the fixture is available
+    Then the acceptance check passes
+  Scenario: Second
+    Then the acceptance check passes
+`, 0644)
+	write("features/steps/integration_steps.js", "// steps\n", 0644)
+	write("reports/green.ndjson", `{"gherkinDocument":{"feature":{"children":[{"scenario":{"examples":[],"id":"ast-scenario-1","location":{"line":2},"steps":[{"id":"ast-step-1-1","keyword":"Given ","location":{"line":3}},{"id":"ast-step-1-2","keyword":"Then ","location":{"line":4}}]}},{"scenario":{"examples":[],"id":"ast-scenario-2","location":{"line":5},"steps":[{"id":"ast-step-2-1","keyword":"Then ","location":{"line":6}}]}}]},"uri":".kogen/intents/fixture/acceptance.feature"}}
+{"pickle":{"astNodeIds":["ast-scenario-1"],"id":"case-1-pickle","name":"First","steps":[{"astNodeIds":["ast-step-1-1"],"id":"case-1-pickle-step-1","text":"the fixture is available"},{"astNodeIds":["ast-step-1-2"],"id":"case-1-pickle-step-2","text":"the acceptance check passes"}],"uri":".kogen/intents/fixture/acceptance.feature"}}
+{"testCase":{"id":"case-1-case","pickleId":"case-1-pickle","testSteps":[{"id":"case-1-test-step-1","pickleStepId":"case-1-pickle-step-1"},{"id":"case-1-test-step-2","pickleStepId":"case-1-pickle-step-2"}]}}
+{"testCaseStarted":{"id":"case-1-started","testCaseId":"case-1-case"}}
+{"testStepFinished":{"testCaseStartedId":"case-1-started","testStepId":"case-1-test-step-1","testStepResult":{"status":"PASSED"}}}
+{"testStepFinished":{"testCaseStartedId":"case-1-started","testStepId":"case-1-test-step-2","testStepResult":{"status":"PASSED"}}}
+{"testCaseFinished":{"testCaseStartedId":"case-1-started","willBeRetried":false}}
+{"pickle":{"astNodeIds":["ast-scenario-2"],"id":"case-2-pickle","name":"Second","steps":[{"astNodeIds":["ast-step-2-1"],"id":"case-2-pickle-step-1","text":"the acceptance check passes"}],"uri":".kogen/intents/fixture/acceptance.feature"}}
+{"testCase":{"id":"case-2-case","pickleId":"case-2-pickle","testSteps":[{"id":"case-2-test-step-1","pickleStepId":"case-2-pickle-step-1"}]}}
+{"testCaseStarted":{"id":"case-2-started","testCaseId":"case-2-case"}}
+{"testStepFinished":{"testCaseStartedId":"case-2-started","testStepId":"case-2-test-step-1","testStepResult":{"status":"PASSED"}}}
+{"testCaseFinished":{"testCaseStartedId":"case-2-started","willBeRetried":false}}
+`, 0644)
 	cfg := `version: 1
 commands:
   setup:

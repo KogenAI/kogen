@@ -6,7 +6,6 @@ Acceptance:
 - .kogen/intents/k5b-loop-repin-ksafe/acceptance.feature
 - features/steps/k5b_loop_repin_ksafe_steps.js
 - features/steps/k5b_probe_driver.go
-- features/steps/k5b_build_check_driver.go
 
 Re-pin `cli/third_party/kogen-loop` from 33e7f4ec to `2ea31bf5438f0bdde537848f678a7331c5fe2a2a` ("Sweep command groups and refuse foreign kills" plus "Retry transient provider stream faults") and use the loop's new process-group safety in Kogen. A Shape probe once ended with `pkill -f beam.smp`, which would have killed live services on the host.
 

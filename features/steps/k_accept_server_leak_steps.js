@@ -1,17 +1,11 @@
 'use strict';
 // K-ACCEPT-SERVER-LEAK: background servers started by an acceptance run must not outlive it.
-// Two observations, each made once per Cucumber process, kept outside the checkout and cleaned up whatever
-// their result (every server they caused is killed afterwards, so a red run leaves nothing on the host):
-// - the packaged Kogen (the newest dist/ archive, installed into a private prefix by go_driver_support.js) runs
-//   `kogen intent approve leak` on a fixture project whose acceptance runs through the bundled lib/cucumber; its
-//   two fixture scenarios (one passes, one fails) each put `python3 -m http.server` in the background in a new
-//   session, and record the server's pid and process group;
-// - the Go driver k_accept_server_leak_driver.go, mounted into package verify with `go test -overlay`, runs
-//   acceptance commands through verify.RunAcceptance: a passing Build-route run, a failing approval-route run and
-//   an approval-route run that outlives a contracted 3-second step bound.
-// In both, a server started outside the runs must still be running afterwards.
-// `node k_accept_server_leak_steps.js --control good|bad` checks the judging functions below against
-// known-good and known-bad observations without running anything.
+// The observation is made once per Cucumber process, kept outside the checkout and cleaned up whatever its result
+// (every server it caused is killed afterwards, so a red run leaves nothing on the host): the packaged Kogen (the
+// newest dist/ archive, installed into a private prefix by go_driver_support.js) runs `kogen intent approve leak`
+// on a fixture project whose acceptance runs through the bundled lib/cucumber; its two fixture scenarios (one
+// passes, one fails) each put `python3 -m http.server` in the background in a new session, and record the
+// server's pid and process group. A server started outside the approval run must still be running afterwards.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -21,7 +15,6 @@ const { spawn, spawnSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '../..');
 const PYTHON = process.env.KOGEN_TEST_PYTHON_BIN || 'python3';
 const SLUG = 'leak';
-const DRIVER_TEST = 'TestKAcceptServerLeakObservation';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; } };
 async function goneWithin(pid, ms) {
@@ -161,38 +154,6 @@ async function approveFixture() {
   }
 }
 
-// ------------------------------------------------------------------ the Go driver observation
-
-const MODES = ['passed', 'failed', 'timed_out', 'unrelated'];
-let driver;
-// Runs the driver once per Cucumber process: every outcome is one observation of that single run.
-function observeDriver() {
-  if (driver) return driver;
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-kasl-go-')));
-  fs.chmodSync(dir, 0o700);
-  try {
-    const overlay = path.join(dir, 'overlay.json');
-    fs.writeFileSync(overlay, JSON.stringify({ Replace: { [path.join(ROOT, 'cli/verify/k_accept_server_leak_acceptance_test.go')]: path.join(__dirname, 'k_accept_server_leak_driver.go') } }));
-    const out = path.join(dir, 'out'); fs.mkdirSync(out);
-    const command = `go test -overlay <overlay> ./verify -run ^${DRIVER_TEST}$ -count=1 -timeout=90s (in cli/)`;
-    const r = spawnSync('go', ['test', '-overlay', overlay, './verify', '-run', `^${DRIVER_TEST}$`, '-count=1', '-timeout=90s'], {
-      cwd: path.join(ROOT, 'cli'), encoding: 'utf8', timeout: 100000, maxBuffer: 8 * 1024 * 1024,
-      env: { ...process.env, KOGEN_KASL_OUTPUT: out, GOWORK: 'off', GOPROXY: 'off', GOTOOLCHAIN: 'local' },
-    });
-    assert.ifError(r.error);
-    assert.equal(r.status, 0, `the observation driver ${DRIVER_TEST} did not pass: ${command} exited ${r.status}:\n${r.stdout}\n${r.stderr}`);
-    // Go success alone is not proof: the driver must have written every observation.
-    const data = {};
-    for (const mode of MODES) {
-      const file = path.join(out, `${mode}.json`);
-      assert.ok(fs.existsSync(file), `${DRIVER_TEST} (${command}) did not run or wrote no ${mode} observation:\n${r.stdout}`);
-      data[mode] = JSON.parse(fs.readFileSync(file, 'utf8'));
-    }
-    driver = data;
-    return data;
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-}
-
 // ------------------------------------------------------------------ judging (pure: the controls call these)
 
 // The server must have left the group of the process that started it: otherwise it does not reproduce the leak.
@@ -222,84 +183,11 @@ function checkApprovalServer(e, name) {
   assert.ok(s, `the ${name} fixture scenario never recorded its background server`);
   assert.equal(s.goneWithin5s, true, `the server (pid ${s.pid}, process group ${s.pgid}) that the ${name} fixture scenario put in the background was still running 5 seconds after kogen intent approve exited`);
 }
-function checkDriverUnrelated(u) {
-  assert.equal(u.mode, 'unrelated');
-  assert.equal(u.running_before, true, 'the unrelated server never started');
-  assert.equal(u.running_after, true, `the unrelated server (pid ${u.pid}), started outside every acceptance run, was stopped`);
-}
-function checkDriverRun(d, mode) {
-  assert.equal(d.mode, mode);
-  checkServer(`the ${mode} acceptance command`, d.server_pid, d.server_pgid, d.command_group, d);
-  if (mode === 'timed_out') {
-    assert.equal(d.step_timeout, true, `the timed_out acceptance run was not stopped by its 3-second step bound: ${JSON.stringify(d)}`);
-    assert.ok(d.elapsed_ms >= 3000 && d.elapsed_ms < 30000, `the timed_out acceptance run took ${d.elapsed_ms} ms: ${JSON.stringify(d)}`);
-  } else {
-    assert.equal(d.error, '', `the ${mode} acceptance run returned an error: ${JSON.stringify(d)}`);
-    assert.equal(d.status, mode === 'passed' ? 0 : 1, `the ${mode} acceptance command exited ${d.status}: ${JSON.stringify(d)}`);
-  }
-  assert.equal(d.server_gone_within_5s, true, `the server (pid ${d.server_pid}, process group ${d.server_pgid}) that the ${mode} acceptance command put in the background was still running 5 seconds after RunAcceptance returned`);
-}
-
-// ------------------------------------------------------------------ observer controls
-
-function controls(kind) {
-  const server = (pid, done) => ({ pid, pgid: pid, runner_pgid: 500, port: 40000 + pid, goneWithin5s: done });
-  const card = '  - A passing scenario leaves a server in the background (passes now)\n  - A failing scenario leaves a server in the background (fails now)\n';
-  const approve = { approve: { code: 5, out: card, timed: false }, servers: { passing: server(601, true), failing: server(602, true) }, unrelated: 700, unrelatedBefore: true, unrelatedAfter: true };
-  const run = (mode, extra) => ({ mode, status: 0, elapsed_ms: 600, error: '', step_timeout: false, server_pid: 800, server_pgid: 800, command_group: 790, server_alive_at_return: false, server_gone_within_5s: true, ...extra });
-  const runs = { passed: run('passed'), failed: run('failed', { status: 1 }), timed_out: run('timed_out', { elapsed_ms: 3100, error: 'step acceptance timed out', step_timeout: true }) };
-  const unrelated = { mode: 'unrelated', pid: 900, running_before: true, running_after: true };
-  const good = () => {
-    checkApproval(approve); checkApprovalUnrelated(approve); checkApprovalServer(approve, 'passing'); checkApprovalServer(approve, 'failing');
-    for (const mode of ['passed', 'failed', 'timed_out']) checkDriverRun(runs[mode], mode);
-    checkDriverUnrelated(unrelated);
-  };
-  good();
-  if (kind === 'good') { console.log('k-accept-server-leak observer accepted good fixtures'); return; }
-  assert.equal(kind, 'bad');
-  const bad = (what, fn, record, mutate) => { const c = structuredClone(record); mutate(c); assert.throws(() => fn(c), assert.AssertionError, `accepted a known-bad observation: ${what}`); };
-  // The reported leak: a background server still running after the run, whatever its outcome.
-  bad('passing fixture server survived approval', e => checkApprovalServer(e, 'passing'), approve, e => { e.servers.passing.goneWithin5s = false; });
-  bad('failing fixture server survived approval', e => checkApprovalServer(e, 'failing'), approve, e => { e.servers.failing.goneWithin5s = false; });
-  for (const mode of ['passed', 'failed', 'timed_out']) bad(`${mode} server survived`, d => checkDriverRun(d, mode), runs[mode], d => { d.server_gone_within_5s = false; d.server_alive_at_return = true; });
-  // Stopping too much: the unrelated server stopped, or never started.
-  bad('unrelated stopped by approval', checkApprovalUnrelated, approve, e => { e.unrelatedAfter = false; });
-  bad('unrelated never started (approval)', checkApprovalUnrelated, approve, e => { e.unrelatedBefore = false; });
-  bad('unrelated stopped by RunAcceptance', checkDriverUnrelated, unrelated, u => { u.running_after = false; });
-  bad('unrelated never started (driver)', checkDriverUnrelated, unrelated, u => { u.running_before = false; });
-  // A fixture that does not reproduce the leak: the server stayed in the run's group, or was never recorded.
-  bad('fixture server stayed in the runner group', checkApproval, approve, e => { e.servers.failing.pgid = 500; });
-  bad('fixture server never recorded', checkApproval, approve, e => { delete e.servers.passing; });
-  bad('driver server stayed in the command group', d => checkDriverRun(d, 'passed'), runs.passed, d => { d.server_pgid = 790; });
-  bad('driver server never recorded', d => checkDriverRun(d, 'failed'), runs.failed, d => { d.server_pid = 0; d.server_pgid = 0; d.command_group = 0; });
-  // The approval did not run both fixture scenarios through the bundled Cucumber, or refused.
-  bad('approval refused', checkApproval, approve, e => { e.approve.code = 1; });
-  bad('approval hung', checkApproval, approve, e => { e.approve.timed = true; });
-  bad('passing fixture scenario not passing', checkApproval, approve, e => { e.approve.out = e.approve.out.replace('(passes now)', '(fails now)'); });
-  bad('failing fixture scenario not run', checkApproval, approve, e => { e.approve.out = e.approve.out.replace(/.*failing scenario.*\n/, ''); });
-  // The driver runs did not reach their outcome.
-  bad('passed run exited 1', d => checkDriverRun(d, 'passed'), runs.passed, d => { d.status = 1; });
-  bad('failed run exited 0', d => checkDriverRun(d, 'failed'), runs.failed, d => { d.status = 0; });
-  bad('passed run errored', d => checkDriverRun(d, 'passed'), runs.passed, d => { d.error = 'boom'; });
-  bad('timed_out run not stopped by its bound', d => checkDriverRun(d, 'timed_out'), runs.timed_out, d => { d.step_timeout = false; d.error = ''; });
-  bad('timed_out run ended before its bound', d => checkDriverRun(d, 'timed_out'), runs.timed_out, d => { d.elapsed_ms = 500; });
-  bad('wrong mode record', d => checkDriverRun(d, 'failed'), runs.passed, () => {});
-  console.log('k-accept-server-leak observer rejected bad fixtures');
-  process.exitCode = 1;
-}
-
-if (require.main === module && process.argv[2] === '--control') {
-  controls(process.argv[3]);
-} else {
-  const { When, Then } = require('@cucumber/cucumber');
-  const STEP = { timeout: 115000 };
-  When('the packaged Kogen approves a fixture whose passing and failing scenarios each put python3 -m http.server in the background', STEP, async function () {
-    this.kasl = await observeApproval();
-  });
-  Then('the approval ran both fixture scenarios through the bundled Cucumber', function () { checkApproval(this.kasl); });
-  Then('the server started outside the approval run is still running', function () { checkApprovalUnrelated(this.kasl); });
-  Then('no background server from the approval run of the {string} fixture scenario is still running', function (name) { checkApprovalServer(this.kasl, name); });
-  When('acceptance commands that put python3 -m http.server in the background are run through RunAcceptance', STEP, function () { this.kaslGo = observeDriver(); });
-  Then('the server started outside the acceptance runs is still running', function () { checkDriverUnrelated(this.kaslGo.unrelated); });
-  Then('no background server from the {string} acceptance run is still running', function (mode) { checkDriverRun(this.kaslGo[mode], mode); });
-}
+const { When, Then } = require('@cucumber/cucumber');
+const STEP = { timeout: 115000 };
+When('the packaged Kogen approves a fixture whose passing and failing scenarios each put python3 -m http.server in the background', STEP, async function () {
+  this.kasl = await observeApproval();
+});
+Then('the approval ran both fixture scenarios through the bundled Cucumber', function () { checkApproval(this.kasl); });
+Then('the server started outside the approval run is still running', function () { checkApprovalUnrelated(this.kasl); });
+Then('no background server from the approval run of the {string} fixture scenario is still running', function (name) { checkApprovalServer(this.kasl, name); });

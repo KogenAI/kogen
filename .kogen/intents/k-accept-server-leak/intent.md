@@ -5,7 +5,6 @@ Model: not applicable — the change adds one cleanup action at the end of the e
 Acceptance:
 - .kogen/intents/k-accept-server-leak/acceptance.feature
 - features/steps/k_accept_server_leak_steps.js
-- features/steps/k_accept_server_leak_driver.go
 
 Fix K-ACCEPT-SERVER-LEAK. When an acceptance step puts a server in the background in its own session or process group, the server keeps running after the acceptance run ends, with parent pid 1, so the host looks busy and later work waits behind it. After this change, when an acceptance run ends (passed, failed or timed out), every process it started, including servers a step put in the background, is stopped before Kogen continues, and only processes the run started are touched.
 
