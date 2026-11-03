@@ -40,5 +40,3 @@ models:
     provider: chatgpt
     model: gpt-6.1-terra
     effort: medium
-shape_workers:
-  enabled: false
