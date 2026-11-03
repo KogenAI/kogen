@@ -261,14 +261,24 @@ function configureSigning(world, missing) {
   }
 }
 
-async function waitForServerRequest(world, predicate, timeoutMs = 30000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const found = world.server.requests.find(predicate);
+// Ends on the awaited request or on the kogen process ending, never on a wall-clock limit.
+async function waitForServerRequest(world, text) {
+  const find = () => world.server.requests.find(request => request.text.includes(text));
+  const missing = detail => assert.fail(`the fake ChatGPT server did not receive the request "${text}" ${detail}`);
+  let found = find();
+  if (found) return found;
+  const record = world.currentProcess;
+  if (!record) missing('and no kogen command is running');
+  let ended = false;
+  record.done.then(() => { ended = true; });
+  while (!ended) {
+    await Promise.race([record.done, new Promise(resolve => setTimeout(resolve, 25))]);
+    found = find();
     if (found) return found;
-    await new Promise(resolve => setTimeout(resolve, 25));
   }
-  assert.fail('the fake ChatGPT server did not receive the expected request');
+  found = find();
+  if (found) return found;
+  return missing(`before the kogen command ended (exit code ${record.code})`);
 }
 
 async function reachPause(world, point) {
@@ -1594,8 +1604,7 @@ async function dispatchAssertions(world, label, args, attachment) {
   }
   if (label.startsWith('the fake ChatGPT server has sent the feedback of verification pass ')) {
     const n = Number(args[0]);
-    // Each pass is a real verification of the installed release; allow 5 s per pass on a loaded host.
-    await waitForServerRequest(world, request => request.text.includes(`Verification pass ${n} is not green.`), Math.max(30000, n * 5000));
+    await waitForServerRequest(world, `Verification pass ${n} is not green.`);
     return;
   }
 
