@@ -9,6 +9,7 @@ import (
 	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-executor/executor"
 	"github.com/KogenAI/kogen-executor/executor/claudecode"
+	"github.com/KogenAI/kogen-setup/setup"
 	"github.com/KogenAI/kogen-shaping/shape"
 	"github.com/KogenAI/kogen-verification/verify"
 	"kogen-loop/provider"
@@ -58,7 +59,7 @@ func runEngine(job engineJob) int {
 	var err error
 	switch inv.command {
 	case "init":
-		code, err = shape.Init(s.Context(), s, shape.InitInput{Client: client, Tools: tools})
+		code, err = setup.Init(s.Context(), s, setup.InitInput{Client: client, Tools: tools})
 		if err == nil && code == 0 {
 			printReadiness(s, job.root, s.Cwd)
 		}

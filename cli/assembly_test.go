@@ -23,7 +23,8 @@ func TestAssemblyUsesThePinnedComponents(t *testing.T) {
 		pins[m[1]] = m[2]
 	}
 	want := []string{"github.com/KogenAI/kogen-coordinator", "github.com/KogenAI/kogen-executor",
-		"github.com/KogenAI/kogen-verification", "github.com/KogenAI/kogen-shaping", "github.com/KogenAI/kogen-build"}
+		"github.com/KogenAI/kogen-verification", "github.com/KogenAI/kogen-setup", "github.com/KogenAI/kogen-shaping",
+		"github.com/KogenAI/kogen-build"}
 	for _, path := range want {
 		if pins[path] == "" {
 			t.Errorf("cli/go.mod does not pin %s", path)

@@ -30,7 +30,10 @@ var responseBudgetSupport = []struct {
 		"TestShapeBudgetRolesShape/refine sends every request under thirty minutes and records it once",
 		"TestShapeBudgetRolesShape/a stalled refine expires unavailable naming thirty minutes and records once",
 		"TestShapeBudgetRolesShape/shape workers send under the same thirty minutes within the one record",
-		"TestShapeBudgetRolesShape/the setup conversation of init sends under thirty minutes",
+	}},
+	{"github.com/KogenAI/kogen-setup/setup", []string{
+		"TestShapeBudgetRolesSetup",
+		"TestShapeBudgetRolesSetup/the setup conversation of init sends under thirty minutes",
 	}},
 	{"github.com/KogenAI/kogen-build/build", []string{
 		"TestShapeBudgetRolesBuild",
