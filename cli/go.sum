@@ -8,5 +8,5 @@ github.com/KogenAI/kogen-setup v0.0.0-20261103070454-e58099611999 h1:FOzEKgI2tLj
 github.com/KogenAI/kogen-setup v0.0.0-20261103070454-e58099611999/go.mod h1:F7UgVi6uggGdG47n5MA5yMYLH1WzPbg/7b1u3bPtmRE=
 github.com/KogenAI/kogen-shaping v0.0.0-20261102194440-94eabe5d492d h1:p2pjMRNSS7sHjbisEoAp6W+M9TaTNKbkH09m9ZrECXI=
 github.com/KogenAI/kogen-shaping v0.0.0-20261102194440-94eabe5d492d/go.mod h1:KEB30N8j7OXm8cxA6S/L++Pdd4AifS1BnazBY1QWQKg=
-github.com/KogenAI/kogen-verification v0.0.0-20261102193616-587f67dae7e8 h1:ijg3H261+x+PVkFeL2emjuIi3GiFj+xanN8/alL4HYs=
-github.com/KogenAI/kogen-verification v0.0.0-20261102193616-587f67dae7e8/go.mod h1:7ZHQajaSEvj6Fz2EKVFGB7IzCGOv4T6uPFeILU8s30Y=
+github.com/KogenAI/kogen-verification v0.0.0-20261103052035-11a5244e95ee h1:816vh2SZcQUtls5jEHe8n070dyCa7slroqKllNsTLLM=
+github.com/KogenAI/kogen-verification v0.0.0-20261103052035-11a5244e95ee/go.mod h1:7ZHQajaSEvj6Fz2EKVFGB7IzCGOv4T6uPFeILU8s30Y=
