@@ -24,9 +24,38 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/kogen-install.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 trap 'exit 1' HUP INT TERM
 
+# why <url> <curl exit> <http status>: the cause of a failed lookup
+why() {
+  if [ "$3" = 000 ]; then echo "install-kogen: $1 could not be reached (curl exit $2)"
+  else case "$3" in 2??) echo "install-kogen: $1 did not name a release tag" ;; *) echo "install-kogen: $1 answered HTTP $3" ;; esac; fi
+}
+# The releases/latest redirect is not subject to the API rate limit; its final URL ends in /releases/tag/<version>.
+from_redirect() {
+  out=$(curl -sL -o /dev/null -w '%{http_code} %{url_effective}' "$latest") && rc=0 || rc=$?
+  status=${out%% *}; final=${out#* }
+  case "$status:$final" in
+    200:*/releases/tag/?*) case "${final##*/releases/tag/}" in */*) ;; *) version=${final##*/releases/tag/} ;; esac ;;
+  esac
+  [ -n "$version" ] || why1=$(why "$latest" "$rc" "$status")
+}
+from_api() {
+  status=$(curl -sL -o "$tmp/latest.json" -w '%{http_code}' "$api") && rc=0 || rc=$?
+  [ "$status" != 200 ] || version=$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/latest.json" | head -n 1)
+  [ -n "$version" ] || why2=$(why "$api" "$rc" "$status")
+}
 if [ -z "$from" ] && [ -z "$version" ]; then
-  version=$(curl -fsSL https://api.github.com/repos/KogenAI/kogen/releases/latest | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
-  [ -n "$version" ] || { echo "install-kogen: could not find the latest release"; exit 1; }
+  latest=https://github.com/KogenAI/kogen/releases/latest
+  api=https://api.github.com/repos/KogenAI/kogen/releases/latest
+  why1=""; why2=""
+  from_redirect
+  [ -n "$version" ] || from_api
+  if [ -z "$version" ]; then
+    echo "install-kogen: could not find the latest release"
+    echo "$why1"
+    echo "$why2"
+    echo "install-kogen: to install a chosen release instead, pass its tag from https://github.com/KogenAI/kogen/releases with --version, for example: curl -fsSL https://github.com/KogenAI/kogen/releases/latest/download/install-kogen.sh | sh -s -- --version <tag>"
+    exit 1
+  fi
 fi
 archive="kogen-$version-$platform.tar.gz"
 if [ -n "$from" ]; then
