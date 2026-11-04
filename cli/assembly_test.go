@@ -2,6 +2,7 @@ package main
 
 import (
 	"debug/buildinfo"
+	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -13,13 +14,43 @@ import (
 // rather than inferring its dependencies from the test binary.
 func TestAssemblyUsesThePinnedComponents(t *testing.T) {
 	want := map[string]string{
-		"github.com/KogenAI/kogen-coordinator":  "v0.0.0-20261103160727-e26a4d75cdcc",
-		"github.com/KogenAI/kogen-verification": "v0.0.0-20261103160936-f0884fde435a",
-		"github.com/KogenAI/kogen-shaping":      "v0.0.0-20261103154530-f04edcea9896",
-		"github.com/KogenAI/kogen-build":        "v0.0.0-20261103154529-b9990a3d0903",
-		"github.com/KogenAI/kogen-executor":     "v0.0.0-20261103153914-97892f55ed4f",
-		"github.com/KogenAI/kogen-setup":        "v0.0.0-20261103140900-9316891471b5",
-		"github.com/KogenAI/kogen-review":       "v0.0.0-20261103161351-e5005fa1daf8",
+		"github.com/KogenAI/kogen-coordinator":  "",
+		"github.com/KogenAI/kogen-verification": "",
+		"github.com/KogenAI/kogen-shaping":      "",
+		"github.com/KogenAI/kogen-build":        "",
+		"github.com/KogenAI/kogen-executor":     "",
+		"github.com/KogenAI/kogen-setup":        "",
+		"github.com/KogenAI/kogen-review":       "",
+	}
+	// Read require and replace declarations from the source manifest, before packaging.
+	manifest := filepath.Join(repoRoot(t), "cli", "go.mod")
+	out, err := exec.Command("go", "mod", "edit", "-json", manifest).CombinedOutput()
+	if err != nil {
+		t.Fatalf("read manifest: %v\n%s", err, out)
+	}
+	var mod struct {
+		Require []struct{ Path, Version string }
+		Replace []struct {
+			Old struct{ Path, Version string }
+		}
+	}
+	if err := json.Unmarshal(out, &mod); err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	for _, req := range mod.Require {
+		if _, ok := want[req.Path]; ok {
+			want[req.Path] = req.Version
+		}
+	}
+	for _, replacement := range mod.Replace {
+		if _, ok := want[replacement.Old.Path]; ok {
+			t.Errorf("%s replaced in manifest", replacement.Old.Path)
+		}
+	}
+	for path, version := range want {
+		if version == "" {
+			t.Errorf("%s missing from manifest require declarations", path)
+		}
 	}
 	archive := testrelease.Package(t, repoRoot(t))
 	dir := t.TempDir()

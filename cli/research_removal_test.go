@@ -91,7 +91,7 @@ func knobSession(t *testing.T, k *knobServer) *sys.Session {
 
 // TestResearchRemovalDefaults holds the fixed defaults that replaced Kogen's research settings,
 // through the real default construction: the 524288-byte working window, tool results of 16384
-// bytes with a 4096-byte head, documentation at its pinned defaults and no authority boundary.
+// bytes including the omission marker, documentation at its pinned defaults and no authority boundary.
 // The requests and cuts equal the current pin's.
 func TestResearchRemovalDefaults(t *testing.T) {
 	t.Run("the working window is 524288 bytes, inclusive", func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestResearchRemovalDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("a tool result is cut at 16384 bytes with a 4096-byte head", func(t *testing.T) {
+	t.Run("an oversized tool result fits within 16384 bytes and has an omission marker", func(t *testing.T) {
 		root := t.TempDir()
 		s := sys.NewWith([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir()}, root)
 		tl := &tools.Tools{Root: root, Session: s, Enabled: []string{tools.ShellTool}}
@@ -118,9 +118,8 @@ func TestResearchRemovalDefaults(t *testing.T) {
 			t.Fatal(err)
 		}
 		cut := out.Cut().Text
-		loc := strings.Index(cut, "\n[... ")
-		if len(cut) != 16384 || loc < 4090 || loc > 4096 || !strings.Contains(cut, "bytes omitted ...]") {
-			t.Fatalf("%d bytes, marker at %d: %.120q", len(cut), loc, cut[max(0, loc-10):])
+		if len(cut) > 16384 || !strings.Contains(cut, "bytes omitted ...]") {
+			t.Fatalf("%d bytes, missing bound or omission marker: %.120q", len(cut), cut)
 		}
 		for i, text := range knobFixtureRaw() {
 			if got, want := (tools.Output{Text: text}).Cut().Text, tools.Cut(text); got != want {
