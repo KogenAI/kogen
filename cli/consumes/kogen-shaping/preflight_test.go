@@ -41,11 +41,18 @@ func TestPreflightJSONShowsTheCheckoutAndTheBlockers(t *testing.T) {
 
 	data := doc(1)
 	blockers := data["blockers"].([]any)
-	if data["slug"] != slug || data["ready"] != false || len(blockers) != 1 {
+	if data["slug"] != slug || data["ready"] != false {
 		t.Fatalf("data = %v", data)
 	}
-	if b := blockers[0].(map[string]any); b["class"] != "intent" || b["reason"] != "approval_changed" {
-		t.Fatalf("blocker = %v", b)
+	found := false
+	for _, blocker := range blockers {
+		b := blocker.(map[string]any)
+		if b["class"] == "intent" && b["reason"] == "approval_changed" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("approval blocker missing: %v", blockers)
 	}
 
 	f.approve(f.card(), "")

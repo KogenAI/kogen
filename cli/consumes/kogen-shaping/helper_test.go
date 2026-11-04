@@ -84,7 +84,7 @@ func newFx(t *testing.T, signedIn bool, script ...reply) *fx {
 		}
 	}
 	f.git("init", "-q")
-	f.git("config", "user.name", "Fixture")
+	f.git("config", "user.name", "Kogen Test Owner")
 	f.git("config", "user.email", "fixture@example.invalid")
 	f.git("config", "core.hooksPath", f.hooks)
 	f.git("config", "commit.gpgsign", "false")

@@ -50,7 +50,7 @@ func TestApproveWithoutAHashShowsTheCardWithExit5(t *testing.T) {
 	sha := f.card()
 	for _, want := range []string{
 		"Intent: fixture — Fixture intent\n",
-		"Approver: Fixture <fixture@example.invalid>\n",
+		"Approver: Kogen Test Owner <fixture@example.invalid>\n",
 		"  - First (fails now)\n",
 		"Approve with:\n  kogen intent approve fixture " + sha + "\n",
 	} {
@@ -82,7 +82,7 @@ func TestApproveWithTheHashPublishesTheApproval(t *testing.T) {
 		name, by, approver string
 		prefix             int
 	}{
-		{"full hash, Git identity", "", "Fixture <fixture@example.invalid>", 64},
+		{"full hash, Git identity", "", "Kogen Test Owner <fixture@example.invalid>", 64},
 		{"six characters, named approver", "Reviewer <reviewer@example.invalid>", "Reviewer <reviewer@example.invalid>", 6},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
