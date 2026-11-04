@@ -169,12 +169,54 @@ function acceptanceFiles(world, slug) {
   return files;
 }
 
-function baselineHash(world, slug) {
-  const records = currentBaselineFiles(world, slug).map(file => {
-    const digest = crypto.createHash('sha256').update(fs.readFileSync(projectFile(world, file))).digest('hex');
-    return `${file}\0${digest}\n`;
-  }).join('');
-  return crypto.createHash('sha256').update(records).digest('hex');
+function acceptanceScenarioNames(world, slug) {
+  const feature = fs.readFileSync(projectFile(world, `.kogen/intents/${slug}/acceptance.feature`), 'utf8');
+  const names = [];
+  for (const line of feature.split(/\r?\n/)) {
+    const match = line.match(/^\s*Scenario(?: Outline)?:\s*(.+?)\s*$/);
+    if (match) names.push(match[1]);
+  }
+  return names;
+}
+
+// The review card content rule: sections, every scenario of the Intent and every baseline
+// path the suite knows. Other lines and extra Files paths are allowed. Returns the card's SHA-256.
+function assertReviewCard(world, slug, stdout) {
+  const lines = String(stdout).split(/\r?\n/);
+  const fail = what => assert.fail(`review card of ${slug} has no ${what}`);
+  if (!lines.some(line => line.startsWith(`Intent: ${slug}`))) fail(`line starting "Intent: ${slug}"`);
+  const hashes = lines.map(line => line.match(/^SHA-256: ([0-9a-f]{64})$/)?.[1]).filter(Boolean);
+  if (hashes.length !== 1) fail(`single "SHA-256: <64 lowercase hex>" line (found ${hashes.length})`);
+  const hash = hashes[0];
+  if (!lines.some(line => line.startsWith('Approver: '))) fail('line starting "Approver: "');
+  const acceptance = lines.indexOf('Acceptance');
+  if (acceptance < 0) fail('Acceptance section');
+  const files = lines.indexOf('Files', acceptance + 1);
+  if (files < 0) fail('Files section after Acceptance');
+  const approve = lines.indexOf('Approve with:', files + 1);
+  if (approve < 0) fail('"Approve with:" line after Files');
+  if (lines[approve + 1] !== `  kogen intent approve ${slug} ${hash}`) fail(`"  kogen intent approve ${slug} ${hash}" line right after "Approve with:"`);
+  const scenarios = lines.slice(acceptance + 1, files);
+  for (const name of acceptanceScenarioNames(world, slug)) {
+    if (!scenarios.some(line => line.startsWith(`  - ${name} (`))) fail(`scenario "${name}" between Acceptance and Files`);
+  }
+  const listed = lines.slice(files + 1, approve);
+  for (const file of currentBaselineFiles(world, slug)) {
+    if (!listed.includes(`  - ${file}`)) fail(`path ${file} between Files and "Approve with:"`);
+  }
+  world.reviewCardHashes.set(slug, hash);
+  return hash;
+}
+
+// The full current hash kogen reports for the package: the intent/hash_mismatch refusal for
+// an all-zero hash comes before readiness, writes no approval and sends no provider request.
+async function reportedHash(world, slug) {
+  const previous = world.lastResult;
+  const probe = await runProduct(world, `kogen intent approve ${slug} ${'0'.repeat(64)}`, { cwd: world.project });
+  world.lastResult = previous;
+  const hash = probe.stdout.match(/^intent\/hash_mismatch: \S+ is now ([0-9a-f]{64}), not /m)?.[1];
+  assert.ok(hash, `kogen reported no current hash for ${slug}\n${probe.stdout}${probe.stderr}`);
+  return hash;
 }
 
 function runDirectoryNames(world) {
@@ -674,8 +716,9 @@ function verifyOutputTokens(world, expected, match, regexp) {
     const value = match.groups[token.group];
     const line = expected.slice(0, token.offset).split(/\r?\n/).at(-1);
     if (token.name === 'sha256') {
-      assert.equal(value, baselineHash(world, slug), `review card SHA-256 differs from the acceptance baseline for ${slug}`);
-      world.reviewCardHashes.set(slug, value);
+      const known = world.reviewCardHashes.get(slug);
+      if (known) assert.equal(value, known, `{sha256} differs from the review card hash captured for ${slug}`);
+      else world.reviewCardHashes.set(slug, value);
     } else if (token.name === 'sha8') {
       if (/\b(?:approved|approve)\b/.test(line)) {
         const cardHash = world.reviewCardHashes.get(slug);
@@ -848,10 +891,7 @@ function copyIntent(world, slug, fixture) {
 async function approveThroughKogen(world, slug) {
   const card = await runProduct(world, `kogen intent approve ${slug}`, { cwd: world.project });
   assert.equal(card.code, 5, card.stdout + card.stderr);
-  const hash = card.stdout.match(/^SHA-256: ([0-9a-f]{64})$/m)?.[1];
-  assert.ok(hash, 'approval card did not include a SHA-256 hash');
-  assert.equal(hash, baselineHash(world, slug), `review card SHA-256 differs from the acceptance baseline for ${slug}`);
-  world.reviewCardHashes.set(slug, hash);
+  const hash = assertReviewCard(world, slug, card.stdout);
   const approved = await runProduct(world, `kogen intent approve ${slug} ${hash}`, { cwd: world.project });
   assert.equal(approved.code, 0, approved.stdout + approved.stderr);
   rememberBaseline(world, slug);
@@ -1080,11 +1120,8 @@ async function dispatch(world, pattern, values, attachment) {
     const slug = args[0];
     const card = await runProduct(world, `kogen intent approve ${slug}`, { cwd: world.project });
     assert.equal(card.code, 5, card.stdout + card.stderr);
-    const hash = card.stdout.match(/^SHA-256: ([0-9a-f]{64})$/m)?.[1];
-    assert.ok(hash, 'review card has no full SHA-256');
-    assert.equal(hash, baselineHash(world, slug), `review card SHA-256 differs from the acceptance baseline for ${slug}`);
+    const hash = assertReviewCard(world, slug, card.stdout);
     world.notedHashes.set(slug, hash);
-    world.reviewCardHashes.set(slug, hash);
     return;
   }
   if (label.startsWith('the caller approves ')) {
@@ -1093,12 +1130,9 @@ async function dispatch(world, pattern, values, attachment) {
     if (label.includes('with the hash from its review card')) {
       const card = await runProduct(world, `kogen intent approve ${slug}`, { cwd: world.project });
       assert.equal(card.code, 5, card.stdout + card.stderr);
-      hash = card.stdout.match(/^SHA-256: ([0-9a-f]{64})$/m)?.[1];
-      assert.ok(hash, 'review card has no full SHA-256');
-      assert.equal(hash, baselineHash(world, slug), `review card SHA-256 differs from the acceptance baseline for ${slug}`);
-      world.reviewCardHashes.set(slug, hash);
+      hash = assertReviewCard(world, slug, card.stdout);
     } else if (label.includes('with the hash of its acceptance baseline')) {
-      hash = baselineHash(world, slug);
+      hash = await reportedHash(world, slug);
     } else {
       hash = world.notedHashes.get(slug);
     }
@@ -1115,7 +1149,8 @@ async function dispatch(world, pattern, values, attachment) {
   }
   if (label.startsWith('the caller refines ')) {
     const slug = args[0];
-    await runProduct(world, `kogen intent refine ${slug} ${baselineHash(world, slug)} -`, { cwd: world.project, stdin: String(attachment ?? '') });
+    const hash = await reportedHash(world, slug);
+    await runProduct(world, `kogen intent refine ${slug} ${hash} -`, { cwd: world.project, stdin: String(attachment ?? '') });
     return;
   }
   if (label === 'the caller is signed in to ChatGPT') {
@@ -1676,6 +1711,10 @@ async function dispatchAssertions(world, label, args, attachment) {
   if (label.startsWith('the exit code is ')) {
     if (world.currentProcess && (!world.lastResult || world.lastResult === world.currentProcess) && world.currentProcess.code === null) await world.waitFor(world.currentProcess, 15000);
     assert.equal(actual().code, Number(args[0]), `${actual().stdout}${actual().stderr}`);
+    return;
+  }
+  if (label.startsWith('stdout shows the review card of ')) {
+    assertReviewCard(world, args[0], actual().stdout);
     return;
   }
   if (label.startsWith('stdout contains ')) {

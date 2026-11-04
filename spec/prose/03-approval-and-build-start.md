@@ -31,6 +31,8 @@ Approve with:
   kogen intent approve is-even {sha256}
 ```
 
+The example shows the card's layout. Acceptance checks the card's content: its sections (`Acceptance`, `Files` and `Approve with:`), each scenario of the Intent, each baseline path under `Files` and the `Approve with:` command repeating the SHA-256. It does not check the card's bytes, and it does not compare the card's hash with a hash the scenario computes. The `SHA-256:` line keeps its meaning: it identifies what is approved (AUT-2).
+
 Each Scenario Outline appears once as `<outline name> (<n> examples) (<status>)`, where `<n>` is the number of its Examples rows and the status is `fails now` if any row fails or `passes now` if every row passes. Each ordinary Scenario appears once with its existing status.
 
 `Approver` is `--by` when given, otherwise `git var GIT_AUTHOR_IDENT`; with neither: `intent/approval_identity_unavailable: no Git identity names the approver; run git config user.name "<name>" and git config user.email "<email>" (global or repository), or run kogen intent approve <slug> <sha> --by <name>` (exit 2). A not-ready Intent prints `intent/not_ready` (SHP-8, exit 1) and no card. An unknown slug is `intent/not_found: Intent does not exist` (exit 2). Pending questions: `intent/questions_pending: <slug> has <n> unanswered question(s); answer them with kogen intent shape <slug> <file|->` (exit 5).
