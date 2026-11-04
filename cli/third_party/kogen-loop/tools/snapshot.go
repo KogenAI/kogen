@@ -37,7 +37,7 @@ func (t *Tools) Snapshot() string {
 	if len(names) > snapshotMaxPaths {
 		return ""
 	}
-	listing := t.listFiles(map[string]any{})
+	listing := t.listFiles(map[string]any{}).Text
 	if len(strings.Split(listing, "\n")) != len(names) {
 		return ""
 	}

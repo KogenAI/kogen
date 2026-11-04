@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"kogen-loop/loop"
 	"kogen-loop/provider"
@@ -109,8 +110,29 @@ func (s *retrievalScript) Request(ctx context.Context, r loop.Request) (*provide
 func TestShellLifecycleHandleRetrieval(t *testing.T) {
 	t.Parallel()
 	l := newLifecycleRun(t)
+	// A new command's wait elapses once the command has printed; a retrieval's never does.
+	l.rd.Tools.ShellAfter = func(wait time.Duration) <-chan time.Time {
+		if wait != 45*time.Second {
+			return nil
+		}
+		fire := make(chan time.Time, 1)
+		go func() {
+			end := time.Now().Add(10 * time.Second)
+			for time.Now().Before(end) {
+				if _, err := os.Stat(filepath.Join(l.w.root, "ready")); err == nil {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			// The session copies output from a pipe a moment after the command wrote it,
+			// and nothing here can observe that copy: let it land before the wait elapses.
+			time.Sleep(500 * time.Millisecond)
+			fire <- time.Now()
+		}()
+		return fire
+	}
 	rq := &retrievalScript{t: t, root: l.w.root, scripted: scripted{responses: []*provider.Response{
-		respond("r1", shellItem("c1", "printf 'partial\\n'; while [ ! -f release ]; do sleep .05; done; printf 'complete\\n'; exit 7")), nil, respond("r3", message("done")),
+		respond("r1", shellItem("c1", "printf 'partial\\n'; : > ready; while [ ! -f release ]; do sleep .05; done; printf 'complete\\n'; exit 7")), nil, respond("r3", message("done")),
 	}}}
 	if _, err := loop.Run(context.Background(), l.rd, []any{userMessage("go")}, rq, loop.Hooks{}); err != nil {
 		t.Fatal(err)

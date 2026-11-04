@@ -7,16 +7,16 @@ acceptance independently exercise this adopted tree.
 
 ## Supplied inputs
 
-- Archive: `/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/loop-reference.tar.gz`
+- Archive: `<checkout>/extraction/loop-reference.tar.gz`
 - Archive SHA256: `95520d37e26377bff74794eb9faa5cd67d0228f9b65fcf8e04c7e12f93dbfd40`
-- Manifest: `/Users/almirsarajcic/Areas/Kogen/studio-work/kogen-loop-extraction-20261026/sprint-30min/loop-reference-manifest.json`
+- Manifest: `<checkout>/extraction/loop-reference-manifest.json`
 - Manifest SHA256: `65dc3a49a5f939ef5d761c2d6980184ae60f0c7dcfc47454f14ec405547fc51d`
 - Original Kogen commit: `56eecd572a6e07184863939254a90d9a2dc44e96`
 - License: Apache-2.0. `LICENSE` and `NOTICE` are retained byte-for-byte.
 
 The full supplied manifest is preserved as
 [loop-reference-manifest.json](loop-reference-manifest.json). The original
-candidate README is preserved byte-for-byte as
+candidate README is preserved with public link and context corrections as
 [reference-README.md](reference-README.md).
 
 ## Reconciled deviations

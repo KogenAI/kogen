@@ -498,6 +498,7 @@ func (r *run) stripKey() {
 func (r *run) transport(token string) (result, error) {
 	start := r.k.c.now()
 	ts := timestamp(start)
+	load := loadAverage()
 	r.requestID = ""
 	r.so = newStreamObs(start)
 	r.watch = nil
@@ -514,7 +515,7 @@ func (r *run) transport(token string) (result, error) {
 		// The refusal is evidence of the route, whatever happens next.
 		r.markUnsupported()
 	}
-	r.record(res, err, start, ts)
+	r.record(res, err, start, ts, load)
 	return res, err
 }
 
@@ -1057,7 +1058,7 @@ func originAddress(origin string) (string, bool) {
 }
 
 // record sends the attempt's usage record to the Observer.
-func (r *run) record(res result, err error, start time.Time, ts string) {
+func (r *run) record(res result, err error, start time.Time, ts string, load any) {
 	completed := err == nil && res.kind == resOK
 	outcome := "failed"
 	switch {
@@ -1118,6 +1119,8 @@ func (r *run) record(res result, err error, start time.Time, ts string) {
 		"operation_id":                r.op.id,
 		"attempt_id":                  newID("attempt"),
 		"timestamp":                   ts,
+		"request_offset_ms":           start.Sub(r.k.started).Milliseconds(),
+		"load_average":                load,
 		"provider_response_id":        identifierOrNil(meta["id"]),
 		"provider_request_id":         reqID,
 		"configured_model":            r.op.model,

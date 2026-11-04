@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -83,7 +84,7 @@ func TestReplayFiltersMessageContentAndFunctionCallFields(t *testing.T) {
 func TestDecodeArgumentsIsAnObjectOrTheInvalidMarker(t *testing.T) {
 	t.Parallel()
 	invalid := map[string]any{"__invalid__": true}
-	for _, text := range []string{"", "not json", "[1]", "null", `"a"`, "5", "true", `{"a":1} trailing`, `{"a":}`, `{"a":1,}`, "{", `{"a":"\ud800"}`, `{"a":1e999}`} {
+	for _, text := range []string{"", "not json", "[1]", "null", `"a"`, "5", "true", `{"a":1} trailing`, `{"a":}`, `{"a":1,}`, "{", `{"a":"\ud800"}`, `1e999`, `[1e999]`} {
 		if got := DecodeArguments(text); !reflect.DeepEqual(got, invalid) {
 			t.Errorf("%q decoded as %v", text, got)
 		}
@@ -93,6 +94,11 @@ func TestDecodeArgumentsIsAnObjectOrTheInvalidMarker(t *testing.T) {
 		"list": []any{int64(1), "x"}, "obj": map[string]any{"k": "v"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v", got)
+	}
+	got = DecodeArguments(`{"a":1e999,"b":-1e999,"c":2}`)
+	want = map[string]any{"a": json.Number("1e999"), "b": json.Number("-1e999"), "c": int64(2)}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("a number too large for a float must stay as its text, got %#v", got)
 	}
 	if got := DecodeArguments("{}"); len(got) != 0 {
 		t.Errorf("{} decoded as %v", got)

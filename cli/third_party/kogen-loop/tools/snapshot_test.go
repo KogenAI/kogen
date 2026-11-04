@@ -46,7 +46,7 @@ func TestSnapshotIsTheDeliveredToolOutputs(t *testing.T) {
 	if got := tl.Snapshot(); got != want {
 		t.Fatalf("snapshot\n%q\nwant\n%q", got, want)
 	}
-	if !strings.Contains(want, "\"caf\\303\\251 notes.md\"") || strings.Contains(want, "build/out.txt") {
+	if !strings.Contains(want, "\ncafé notes.md\n") || strings.Contains(want, "build/out.txt") {
 		t.Fatalf("listing: %q", want)
 	}
 }

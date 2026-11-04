@@ -94,6 +94,9 @@ type Direct struct {
 	CacheID  string            // one cache identity per conversation (kept across rounds)
 	Cache    *provider.Cache
 	// Condensed, when set, is told about each condensation before the condensed request is sent.
+	// A condensation that fails after sending at least one summarization request is told once,
+	// before Request returns its unchanged error, with Failed true, the requests sent, the summed
+	// usage of the responses received (unknown when none) and zero condensed fields.
 	Condensed func(Condensation)
 
 	// terminal names the calls whose outputs are the caller's feedback (Session sets it);
@@ -149,6 +152,12 @@ func (d *Direct) prepare(ctx context.Context, r Request) ([]any, error) {
 	}
 	input, err := c.condense(ctx, m)
 	if err != nil {
+		if c.sent > 0 && d.Condensed != nil {
+			d.Condensed(Condensation{
+				Failed: true, Requests: c.sent, BytesBefore: m.RenderedBytes, Limit: c.limit,
+				Usage: SumUsage(c.usages...),
+			})
+		}
 		return nil, err
 	}
 	r.Input = input

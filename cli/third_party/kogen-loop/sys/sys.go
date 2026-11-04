@@ -325,13 +325,21 @@ type CapturedCommand struct {
 	err     error
 	pgid    int
 	session *Session
+
+	startMu sync.Mutex
+	started time.Time
 }
 
 // StartCaptured launches a shell with the normal foreign-kill policy.
 func (s *Session) StartCaptured(ctx context.Context, command, dir string) *CapturedCommand {
 	c := &CapturedCommand{buf: &capBuffer{}, done: make(chan struct{}), session: s}
 	go func() {
-		c.result, c.err = s.runCaptured(ctx, command, dir, Options{RefuseForeignKill: true}, c.buf, func(pgid int) { c.pgid = pgid })
+		c.result, c.err = s.runCaptured(ctx, command, dir, Options{RefuseForeignKill: true}, c.buf, func(pgid int) {
+			c.pgid = pgid
+			c.startMu.Lock()
+			c.started = time.Now()
+			c.startMu.Unlock()
+		})
 		close(c.done)
 	}()
 	return c
@@ -353,6 +361,14 @@ func (c *CapturedCommand) Stop(cancel context.CancelFunc) {
 	}
 }
 func (c *CapturedCommand) Done() <-chan struct{} { return c.done }
+
+// Started is the instant exec.Cmd.Start returned for the command, or the zero time while no
+// process has started (also for a refused command or one that failed to start).
+func (c *CapturedCommand) Started() time.Time {
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+	return c.started
+}
 func (c *CapturedCommand) Snapshot() (Result, bool, error) {
 	select {
 	case <-c.done:

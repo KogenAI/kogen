@@ -116,7 +116,8 @@ func TestInterruptStopsAndRefuses(t *testing.T) {
 		t.Fatalf("Run error %v", err)
 	}
 	deadline := time.Now().Add(10 * time.Second)
-	for syscall.Kill(-pgid, 0) == nil && time.Now().Before(deadline) {
+	// EPERM is a group whose members are not yet reaped: it is still present.
+	for err := syscall.Kill(-pgid, 0); err != syscall.ESRCH && time.Now().Before(deadline); err = syscall.Kill(-pgid, 0) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if err := syscall.Kill(-pgid, 0); err != syscall.ESRCH {

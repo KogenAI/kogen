@@ -177,6 +177,34 @@ const (
 	ErrClassLoop             = "loop"
 )
 
+// Tool error kinds: the "error_kind" of a tool.result event whose well-formed call failed.
+const (
+	ToolErrorNotFound           = "not_found"
+	ToolErrorIsFolder           = "is_folder"
+	ToolErrorOutsideRoot        = "outside_root"
+	ToolErrorFile               = "file_error"
+	ToolErrorProtected          = "protected"
+	ToolErrorGit                = "git_failed"
+	ToolErrorUnknownShellHandle = "unknown_shell_handle"
+	ToolErrorForeignKill        = "foreign_kill"
+	ToolErrorInvalidImage       = "invalid_image"
+)
+
+// Shell wait endings: the "ended_by" of a tool.result event's "shell_wait" record.
+const (
+	ShellWaitExit          = "exit"
+	ShellWaitBound         = "bound"
+	ShellWaitHandleYielded = "handle_yielded"
+)
+
+// Malformed call classes: the "malformed_class" of a tool.result event whose call itself is wrong.
+const (
+	MalformedUnknownTool          = "unknown_tool"
+	MalformedMissingArgument      = "missing_argument"
+	MalformedWrongArgumentType    = "wrong_argument_type"
+	MalformedConflictingArguments = "conflicting_arguments"
+)
+
 // Exit codes of `kogen-loop run`.
 const (
 	ExitEnded       = 0

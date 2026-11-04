@@ -184,7 +184,11 @@ func formatFloat(f float64) string {
 // integers, float64 for other numbers and json.Number for integers beyond int64, so the
 // integer/float distinction of the wire survives. Like Erlang's JSON, it refuses text that
 // is not valid UTF-8, unpaired surrogate escapes and numbers too large for a float.
-func decodeJSON(data []byte) (any, error) {
+func decodeJSON(data []byte) (any, error) { return decodeJSONKeeping(data, false) }
+
+// decodeJSONKeeping is decodeJSON; with keepHuge a number too large for a float is the
+// json.Number of its literal text instead of an error.
+func decodeJSONKeeping(data []byte, keepHuge bool) (any, error) {
 	if !utf8.Valid(data) {
 		return nil, fmt.Errorf("invalid UTF-8")
 	}
@@ -193,7 +197,7 @@ func decodeJSON(data []byte) (any, error) {
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	v, err := decodeValue(dec, 0)
+	v, err := decodeValue(dec, 0, keepHuge)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +211,7 @@ const maxDepth = 10_000
 
 // decodeValue reads one value. Like Erlang's JSON, an object keeps the first of a repeated
 // key.
-func decodeValue(dec *json.Decoder, depth int) (any, error) {
+func decodeValue(dec *json.Decoder, depth int, keepHuge bool) (any, error) {
 	if depth > maxDepth {
 		return nil, fmt.Errorf("JSON nested too deeply")
 	}
@@ -224,7 +228,7 @@ func decodeValue(dec *json.Decoder, depth int) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				v, err := decodeValue(dec, depth+1)
+				v, err := decodeValue(dec, depth+1, keepHuge)
 				if err != nil {
 					return nil, err
 				}
@@ -237,7 +241,7 @@ func decodeValue(dec *json.Decoder, depth int) (any, error) {
 		}
 		l := []any{}
 		for dec.More() {
-			v, err := decodeValue(dec, depth+1)
+			v, err := decodeValue(dec, depth+1, keepHuge)
 			if err != nil {
 				return nil, err
 			}
@@ -246,7 +250,11 @@ func decodeValue(dec *json.Decoder, depth int) (any, error) {
 		_, err := dec.Token()
 		return l, err
 	case json.Number:
-		return number(t)
+		v, err := number(t)
+		if err != nil && keepHuge {
+			return t, nil
+		}
+		return v, err
 	}
 	return tok, nil
 }

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -153,7 +154,7 @@ func TestShellResultNeedsCutWhenLong(t *testing.T) {
 		t.Fatalf("run result is %d bytes: tools return the whole output, callers cut", len(out.Text))
 	}
 	cut := out.Cut()
-	if len(cut.Text) > 16_384 || !strings.HasPrefix(cut.Text, "exit status: 0\nxxx") || !strings.Contains(cut.Text, " bytes omitted ...]\n") {
+	if len(cut.Text) > 16_384 || !strings.HasPrefix(cut.Text, "exit status: 0\n\n[... ") || !strings.Contains(cut.Text, " bytes omitted ...]\n") {
 		t.Errorf("cut %d bytes: %.60q", len(cut.Text), cut.Text)
 	}
 }
@@ -445,5 +446,57 @@ func TestReasonNames(t *testing.T) {
 	}
 	if got := reason(errors.New("odd")); got != "odd" {
 		t.Errorf("reason = %q", got)
+	}
+}
+
+func TestReadFileLineRangeFeedback(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for name, content := range map[string]string{"a.txt": "one\ntwo\nthree\n", "e.txt": ""} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tl := &Tools{Root: root, Enabled: []string{ReadFileTool}}
+	for _, c := range []struct {
+		args, text, kind, class string
+	}{
+		{`{"path":"a.txt","start_line":99}`, "(start_line 99 is past the end of a.txt; line count: 3)", "", ""},
+		{`{"path":"a.txt","start_line":4}`, "(start_line 4 is past the end of a.txt; line count: 3)", "", ""},
+		{`{"path":"a.txt","start_line":3}`, "3\tthree", "", ""},
+		{`{"path":"e.txt","start_line":1}`, "(start_line 1 is past the end of e.txt; line count: 0)", "", ""},
+		{`{"path":"e.txt","start_line":0}`, "(start_line 1 is past the end of e.txt; line count: 0)", "", ""},
+		{`{"path":"e.txt"}`, "", "", ""},
+		{`{"path":"e.txt","end_line":5}`, "", "", ""},
+		{`{"path":"a.txt","start_line":"2"}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":2.5}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":2.0}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":1e2}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":null}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":true}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":[1]}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","end_line":{}}`, "error: argument end_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","end_line":2.5}`, "error: argument end_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":"x","end_line":"y"}`, "error: argument start_line must be an integer", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":1e999}`, "error: argument start_line is a number too large to represent", "", "wrong_argument_type"},
+		{`{"path":"a.txt","end_line":-1e999}`, "error: argument end_line is a number too large to represent", "", "wrong_argument_type"},
+		{`{"path":3,"start_line":1e999}`, "error: argument path must be a string", "", "wrong_argument_type"},
+		{`{"path":"a.txt","start_line":3,"end_line":1}`, "error: end_line 1 is before start_line 3", "", "conflicting_arguments"},
+		{`{"path":"a.txt","end_line":0}`, "error: end_line 0 is before start_line 1", "", "conflicting_arguments"},
+		{`{"path":"a.txt","start_line":-4,"end_line":-5}`, "error: end_line -5 is before start_line 1", "", "conflicting_arguments"},
+		{`{"path":"a.txt","start_line":99999999999999999999,"end_line":5}`, "error: end_line 5 is before start_line 9223372036854775807", "", "conflicting_arguments"},
+		{`{"path":"missing.txt","start_line":3,"end_line":1}`, "error: end_line 1 is before start_line 3", "", "conflicting_arguments"},
+		{`{"path":"missing.txt","start_line":2}`, "error: missing.txt does not exist", "not_found", ""},
+		{`{"path":"a.txt","start_line":2,"end_line":2}`, "2\ttwo", "", ""},
+		{`{"path":"a.txt","start_line":2,"end_line":99}`, "2\ttwo\n3\tthree", "", ""},
+		{`{"path":"a.txt","start_line":-3}`, "1\tone\n2\ttwo\n3\tthree", "", ""},
+	} {
+		got, err := tl.CallClassified(context.Background(), Call{Name: ReadFileTool, Arguments: c.args})
+		if err != nil {
+			t.Fatalf("%s: %v", c.args, err)
+		}
+		if got.Text != c.text || got.ErrorKind != c.kind || got.MalformedClass != c.class {
+			t.Errorf("%s = %q kind %q class %q, want %q %q %q", c.args, got.Text, got.ErrorKind, got.MalformedClass, c.text, c.kind, c.class)
+		}
 	}
 }

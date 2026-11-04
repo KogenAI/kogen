@@ -69,8 +69,8 @@ func (t *Tools) footprint(name string, args map[string]any) footprint.Footprint 
 		}
 		// Git receives the pathspec as written when it stays inside the root, which a
 		// symlink followed by ".." can make another place than the resolved path.
-		spec, text := t.pathspec(args)
-		if text != "" {
+		spec, refused := t.pathspec(args)
+		if refused.Text != "" {
 			return barrier
 		}
 		reads := []string{phys}

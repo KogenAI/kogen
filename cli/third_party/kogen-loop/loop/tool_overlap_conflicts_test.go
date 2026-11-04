@@ -23,9 +23,10 @@ func olCall(id, name string, args map[string]any) map[string]any {
 	return fcall(id, name, string(b))
 }
 
-// olSearchIn is a search_text call restricted to path.
-func olSearchIn(id, pattern, path string) map[string]any {
-	return olCall(id, "search_text", map[string]any{"pattern": pattern, "path": path})
+// olSearchIn is a search_text call restricted to path, which is its key: the fake Git
+// tells searches apart by their pathspec.
+func olSearchIn(id, path string) map[string]any {
+	return olCall(id, "search_text", map[string]any{"pattern": ".", "path": path})
 }
 
 // olFiles are the regular files below root, relative and sorted; write temporaries excluded.
@@ -112,14 +113,14 @@ func TestToolOverlapConflicts(t *testing.T) {
 	t.Run("read after write", func(t *testing.T) {
 
 		t.Parallel()
-		run, repo, _, _ := olConflict(t, nil, olWrite("w", "d/f.txt", big), olSearchIn("r", "r", "d"))
-		repo.startedKeys(t, "r")
-		if got := repo.snapshot("r"); got != "d/f.txt" {
+		run, repo, _, _ := olConflict(t, nil, olWrite("w", "d/f.txt", big), olSearchIn("r", "d"))
+		repo.startedKeys(t, "d")
+		if got := repo.snapshot("d"); got != "d/f.txt" {
 			t.Fatalf("the read started before the write finished: files %q", got)
 		}
-		repo.release("r")
+		repo.release("d")
 		res, err := run.wait(t)
-		if got := olOutputs(t, res, err); !reflect.DeepEqual(got, []string{"w=ok", "r=r"}) {
+		if got := olOutputs(t, res, err); !reflect.DeepEqual(got, []string{"w=ok", "r=d"}) {
 			t.Fatalf("outputs %v", got)
 		}
 	})
@@ -176,16 +177,16 @@ func TestToolOverlapConflicts(t *testing.T) {
 
 		t.Parallel()
 		run, repo, root, _ := olConflict(t, nil,
-			olSearchIn("r", "r", "d"), olWrite("w", "d/f.txt", "x"), olSearchIn("z", "z", "elsewhere"))
+			olSearchIn("r", "d"), olWrite("w", "d/f.txt", "x"), olSearchIn("z", "elsewhere"))
 		// The unrelated read after the write starts beside the first read; the write, which
 		// overlaps the first read's folder, does not.
-		repo.startedKeys(t, "r", "z")
-		if got := repo.snapshot("z"); got != "" {
+		repo.startedKeys(t, "d", "elsewhere")
+		if got := repo.snapshot("elsewhere"); got != "" {
 			t.Fatalf("the write ran under a running read: files %q", got)
 		}
-		repo.release("z", "r")
+		repo.release("elsewhere", "d")
 		res, err := run.wait(t)
-		if got := olOutputs(t, res, err); !reflect.DeepEqual(got, []string{"r=r", "w=ok", "z=z"}) {
+		if got := olOutputs(t, res, err); !reflect.DeepEqual(got, []string{"r=d", "w=ok", "z=elsewhere"}) {
 			t.Fatalf("outputs %v", got)
 		}
 		if olFiles(root) != "d/f.txt" {
@@ -198,18 +199,18 @@ func TestToolOverlapConflicts(t *testing.T) {
 	t.Run("disjoint writes and reads", func(t *testing.T) {
 		t.Parallel()
 		run, repo, root, _ := olConflict(t, nil,
-			olSearchIn("ra", "ra", "a"), olWrite("wa", "a/f.txt", "A"), olWrite("wb", "b/g.txt", "B"), olSearchIn("rb", "rb", "b"),
-			olSearchIn("x", "x", "x"), olList("l", "y"))
-		repo.startedKeys(t, "ra", "rb", "x", "ls:y")
-		if got := repo.snapshot("rb"); got != "b/g.txt" {
+			olSearchIn("ra", "a"), olWrite("wa", "a/f.txt", "A"), olWrite("wb", "b/g.txt", "B"), olSearchIn("rb", "b"),
+			olSearchIn("x", "x"), olList("l", "y"))
+		repo.startedKeys(t, "a", "b", "x", "ls:y")
+		if got := repo.snapshot("b"); got != "b/g.txt" {
 			t.Fatalf("the read of b began with files %q, want only the second write's", got)
 		}
-		if repo.finished("ra") {
+		if repo.finished("a") {
 			t.Fatal("the held read finished")
 		}
-		repo.release("ra", "rb", "x", "ls:y")
+		repo.release("a", "b", "x", "ls:y")
 		res, err := run.wait(t)
-		want := []string{"ra=ra", "wa=ok", "wb=ok", "rb=rb", "x=x", "l=ls:y"}
+		want := []string{"ra=a", "wa=ok", "wb=ok", "rb=b", "x=x", "l=ls:y"}
 		if got := olOutputs(t, res, err); !reflect.DeepEqual(got, want) {
 			t.Fatalf("outputs %v", got)
 		}
@@ -263,19 +264,19 @@ func TestToolOverlapConflicts(t *testing.T) {
 		rq := &scriptRequester{script: [][]map[string]any{{
 			olShell("s1", olHold(ready, gate, "mkdir -p d && echo one >> order.txt && echo x > d/new")),
 			olShell("s2", "echo two >> order.txt"),
-			olSearchIn("r", "r", "d"),
+			olSearchIn("r", "d"),
 		}, {fcall("end", "finish", `{}`)}}}
 		run := olStart(context.Background(), Round{Tools: olTools(root, repo, nil)}, []any{userMsg("go")}, rq, Hooks{})
 		olReadPid(t, ready) // the first shell is running
 		repo.idle(t, "a call after a running shell")
 		olOpen(gate)
-		repo.startedKeys(t, "r")
-		if got := repo.snapshot("r"); got != "d/new,order.txt" {
+		repo.startedKeys(t, "d")
+		if got := repo.snapshot("d"); got != "d/new,order.txt" {
 			t.Fatalf("the read began with files %q: it must follow both shells", got)
 		}
-		repo.release("r")
+		repo.release("d")
 		res, err := run.wait(t)
-		want := []string{"s1=exit status: 0\n", "s2=exit status: 0\n", "r=r"}
+		want := []string{"s1=exit status: 0\n", "s2=exit status: 0\n", "r=d"}
 		if got := olOutputs(t, res, err); !reflect.DeepEqual(got, want) {
 			t.Fatalf("outputs %q", got)
 		}
@@ -342,11 +343,11 @@ func TestToolOverlapConflicts(t *testing.T) {
 		sent, proceed := make(chan struct{}), make(chan struct{})
 		prov := newOLProvider(t, "responses",
 			func(s *olStream) {
-				s.frag(0, "a", "search_text", `{"pattern":"fi`)
-				s.call(1, "b", "search_text", `{"pattern":"second"}`)
+				s.frag(0, "a", "search_text", `{"pattern":".","path":"fi`)
+				s.call(1, "b", "search_text", `{"pattern":".","path":"second"}`)
 				close(sent)
 				s.wait(proceed)
-				s.done(0, "a", "search_text", `{"pattern":"first"}`)
+				s.done(0, "a", "search_text", `{"pattern":".","path":"first"}`)
 				s.end()
 			},
 			olFinish,

@@ -97,7 +97,8 @@ func (c Call) CallID() any { return c.Item["call_id"] }
 
 // Args decodes the arguments as a JSON object. Anything else (invalid JSON, a value that is
 // not an object, no arguments) is the object {"__invalid__": true}, so a tool reports a
-// missing argument instead of failing the conversation.
+// missing argument instead of failing the conversation. A number too large for a float64
+// stays in the object as a json.Number of its literal text.
 func (c Call) Args() map[string]any { return DecodeArguments(c.Arguments) }
 
 // Output is the function_call_output that answers the call; result is the tool's text, its
@@ -106,7 +107,7 @@ func (c Call) Output(result any) map[string]any { return OutputItem(c.CallID(), 
 
 // DecodeArguments decodes tool-call arguments; see Call.Args.
 func DecodeArguments(arguments string) map[string]any {
-	v, err := decodeJSON([]byte(arguments))
+	v, err := decodeJSONKeeping([]byte(arguments), true)
 	if m, ok := v.(map[string]any); err == nil && ok {
 		return m
 	}

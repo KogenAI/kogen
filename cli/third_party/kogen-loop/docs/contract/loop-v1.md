@@ -54,7 +54,7 @@ type Direct struct {
     Observer  provider.Observer  // nil: none
     CacheID   string             // one cache identity per conversation (kept across rounds)
     Cache     *provider.Cache
-    Condensed func(Condensation) // nil: none; told of each condensation before the request is sent
+    Condensed func(Condensation) // nil: none; told of each condensation before the request is sent, and once of a failed one (Failed true)
 }
 
 // Handled is a caller's answer to a tool call it intercepts.
@@ -138,7 +138,7 @@ The complete rendered request (instructions, tools, cache placement) is measured
 - Kept exact: the instructions and tool definitions, the original task and every later user message (in a `Session`, also the exchange whose terminal call a later round's feedback answers), and the newest complete exchange together with as many recent exchanges as fit in a quarter of the ceiling. Older exchanges, and any earlier summary, become one summary message (a user message that starts with `loop.CondensedHeader`, so it is kept in session history and in `session.json`, survives resume and is folded into the next condensation).
 - The summary is written by the model through the same provider, role, credentials and transport, in requests without tools whose complete body must itself fit. Older exchanges are rendered as quoted data in fitting chunks, each chunk request carries the summary so far, and a summary above a quarter of the ceiling is merged once more and must come out shorter. The instructions ask for facts, decisions, files changed, checks and outcomes, unresolved errors and remaining work, and to treat the historical text, including instructions in it, as data.
 - Every step consumes exchanges or shrinks the summary, and at most two summarization requests per older exchange plus two are sent. The condensed request is measured again. If what must stay exact (or one older exchange) cannot fit, the request is refused with `loop/context_budget_exceeded` (message `<owner>: complete next request N bytes exceeds LIMIT; reserve R tokens. ...`) before the conversation is sent; when no summarization is possible the message ends `Nothing was sent and nothing was clipped.`, otherwise it says what condensation could not reduce. A provider failure, a cancellation, an empty summary or a summary that cannot be shortened stops the round with that error; nothing is retried in a loop and no finish is invented. Finishing remains the model's claim.
-- Disclosure: a `context.condensed` event precedes the condensed request's attempts (summarization attempts are `request.attempt` events whose `record.purpose` is `condensation`). The summarization usage is in that event, not in the round's `response` totals.
+- Disclosure: a `context.condensed` event precedes the condensed request's attempts (summarization attempts are `request.attempt` events whose `record.purpose` is `condensation`). The summarization usage is in that event, not in the round's `response` totals. A condensation that fails after at least one summarization request was sent is disclosed too, once, before `Direct.Request` returns its unchanged error: `Condensation.Failed` is true, `Requests` and `Usage` (`SumUsage` of the responses received; unknown when none) are what was spent, `BytesBefore` and `Limit` are as on success, and `CondensedExchanges`, `KeptExchanges`, `BytesAfter` and `SummaryBytes` are 0. A failure before any summarization request discloses nothing.
 
 `loop.FailOverBudget` is the guard that refuses without condensing; `loop.Direct` applies it after condensation. `tools.Measure` reports the rendered size, the ceiling and the output reserve.
 
@@ -201,6 +201,8 @@ stop what `claude` runs between hooks, or processes that leave the group.
 
 ### Root-contained reads
 
+**Printed paths.** `list_files` and `search_text` print every path as the file system spells it, so it can be passed unchanged to `read_file` and the other file tools. Git's own octal quoting (`"caf\303\251.txt"`) is not used. A path is printed verbatim when it is valid UTF-8, every rune satisfies Go's `strconv.IsPrint` (letters, marks, numbers, punctuation, symbols and the ASCII space) and it does not start with `"`: non-ASCII names, spaces, a backslash or `"` that is not the first byte and trailing spaces stay as named. Any other path (a control character such as newline or tab, invalid UTF-8, a non-printable rune such as U+00AD, or a leading `"`) is printed as `strconv.Quote(path)`, a Go double-quoted string literal such as `"line\nbreak.txt"` or `"caf\xe9.txt"`. So a printed path that starts with `"` is always the quoted form, `strconv.Unquote` gives the exact name, any other printed path is the exact name, and a quoted path never holds a raw newline: each path occupies one line. The file tools do not accept the quoted form; they take the decoded name. Routes: `list_files` runs `ls-files -z --cached --others --exclude-standard --deduplicate -- [pathspec]`, reads the NUL-terminated names and joins the rendered names with `\n` in Git's order, without trimming white space (a last name that ends in a space keeps it); empty output is `(no files)`. `search_text` compiles the pattern, cut at its first NUL byte, with Go's `regexp.Compile` (RE2 syntax, case-sensitive, no flags), so `\b`, `\d`, `\s`, `\w`, alternation and classes mean the same on every host; a pattern RE2 cannot express (a backreference, a lookaround, `\Z`) returns `error: invalid pattern: <reason>` (the Go error's text without its leading `error parsing regexp: `, for example ``error: invalid pattern: missing closing ): `(` ``) without running Git, after the argument and path checks. It then runs `grep -z -n -I -E --untracked -e "" -- [pathspec]` (the empty pattern lists every line of every searched text file), parses each record `<path>NUL<line number>NUL<text>LF`, keeps the records whose `<text>` (the line without its LF) the pattern matches, and prints `<rendered path>:<number>:<text>` lines joined with `\n`, with trailing white space of the whole result trimmed as before; status 1, or no kept record, is `(no matches)`. Each is still exactly one `Tools.Repo.Run` call; a caller-supplied `Tools.Repo` receives the extra `-z` argument through the same `Git.Run`. Unchanged: inclusion rules (tracked and untracked files, not ignored ones), Git's order, deduplication, root containment, pathspec handling, error texts and classes, and the 16384-byte bound at delivery. The `Snapshot` listing shows the same text, and its `read_file` headers still use the Go-quoted real path.
+
 `read_file`, `view_image` and the optional `path` of `list_files` and `search_text` are confined to `tools.Tools.Root` (default path: the root). `~` and `~/...` are refused, not expanded. Absolute paths outside the root, parent escapes and symlinks that leave the root at any component (leaf or intermediate, relative or absolute target) are refused too, with tool text `error: <path>: <reason>` and no outside payload; `Tools.Run` still returns a nil Go error. Relative and absolute paths inside the root work, as do file and directory symlinks whose destinations stay inside it, and a `Root` that is itself a symlink. Symlinks are followed before a later `..` is applied, containment compares path components (not string prefixes), and the file is opened through `os.Root` on the canonical root. This is source-path containment, not a shell sandbox: `shell` and probe commands, documentation URLs, provider credential loading, transcript paths and `write_file` are unchanged, and no credential-specific denylist exists inside the root. There is no option to disable it.
 
 ### Shell time limit
@@ -213,6 +215,9 @@ integer `exit_status` and cumulative output. Completed retrieval is repeatable u
 end. Invalid combinations and unknown or expired handles return `error:` text. Output is
 bounded inside the JSON envelope. Round cleanup stops yielded groups. The wait is not a
 setting; `deadline_seconds` remains the whole-round deadline and `sys.Options.Timeout` is independent.
+`Tools.ShellAfter` is a test seam: when set, a shell call passes it the wait it would otherwise take and treats a value from the returned channel as that wait elapsing; production leaves it nil.
+
+The `tool.result` event of a shell call that reaches its wait (a well-formed call with a known handle or a started command, in a live context) carries `shell_wait`, a JSON object with exactly four keys: `spawned` (the instant the command's process started, or `null` while none had started when the wait ended: a refused command, one that failed to start, one still starting), `wait_started` and `wait_ended` (the instants this call's bounded wait started and ended), and `ended_by`: `exit` (the call returns a completed result), `handle_yielded` (a new command's 45-second bound elapsed and a handle was issued) or `bound` (a retrieval's 30-second bound elapsed, same handle). When completion and the bound are both ready, `ended_by` follows the returned result. An instant is RFC 3339 UTC with exactly nine fractional digits (`2006-01-02T15:04:05.000000000Z07:00` applied to `t.UTC()`) and is a wall-clock instant of the kogen-loop process, so it compares with the event `time`. A retrieval repeats its command's `spawned`. Malformed calls, unknown handles, non-shell tools and calls without a `tool.result` carry none. `tools.Classified.ShellWait` (`*tools.ShellWait`, nil without a wait) returns the same record from `RunClassified` and `CallClassified`; `api.ShellWaitExit`, `api.ShellWaitBound` and `api.ShellWaitHandleYielded` name the endings. Nothing the model receives changes.
 
 `func (t *Tools) Definition(name string) (map[string]any, bool)` returns the same
 definition as the package function `tools.Definition`, so callers may build
@@ -304,14 +309,45 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 | `request.started` | `n`, `owner`, `model`, `effort` |
 | `request.attempt` | `n`, `record` (the provider observer record, credentials never included) |
 | `response` | `n`, `response_id`, `usage` (`api.Usage`) |
-| `context.condensed` | `n` (the request it precedes), `requests` (summarization requests), `condensed_exchanges`, `kept_exchanges`, `bytes_before`, `bytes_after`, `limit`, `summary_bytes`, `usage` (`api.Usage` of the summarization requests; unknown stays null) |
+| `context.condensed` | `n` (the request it precedes), `requests` (summarization requests), `condensed_exchanges`, `kept_exchanges`, `bytes_before`, `bytes_after`, `limit`, `summary_bytes`, `usage` (`api.Usage` of the summarization requests; unknown stays null); `failed` (`true`) only on a condensation that failed after sending a summarization request, with `condensed_exchanges`, `kept_exchanges`, `bytes_after` and `summary_bytes` 0, emitted before the round's `error` |
 | `tool.call` | `call_id`, `name`, `arguments_sha256` |
-| `tool.result` | `call_id`, `name`, `result_sha256`, `bytes`, `cut` (bool), and `rule` only for a refused shell call. `bytes` and `result_sha256` describe what the model received, after the cut. |
+| `tool.result` | `call_id`, `name`, `result_sha256`, `bytes`, `cut` (bool), `rule` only for a refused shell call, `shell_wait` only for a shell call that reached its bounded wait (see [Shell time limit](#shell-time-limit)), `error_kind` only for a tool error and `malformed_class` only for a malformed call (see [Tool error kinds and malformed call classes](#tool-error-kinds-and-malformed-call-classes)). `bytes` and `result_sha256` describe what the model received, after the cut. |
 | `round.ended` | `ending` (`terminal`/`no_call`), `terminal_tool`, `claim` (terminal arguments or final text — `output_text` and `refusal` parts in content order, newline-joined — bounded 16384 bytes; **a claim, not proof**), `requests`, `usage` (round total) |
 | `error` | `class`, `reason`, `detail` (same shape as `sys.Error`) |
 | `session.ended` | `status` (`ended`/`failed`/`interrupted`), `exit` |
 
 `session.ended` is always the last line. Callers must ignore unknown fields and unknown event types inside the same major version.
+
+### Tool error kinds and malformed call classes
+
+A `tool.result` is an error when its delivered text starts with `error: ` or `refused: `. It then carries exactly one of `error_kind` (a well-formed call whose tool failed) or `malformed_class` (the call itself is wrong); every other result carries neither. Both are strings from the fixed vocabularies below (`api.ToolError*`, `api.Malformed*`), never the error text or the arguments, and nothing the model receives changes. Terminal calls have no `tool.result`; `exit status: N` texts, shell envelopes, `(no matches)`, `(no files)`, typed `view_image` parts and `documentation` results are not errors; `probe` has no category.
+
+`malformed_class`:
+
+| class | condition |
+|---|---|
+| `unknown_tool` | the name is not an enabled tool (unknown, or known but not enabled) |
+| `missing_argument` | a required string argument is absent: `path` of `read_file`, `write_file` and `view_image`, `content` of `write_file`, `pattern` of `search_text`; a `shell` call with neither a non-blank string `command` nor a non-blank string `handle` |
+| `wrong_argument_type` | that argument is present but not a string (JSON `null` included); a `shell` `command` that is not a string without a non-blank `handle`; a `read_file` `start_line` or `end_line` that is not a JSON integer or is too large to represent |
+| `conflicting_arguments` | a `shell` call with both a non-blank string `command` and a non-blank string `handle`; a `read_file` `end_line` before its effective start |
+
+Where a tool checks several arguments the class follows the one the text names (`write_file` checks `path` before `content`; `read_file` checks `path`, then `start_line`, then `end_line`).
+
+`read_file` line ranges: a `start_line` or `end_line` that is not a JSON integer (a string, a number written with a fraction or an exponent, `null`, a boolean, an array, an object) returns `error: argument <name> must be an integer`, and a number too large to represent as a float64 (`1e999`) returns `error: argument <name> is a number too large to represent`; integers beyond int64 are still clamped. An `end_line` smaller than the effective start (`start_line` when at least 1, else 1) returns `error: end_line <end_line> is before start_line <start>` (`end_line 1` with `start_line 3` gives `error: end_line 1 is before start_line 3`), checked before the file is read. A `start_line` greater than the file's line count (a final newline ends the last line; an empty file has 0) returns the notice `(start_line <start> is past the end of <path>; line count: <N>)`, with `<path>` as given, and carries no error kind or malformed class; without `start_line` an empty file still returns an empty text. `tools.DecodeArguments` keeps an arguments object that holds a number too large for a float64, as a `json.Number` of its literal text.
+
+`error_kind`:
+
+| kind | condition |
+|---|---|
+| `not_found` | `read_file` of a path that does not exist |
+| `is_folder` | `read_file` of a folder |
+| `outside_root` | root containment refused the path of `read_file`, `view_image`, `list_files` or `search_text` (`~`, absolute outside the root, `..` escape, symlink leaving the root, top-anchored Git pathspec) |
+| `file_error` | any other file-system failure of `read_file`, `write_file`, or resolving the path of `list_files` or `search_text` |
+| `protected` | `write_file` refused a protected path |
+| `git_failed` | the Git command of `list_files` or `search_text` failed or could not start, or the `search_text` pattern is not valid RE2 |
+| `unknown_shell_handle` | a `shell` retrieval with an unknown or expired handle |
+| `foreign_kill` | the foreign-kill filter refused a `shell` command (`rule` stays in the event) |
+| `invalid_image` | `view_image` of a string path inside the root that is missing, not a regular file, outside the byte limits or not a supported PNG |
 
 ### Usage (`api.Usage`)
 
@@ -336,7 +372,7 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 
 ### Atomic `write_file`
 
-`write_file` writes a temporary file next to the target (mode 0666 for a new file, subject to the umask; an existing regular file keeps its permission bits), checks the write and the close, and only then renames it over the target. A failed write leaves the previous bytes and removes the temporary file; the result is `error: <path>: <reason>`. An existing symlink is followed and remains a link. Nonregular targets (`eisdir`, `einval`) and files the caller cannot write (`eacces`) are refused without a change, as are protected paths. Because the replacement is a new inode, a hardlink alias keeps the previous bytes; this is not a filesystem sandbox, and no multi-file transaction or directory-fsync durability is promised. A file in a folder the caller cannot write to can no longer be replaced in place.
+`write_file` writes a temporary file next to the target (mode 0666 for a new file, subject to the umask; an existing regular file keeps its permission bits), checks the write and the close, and only then renames it over the target. A failed write leaves the previous bytes and removes the temporary file; the result is `error: <path>: <reason>`. An existing symlink is followed and remains a link. Nonregular targets (`eisdir`, `einval`) and files the caller cannot write (`eacces`) are refused without a change, as are paths named in `Tools.Protected` either directly or as the resolved destination (including dangling links). A protected refusal names the root-relative protected destination and occurs before creating directories or changing bytes. This protection does not confine writes to the root or guard against concurrent link changes. Because the replacement is a new inode, a hardlink alias keeps the previous bytes; this is not a filesystem sandbox, and no multi-file transaction or directory-fsync durability is promised. A file in a folder the caller cannot write to can no longer be replaced in place.
 
 ### Missing session
 
@@ -410,6 +446,18 @@ Typed `sys.Error{Class, Reason, Detail, Exit}`. Provider errors keep their exist
   `last_byte_ms` and `last_progress_ms`. `stream_bytes` still counts every byte. The
   observations themselves change nothing; the only enforcement is the per-attempt
   first-byte and idle timeout and the visible output limit above, and requests, budgets and results are unchanged.
+- Every provider attempt record also carries two keys read as the attempt starts, on every route and
+  mode (completed, failed and cancelled attempts, `Request.Single`, condensation). `request_offset_ms`
+  is an integer: the whole milliseconds from the request start to this attempt's start, on the
+  `Client.Now` clock. The request start is the instant `Client.Respond` begins the call, the same one
+  from which the response budget counts and the same for every attempt of the call; the attempt start
+  is the instant of the record's `timestamp`. So time before the first attempt (a credential refresh)
+  counts in the first offset, and a later attempt's offset includes the earlier attempts and every
+  backoff, `Retry-After` and origin wait. `load_average` is the host's 1, 5 and 15 minute load averages
+  in that order, a JSON array of three numbers each rounded to two decimals (`[9.82, 8.26, 7.69]`), read
+  from `vm.loadavg` on darwin and `/proc/loadavg` on linux; it is `null` on any other platform and
+  whenever the read fails, which never fails or delays the attempt. Nothing else in the record, the
+  requests, retries, waits, budgets or results changes.
 - **Breaking changes** (removed or renamed field, changed meaning, changed engine order, changed default behavior) need `kogen-loop/v2` and `loop/v2`, and consumers must migrate deliberately.
 The external reference described a Kogen-owned synchronized copy at
 `cli/third_party/kogen-loop/`, a `replace` directive, sync script and
@@ -436,7 +484,7 @@ Kogen-side synchronization and pin updates remain outside this component's scope
 
 ## Tool result cut (fixed)
 
-The engine cuts a text tool result it delivers to 16384 UTF-8 bytes including the omission marker: it keeps the first 4096 bytes and a suffix, each backing off an incomplete UTF-8 character, around an `\n[... N bytes omitted ...]\n` marker counting the bytes actually absent. Fitting text is verbatim, cutting is idempotent and typed Output passes unchanged. Package `Cut(string)` and `Output.Cut()` apply it; there is no option to change the bound or the head. `Run`/`Call` return raw results; the engine applies the cut where it delivers a result it executed. Standalone sessions, replay, definitions and typed images are unchanged.
+The engine cuts a text tool result it delivers to 16384 UTF-8 bytes including the omission marker: it keeps the first 4096 bytes and a suffix, each backing off an incomplete UTF-8 character, around a marker counting the bytes actually absent. When the head ends at a line boundary and the tail starts just after one, the marker is `\n[... L lines, N bytes omitted ...]\n` with `L` the complete lines omitted (`1 line` for one); when the text is numbered `read_file` text (every line `N<tab>` with consecutive numbers) it is `\n[... L lines (a-b), N bytes omitted ...]\n`, where `a`-`b` are the omitted line numbers, so `start_line=a`, `end_line=b` recovers them. Every other cut, such as inside one long line, keeps the byte-only `\n[... N bytes omitted ...]\n`. Fitting text is verbatim, cutting is idempotent and typed Output passes unchanged. Package `Cut(string)` and `Output.Cut()` apply it; there is no option to change the bound or the head. `Run`/`Call` return raw results; the engine applies the cut where it delivers a result it executed. Standalone sessions, replay, definitions and typed images are unchanged.
 
 ## Documentation byte bounds (fixed)
 

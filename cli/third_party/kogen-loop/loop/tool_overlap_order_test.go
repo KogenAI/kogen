@@ -42,10 +42,10 @@ func TestToolOverlapOrder(t *testing.T) {
 		prov := newOLProvider(t, "responses",
 			func(s *olStream) {
 				s.reasoning(0)
-				s.call(1, "a", "search_text", `{"pattern":"first"}`)
+				s.call(1, "a", "search_text", `{"path":"first","pattern":"."}`)
 				s.text(2, "thinking")
-				s.call(3, "b", "search_text", `{"pattern":"second"}`)
-				s.call(4, "c", "search_text", `{"pattern":"third"}`)
+				s.call(3, "b", "search_text", `{"path":"second","pattern":"."}`)
+				s.call(4, "c", "search_text", `{"path":"third","pattern":"."}`)
 				s.end()
 			},
 			olFinish,
@@ -84,9 +84,9 @@ func TestToolOverlapOrder(t *testing.T) {
 		prov := newOLProvider(t, "messages",
 			func(s *olStream) {
 				s.text(0, "thinking")
-				s.call(1, "a", "search_text", `{"pattern":"first"}`)
-				s.call(2, "b", "search_text", `{"pattern":"second"}`)
-				s.call(3, "c", "search_text", `{"pattern":"third"}`)
+				s.call(1, "a", "search_text", `{"path":"first","pattern":"."}`)
+				s.call(2, "b", "search_text", `{"path":"second","pattern":"."}`)
+				s.call(3, "c", "search_text", `{"path":"third","pattern":"."}`)
 				s.end()
 			},
 			func(s *olStream) { s.call(0, "fin", "finish", `{}`); s.end() },

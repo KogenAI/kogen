@@ -23,10 +23,10 @@ func TestToolOverlapHooks(t *testing.T) {
 		repo := newOLRepo(t)
 		prov := newOLProvider(t, "responses",
 			func(s *olStream) {
-				s.call(0, "a", "search_text", `{"pattern":"first"}`)
+				s.call(0, "a", "search_text", `{"pattern":".","path":"first"}`)
 				close(sent)
 				s.wait(proceed)
-				s.call(1, "b", "search_text", `{"pattern":"second"}`)
+				s.call(1, "b", "search_text", `{"pattern":".","path":"second"}`)
 				s.end()
 			},
 			olFinish,
@@ -88,8 +88,8 @@ func TestToolOverlapHooks(t *testing.T) {
 			if err != nil || res.Ending != EndTerminal || res.Requests != 2 {
 				t.Fatalf("%+v %v", res, err)
 			}
-			calls := []any{map[string]any{"type": "function_call", "call_id": "a", "name": "search_text", "arguments": `{"pattern":"first"}`},
-				map[string]any{"type": "function_call", "call_id": "b", "name": "search_text", "arguments": `{"pattern":"second"}`}}
+			calls := []any{map[string]any{"type": "function_call", "call_id": "a", "name": "search_text", "arguments": `{"pattern":".","path":"first"}`},
+				map[string]any{"type": "function_call", "call_id": "b", "name": "search_text", "arguments": `{"pattern":".","path":"second"}`}}
 			want := append([]any{userMsg("go")}, calls...)
 			want = append(want, fout("a", "first"), fout("b", "second"))
 			if got := res.Input[:len(want)]; marshal(t, got) != marshal(t, want) {

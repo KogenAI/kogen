@@ -30,7 +30,7 @@ import (
 const olWatchdog = 30 * time.Second
 
 // olRepo is a tools.Git whose search_text and list_files calls announce their start and
-// finish when their gate is opened. A key is the search pattern or "ls:<path>"; the
+// finish when their gate is opened. A key is the search path or "ls:<path>"; the
 // view_image candidate tree is "tree".
 type olRepo struct {
 	mu      sync.Mutex
@@ -92,10 +92,13 @@ func (r *olRepo) openAll() {
 }
 
 func olKey(args []string) string {
-	for i, a := range args {
-		if a == "-e" && i+1 < len(args) {
+	if len(args) > 0 && args[0] == "grep" {
+		// The pattern is matched inside the tool, so Git always sees the empty one: a search
+		// is told apart by its pathspec, which olSearch sets to its key.
+		if i := slices.Index(args, "--"); i >= 0 && i+1 < len(args) {
 			return args[i+1]
 		}
+		return "."
 	}
 	if len(args) > 0 && args[0] == "ls-files" {
 		if i := slices.Index(args, "--"); i >= 0 && i+1 < len(args) {
@@ -124,6 +127,11 @@ func (r *olRepo) enter(key string) {
 func (r *olRepo) Run(args ...string) (tools.GitResult, error) {
 	key := olKey(args)
 	r.enter(key)
+	// ls-files answers in its -z form (a name ends with NUL). A grep answer is the bare key
+	// line: it has no NUL, so the tool keeps it as it came and the key is the result.
+	if len(args) > 0 && args[0] == "ls-files" {
+		return tools.GitResult{Stdout: key + "\x00"}, nil
+	}
 	return tools.GitResult{Stdout: key + "\n"}, nil
 }
 
@@ -465,8 +473,9 @@ func olTools(root string, repo tools.Git, sess *sys.Session) *tools.Tools {
 		Enabled: []string{tools.ReadFileTool, tools.WriteFileTool, tools.ListFilesTool, tools.SearchTextTool, tools.ViewImageTool, tools.ShellTool}}
 }
 
-func olSearch(id, pattern string) map[string]any {
-	b, _ := json.Marshal(map[string]any{"pattern": pattern})
+// olSearch is a search_text call whose key is its path: the fake Git does not see the pattern.
+func olSearch(id, key string) map[string]any {
+	b, _ := json.Marshal(map[string]any{"pattern": ".", "path": key})
 	return fcall(id, "search_text", string(b))
 }
 

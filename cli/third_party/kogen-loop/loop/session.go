@@ -250,13 +250,17 @@ func (a attempts) Attempt(record map[string]any) {
 	a.s.emit(api.EventRequestAttempt, map[string]any{"n": a.s.requests, "record": record})
 }
 
-// condensed discloses one history condensation as a context.condensed event.
+// condensed discloses one history condensation, failed or not, as a context.condensed event.
 func (s *Session) condensed(c Condensation) {
-	s.emit(api.EventContextCondensed, map[string]any{
+	fields := map[string]any{
 		"n": s.requests, "requests": c.Requests, "condensed_exchanges": c.CondensedExchanges,
 		"kept_exchanges": c.KeptExchanges, "bytes_before": c.BytesBefore, "bytes_after": c.BytesAfter,
 		"limit": c.Limit, "summary_bytes": c.SummaryBytes, "usage": c.Usage,
-	})
+	}
+	if c.Failed {
+		fields["failed"] = true
+	}
+	s.emit(api.EventContextCondensed, fields)
 }
 
 func (s *Session) emit(typ string, fields map[string]any) {
@@ -283,6 +287,8 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 	var usages []api.Usage
 	cutCalls := map[string]bool{}
 	rules := map[string]string{}
+	categories := map[string]map[string]any{}
+	shellWaits := map[string]map[string]any{}
 	s.requests = 0
 	rd := Round{
 		Owner: "loop", Role: s.cfg.Role, Instructions: s.instructions, Definitions: s.defs,
@@ -315,14 +321,23 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 		// The engine cuts what it runs itself; the session runs the call here to learn
 		// whether the cut applied, which the engine's order does not report.
 		HandleCall: func(ctx context.Context, call tools.Call) (Handled, error) {
-			out, err := s.tools.CallContext(ctx, call)
+			classified, err := s.tools.CallClassified(ctx, call)
 			if err != nil {
 				return Handled{}, err
 			}
+			out := classified.Output()
 			cut := out.Cut()
 			cutCalls[fmt.Sprint(call.CallID())] = cut.Text != out.Text
 			if out.Rule != "" {
 				rules[fmt.Sprint(call.CallID())] = out.Rule
+			}
+			if classified.ErrorKind != "" {
+				categories[fmt.Sprint(call.CallID())] = map[string]any{"error_kind": classified.ErrorKind}
+			} else if classified.MalformedClass != "" {
+				categories[fmt.Sprint(call.CallID())] = map[string]any{"malformed_class": classified.MalformedClass}
+			}
+			if w := classified.ShellWait; w != nil {
+				shellWaits[fmt.Sprint(call.CallID())] = shellWaitFields(w)
 			}
 			return Handled{Handled: true, Output: cut}, nil
 		},
@@ -341,6 +356,12 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			}
 			if rule := rules[fmt.Sprint(call.CallID())]; rule != "" {
 				fields["rule"] = rule
+			}
+			for k, v := range categories[fmt.Sprint(call.CallID())] {
+				fields[k] = v
+			}
+			if w := shellWaits[fmt.Sprint(call.CallID())]; w != nil {
+				fields["shell_wait"] = w
 			}
 			s.emit(api.EventToolResult, fields)
 			return nil
@@ -497,4 +518,20 @@ func digest(text string) string {
 func definitionsDigest(defs []any) string {
 	data, _ := json.Marshal(defs)
 	return digest(string(data))
+}
+
+const shellWaitLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
+// shellWaitFields is the "shell_wait" object of a tool.result event: nine-digit RFC 3339 UTC
+// instants, with spawned null while no process had started.
+func shellWaitFields(w *tools.ShellWait) map[string]any {
+	instant := func(t time.Time) string { return t.UTC().Format(shellWaitLayout) }
+	var spawned any
+	if !w.Spawned.IsZero() {
+		spawned = instant(w.Spawned)
+	}
+	return map[string]any{
+		"spawned": spawned, "wait_started": instant(w.WaitStarted),
+		"wait_ended": instant(w.WaitEnded), "ended_by": w.EndedBy,
+	}
 }

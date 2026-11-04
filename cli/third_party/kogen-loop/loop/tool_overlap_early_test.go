@@ -24,16 +24,16 @@ func TestToolOverlapEarly(t *testing.T) {
 					// The first call's fragments, then its completion; the response is then held.
 					if wire == "responses" {
 						// Concatenated, these fragments are a valid object naming another
-						// pattern than the completed item: only the completed item may run.
-						s.frag(0, "a", "search_text", `{"pattern":"WR`, `ONG"}`)
+						// path than the completed item: only the completed item may run.
+						s.frag(0, "a", "search_text", `{"pattern":".","path":"WR`, `ONG"}`)
 					} else {
-						s.frag(0, "a", "search_text", `{"pattern":"fi`, `rst"}`)
+						s.frag(0, "a", "search_text", `{"pattern":".","path":"fi`, `rst"}`)
 					}
 					close(fragments)
 					s.wait(proceed)
-					s.done(0, "a", "search_text", `{"pattern":"first"}`)
+					s.done(0, "a", "search_text", `{"pattern":".","path":"first"}`)
 					s.wait(hold)
-					s.call(1, "b", "search_text", `{"pattern":"second"}`)
+					s.call(1, "b", "search_text", `{"pattern":".","path":"second"}`)
 					s.end()
 					close(finished)
 				},
@@ -81,7 +81,7 @@ func TestToolOverlapEarly(t *testing.T) {
 		proceed := make(chan struct{})
 		prov := newOLProvider(t, "chat",
 			func(s *olStream) {
-				s.chat([][3]string{{"a", "search_text", `{"pattern":"first"}`}, {"b", "search_text", `{"pattern":"second"}`}}, func() {
+				s.chat([][3]string{{"a", "search_text", `{"pattern":".","path":"first"}`}, {"b", "search_text", `{"pattern":".","path":"second"}`}}, func() {
 					close(half)
 					s.wait(proceed)
 				})
@@ -110,10 +110,10 @@ func TestToolOverlapEarly(t *testing.T) {
 	t.Run("replaced output", func(t *testing.T) {
 		t.Parallel()
 		repo := newOLRepo(t)
-		replaced := fcall("a", "search_text", `{"pattern":"second"}`)
+		replaced := fcall("a", "search_text", `{"pattern":".","path":"second"}`)
 		prov := newOLProvider(t, "responses",
 			func(s *olStream) {
-				s.call(0, "a", "search_text", `{"pattern":"first"}`)
+				s.call(0, "a", "search_text", `{"pattern":".","path":"first"}`)
 				s.end(replaced)
 			},
 			olFinish,

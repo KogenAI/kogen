@@ -94,10 +94,7 @@ func TestLShellUTF8ValidAndCutRequest(t *testing.T) {
 		t.Fatalf("fitting output %q", r.outputs["0"])
 	}
 	text := "exit status: 0\n" + strings.Repeat("Δ🙂", 4000)
-	head := text[:4096]
-	for !utf8.ValidString(head) {
-		head = head[:len(head)-1]
-	}
+	head := "exit status: 0\n"
 	markerWidth := len(fmt.Sprintf("\n[... %d bytes omitted ...]\n", len(text)))
 	tail := text[len(text)-(16384-4096-markerWidth):]
 	for !utf8.ValidString(tail) {

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"unicode/utf8"
 
+	"kogen-loop/api"
 	"kogen-loop/provider"
 	"kogen-loop/sys"
 )
@@ -37,24 +38,28 @@ const (
 
 var pngSignature = []byte{137, 80, 78, 71, 13, 10, 26, 10}
 
-func (t *Tools) viewImage(args map[string]any) Output {
+func (t *Tools) viewImage(args map[string]any) Classified {
 	path, isString := args["path"].(string)
 	parts, err := t.readImage(path, isString)
 	if err == nil {
-		return Output{Parts: parts}
+		return Classified{Parts: parts}
 	}
 	if isString {
 		if text := refusal(path, err); text != "" {
-			return Output{Text: text}
+			return failed(api.ToolErrorOutsideRoot, text)
 		}
 	}
 	selected := "(no selected path)"
 	if isString {
 		selected = firstRunes(path, 512)
 	}
-	return Output{Text: "error: " + selected + ": unreadable/nonregular artifact or invalid PNG: " +
-		firstRunes(err.Error(), 512) + ". Limits: " + imageLimits +
-		". Prepare/export a supported image with an ordinary external image preparation/capture tool and select it again."}
+	out := failed(api.ToolErrorInvalidImage, "error: "+selected+": unreadable/nonregular artifact or invalid PNG: "+
+		firstRunes(err.Error(), 512)+". Limits: "+imageLimits+
+		". Prepare/export a supported image with an ordinary external image preparation/capture tool and select it again.")
+	if !isString {
+		out = badArg(args, "path", out.Text)
+	}
+	return out
 }
 
 func firstRunes(s string, n int) string {

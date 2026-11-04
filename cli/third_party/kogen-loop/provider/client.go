@@ -104,6 +104,7 @@ type call struct {
 	cancel   context.CancelFunc
 	info     Info
 	home     string
+	started  time.Time // the call's start, from which the budget counts; zero without a budget
 	deadline time.Time // zero: no budget
 	expiry   string    // the duration text of the expiry detail; empty: the default 30 minutes
 	baseURL  string    // the role's base_url (openai-compatible only)
@@ -124,7 +125,8 @@ func (c *Client) newCall(ctx context.Context, s *sys.Session, info Info, budget 
 		k.home = s.Getenv("HOME")
 	}
 	if budget > 0 {
-		k.deadline = c.now().Add(budget)
+		k.started = c.now()
+		k.deadline = k.started.Add(budget)
 	}
 	return k
 }

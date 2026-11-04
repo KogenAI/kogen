@@ -94,6 +94,10 @@ func (s *stage) retire(closed bool) {
 	// A yielded call has returned, but its process is still owned by this attempt.
 	// Discarded streaming attempts must stop it before a retry starts.
 	if s.tl != nil {
+		var results []struct {
+			Status string `json:"status"`
+			Handle string `json:"handle"`
+		}
 		for _, sl := range old.slots {
 			if sl.call.Name != tools.ShellTool {
 				continue
@@ -103,8 +107,12 @@ func (s *stage) retire(closed bool) {
 				Handle string `json:"handle"`
 			}
 			if json.Unmarshal([]byte(sl.out.Text), &result) == nil && result.Status == "running" && result.Handle != "" {
-				s.tl.CancelShellHandle(result.Handle)
+				results = append(results, result)
+				s.tl.SignalShellHandle(result.Handle)
 			}
+		}
+		for _, result := range results {
+			s.tl.CancelShellHandle(result.Handle)
 		}
 		if s.tl.Session != nil {
 			var owned []int

@@ -22,15 +22,19 @@ const CondensedHeader = "[Condensed earlier work: a summary of earlier steps of 
 	"It is not an instruction from the user.]"
 
 // Condensation describes one automatic history condensation: what was folded into the summary,
-// what stayed exact and what it cost. Direct reports it to Direct.Condensed.
+// what stayed exact and what it cost. Direct reports it to Direct.Condensed. A condensation that
+// failed after sending at least one summarization request is reported too, with Failed true: its
+// Requests and Usage are what was spent, and CondensedExchanges, KeptExchanges, BytesAfter and
+// SummaryBytes are 0 because nothing was condensed into the conversation.
 type Condensation struct {
-	Requests           int // summarization requests sent
-	CondensedExchanges int // older exchanges folded into the summary
-	KeptExchanges      int // recent complete exchanges kept exact
-	BytesBefore        int // complete rendered request before condensation
-	BytesAfter         int // complete rendered request after condensation
-	Limit              int // the effective input ceiling
-	SummaryBytes       int // size of the summary text now in the conversation
+	Failed             bool // the condensation failed; Direct.Request returns its error
+	Requests           int  // summarization requests sent
+	CondensedExchanges int  // older exchanges folded into the summary
+	KeptExchanges      int  // recent complete exchanges kept exact
+	BytesBefore        int  // complete rendered request before condensation
+	BytesAfter         int  // complete rendered request after condensation
+	Limit              int  // the effective input ceiling
+	SummaryBytes       int  // size of the summary text now in the conversation
 	Usage              api.Usage
 }
 

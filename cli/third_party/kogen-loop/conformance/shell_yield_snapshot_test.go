@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -73,6 +74,28 @@ func TestShellLifecycleYieldSnapshot(t *testing.T) {
 			t.Run(session+"/"+ending, func(t *testing.T) {
 				t.Parallel()
 				l := newLifecycleRun(t)
+				// The first wait is the new command's; it elapses once the writer is running and
+				// has written. A later wait (the hook ending's `true`) never elapses.
+				var waits atomic.Int32
+				l.rd.Tools.ShellAfter = func(wait time.Duration) <-chan time.Time {
+					if waits.Add(1) > 1 {
+						return nil
+					}
+					if wait != 45*time.Second {
+						t.Errorf("the first shell wait is %v, want 45s", wait)
+					}
+					fire := make(chan time.Time, 1)
+					go func() {
+						pidPath, writes := filepath.Join(l.w.root, "writer.pid"), filepath.Join(l.w.root, "writes")
+						for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+							if data, err := os.ReadFile(writes); pidIfWritten(pidPath) != 0 && err == nil && len(data) > 0 {
+								break
+							}
+						}
+						fire <- time.Now()
+					}()
+					return fire
+				}
 				if session == "implicit" {
 					l.rd.Tools.Session = nil
 				}

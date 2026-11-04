@@ -10,7 +10,9 @@ import (
 	"unicode/utf8"
 )
 
-var omittedMarker = regexp.MustCompile(`(?s)\A(.*)\n\[\.\.\. (\d+) bytes omitted \.\.\.\]\n(.*)\z`)
+// omittedMarker matches the byte-only, line and numbered-line forms of the cut marker: the groups
+// are head, lines, first and last omitted line number, bytes and tail.
+var omittedMarker = regexp.MustCompile(`(?s)\A(.*?)\n\[\.\.\. (?:(\d+) lines?(?: \((\d+)-(\d+)\))?, )?(\d+) bytes omitted \.\.\.\]\n(.*)\z`)
 
 // checkDelivery is the shared delivery of a tool result (bounded text, idempotent, honest
 // about the bytes it omits).
@@ -38,16 +40,26 @@ func checkDelivery(t *testing.T, text string) {
 	if m == nil {
 		t.Fatalf("no marker in %q", display[:min(len(display), 200)])
 	}
-	head, tail := m[1], m[3]
-	omitted, _ := strconv.Atoi(m[2])
+	head, tail := m[1], m[6]
+	omitted, _ := strconv.Atoi(m[5])
 	if !strings.HasPrefix(text, head) || !strings.HasSuffix(text, tail) {
 		t.Fatal("the kept ends are not the ends of the text")
 	}
-	if len(head) < 4093 || len(head) > 4096 {
+	if len(head) > 4096 {
 		t.Fatalf("head %d bytes", len(head))
 	}
 	if omitted != len(text)-len(head)-len(tail) {
 		t.Fatalf("omitted %d, want %d", omitted, len(text)-len(head)-len(tail))
+	}
+	if m[2] != "" {
+		middle := text[len(head) : len(text)-len(tail)]
+		lines, _ := strconv.Atoi(m[2])
+		if lines != strings.Count(middle, "\n") || !strings.HasSuffix(head, "\n") || !strings.HasSuffix(middle, "\n") {
+			t.Fatalf("marker counts %d lines, middle has %d", lines, strings.Count(middle, "\n"))
+		}
+		if (lines == 1) != strings.Contains(display, " 1 line") {
+			t.Fatalf("unit does not match %d lines", lines)
+		}
 	}
 }
 

@@ -217,7 +217,7 @@ func TestClimbLeverConstants(t *testing.T) {
 		if err != nil || len(raw.Text) <= 16384 {
 			t.Fatalf("raw read %d bytes, err %v", len(raw.Text), err)
 		}
-		if delivered != tools.Cut(raw.Text) || len(delivered) > 16384 || !strings.HasPrefix(delivered, raw.Text[:4096]+"\n[... ") {
+		if delivered != tools.Cut(raw.Text) || len(delivered) > 16384 || !strings.HasPrefix(delivered, raw.Text[:strings.LastIndexByte(raw.Text[:4096], '\n')+1]+"\n[... ") {
 			t.Errorf("delivered %d bytes, want the default cut", len(delivered))
 		}
 		reqs := f.requests()

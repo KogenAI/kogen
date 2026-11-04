@@ -42,6 +42,21 @@ func rbSummary(text string) func(*olStream) {
 	return func(s *olStream) { s.text(0, text); s.end() }
 }
 
+// rbSummaryUsage answers a summarization request with text and the given Responses usage.
+func rbSummaryUsage(text string, input, cached, output, reasoning int) func(*olStream) {
+	return func(s *olStream) {
+		s.text(0, text)
+		s.begin()
+		s.ended = true
+		s.event("response.completed", map[string]any{"response": map[string]any{"status": "completed", "usage": map[string]any{
+			"input_tokens": input, "input_tokens_details": map[string]any{"cached_tokens": cached},
+			"output_tokens": output, "output_tokens_details": map[string]any{"reasoning_tokens": reasoning},
+		}}})
+	}
+}
+
+func rbInt(n int) *int { return &n }
+
 func rbOK(s *olStream) { s.text(0, "ok"); s.end() }
 
 // rbSetup is a Direct over a local provider that answers with script, and a measurer of the
@@ -227,16 +242,67 @@ func TestRequestBudgetFailures(t *testing.T) {
 		// The script ends after zero answers: the provider refuses the summarization request.
 		d, r, p, _ := rbSetup(t, "fixture-model")
 		r.Input = big()
-		d.Condensed = func(Condensation) { t.Error("disclosed a condensation that did not happen") }
+		var disclosed []Condensation
+		d.Condensed = func(c Condensation) { disclosed = append(disclosed, c) }
 		resp, _, err := d.Request(context.Background(), r)
 		se, ok := sys.AsError(err)
 		if resp != nil || !ok || se.Class != "provider" {
 			t.Fatalf("response %v, error %v", resp, err)
 		}
+		if len(disclosed) != 1 || !disclosed[0].Failed || disclosed[0].Requests != 1 ||
+			disclosed[0].Usage.State != api.UsageUnknown || disclosed[0].CondensedExchanges != 0 || disclosed[0].BytesAfter != 0 {
+			t.Fatalf("disclosures %+v", disclosed)
+		}
 		for _, b := range p.requests() {
 			if !rbIsSummaryRequest(b) {
 				t.Error("the conversation was sent after the summarization failed")
 			}
+		}
+	})
+
+	t.Run("a failed chunk 2 discloses 2 requests and the chunk 1 usage", func(t *testing.T) {
+
+		t.Parallel()
+		d, r, p, _ := rbSetup(t, "fixture-model", rbSummaryUsage("SUMMARY ONE", 100, 10, 20, 5))
+		r.Input = big()
+		var disclosed []Condensation
+		d.Condensed = func(c Condensation) { disclosed = append(disclosed, c) }
+		_, _, err := d.Request(context.Background(), r)
+		if se, ok := sys.AsError(err); !ok || se.Class != "provider" {
+			t.Fatalf("error %v", err)
+		}
+		if len(disclosed) != 1 {
+			t.Fatalf("disclosures %+v", disclosed)
+		}
+		want := SumUsage(api.Usage{Input: rbInt(100), Cached: rbInt(10), Output: rbInt(20), Reasoning: rbInt(5), State: api.UsageComplete, Source: "provider"})
+		c := disclosed[0]
+		if !c.Failed || c.Requests != 2 || !reflect.DeepEqual(c.Usage, want) || c.CondensedExchanges != 0 ||
+			c.KeptExchanges != 0 || c.BytesAfter != 0 || c.SummaryBytes != 0 || c.BytesBefore <= c.Limit {
+			t.Errorf("disclosure %+v, want usage %+v", c, want)
+		}
+		for _, b := range p.requests() {
+			if !rbIsSummaryRequest(b) {
+				t.Error("the conversation was sent after the summarization failed")
+			}
+		}
+	})
+
+	t.Run("an empty summary discloses 1 request and its usage", func(t *testing.T) {
+
+		t.Parallel()
+		d, r, _, _ := rbSetup(t, "fixture-model", rbSummaryUsage("  ", 64, 0, 3, 0))
+		r.Input = big()
+		var disclosed []Condensation
+		d.Condensed = func(c Condensation) { disclosed = append(disclosed, c) }
+		_, _, err := d.Request(context.Background(), r)
+		se, ok := sys.AsError(err)
+		if !ok || se.Class != api.ErrClassLoop || se.Reason != api.ErrContextBudget ||
+			!strings.Contains(se.Detail, "the summarization request returned no summary") {
+			t.Fatalf("error %v", err)
+		}
+		if len(disclosed) != 1 || !disclosed[0].Failed || disclosed[0].Requests != 1 ||
+			disclosed[0].Usage.Input == nil || *disclosed[0].Usage.Input != 64 || disclosed[0].SummaryBytes != 0 {
+			t.Fatalf("disclosures %+v", disclosed)
 		}
 	})
 

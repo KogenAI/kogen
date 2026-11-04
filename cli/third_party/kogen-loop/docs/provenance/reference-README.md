@@ -1,5 +1,7 @@
 # kogen-loop
 
+Historical reference with links and local setup context corrected for this public repository. For current instructions, see the [repository README](../../README.md).
+
 kogen-loop is Kogen's native agent loop. It sends model requests, runs the model's tool calls in a working directory and repeats until the model ends a round. It works on its own, without Kogen.
 
 It owns the generic machinery:
@@ -17,26 +19,13 @@ A round ending is the model's claim, never proof of completion. Callers decide w
 
 ## Start here
 
-- [Caller contract v1](docs/contract/loop-v1.md): the Go library API (`loop`), the standalone process protocol (`kogen-loop run`, JSON Lines), capabilities, versioning, events, results, errors, usage, cancellation and session resume.
-- [`api/`](api/): the versioned public schema types and constants. The contract owner changes these deliberately, with a version bump rule.
-- [`conformance/`](conformance/): recorded fixtures and expected event sequences that every change must keep passing.
+- [Caller contract v1](../contract/loop-v1.md): the Go library API (`loop`), the standalone process protocol (`kogen-loop run`, JSON Lines), capabilities, versioning, events, results, errors, usage, cancellation and session resume.
+- [`api/`](../../api/): the versioned public schema types and constants. The contract owner changes these deliberately, with a version bump rule.
+- [`conformance/`](../../conformance/): recorded fixtures and expected event sequences that every change must keep passing.
 
-## Status
+## Historical context
 
-Local development component, created 26 October 2026 during the kogen/kogen-loop extraction. There's no published remote, release or tag. Kogen consumes an in-tree synchronized copy (`cli/third_party/kogen-loop/`) pinned by digest in `cli/loop-pin.json`.
-
-## Use
-
-You need Go 1.27 (see Kogen's `.tool-versions`). The module uses the standard library only.
-
-```sh
-go test -race ./...
-go build -o bin/kogen-loop ./cmd/kogen-loop
-bin/kogen-loop capabilities --json
-bin/kogen-loop run --task task.json        # JSON Lines events on stdout; see the contract
-```
-
-Credentials are compatible with Kogen's own `~/.kogen/credentials/<provider>.json` store. The loop reads them where it needs them and never copies or proxies them. Signing in stays `kogen provider login <provider>`.
+This reference describes the original extraction. For current build and usage instructions, see the [repository README](../../README.md).
 
 ## Folder map
 
@@ -63,4 +52,4 @@ Splitting or parameterizing these is a later, explicit change. It must default t
 
 ## Provenance and license
 
-Apache-2.0, Copyright 2026 Optimum Tech, LLC (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). `sys`, `provider` and `tools` were moved from Kogen at commit `56eecd572a6e07184863939254a90d9a2dc44e96`. Ideas adapted from upstream harnesses must be recorded in NOTICE with source, revision and license; none has been copied yet.
+Apache-2.0, Copyright 2026 Optimum Tech, LLC (see [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE)). `sys`, `provider` and `tools` were moved from Kogen at commit `56eecd572a6e07184863939254a90d9a2dc44e96`. Ideas adapted from upstream harnesses must be recorded in NOTICE with source, revision and license; none has been copied yet.

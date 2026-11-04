@@ -172,7 +172,7 @@ func TestToolOverlapCompatibility(t *testing.T) {
 			{provider.Request{}, []string{"Role", "Instructions", "Input", "Tools", "ToolChoice", "Single", "CacheID", "Scope", "Cache", "Context"}},
 			{provider.Response{}, []string{"Items", "Usage", "Known", "UsageState", "ID", "Model", "Effort", "CacheStatus", "OperationID", "Metadata"}},
 			{provider.Client{}, []string{"HTTP", "Now", "Sleep", "Cache", "Locker", "Input", "Version", "ResponseBudget", "httpOnce", "defHTTP"}},
-			{tools.Tools{}, []string{"Root", "Session", "Repo", "Enabled", "Protected", "Excluded", "Probe", "Documentation", "shells"}},
+			{tools.Tools{}, []string{"Root", "Session", "Repo", "Enabled", "Protected", "Excluded", "Probe", "Documentation", "ShellAfter", "shells"}},
 			{tools.Output{}, []string{"Text", "Parts", "Rule"}},
 		} {
 			if got := fields(c.v); !reflect.DeepEqual(got, c.want) {
