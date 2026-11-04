@@ -28,7 +28,7 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 | Name | Content |
 | --- | --- |
 | Intent `is-even-outline` | one Scenario Outline with three Examples rows for the review-card count |
-| `py-calc` | `README.md`, `calc.py` with `add`, `tests/test_calc.py` (unittest), `features/steps/calc_steps.js` (existing step definitions running `python3 -c`), `tools/format.py` (a formatter) and its rules `.style.cfg`, `.gitignore` with `__pycache__/`; one commit. "initialized and configured" sets `checks: [{name: test, run: python3 -m unittest}]`, the Cucumber acceptance runner, `steps_dir: features/steps`, `protect: [.style.cfg]`, and commits. |
+| `py-calc` | `README.md`, `calc.py` with `add`, `tests/test_calc.py` (unittest), `features/steps/calc_steps.js` (existing step definitions running `python3 -c`), `features/steps/is-even__existing.js` (an existing step file in the `is-even` namespace that shaping may edit), `tools/format.py` (a formatter) and its rules `.style.cfg`, `.gitignore` with `__pycache__/`; one commit. "initialized and configured" sets `checks: [{name: test, run: python3 -m unittest}]`, the Cucumber acceptance runner, `steps_dir: features/steps`, `protect: [.style.cfg]`, and commits. |
 | `empty-repo` | `git init`, no commit. |
 | `notes` | `README.md` (plain notes), `CLAUDE.md`, `notes.txt`, `docs/index.md`; no build tool, no tests; one commit. |
 | `ex-app` | a Mix project without dependencies: `mix.exs`, `.formatter.exs`, `lib/ex_app.ex` (formatted, compiles with one unused-variable warning), `test/ex_app_test.exs` (passes), `.gitignore` with `/_build/` and `/deps/`; one commit. |
@@ -41,6 +41,8 @@ Kogen's own scenarios execute against the real `kogen` command: the installed re
 ## Fake ChatGPT server
 
 A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT-11). It records every request and plays a script of streamed responses (text, fragmented tool calls, `submit` or `submit_review` calls, errors; a script starts again for each new conversation), optionally pausing at a named point until the test says "continues". Unless the name says otherwise, every `build-*` script answers each review with `approve` and the note `calc.py:12: the docstring could name TypeError`.
+
+Every script that submits a new `is-even` package names its step file `features/steps/is-even__steps.js` and starts every step sentence and definition with `is-even: `; `shape-failing-invariant` submits `counter` with `features/steps/counter__steps.js` and the prefix `counter: `. Approved fixture Intents shaped before this rule keep their step file names.
 
 | Script | Behavior |
 | --- | --- |
@@ -65,7 +67,7 @@ A loopback server reached through `KOGEN_PROVIDER_URL` and `KOGEN_AUTH_URL` (GPT
 | `shape-asks-two-then-writes` | two questions; after both answers, submits `is-even` citing both answer numbers |
 | `shape-invalid-three-times` | three submissions with a forbidden path |
 | `shape-protected-conflict` | reports a required edit to the configured protected `.style.cfg` path |
-| `shape-edits-existing-step-file` | submits `is-even` with an edit to the existing `features/steps/calc_steps.js` |
+| `shape-edits-existing-step-file` | submits `is-even` with an edit to the existing `features/steps/is-even__existing.js` |
 | `shape-not-ready-then-asks` | submits `is-even` with an undefined step; after the readiness feedback it asks one UI/UX question |
 | `shape-undefined-step`, `shape-failing-invariant` | valid format; readiness fails as named; the same files are submitted 3 times (SHP-4) |
 | `shape-probes-then-writes` | `probe python3 -c 'print(1.5 % 2)'`, then submits `is-even` with the probe in `## Feasibility` |
