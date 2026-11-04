@@ -529,6 +529,10 @@ class FakeServers {
         return record.text.includes('1: a') && record.text.includes('2: a')
           ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- Show a text label for the result. (source: answer 1)\n- Use normal emphasis. (source: answer 2)' }) }, `shape_answers_${ordinal}`)
           : this.shapeResponse('shape-asks-two', ordinal, record);
+      case 'shape-asks-technical-then-writes':
+        return record.text.includes('Question check: 1 of 1 question(s) are not UI/UX choices left to the user; nothing was asked.')
+          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- No protocol or endpoint is involved; calc.is_even is a local function. (evidence: README.md) (source: request)' }) }, `shape_technical_${ordinal}`)
+          : { items: [functionCall('submit', { questions: [{ question: 'Which protocol and endpoint should the integration use?', options: [{ label: 'HTTP JSON', recommended: true }, { label: 'gRPC' }] }] }, `shape_technical_q_${ordinal}`)] };
       case 'shape-not-ready-then-asks':
         return record.text.includes('undefined step: When is-even: the caller doubles 4')
           ? { items: [functionCall('submit', { questions: [{ question: 'How should the result be presented to the user?', options: [{ label: 'show a text label', recommended: true }, { label: 'show an icon' }] }] }, `shape_after_not_ready_${ordinal}`)] }

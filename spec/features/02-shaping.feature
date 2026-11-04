@@ -289,6 +289,7 @@ Feature: Shaping
       """
     Then the exit code is 5
     And request 1 contains "material UI/UX"
+    And stderr contains "kogen: checking the questions"
     And stdout is:
       """
       Questions for is-even:
@@ -530,6 +531,23 @@ Feature: Shaping
     And stdout contains "questions: decide technical questions inside shaping; only kind product or handoff may reach the caller"
     And stdout does not contain "Questions for"
     And the folder ".kogen/intents/is-even" does not exist
+
+  @SHP-6 @SHP-12
+  Scenario: A question the check does not class as UI/UX goes back to the shaper and is not asked
+    Given the fake ChatGPT server plays script "shape-asks-technical-then-writes"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n).
+      """
+    Then the exit code is 0
+    And stdout does not contain "Questions for"
+    And stderr contains "kogen: checking the questions"
+    And stderr contains "kogen: question check response input=100 cached=5 output=20 reasoning=10 wall_ms="
+    And request 2 contains "Question check: 1 of 1 question(s) are not UI/UX choices left to the user; nothing was asked."
+    And request 2 contains "- question 1 (technical): Which protocol and endpoint should the integration use?"
+    And stdout contains "shape {model}/{effort} input=500 cached=25 output=100 reasoning=50 wall_ms="
+    And the file ".kogen/intents/is-even/intent.md" contains "(evidence: README.md) (source: request)"
+    And the fake ChatGPT server received 3 requests
 
   @SHP-12
   Scenario: An authentication handoff still reaches the caller
