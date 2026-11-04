@@ -3,7 +3,6 @@ package buildprogram
 import (
 	"encoding/json"
 	"strings"
-	"testing"
 
 	"github.com/KogenAI/kogen-review/review"
 )
@@ -62,31 +61,6 @@ func submit(f *fakeProvider, verdict string, findings ...map[string]any) handler
 
 func finding(severity, message string) map[string]any {
 	return map[string]any{"path": "app.txt", "line": 1, "severity": severity, "message": message}
-}
-
-// reviewCatalog is the pinned source catalog of a review request.
-func reviewCatalog(t *testing.T, req map[string]any) map[string]any {
-	t.Helper()
-	blocks := requestInput(req)[0].(map[string]any)["content"].([]any)
-	text := blocks[1].(map[string]any)["text"].(string)
-	_, rest, ok := strings.Cut(text, "# Pinned complete candidate source evidence\n")
-	if !ok {
-		t.Fatalf("no catalog in %.200s", text)
-	}
-	line, _, _ := strings.Cut(rest, "\n")
-	var catalog map[string]any
-	if err := json.Unmarshal([]byte(line), &catalog); err != nil {
-		t.Fatal(err)
-	}
-	return catalog
-}
-
-func catalogParts(catalog map[string]any) []string {
-	var out []string
-	for _, p := range catalog["parts"].([]any) {
-		out = append(out, p.(map[string]any)["path"].(string))
-	}
-	return out
 }
 
 func bigFile() string { return strings.Repeat("0123456789abcdef-line\n", 14_000) }

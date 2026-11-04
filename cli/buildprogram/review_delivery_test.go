@@ -2,7 +2,6 @@ package buildprogram
 
 import (
 	"encoding/json"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -26,26 +25,6 @@ func resetHandoff(t *testing.T, req map[string]any) map[string]any {
 		return reset
 	}
 	return nil
-}
-
-// pinnedOf is the pinned source parts a review request's catalog lists, or nil while the
-// source is still inline.
-func pinnedOf(req map[string]any) []string {
-	blocks, _ := requestInput(req)[0].(map[string]any)["content"].([]any)
-	if len(blocks) != 2 {
-		return nil
-	}
-	text, _ := blocks[1].(map[string]any)["text"].(string)
-	_, rest, ok := strings.Cut(text, "# Pinned complete candidate source evidence\n")
-	if !ok {
-		return nil
-	}
-	line, _, _ := strings.Cut(rest, "\n")
-	var catalog map[string]any
-	if json.Unmarshal([]byte(line), &catalog) != nil {
-		return nil
-	}
-	return catalogParts(catalog)
 }
 
 // inWindow is what a request's own window holds: the paths of its completed read_file calls
@@ -73,54 +52,6 @@ func inWindow(req map[string]any) (read map[string]bool, images int) {
 		}
 	}
 	return read, images
-}
-
-// confirmingReviewer models the reviewer of Build 543748f1: in every window it reads (four at
-// a time) the pinned parts it cannot confirm were delivered, from the window itself or the
-// reset's native delivery facts, then views every screenshot, then approves.
-func confirmingReviewer(t *testing.T, f *fakeProvider, shots []string) handler {
-	return func(w http.ResponseWriter, r *http.Request) {
-		reqs := f.reviewRequests()
-		req := reqs[len(reqs)-1]
-		known, images := inWindow(req)
-		// The scripted reviewer sees complete native source data in this request too.
-		for path := range prefilledParts(t, req) {
-			known[path] = true
-		}
-		parts := pinnedOf(req)
-		if reset := resetHandoff(t, req); reset != nil {
-			if d, ok := reset["review_delivery"].(map[string]any); ok {
-				if source, ok := d["source"].(map[string]any); ok && source["current"] == true {
-					unread := map[int]bool{}
-					for _, n := range source["unread"].([]any) {
-						unread[int(n.(float64))] = true
-					}
-					for i, p := range parts {
-						if !unread[i+1] {
-							known[p] = true
-						}
-					}
-				}
-			}
-		}
-		var pairs []any
-		for _, p := range parts {
-			if !known[p] && len(pairs) < 8 {
-				pairs = append(pairs, "read_file", map[string]any{"path": p})
-			}
-		}
-		switch {
-		case len(pairs) > 0:
-			f.calls(pairs...)(w, r)
-		case images < len(shots):
-			for _, s := range shots {
-				pairs = append(pairs, "view_image", map[string]any{"path": s})
-			}
-			f.calls(pairs...)(w, r)
-		default:
-			submit(f, "approve")(w, r)
-		}
-	}
 }
 
 // prefilledParts is path -> read of every native pinned-source message a review request

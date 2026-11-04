@@ -17,16 +17,6 @@ func cacheKey(req map[string]any) string { k, _ := req["prompt_cache_key"].(stri
 
 var forcedSubmit = map[string]any{"type": "function", "name": "submit_review"}
 
-func union(sets ...[]float64) map[float64]bool {
-	u := map[float64]bool{}
-	for _, s := range sets {
-		for _, n := range s {
-			u[n] = true
-		}
-	}
-	return u
-}
-
 func repeatHandler(h handler, n int) []handler {
 	out := make([]handler, n)
 	for i := range out {
