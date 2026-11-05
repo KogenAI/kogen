@@ -5,23 +5,43 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/KogenAI/kogen-coordinator/project"
 )
 
+// redWhile adds a project check that fails while the flag file exists, the way kogen-build's own
+// recover test does: the builder's blocker claim must rest on a failing verification pass.
+func redWhile(flag string) func(*project.Config) {
+	return func(cfg *project.Config) {
+		cfg.Checks = append(cfg.Checks, project.Check{Name: "contradiction",
+			Run: "[ ! -e '" + flag + "' ] || { echo 'cannot pass: .kogen/intents/fixture/acceptance.feature' >&2; exit 1; }"})
+	}
+}
+
 // blocked is a Build that stopped on a builder-reported blocker after it wrote the candidate; the
-// checkout holds the implementation the builder left. It returns the Build's id.
-func (e *env) blocked(t *testing.T) string {
+// checkout holds the implementation the builder left. In the first round the builder writes the
+// candidate and raises the flag that turns the redWhile check red, so verification fails; in the
+// next round it reports the blocker. It returns the Build's id.
+func (e *env) blocked(t *testing.T, flag string) string {
 	t.Helper()
 	f := e.prov
-	f.then(f.calls("write_file", map[string]any{"path": "app.txt", "content": "candidate\n"}, "report_blocker", map[string]any{
-		"paths":    []any{".kogen/intents/fixture/acceptance.feature"},
-		"reason":   "The fixture requires the same value to equal A and B.",
-		"evidence": "Real acceptance probe: exit status 1, fixture requires mutually exclusive B at integration_steps.js.",
-	}))
+	f.then(
+		f.calls("write_file", map[string]any{"path": "app.txt", "content": "candidate\n"},
+			"shell", map[string]any{"command": "touch '" + flag + "'"},
+			"finish", map[string]any{"summary": "done"}),
+		f.calls("report_blocker", map[string]any{
+			"paths":    []any{".kogen/intents/fixture/acceptance.feature"},
+			"reason":   "The fixture requires the same value to equal A and B.",
+			"evidence": "Real acceptance probe: exit status 1, fixture requires mutually exclusive B at integration_steps.js.",
+		}))
 	a := e.build()
 	if a.err != nil || a.exit != 1 {
 		t.Fatalf("exit %d, err %v\n%s", a.exit, a.err, a.out)
 	}
 	contains(t, "stdout", a.out.String(), "candidate/build_blocked")
+	if err := os.Remove(flag); err != nil {
+		t.Fatal(err)
+	}
 	return buildID(t, a.out.String())
 }
 
@@ -30,8 +50,9 @@ func (e *env) blocked(t *testing.T) string {
 // publishes the archive there with its manifest, and restores the implementation the builder left
 // while the protected files stay as they are.
 func TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation(t *testing.T) {
-	e := newEnv(t)
-	id := e.blocked(t)
+	flag := filepath.Join(physical(t, t.TempDir()), "red")
+	e := newEnv(t, redWhile(flag))
+	id := e.blocked(t, flag)
 	equal(t, "app.txt before", e.read("app.txt"), "candidate\n")
 	output := filepath.Join(physical(t, t.TempDir()), "archive")
 
@@ -65,8 +86,9 @@ func TestRecoverRefusalsAreSysErrorsWithTheirExit(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			e := newEnv(t)
-			id := e.blocked(t)
+			flag := filepath.Join(physical(t, t.TempDir()), "red")
+			e := newEnv(t, redWhile(flag))
+			id := e.blocked(t, flag)
 			if c.id != nil {
 				id = c.id(id)
 			}

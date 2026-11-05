@@ -187,8 +187,9 @@ func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 // newEnv makes the repository: one commit with README.md, app.txt, .gitignore and the project
 // configuration (acceptance by a script that reports every scenario passed); the Intent
 // `fixture` (not applicable model, two scenarios, one step file) written but not committed, and
-// approved. Nothing is shared with another test and nothing leaves the temporary folders.
-func newEnv(t *testing.T) *env {
+// approved. Each mutator is applied, in order, to the project configuration before it is rendered
+// and committed. Nothing is shared with another test and nothing leaves the temporary folders.
+func newEnv(t *testing.T, mutate ...func(*project.Config)) *env {
 	t.Helper()
 	t.Parallel()
 	e := &env{t: t, root: physical(t, t.TempDir()), home: physical(t, t.TempDir()), aux: physical(t, t.TempDir()), prov: newFakeProvider(t)}
@@ -209,6 +210,9 @@ func newEnv(t *testing.T) *env {
 	accept := filepath.Join(e.aux, "accept.sh")
 	writeFile(t, accept, "#!/bin/sh\nprintf '%s' \"$KOGEN_NODE\" > '"+filepath.Join(e.aux, "node-seen")+"'\ncp '"+green+"' \"$KOGEN_ACCEPTANCE_REPORT\"\n", 0o755)
 	cfg := &project.Config{Acceptance: &project.Acceptance{Run: accept, StepsDir: "features/steps"}}
+	for _, m := range mutate {
+		m(cfg)
+	}
 	writeFile(t, filepath.Join(e.root, ".kogen/project.yaml"), project.RenderConfig(cfg), 0o644)
 	e.run("git", "add", "README.md", "app.txt", ".gitignore", ".kogen/project.yaml")
 	e.run("git", "commit", "-qm", "fixture baseline")

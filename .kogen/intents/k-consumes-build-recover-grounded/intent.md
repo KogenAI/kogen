@@ -1,0 +1,57 @@
+# Ground the recover fixture's blocker claim
+
+Slug: k-consumes-build-recover-grounded
+Model: not applicable — a test-fixture correction in kogen's consumes suite; no production state or rules change
+Acceptance:
+- .kogen/intents/k-consumes-build-recover-grounded/acceptance.feature
+- features/steps/k-consumes-build-recover-grounded__suite.js
+
+kogen-build 8852812 "Ground blocker claims in verification failures" (Kogen-Intent k-build-blocker-claim-grounded) only lets a Build stop as `candidate/build_blocked` when the builder's `report_blocker` claim is backed by a failing verification pass. kogen's `cli/consumes/kogen-build/recover_test.go` still makes its blocked fixture the old way: the builder writes `app.txt` and calls `report_blocker` in the same round, and verification is green. From kogen-build 8852812 onward, that Build goes on to review and stops with `provider/refused`, exit 4. All five recover cases then fail at their fixture with "exit 4, err <nil> ... failed fixture: refused": `TestRecoverRefusalsAreSysErrorsWithTheirExit/{unknown_id,output_exists,output_inside_the_checkout,absent_checkpoint}` at recover_test.go:69 and `TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation` at recover_test.go:34. This was reproduced locally with kogen-build v0.0.0-20261104030858-2e10d934cac2 (2e10d93).
+
+The outcome: the recover tests produce their blocked fixture the way kogen-build's own `build/recover_test.go` does at 8852812 and later. A fixture project check is red while a flag file exists. In the builder's first round, the builder writes the candidate, raises the flag and finishes, so the verification pass is red. In the next round, the builder reports the blocker. The tests keep asserting everything kogen uses from `build.Recover`. The changed fixture must pass with both the kogen-build currently pinned in `cli/go.mod` (v0.0.0-20261103154529-b9990a3d0903) and 2e10d93. That way kogen's full `go test` stays green now and stays green when the pin moves.
+
+Required changes (test code and its README only):
+
+1. `cli/consumes/kogen-build/helper_test.go`: `newEnv` becomes `func newEnv(t *testing.T, mutate ...func(*project.Config)) *env`. It applies each mutator, in order, to the fixture's `cfg` (the `project.Config` holding only the green acceptance script) before that configuration is rendered and committed. The configuration stays rendered by the expression `project.RenderConfig(cfg)`, which appears exactly once in helper_test.go. Existing `newEnv(t)` callers (build, resume and api tests) are unchanged.
+2. `cli/consumes/kogen-build/recover_test.go`:
+   - A helper (for example `redWhile(flag string) func(*project.Config)`, mirroring kogen-build's `failingWhile`) appends one project check: `project.Check{Name: "contradiction", Run: "[ ! -e '<flag>' ] || { echo 'cannot pass: .kogen/intents/fixture/acceptance.feature' >&2; exit 1; }"}`. This check is the grounding; it is not a red acceptance report.
+   - Every recover test (the archive test and each refusal case) makes its own flag path, `filepath.Join(physical(t, t.TempDir()), "red")`, builds its env with `newEnv(t, <that helper>(flag))` and calls the blocked fixture with that flag.
+   - The blocked fixture scripts two provider answers. First: `write_file` `{"path": "app.txt", "content": "candidate\n"}`, `shell` `{"command": "touch '<flag>'"}` and `finish` `{"summary": "done"}`. Then: `report_blocker` with the unchanged paths `[".kogen/intents/fixture/acceptance.feature"]`, reason "The fixture requires the same value to equal A and B." and evidence "Real acceptance probe: exit status 1, fixture requires mutually exclusive B at integration_steps.js."
+   - The fixture still requires exit 1, a nil error and `candidate/build_blocked` on stdout. It then removes the flag, as kogen-build's fixture does, and returns the Build id read from stdout.
+   - The assertions of `TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation` stay unchanged: app.txt is "candidate\n" before; Recover gives exit 0 and a nil error; a regular `manifest.json` is in the output; app.txt is "baseline\n" after; the feature is unchanged; HEAD is a 40-character id.
+   - The assertions of `TestRecoverRefusalsAreSysErrorsWithTheirExit` also stay unchanged: the four cases and their `candidate/recovery_unsupported` / `candidate/recovery_refused` prefixes with exit 1, app.txt still "candidate\n", and no archive written.
+   - recover_test.go imports `github.com/KogenAI/kogen-coordinator/project`, which the suite already uses.
+3. `cli/consumes/kogen-build/README.md`: the Recover bullet and the Isolation fixture description say that the recover tests' fixture adds a project check that is red while a flag file exists. They also say that the builder's blocker claim is grounded in that red verification pass, which kogen-build requires from 8852812. The README keeps its existing test names and Inventory.
+
+The suite keeps its existing isolation: no `t.Skip`, no sleep, no build constraint, no fixed port, no host path, and passing with `-count=1`, `-trimpath` and `-race`.
+
+Out of scope: production code (`cli/*.go` non-test, `cli/readiness`, `cli/internal`) is not changed. `cli/go.mod` and `cli/go.sum` are not changed by this Intent: both are protected by `.kogen/project.yaml` `protect`, which only an operator commit outside Build can lift. The kogen-build pin is moved by the existing "Adopt component versions" commit outside Build. This Intent proves, without editing those files, that the suite passes at 2e10d93 through an alternate module file outside the checkout.
+
+## Decisions
+- The blocked fixture is grounded the way kogen-build's own build/recover_test.go does it at 8852812: a project check that is red while a flag exists, raised in the builder's first round, with the blocker reported in the next round. (source: request)
+- The recover tests keep asserting the refusals and their exits, archiving the blocked Build, and clearing the implementation. (source: request)
+- No change to kogen's production code. (source: request)
+
+## Source comparison
+- Addressed: Problem, the failing `TestRecoverRefusalsAreSysErrorsWithTheirExit/{unknown_id,output_exists,output_inside_the_checkout,absent_checkpoint}` (recover_test.go:69) and `TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation` (recover_test.go:34) with "exit 4 ... failed fixture: refused". This is fixed by required changes 1–2. acceptance.feature runs the whole `./consumes/kogen-build/` package at 2e10d93 and requires each of those five tests to run and pass.
+- Addressed: Need, "blocked fixture ... grounded in a failing verification". Covered by required change 2 and the fault scenario.
+- Addressed: Need, "keep asserting the refusals and their exits, archiving and clearing". The assertions stay unchanged (required change 2), and acceptance requires each named test to pass.
+- Addressed: Need, "No change to kogen's production code". Stated under Out of scope.
+- Addressed: Acceptance, "`go test ./consumes/kogen-build/` passes with kogen-build at 2e10d93 (or current main)". Scenario 1 runs it with v0.0.0-20261104030858-2e10d934cac2, the exact 2e10d93 pseudo-version. "Current main" is a moving target, so 2e10d93 is the version the contract fixes.
+- Addressed: Acceptance, "Fault test: a fixture whose blocker claim is not grounded makes the archive test fail". Scenario 2 drops the fixture's checks, so the blocker claim has no failing verification behind it, and requires `TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation` to fail at 2e10d93.
+- Addressed: Acceptance, "kogen's full go test and acceptance pass". The configured `go-test` check runs at the current pin, which scenario 1 also exercises ("pinned"). The new fixture was observed to pass at both pins.
+- Conflicting, not delivered by this Intent: Need, "Bump kogen-build in cli/go.mod to a version at or after 8852812". `cli/go.mod` and `cli/go.sum` match the configured protect patterns; the previous two attempts stopped with shape/protected_conflict on exactly these paths, and no override exists. The cause is this repository's own `.kogen/project.yaml` `protect` list, owned by its operator; the pin is moved by the operator's "Adopt component versions" commit outside Build, as d98cfe0 did. The bump's stated purpose, "so the suite runs against the new behaviour", is met for this Intent by running the suite at 2e10d93 through an alternate module file. Because the fixture passes at both pins, the later pin move needs no test change.
+- Historical context only: Studio Mac measurement 4 Nov 07:5xZ, kogen main 6f71d94, bisect b9990a3..2e10d93 (green at 748c085, red at 8852812), 06Z adoption tuple.
+
+## Tests
+- The recover tests' blocked fixture is grounded in a failing verification check and still stops `candidate/build_blocked` with kogen-build at 8852812 or later: update the fixture of TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation and TestRecoverRefusalsAreSysErrorsWithTheirExit; the acceptance scenario runs the whole package at 2e10d93, which reproduces the exit-4 failure on the unchanged tree (regression)
+- The fixture stays compatible with the kogen-build pinned today: the acceptance scenario runs the whole package at the pinned version (integration)
+- An ungrounded blocker claim makes the archive test fail: the acceptance fault scenario drops the fixture's checks and requires TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation to fail at 2e10d93 (integration)
+- Recover archives the blocked Build, clears the implementation, and refuses with exit 1 and nothing written: TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation and TestRecoverRefusalsAreSysErrorsWithTheirExit, assertions unchanged (existing)
+
+## Feasibility
+- On the unchanged tree, `go test -mod=mod -modfile=<scratch>.mod -run TestRecover ./consumes/kogen-build/` with kogen-build v0.0.0-20261104030858-2e10d934cac2 reproduced the five reported failures, "exit 4, err <nil>", at recover_test.go:34 and :69. cli/go.mod and cli/go.sum stayed unmodified. (probe 1: exit 1, 2.1 s)
+- In a scratch copy of cli/ with the grounded fixture described above (red check while a flag exists, then `report_blocker` in the next round), TestRecover passed at the pinned b9990a3 (5.7 s) and at 2e10d93 (5.7 s), and the whole `./consumes/kogen-build/` package passed at 2e10d93 (8.4 s). (probe 2: exit 0)
+- In the same scratch copy with the grounding check removed, TestRecoverArchivesTheBlockedBuildAndClearsTheImplementation failed at 2e10d93: the fixture Build went to review and stopped refused. (probe 3: exit 1, 2.3 s)
+- kogen-build 2e10d93 requires lower coordinator, executor, review and verification versions than kogen's pins, so minimal version selection changes only the kogen-build line in the alternate module file. 2e10d93 is in the local module cache.
+- evidence: {"id":"recover-suite-observer","kind":"observer","inputs":["cli/consumes/kogen-build/helper_test.go","cli/consumes/kogen-build/recover_test.go","cli/go.mod","cli/go.sum"],"observers":["features/steps/k-consumes-build-recover-grounded__suite.js"],"checks":[{"name":"good","command":"\"$KOGEN_NODE\" features/steps/k-consumes-build-recover-grounded__suite.js --control good","exit":0,"output":"observer failures: 0\n"},{"name":"bad","command":"\"$KOGEN_NODE\" features/steps/k-consumes-build-recover-grounded__suite.js --control bad","exit":1,"output":"observer failures: 2\n"}]}
