@@ -21,7 +21,7 @@ Feature: Reviewing
     And the review request offers exactly the tools "read_file, view_image, list_files, search_text, write_file, shell, submit_review"
     And the review request contains the text of the file ".kogen/intents/is-even/intent.md"
     And the review request contains the diff of "calc.py" against the start HEAD
-    And the review request contains the full text of the committed "calc.py"
+    And the review request contains the changed lines of the committed "calc.py" exactly once
     And the review request contains "acceptance: passed (3 scenarios)"
     And the review request contains "nothing the Intent did not ask for"
     And the review request contains "a missing preferred test layer alone is not a product defect"

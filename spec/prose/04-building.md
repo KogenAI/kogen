@@ -15,7 +15,7 @@ A Build is Kogen's own model/tool loop: a builder conversation with five tools t
 | `read_file` | `path`, optional `start_line`, `end_line` | numbered lines, or an error |
 | `write_file` | `path`, `content` | `ok`, or an error |
 | `finish` | `summary` | starts verification |
-| `report_blocker` | `paths`, `reason`, `evidence` | validated builder-reported protected contradiction stops without a commit |
+| `report_blocker` | `paths`, `reason`, `evidence` | validated builder-reported protected contradiction stops without a commit, provided a failure of the latest verification pass of the current tree names one of its paths; otherwise the call only returns feedback (`blocker not backed by verification: ...`), grants nothing and the Build continues |
 
 There is no patch tool.
 

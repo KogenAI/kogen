@@ -17,9 +17,9 @@ kogen's call sites are `cli/readiness/readiness.go` (the report that ends `kogen
 - `config_test.go`:
   - `project.ConfigPath` is `.kogen/project.yaml`; `project.ModelRoles` is `shape`, `build`, `review` in that order.
   - `project.ParseConfig` is `func(string, string) (*project.Config, error)`; `project.Config.Models` has a `project.Role` for every model role, also when the file names none (native, no provider); `project.Role.Provider` is the file's provider; `project.Role.Executor` is `project.ExecutorClaudeCode` for `executor: claude-code`, which makes `project.Role.External` true, and empty for native roles.
-  - `project.Config.ShapeWorkers` is a `project.Workers`: `project.Workers.Enabled` and `project.Workers.Roles` keyed `read`, `probe` and `draft`, with a role the file does not give absent from the map; disabled when the section is missing or `enabled: false`.
+  - `project.Config.ShapeWorkers` is a `project.Workers`: `project.Workers.Enabled` and `project.Workers.Roles`. The `shape_workers` key was removed (with `shape_audit`, `shape_decision_check` and `review_material`) and is ignored whatever its value: the field always holds the fixed value `project.Workers{Enabled: false, Roles: <empty, non-nil map>}`. `cli/readiness/readiness.go` still reads it, so its worker branch compiles and is never taken.
   - An invalid file gives a `*sys.Error` whose `Detail` is the file name, whose `Lines` (one per problem, `line <n>: ...`, which readiness shows and turns into the lines to edit) and whose `Exit` is 3; the configuration of an earlier Kogen gives a `Detail` and no `Lines`.
-  - `project.ReadableConfig` is `func(string) *project.Config`: it keeps the roles and workers it could read of an invalid file and gives a native role for every model role and no workers for text it cannot read or for no text.
+  - `project.ReadableConfig` is `func(string) *project.Config`: it keeps the model roles it could read of an invalid file and gives a native role for every model role for text it cannot read or for no text; `ShapeWorkers` is the fixed disabled value with an empty, non-nil `Roles` map in every case, since the removed key is ignored.
 
 ## Isolation
 

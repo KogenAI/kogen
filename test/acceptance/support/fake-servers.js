@@ -75,6 +75,7 @@ class FakeServers {
     this.requests = [];
     this.contractChecks = [];
     this.decisionChecks = 0;
+    this.literalChecks = 0;
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -140,6 +141,7 @@ class FakeServers {
     this.requests = [];
     this.contractChecks = [];
     this.decisionChecks = 0;
+    this.literalChecks = 0;
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -163,6 +165,7 @@ class FakeServers {
     this.requests = [];
     this.contractChecks = [];
     this.decisionChecks = 0;
+    this.literalChecks = 0;
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -280,7 +283,20 @@ class FakeServers {
       }));
       return;
     }
-    const contract = tools.includes('submit_contract_review') ? ['submit_contract_review', { findings: [] }] : tools.includes('submit_contract_confirmation') ? ['submit_contract_confirmation', { verdicts: [] }] : null;
+    if (tools.includes('submit_literal_check')) {
+      // Shape's literal check is answered apart from the scripted conversation like the decision check:
+      // with the smallest valid answer (no literal item) and zero usage, so the request counts and the
+      // totals the scenarios pin stay unchanged.
+      const id = `literal_check_${++this.literalChecks}`;
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      res.write(responseEvent('response.created', { response: { id: `resp_${id}` } }));
+      res.write(responseEvent('response.output_item.done', { output_index: 0, item: functionCall('submit_literal_check', { items: [] }, id) }));
+      res.end(responseEvent('response.completed', {
+        response: { usage: { input_tokens: 0, input_tokens_details: { cached_tokens: 0 }, output_tokens: 0, output_tokens_details: { reasoning_tokens: 0 } } },
+      }));
+      return;
+    }
+    const contract = tools.includes('submit_contract_review') ? ['submit_contract_review', { findings: [], environment: [], properties: [] }] : tools.includes('submit_contract_confirmation') ? ['submit_contract_confirmation', { verdicts: [] }] : null;
     if (contract) {
       // Shape's contract check (SHP-8) is answered apart from the scripted conversation: it finds no
       // contradiction, and it is not among the requests the scenarios number or count.
@@ -501,7 +517,7 @@ class FakeServers {
     if (name === 'init-invalid-twice') config.checks = [{ name: 'Docs Check', run: 'node docs-check.js' }];
     if (name === 'init-corrects-dependency-protect' && ordinal === 1) config.protect = ['.formatter.exs', 'mix.exs'];
     if (name === 'init-corrects-dependency-protect' && ordinal === 2) config.protect = ['.formatter.exs'];
-    if (name === 'init-proposes-setup') config.setup = ['mkdir seeded', 'echo run >> runs.txt', 'true'];
+    if (name === 'init-proposes-setup') config.setup = ['mkdir seeded', 'echo run >> runs.txt', 'test -d .'];
     return { items: [functionCall('submit_configuration', config, `init_submit_${ordinal}`)] };
   }
 
@@ -608,6 +624,10 @@ class FakeServers {
       return { items: [functionCall('shell', { command }, `large_source_${ordinal}`)] };
     }
     if (name === 'build-reports-blocker') {
+      // A blocker claim is backed only by a failure of the latest verification pass on the current
+      // tree: the first round finishes without an implementation, so pass 1 is red and names the
+      // protected step file, and the second round's claim is backed by it.
+      if (ordinal === 1) return { items: [finish()] };
       return { items: [functionCall('report_blocker', {
         paths: ['features/steps/is_even_steps.js'],
         reason: 'The builder reports a contradiction in this protected fixture.',

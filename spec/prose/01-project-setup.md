@@ -7,18 +7,20 @@
 **SET-2 — Order and commit.** `init` on a repository whose `.kogen/project.yaml` is not committed, in this order:
 
 1. refuses without a Git identity (SET-5), writing nothing;
-2. refuses when a path it writes has uncommitted changes: `environment/dirty_tree: <path> has uncommitted changes; commit, stash or discard them first` (exit 5). The paths are `.kogen/project.yaml`, `.gitignore` and, for a bridge (SET-13), `features/steps/README.md`. Other uncommitted changes are allowed; they stay out of the commit and out of the checks, which run on the committed tree (SET-12);
-3. refuses without a login before any request (GPT-5, `provider/login: not signed in; run kogen provider login chatgpt`, exit 4);
+2. refuses when a path it writes has uncommitted changes: `environment/dirty_tree: <path> has uncommitted changes; commit, stash or discard them first` (exit 5). The paths are `.kogen/project.yaml`, `.kogen/models.yaml`, `.gitignore` and, for a bridge (SET-13), `features/steps/README.md`. Other uncommitted changes are allowed; they stay out of the commit and out of the checks, which run on the committed tree (SET-12);
+3. refuses without a login before any request (GPT-5, `provider/login: not signed in; run kogen provider login for a supported provider`, exit 4);
 4. detects candidate commands (SET-10) and asks the shaping model once (SET-11);
 5. runs the candidates on a copy of the committed tree and keeps those that pass (SET-12), adding the bridge when needed (SET-13);
-6. writes `.kogen/project.yaml` (the template below with the kept commands), appends `.kogen/local/` to the root `.gitignore`, copies the bridge files, and commits exactly those paths with a plain `git commit` (GIT-5 identity and signing rules), message `Add Kogen configuration`.
+6. writes `.kogen/project.yaml` (the template below with the kept commands) and `.kogen/models.yaml` (the team lineup), appends `.kogen/local/` to the root `.gitignore`, copies the bridge files, and commits exactly those paths with a plain `git commit` (GIT-5 identity and signing rules), message `Add Kogen configuration`.
 
 Progress lines go to stderr (`kogen: detecting the project's commands`, `kogen: asking <model>/<effort> about the project's commands`, `kogen: running setup-<n>: <command>`, `kogen: checking <name>: <command>`, `kogen: checking the acceptance runner`). Output, each list in configuration order:
 
 ```
 Initialized Kogen in {abs:root}
 Setup: <command>; <command>                     (or: Setup: none)
+Fix: <command>; <command>                       (or: Fix: none)
 Checks: <name>, <name>                          (or: Checks: none found, or none passed when every candidate is left out)
+Protect: <path>; <path>                         (or: Protect: none)
 Left out: <name> (<command>) failed with status <n>; ...    (only when a candidate failed)
 Acceptance: <how>
 Note: Kogen gives its models README.md only; it does not read <files>    (only when present)

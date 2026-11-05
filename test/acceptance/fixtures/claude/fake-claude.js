@@ -312,19 +312,20 @@ function contractCheckAnswer(prompt) {
     const props = JSON.parse(flag('--json-schema')).properties || {};
     if (props.items && prompt.includes('How should the result be presented to the user?')) return { items: [{ number: 1, class: 'ui_ux', why: 'the request leaves this interface choice open' }] };
     if (props.verdict) return null; // Review's schema also has findings
-    if (props.findings) return { findings: [] };
+    if (props.findings) return { findings: [], ...(props.environment ? { environment: [] } : {}), ...(props.properties ? { properties: [] } : {}) };
     if (props.verdicts) return { verdicts: [] };
   } catch { /* not a contract check */ }
   return null;
 }
 
-// Shape's decision check asks for a list of items with a statement and a verdict. It is answered
-// apart from the scripted roles with the smallest valid answer, and leaves no record: no counters,
-// prompts, argv, sessions, tool calls, wakeup evidence or cost.
+// Shape's decision check asks for a list of items with a statement and a verdict, and its literal
+// check for a list of items with a literal and a source quote. Each is answered apart from the
+// scripted roles with the smallest valid answer, and leaves no record: no counters, prompts, argv,
+// sessions, tool calls, wakeup evidence or cost.
 function isDecisionCheck() {
   try {
     const item = (JSON.parse(flag('--json-schema')).properties || {}).items?.items?.properties || {};
-    return Boolean(item.statement && item.verdict);
+    return Boolean((item.statement && item.verdict) || (item.literal && item.source_quote));
   } catch { return false; }
 }
 

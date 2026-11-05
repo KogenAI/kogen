@@ -17,9 +17,13 @@ func strandEdits(f *fakeProvider) handler {
 		"shell", map[string]any{"command": "rm README.md && printf 'scratch\\n' > notes.txt && chmod +x features/steps/integration_steps.js"})
 }
 
+// strandFile is the strand candidate: twice bigFile(), so that its source, delivered once, still
+// exceeds the reviewer's input window and is pinned in parts.
+func strandFile() string { return strings.Repeat(bigFile(), 2) }
+
 // strandBuilder is the builder's one response: a candidate whose pinned source needs many parts.
 func strandBuilder(f *fakeProvider) handler {
-	return f.calls("write_file", map[string]any{"path": "app.txt", "content": bigFile()}, "finish", map[string]any{"summary": "done"})
+	return f.calls("write_file", map[string]any{"path": "app.txt", "content": strandFile()}, "finish", map[string]any{"summary": "done"})
 }
 
 // strandParts reads the pinned part files <runs dir>/review-source/<review>-<tree>/<n>.json that
@@ -251,7 +255,7 @@ func TestKReviewVerdictStrandPinnedResume(t *testing.T) {
 	eq(t, "outcome", res["outcome"], any("review_invalid"))
 	eq(t, "reviews", res["reviews"], any(float64(2)))
 	eq(t, "passes", res["passes"], any(float64(1)))
-	eq(t, "candidate preserved", e.read("app.txt"), bigFile())
+	eq(t, "candidate preserved", e.read("app.txt"), strandFile())
 	eq(t, "README preserved", e.read("README.md"), "# Fixture project\n")
 	eq(t, "modified files", e.gitOut("diff", "--name-only"), "app.txt")
 	eq(t, "no reviewer addition", e.gitOut("ls-files", "--others", "--exclude-standard", "--", "notes.txt"), "")
@@ -342,7 +346,7 @@ func TestKReviewVerdictStrandPinnedResume(t *testing.T) {
 	eq(t, "every part read before approval", material["parts_read"], any(float64(len(parts3))))
 	eq(t, "commits", e.commitsSince(start), "1")
 	eq(t, "committed tree", e.gitOut("rev-parse", "HEAD^{tree}"), green)
-	eq(t, "committed", e.gitOut("show", "HEAD:app.txt")+"\n", bigFile())
+	eq(t, "committed", e.gitOut("show", "HEAD:app.txt")+"\n", strandFile())
 	eq(t, "status", e.gitOut("status", "--porcelain"), "")
 	eq(t, "the first run keeps its own failed result", e.result(id)["outcome"], any("review_invalid"))
 }

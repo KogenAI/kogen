@@ -274,7 +274,7 @@ One JavaScript regular expression per line.
 ^the review request retains bounded complete pinned source evidence$
 ^the\ review\ request\ contains\ "([^"]*)"$
 ^the\ review\ request\ contains\ the\ diff\ of\ "([^"]*)"\ against\ the\ start\ HEAD$
-^the\ review\ request\ contains\ the\ full\ text\ of\ the\ committed\ "([^"]*)"$
+^the\ review\ request\ contains\ the\ changed\ lines\ of\ the\ committed\ "([^"]*)"\ exactly\ once$
 ^the\ review\ request\ contains\ the\ text\ of\ the\ file\ "([^"]*)"$
 ^the\ review\ request\ does\ not\ contain\ the\ builder's\ conversation,\ tool\ calls\ or\ tool\ results$
 ^the\ review\ request\ offers\ exactly\ the\ tools\ "([^"]*)"$

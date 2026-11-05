@@ -461,7 +461,7 @@ Feature: Shaping
     And the fake ChatGPT server received 0 requests
 
   @SET-7 @SHP-2
-  Scenario: Warm preparation and clean readiness run setup separately and the unchanged card reuses proof
+  Scenario: Warm preparation, the static checks' fresh copy and clean readiness run setup separately and the unchanged card reuses proof
     Given readiness setup records executions outside the checkout
     And the fake ChatGPT server plays script "shape-ready-is-even"
     When the caller runs "kogen intent shape is-even -" with stdin:
@@ -471,7 +471,7 @@ Feature: Shaping
     Then the exit code is 0
     When the caller runs "kogen intent approve is-even"
     Then the exit code is 5
-    And readiness has executed 2 times
+    And readiness has executed 3 times
 
   @SHP-2 @LOOP-12
   Scenario: A check written as a subshell passes the tool check before shaping

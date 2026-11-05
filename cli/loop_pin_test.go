@@ -31,7 +31,7 @@ func TestLoopPin(t *testing.T) {
 	if pin.Module != "github.com/KogenAI/kogen-loop" || pin.Protocol != api.Protocol || pin.Library != api.Library {
 		t.Fatalf("pin %s %s %s, compiled kogen-loop %s %s", pin.Module, pin.Protocol, pin.Library, api.Protocol, api.Library)
 	}
-	root := filepath.Join("third_party", "github.com/KogenAI/kogen-loop")
+	root := filepath.Join("third_party", "kogen-loop")
 	var files []string
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {

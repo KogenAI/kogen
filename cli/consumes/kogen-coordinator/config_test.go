@@ -2,6 +2,7 @@ package consumes
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -93,43 +94,36 @@ models:
 	}
 }
 
-// TestShapeWorkers: with workers enabled and the read, probe and draft roles given, ShapeWorkers
-// is enabled and holds each role by that name; without the section it is disabled. A role the
-// file does not give is absent from Roles, which readiness tests with a lookup.
+// requireFixedWorkers: ShapeWorkers is the fixed value project.Workers{Enabled: false, Roles:
+// an empty, non-nil map}, whatever the file said.
+func requireFixedWorkers(t *testing.T, what string, cfg *project.Config) {
+	t.Helper()
+	var workers project.Workers = cfg.ShapeWorkers
+	if workers.Enabled || workers.Roles == nil || len(workers.Roles) != 0 {
+		t.Fatalf("%s: ShapeWorkers = %#v, want disabled with an empty, non-nil Roles map", what, workers)
+	}
+}
+
+// TestShapeWorkers: the shape_workers key was removed and is ignored whatever its value, so
+// ShapeWorkers is always disabled with an empty, non-nil Roles map: with workers enabled and the
+// read, probe and draft roles given, without the section, with enabled: false, and with the
+// former refusal text (enabled, one role only).
 func TestShapeWorkers(t *testing.T) {
-	cfg := parse(t, `version: 1
+	for _, c := range []struct{ name, text string }{
+		{"enabled with roles", `version: 1
 shape_workers:
   enabled: true
   read: {model: r, effort: low, provider: anthropic}
   probe: {model: p, effort: low}
   draft: {model: d, effort: low, provider: supergrok}
-`)
-	var workers project.Workers = cfg.ShapeWorkers
-	if !workers.Enabled {
-		t.Fatal("ShapeWorkers.Enabled is false")
-	}
-	for _, name := range []string{"read", "probe", "draft"} {
-		if _, ok := workers.Roles[name]; !ok {
-			t.Fatalf("ShapeWorkers.Roles has no %s: %+v", name, workers.Roles)
-		}
-	}
-	if workers.Roles["read"].Provider != "anthropic" || workers.Roles["read"].External() {
-		t.Fatalf("read = %+v", workers.Roles["read"])
-	}
-	if workers.Roles["draft"].Provider != "supergrok" || workers.Roles["draft"].External() {
-		t.Fatalf("draft = %+v", workers.Roles["draft"])
-	}
-	if workers.Roles["probe"].Provider != "" {
-		t.Fatalf("probe = %+v, want no provider", workers.Roles["probe"])
-	}
-
-	off := parse(t, "version: 1\n")
-	if off.ShapeWorkers.Enabled {
-		t.Fatal("ShapeWorkers.Enabled without the section")
-	}
-	disabled := parse(t, "version: 1\nshape_workers:\n  enabled: false\n  read: {model: r, effort: low}\n")
-	if disabled.ShapeWorkers.Enabled {
-		t.Fatal("ShapeWorkers.Enabled with enabled: false")
+`},
+		{"without the section", "version: 1\n"},
+		{"enabled: false", "version: 1\nshape_workers:\n  enabled: false\n  read: {model: r, effort: low}\n"},
+		{"enabled without roles", "version: 1\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low}\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			requireFixedWorkers(t, c.name, parse(t, c.text))
+		})
 	}
 }
 
@@ -145,9 +139,6 @@ func TestParseConfigRefusalsAreSysErrorsWithLines(t *testing.T) {
 		{"unsupported version", "version: 2\n", []string{"line 1: version must be 1"}},
 		{"empty file", "", []string{"line 1: the file is empty"}},
 		{"unclosed flow", "version: 1\n\tbad: [\n", []string{"line 2: unclosed ["}},
-		{"workers without roles", "version: 1\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low}\n", []string{
-			"line 3: shape_workers.draft requires explicit model and effort",
-			"line 3: shape_workers.probe requires explicit model and effort"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -182,9 +173,10 @@ func TestParseConfigOldKogenFolderHasNoLines(t *testing.T) {
 	}
 }
 
-// TestReadableConfigKeepsWhatItCanRead: of an invalid file it keeps the model roles and workers
-// it accepted (the invalid problem aside), with a role for every model role; of text it cannot
-// read, or no text, it gives a native role with no provider for each model role and no workers.
+// TestReadableConfigKeepsWhatItCanRead: of an invalid file it keeps the model roles it accepted
+// (the invalid problem aside), with a role for every model role; of text it cannot read, or no
+// text, it gives a native role with no provider for each model role. Whatever the text, the
+// shaping workers are the fixed disabled value with an empty, non-nil Roles map.
 func TestReadableConfigKeepsWhatItCanRead(t *testing.T) {
 	partial := project.ReadableConfig("version: 1\nbogus: 1\nmodels:\n  shape: {provider: anthropic, model: m, effort: high}\n  build: {executor: claude-code, model: m, effort: high}\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low, provider: supergrok}\n")
 	for _, name := range project.ModelRoles {
@@ -195,12 +187,7 @@ func TestReadableConfigKeepsWhatItCanRead(t *testing.T) {
 	if partial.Models["shape"].Provider != "anthropic" || !partial.Models["build"].External() || partial.Models["review"].External() {
 		t.Fatalf("Models = %+v", partial.Models)
 	}
-	if !partial.ShapeWorkers.Enabled || partial.ShapeWorkers.Roles["read"].Provider != "supergrok" {
-		t.Fatalf("ShapeWorkers = %+v", partial.ShapeWorkers)
-	}
-	if _, found := partial.ShapeWorkers.Roles["probe"]; found {
-		t.Fatalf("ShapeWorkers.Roles has an unsent probe: %+v", partial.ShapeWorkers.Roles)
-	}
+	requireFixedWorkers(t, "partial", partial)
 
 	for _, text := range []string{"", "version: 1\n\tbad: [\n"} {
 		cfg := project.ReadableConfig(text)
@@ -213,8 +200,6 @@ func TestReadableConfigKeepsWhatItCanRead(t *testing.T) {
 				t.Fatalf("ReadableConfig(%q).Models[%s] = %+v (present %v)", text, name, role, ok)
 			}
 		}
-		if cfg.ShapeWorkers.Enabled || len(cfg.ShapeWorkers.Roles) != 0 {
-			t.Fatalf("ReadableConfig(%q).ShapeWorkers = %+v", text, cfg.ShapeWorkers)
-		}
+		requireFixedWorkers(t, fmt.Sprintf("ReadableConfig(%q)", text), cfg)
 	}
 }

@@ -61,7 +61,7 @@ Feature: Building
     And the file "late.txt" does not exist
     And HEAD is unchanged
     And the file ".kogen/local/approvals/is-even.json" exists
-    And the fake ChatGPT server received 1 request
+    And the fake ChatGPT server received 2 requests
 
   @LOOP-5 @LOOP-6
   Scenario: Shell results include stderr, and several streamed calls run in order

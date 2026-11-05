@@ -520,7 +520,13 @@ function reviewAssertions(world, label, args) {
       assert.equal(bytes.length, file.bytes);
       assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), file.sha256);
       assert.ok(file.git_object && file.mode);
-      if (!bytes.includes(0)) assert.ok(full.includes(bytes.toString('utf8')), `complete source missing: ${file.path}`);
+      if (bytes.includes(0)) continue;
+      // An added file is delivered once, whole. A modified file is delivered once as its diff hunks,
+      // so each of its added lines is reachable in the source and its full text is not repeated.
+      const existed = spawnSync('git', ['cat-file', '-e', `${catalog.start_head}:${file.path}`], { cwd: projectFile(world, '.') }).status === 0;
+      if (!existed) { assert.ok(full.includes(bytes.toString('utf8')), `complete source missing: ${file.path}`); continue; }
+      const diff = git(world, ['diff', '--no-renames', catalog.start_head, catalog.candidate_tree, '--', file.path]);
+      for (const line of diff.split('\n').filter(item => /^[+-][^+-]/.test(item) || item === '+' )) assert.ok(full.includes(line), `changed line missing: ${file.path}: ${line}`);
     }
     assert.ok(world.server.toolResults.some(item => item.name === 'submit_review' && String(item.output).includes('unread part')), 'premature approval was not rejected');
     assert.ok(world.server.toolResults.some(item => item.callId === 'call_same_response_source_approval' && String(item.output).includes('unread part')), 'same-response reads counted as delivered before a reviewer continuation');
@@ -550,9 +556,16 @@ function reviewAssertions(world, label, args) {
     assert.ok(diff && request.text.includes(diff), `review request did not contain the diff of ${rel}`);
     return;
   }
-  if (label.includes(' contains the full text of the committed ')) {
+  if (label.includes(' contains the changed lines of the committed ')) {
+    // The review material delivers each changed line once, in the diff hunks, and no longer sends
+    // the full text of a modified file beside its diff.
     const content = fs.readFileSync(projectFile(world, args[0]), 'utf8');
-    assert.ok(request.text.includes(content), `review request did not contain the full candidate ${args[0]}`);
+    const diff = git(world, ['diff', world.buildStartHead, 'HEAD', '--', args[0]]);
+    const added = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++') && line.slice(1).trim());
+    assert.ok(added.length, `${args[0]} has no added lines`);
+    const lines = request.text.split('\n');
+    for (const line of added) assert.equal(lines.filter(item => item === line).length, 1, `review request did not contain the changed line ${JSON.stringify(line)} of ${args[0]} exactly once`);
+    assert.ok(!request.text.includes(content), `review request repeated the full text of the modified ${args[0]} beside its diff`);
     return;
   }
   if (label.includes(' contains the text of the file ')) {
@@ -1229,6 +1242,7 @@ async function dispatch(world, pattern, values, attachment) {
         path: literalPath, status: 'deleted', mode: '100644',
         git_object: git(world, ['rev-parse', `HEAD:${literalPath}`]),
         bytes: Buffer.byteLength(text), sha256: crypto.createHash('sha256').update(text).digest('hex'),
+        origin: '', rename: false,
       } };
     }
     let pauseAt = null;

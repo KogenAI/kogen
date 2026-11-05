@@ -17,7 +17,9 @@ Feature: Project setup
       """
       Initialized Kogen in {abs:.}
       Setup: none
+      Fix: none
       Checks: none found
+      Protect: none
       Acceptance: Cucumber bridge added in features/steps
       Note: Kogen gives its models README.md only; it does not read CLAUDE.md
       Commit: {sha8} Add Kogen configuration
@@ -30,6 +32,7 @@ Feature: Project setup
     And the new commit changes exactly:
       | path                     |
       | .gitignore               |
+      | .kogen/models.yaml       |
       | .kogen/project.yaml      |
       | features/steps/README.md |
     And the file ".gitignore" contains ".kogen/local/"
@@ -49,7 +52,9 @@ Feature: Project setup
       """
       Initialized Kogen in {abs:.}
       Setup: mix deps.get
+      Fix: mix format
       Checks: format, test
+      Protect: .formatter.exs
       Left out: compile (mix compile --warnings-as-errors) failed with status 1
       Acceptance: Cucumber bridge added in features/steps
       Commit: {sha8} Add Kogen configuration
@@ -76,7 +81,9 @@ Feature: Project setup
       """
       Initialized Kogen in {abs:.}
       Setup: npm ci --no-audit --no-fund
+      Fix: none
       Checks: test, docs
+      Protect: none
       Left out: lint (npm run lint) failed with status 2
       Acceptance: existing Cucumber runner, steps in features/step_definitions
       Commit: {sha8} Add Kogen configuration
@@ -88,6 +95,7 @@ Feature: Project setup
     And the new commit changes exactly:
       | path                |
       | .gitignore          |
+      | .kogen/models.yaml  |
       | .kogen/project.yaml |
     And the file ".kogen/project.yaml" contains "    - name: docs"
     And the file ".kogen/project.yaml" contains "      run: 'node docs-check.js'"
@@ -144,7 +152,7 @@ Feature: Project setup
     Then the exit code is 4
     And stdout is:
       """
-      provider/login: not signed in; run kogen provider login chatgpt
+      provider/login: not signed in; run kogen provider login for a supported provider
       """
     And the file ".kogen/project.yaml" does not exist
 
@@ -209,6 +217,7 @@ Feature: Project setup
     And the new commit changes exactly:
       | path                |
       | .gitignore          |
+      | .kogen/models.yaml  |
       | .kogen/project.yaml |
 
   @SET-4 @SET-8
@@ -315,7 +324,7 @@ Feature: Project setup
     And the fake ChatGPT server plays script "init-proposes-setup"
     When the caller runs "kogen init"
     Then the exit code is 0
-    And stdout contains "Setup: true"
+    And stdout contains "Setup: test -d ."
     And stdout contains "Left out: setup-1 (mkdir seeded) is not repeatable: its second run failed with status 1; setup-2 (echo run >> runs.txt) is not repeatable: its second run changed runs.txt"
 
   @SET-14 @LOOP-14

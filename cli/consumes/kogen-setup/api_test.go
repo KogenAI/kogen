@@ -3,6 +3,7 @@ package consumes
 import (
 	"context"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -48,7 +49,8 @@ func TestInitUsesTheClientAndTheToolsOfTheInput(t *testing.T) {
 	if !f.exists("features/steps/README.md") {
 		t.Fatalf("the acceptance bridge wrote no features/steps/README.md\n%s", f.git("show", "--stat", "HEAD"))
 	}
-	if got := strings.Fields(f.git("show", "--name-only", "--format=", "HEAD")); len(got) != 3 {
-		t.Fatalf("commit holds %q, want the configuration, .gitignore and the bridge", got)
+	want := []string{".gitignore", ".kogen/models.yaml", ".kogen/project.yaml", "features/steps/README.md"}
+	if got := strings.Fields(f.git("show", "--name-only", "--format=", "HEAD")); !slices.Equal(got, want) {
+		t.Fatalf("commit holds %q, want the configuration, the models file, .gitignore and the bridge %q", got, want)
 	}
 }

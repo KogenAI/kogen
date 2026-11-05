@@ -158,7 +158,7 @@ Feature: Claude Code serves a complete independent lineup
       Add calc.is_even(n). Non-integers raise TypeError.
       """
     Then the exit code is 1
-    And stdout contains "shape/invalid_output"
+    And stdout contains "shape/incomplete_package"
     And no Intent named is-even exists
     And HEAD is unchanged
     And the fake ChatGPT server received 0 requests

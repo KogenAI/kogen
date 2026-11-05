@@ -80,7 +80,7 @@ Feature: Approval and starting a Build
     When the caller noted the review card hash of "is-even"
     And the caller approves "is-even" with the noted hash
     Then the exit code is 0
-    And readiness has executed 1 time
+    And readiness has executed 2 times
     And the file ".kogen/local/readiness/is-even.json" exists
 
   @AUT-2
@@ -91,7 +91,7 @@ Feature: Approval and starting a Build
     And another commit is made on HEAD
     And the caller approves "is-even" with the noted hash
     Then the exit code is 0
-    And readiness has executed 2 times
+    And readiness has executed 4 times
 
   @AUT-2
   Scenario: A new baseline hash makes approval rerun readiness
@@ -101,7 +101,7 @@ Feature: Approval and starting a Build
     And the file ".kogen/intents/is-even/acceptance.feature" is changed outside Kogen
     And the caller approves "is-even" with the hash of its acceptance baseline
     Then the exit code is 0
-    And readiness has executed 2 times
+    And readiness has executed 4 times
 
   @AUT-2 @VER-1
   Scenario Outline: The hash covers every baseline file
