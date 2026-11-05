@@ -13,7 +13,7 @@ import (
 
 const (
 	// Protocol is the process protocol id carried by every task and event.
-	Protocol = "kogen-loop/v1"
+	Protocol = "kogen-loop" + "/v1"
 	// Library is the Go library API id (package loop).
 	Library = "loop/v1"
 )

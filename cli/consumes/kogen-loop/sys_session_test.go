@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // Signatures kogen's callers use: cli/engine.go, cli/native.go, cli/main.go and

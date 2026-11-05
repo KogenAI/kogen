@@ -65,8 +65,7 @@ func TestToolsMatchTheElixirResults(t *testing.T) {
 			name = name[:100]
 		}
 		t.Run(name, func(t *testing.T) {
-			args := DecodeArguments(strings.ReplaceAll(c.Arguments, "<ROOT>", root))
-			out, err := tools.Run(c.Name, args)
+			out, err := tools.Call(Call{Name: c.Name, Arguments: strings.ReplaceAll(c.Arguments, "<ROOT>", root)})
 			if err != nil {
 				t.Fatal(err)
 			}

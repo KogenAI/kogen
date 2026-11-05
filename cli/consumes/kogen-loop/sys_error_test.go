@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // TestFailIsAnErrorWithItsExitAndDetail: sys.Fail(class, reason, detail, exit) is the error kogen

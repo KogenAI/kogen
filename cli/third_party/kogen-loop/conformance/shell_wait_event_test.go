@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"testing"
 
-	"kogen-loop/api"
-	"kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/loop"
 )
 
 var shellWaitInstant = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$`)

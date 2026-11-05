@@ -5,7 +5,7 @@ import (
 	"time"
 	"unicode"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // failure is what a provider said went wrong: an HTTP error body or a failure event in the

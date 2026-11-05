@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // Overlap changes when calls run, not what a round means: the same responses give the same
@@ -172,7 +172,7 @@ func TestToolOverlapCompatibility(t *testing.T) {
 			{provider.Request{}, []string{"Role", "Instructions", "Input", "Tools", "ToolChoice", "Single", "CacheID", "Scope", "Cache", "Context"}},
 			{provider.Response{}, []string{"Items", "Usage", "Known", "UsageState", "ID", "Model", "Effort", "CacheStatus", "OperationID", "Metadata"}},
 			{provider.Client{}, []string{"HTTP", "Now", "Sleep", "Cache", "Locker", "Input", "Version", "ResponseBudget", "httpOnce", "defHTTP"}},
-			{tools.Tools{}, []string{"Root", "Session", "Repo", "Enabled", "Protected", "Excluded", "Probe", "Documentation", "ShellAfter", "shells"}},
+			{tools.Tools{}, []string{"Root", "Session", "Repo", "Enabled", "Protected", "Excluded", "Probe", "Documentation", "ShellAfter", "Now", "shells"}},
 			{tools.Output{}, []string{"Text", "Parts", "Rule"}},
 		} {
 			if got := fields(c.v); !reflect.DeepEqual(got, c.want) {

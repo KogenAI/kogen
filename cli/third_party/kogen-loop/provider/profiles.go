@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 //go:embed profiles.json

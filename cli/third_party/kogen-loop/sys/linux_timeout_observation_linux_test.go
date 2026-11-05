@@ -72,36 +72,38 @@ func linuxObsWaitAbsent(t *testing.T, pgid int) {
 	}
 }
 
+// The churn runs alone (no t.Parallel) and ends when the workers have observed their
+// exits, so it neither overlaps other sys tests nor assumes a spare CPU for a window.
 func TestLinuxTimeoutObservationChurn(t *testing.T) {
-	t.Parallel()
-	stop := make(chan struct{})
 	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-				}
+			for run := 0; run < 200; run++ {
 				exec.Command("/bin/true").Run()
 			}
 		}()
 	}
+	finished := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(finished)
+	}()
 	var calls, errs atomic.Int64
 	var first atomic.Value
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
+	for done := false; !done; {
 		calls.Add(1)
 		if _, err := timeoutGroupAlive(1 << 30); err != nil {
 			errs.Add(1)
 			first.CompareAndSwap(nil, err.Error())
 		}
+		select {
+		case <-finished:
+			done = true
+		default:
+		}
 	}
-	close(stop)
-	wg.Wait()
 	if errs.Load() != 0 {
 		t.Fatalf("calls=%d errors=%d first=%v", calls.Load(), errs.Load(), first.Load())
 	}

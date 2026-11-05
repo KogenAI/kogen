@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"kogen-loop/api"
-	"kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/loop"
 )
 
 // Every tool error's tool.result carries "error_kind", every malformed call's carries

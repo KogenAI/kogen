@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 var claudeRole = Role{Provider: "anthropic", Model: "claude-opus-5-5", Effort: "high"}

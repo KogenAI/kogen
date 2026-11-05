@@ -10,7 +10,7 @@ import (
 	"slices"
 	"testing"
 
-	"kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/api"
 )
 
 // TestLoopPin keeps the in-tree kogen-loop copy exactly what loop-pin.json names: the digest
@@ -28,10 +28,10 @@ func TestLoopPin(t *testing.T) {
 	if err := json.Unmarshal(raw, &pin); err != nil {
 		t.Fatal(err)
 	}
-	if pin.Module != "kogen-loop" || pin.Protocol != api.Protocol || pin.Library != api.Library {
+	if pin.Module != "github.com/KogenAI/kogen-loop" || pin.Protocol != api.Protocol || pin.Library != api.Library {
 		t.Fatalf("pin %s %s %s, compiled kogen-loop %s %s", pin.Module, pin.Protocol, pin.Library, api.Protocol, api.Library)
 	}
-	root := filepath.Join("third_party", "kogen-loop")
+	root := filepath.Join("third_party", "github.com/KogenAI/kogen-loop")
 	var files []string
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {

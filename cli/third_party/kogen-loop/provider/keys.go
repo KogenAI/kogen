@@ -11,7 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // Input is where a key login reads the secret from: Reader is stdin; when Terminal is set
@@ -40,10 +40,16 @@ func StdinInput() Input {
 	}
 }
 
+// secretInputLimit is the most bytes of credential a non-terminal input may supply, a
+// trailing line ending included: more than 100 times a real API key or Claude Code token.
+const secretInputLimit = 16 << 10
+
 // secret is one secret read. ok is false when the input could not be read as text (the
 // terminal could not be silenced, a read error, invalid UTF-8): the login is then
-// "interrupted" and keeps the saved key.
-func (in Input) secret(ctx context.Context) (value string, ok bool, err error) {
+// "interrupted" and keeps the saved key. tooLong is true when a non-terminal input holds
+// more than secretInputLimit bytes; no part of it is returned and the login refuses it as
+// an invalid value. The read asks the input for at most secretInputLimit+1 bytes in total.
+func (in Input) secret(ctx context.Context) (value string, ok, tooLong bool, err error) {
 	if in.Terminal {
 		stty := in.Stty
 		if stty == nil {
@@ -51,11 +57,11 @@ func (in Input) secret(ctx context.Context) (value string, ok bool, err error) {
 		}
 		state, serr := stty("-g")
 		if serr != nil {
-			return "", false, nil
+			return "", false, false, nil
 		}
 		defer stty(strings.TrimSpace(state))
 		if _, serr := stty("-echo"); serr != nil {
-			return "", false, nil
+			return "", false, false, nil
 		}
 	}
 	type read struct {
@@ -71,15 +77,18 @@ func (in Input) secret(ctx context.Context) (value string, ok bool, err error) {
 			line, err = bufio.NewReader(in.Reader).ReadString('\n')
 			data = []byte(line)
 		} else {
-			data, err = io.ReadAll(in.Reader)
+			data, err = io.ReadAll(io.LimitReader(in.Reader, secretInputLimit+1))
 		}
 		got <- read{data, err}
 	}()
 	select {
 	case r := <-got:
-		return string(r.data), (r.err == nil || r.err == io.EOF) && utf8.Valid(r.data), nil
+		if !in.Terminal && len(r.data) > secretInputLimit {
+			return "", false, true, nil
+		}
+		return string(r.data), (r.err == nil || r.err == io.EOF) && utf8.Valid(r.data), false, nil
 	case <-ctx.Done():
-		return "", false, ctx.Err()
+		return "", false, false, ctx.Err()
 	}
 }
 
@@ -131,12 +140,15 @@ func loginReason(p Info) string {
 func (k *call) loginKey(in Input, origin string) error {
 	p := k.info
 	fail := func(detail string) error { return providerFail(loginReason(p), detail) }
-	value, ok, err := in.secret(k.ctx)
+	value, ok, tooLong, err := in.secret(k.ctx)
 	if err != nil {
 		if ie := k.interrupted(); ie != nil {
 			return ie
 		}
 		return err
+	}
+	if tooLong {
+		return fail("invalid " + p.Label + " key input; saved login unchanged")
 	}
 	if !ok {
 		return fail(p.Label + " input interrupted; saved login unchanged")
@@ -215,12 +227,16 @@ func validToken(s string) bool {
 // claude-code`): nothing is verified and no request is made. Refusals never carry the input.
 func (k *call) loginToken(in Input) error {
 	fail := func(detail string) error { return providerFail("login_failed", detail+"; saved login unchanged") }
-	value, ok, err := in.secret(k.ctx)
+	const invalidToken = "invalid Claude Code token input: the token must be one line of letters, digits, dot, underscore and hyphen only"
+	value, ok, tooLong, err := in.secret(k.ctx)
 	if err != nil {
 		if ie := k.interrupted(); ie != nil {
 			return ie
 		}
 		return err
+	}
+	if tooLong {
+		return fail(invalidToken)
 	}
 	if !ok {
 		return fail("Claude Code token input interrupted")
@@ -230,7 +246,7 @@ func (k *call) loginToken(in Input) error {
 		return fail("no Claude Code token supplied (the input was empty)")
 	}
 	if !validToken(token) {
-		return fail("invalid Claude Code token input: the token must be one line of letters, digits, dot, underscore and hyphen only")
+		return fail(invalidToken)
 	}
 	if err := k.saveKey(token, ""); err != nil {
 		var stop *sys.Interrupted

@@ -217,7 +217,7 @@ func TestStrictTaskRefusal(t *testing.T) {
 		"unknown nested field": string(withNested),
 		"trailing data":        string(base) + "\n{}",
 		"not json":             "this is not a task",
-		"wrong type":           `{"protocol":"kogen-loop/v1","root":5}`,
+		"wrong type":           `{"protocol":"kogen-loop` + `/v1","root":5}`,
 		"empty":                "",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -235,7 +235,7 @@ func TestUnsupportedProtocolIsRefusedBeforeItsFieldsAreJudged(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t).signIn()
 	for name, task := range map[string]string{
-		"other version":  `{"protocol":"kogen-loop/v2","fields_of_the_future":true}`,
+		"other version":  `{"protocol":"kogen-loop` + `/v2","fields_of_the_future":true}`,
 		"missing":        `{"root":"/"}`,
 		"another family": `{"protocol":"other/v1"}`,
 	} {
@@ -517,7 +517,7 @@ func TestTranscriptResumeAfterATerminalEnding(t *testing.T) {
 		}
 	}
 	id := first.first("session.started")["session_id"]
-	if tr["session_id"] != id || tr["protocol"] != "kogen-loop/v1" {
+	if tr["session_id"] != id || tr["protocol"] != "kogen-loop"+"/v1" {
 		t.Errorf("session.json %v", tr)
 	}
 	terminal, _ := tr["terminal"].(map[string]any)
@@ -594,11 +594,25 @@ func TestResumeRefusesAMismatchBeforeAnyRequest(t *testing.T) {
 	t.Run("other protocol in the transcript", func(t *testing.T) {
 		var tr map[string]any
 		json.Unmarshal(original, &tr)
-		tr["protocol"] = "kogen-loop/v0"
+		tr["protocol"] = "kogen-loop" + "/v0"
 		os.WriteFile(filepath.Join(dir, "session.json"), mustJSON(t, tr), 0o600)
 		defer os.WriteFile(filepath.Join(dir, "session.json"), original, 0o600)
 		f := newFakeProvider(t, nil)
 		r := runCLI(t, w, f, sessionTask(w, dir, true, map[string]any{"instructions": "be brief"}))
+		expectRefusal(t, r, f, "loop", "session_mismatch", 2)
+	})
+	t.Run("transcript above the size bound", func(t *testing.T) {
+		big := t.TempDir()
+		fh, err := os.Create(filepath.Join(big, "session.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fh.Truncate(64<<20 + 1); err != nil {
+			t.Fatal(err)
+		}
+		fh.Close()
+		f := newFakeProvider(t, nil)
+		r := runCLI(t, w, f, sessionTask(w, big, true, map[string]any{"instructions": "be brief"}))
 		expectRefusal(t, r, f, "loop", "session_mismatch", 2)
 	})
 	t.Run("no transcript", func(t *testing.T) {
@@ -658,7 +672,7 @@ func TestCapabilitiesNeedNoNetworkOrCredentials(t *testing.T) {
 	if strings.Count(strings.TrimSpace(out), "\n") != 0 {
 		t.Errorf("capabilities is not one object: %q", out)
 	}
-	if caps["protocol"] != "kogen-loop/v1" || caps["library"] != "loop/v1" || caps["session_resume"] != "transcript" ||
+	if caps["protocol"] != "kogen-loop"+"/v1" || caps["library"] != "loop/v1" || caps["session_resume"] != "transcript" ||
 		caps["usage"] != "provider" || caps["images"] != true || caps["subagents"] != false || caps["compaction"] != true {
 		t.Errorf("capabilities %v", caps)
 	}

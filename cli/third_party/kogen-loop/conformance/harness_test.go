@@ -213,7 +213,7 @@ func (w *world) env(f *fakeProvider) []string {
 // task is a complete task for the fake: the chatgpt role, the world's root, and overrides.
 func (w *world) task(over map[string]any) map[string]any {
 	task := map[string]any{
-		"protocol": "kogen-loop/v1", "root": w.root,
+		"protocol": "kogen-loop" + "/v1", "root": w.root,
 		"role":         map[string]any{"provider": "chatgpt", "model": "fixture-model", "effort": "medium", "base_url": ""},
 		"instructions": "", "prompt": "do the thing",
 		"tools":     []any{"read_file", "write_file", "list_files", "search_text", "shell"},
@@ -252,7 +252,7 @@ func cliBinary(t *testing.T) string {
 			return
 		}
 		binPath = filepath.Join(buildDir, "kogen-loop")
-		cmd := exec.Command("go", "build", "-o", binPath, "kogen-loop/cmd/kogen-loop")
+		cmd := exec.Command("go", "build", "-o", binPath, "github.com/KogenAI/kogen-loop/cmd/kogen-loop")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			buildErr = fmt.Errorf("go build: %v\n%s", err, out)
 		}
@@ -375,7 +375,7 @@ func checkInvariants(t *testing.T, r result) {
 		t.Fatalf("no events (stderr: %s)", r.stderr)
 	}
 	for i, ev := range r.events {
-		if ev["protocol"] != "kogen-loop/v1" {
+		if ev["protocol"] != "kogen-loop"+"/v1" {
 			t.Errorf("event %d: protocol %v", i+1, ev["protocol"])
 		}
 		if seq, _ := ev["seq"].(float64); int(seq) != i+1 {

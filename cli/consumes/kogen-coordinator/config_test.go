@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/KogenAI/kogen-coordinator/project"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // kogen cli/readiness/readiness.go parses the project's configuration text and, when that fails,

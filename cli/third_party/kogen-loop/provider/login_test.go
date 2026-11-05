@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 func jwt(claims map[string]any) string {

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // The per-call shell time limit is deleted, not replaced; the other caller options stay.

@@ -1,8 +1,8 @@
 package loop
 
 import (
-	"kogen-loop/api"
-	"kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/provider"
 )
 
 // UsageOf is the usage a response reported, as api.Usage. A category the provider did not

@@ -29,6 +29,8 @@ go vet ./...
 go build -o /dev/null ./...
 ```
 
+`go run scripts/slowtests.go` reports, on demand, each package's wall time and every test that takes 2 s or longer, and exits non-zero when such a test is not listed with its reason in `scripts/slowtests-allowlist.txt`. It is not part of `go test ./...`.
+
 ## Navigation
 
 - [Caller contract v1](docs/contract/loop-v1.md): API, process protocol, tools, errors and cancellation.

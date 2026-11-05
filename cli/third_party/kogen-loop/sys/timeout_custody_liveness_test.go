@@ -92,6 +92,16 @@ func custodyObserverChild(t *testing.T, binary, name, fault, stop string) {
 	}
 }
 
+// custodyFifo creates the FIFO a fixture shell blocks on, inside the session's Cwd.
+func custodyFifo(t *testing.T, dir string) string {
+	t.Helper()
+	fifo := filepath.Join(dir, "block")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return fifo
+}
+
 func custodyWaitFile(t *testing.T, path string) {
 	t.Helper()
 	deadline := time.After(3 * time.Second)
@@ -125,6 +135,8 @@ func TestTimeoutCustodyBlockedObservation(t *testing.T) {
 	// or orphan descendants. Only this disposable child changes the setting.
 	supervisorEnabled.Store(false)
 	s := session(t)
+	// The shell blocks in read on a FIFO it holds open read-write: no CPU, no child.
+	fifo := custodyFifo(t, s.Cwd)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	type outcome struct {
@@ -133,7 +145,7 @@ func TestTimeoutCustodyBlockedObservation(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		r, err := s.Run(`trap 'echo term > term' TERM; echo ready > ready; while :; do :; done`, s.Cwd, Options{Timeout: 200 * time.Millisecond, Context: ctx})
+		r, err := s.Run(`trap 'echo term > term' TERM; echo ready > ready; while :; do read x <> '`+fifo+`'; done`, s.Cwd, Options{Timeout: 200 * time.Millisecond, Context: ctx})
 		done <- outcome{r, err}
 	}()
 	// Failure cleanup kills only this fixture's group, and runs before the child
@@ -211,6 +223,7 @@ func TestTimeoutCustodyObservationError(t *testing.T) {
 	}
 	supervisorEnabled.Store(false)
 	s := session(t)
+	fifo := custodyFifo(t, s.Cwd)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stop := os.Getenv("TIMEOUT_CUSTODY_STOP")
@@ -229,7 +242,7 @@ func TestTimeoutCustodyObservationError(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		r, err := s.Run(`trap 'echo term > term; exit 0' TERM; printf partial; while :; do :; done`, s.Cwd, Options{Timeout: 200 * time.Millisecond, Context: callCtx})
+		r, err := s.Run(`trap 'echo term > term; exit 0' TERM; printf partial; while :; do read x <> '`+fifo+`'; done`, s.Cwd, Options{Timeout: 200 * time.Millisecond, Context: callCtx})
 		done <- outcome{r, err}
 	}()
 	t.Cleanup(func() { Terminate(s.Groups()) })

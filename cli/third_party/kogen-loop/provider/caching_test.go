@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // Prompt caching (Intent go-core-migration): one cache identity per conversation, the same

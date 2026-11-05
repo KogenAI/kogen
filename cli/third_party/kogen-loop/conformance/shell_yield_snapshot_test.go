@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/internal/delivery"
-	"kogen-loop/loop"
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/internal/delivery"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 type snapshotRequester struct {

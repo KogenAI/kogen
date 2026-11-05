@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // yieldAfter is a Tools.ShellAfter that lets a new command's wait elapse once the command has

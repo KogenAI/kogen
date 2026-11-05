@@ -15,20 +15,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
-	_ "unsafe" // go:linkname
 
-	"kogen-loop/loop"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/tools"
 )
-
-// shellStartHook is sys's test-only seam at the shell-start boundary ("enter", "starting",
-// "started"). It is nil outside the startup tests, which set it before a round starts and
-// clear it after the round has returned.
-//
-//go:linkname shellStartHook kogen-loop/sys.startHook
-var shellStartHook func(stage string)
 
 // ---- owned process observation ----
 
@@ -367,14 +359,11 @@ func TestShellLifecycleCompatibility(t *testing.T) {
 // startupRound runs a round whose second shell call is held at one stage of the shell-start
 // boundary while the context ends, then released. Both ends of the context must stop it.
 //
-// startupRound installs shellStartHook, the test seam linked to the process-wide
-// kogen-loop/sys.startHook. That hook fires for every in-process shell start in the test
-// binary and counts "enter" stages, so another test's concurrent in-process shell would be
-// counted or held instead of the round's second call. The tests that call startupRound
-// therefore stay serial (no t.Parallel, in them or in their subtests): Go runs non-parallel
-// top-level tests to completion before it releases the parallel ones, so these never overlap
-// another test. The 200 ms hold after the context ends is the window under test: the round
-// must react to the ended context while the shell start is held.
+// startupRound sets sys.Session.StartHook on its own run's session, so the hook sees only
+// this round's shell starts and concurrent tests cannot see each other's hook; the tests
+// that call it run in parallel. The hook counts "enter" stages and holds the round's second
+// call. The 200 ms hold after the context ends is the window under test: the round must
+// react to the ended context while the shell start is held.
 func startupRound(t *testing.T, stage string, end func() (context.Context, func(), func())) {
 	t.Helper()
 	l := newLifecycleRun(t)
@@ -399,7 +388,7 @@ func startupRound(t *testing.T, stage string, end func() (context.Context, func(
 	release := func() { once.Do(func() { close(gate) }) }
 	defer release()
 	var enters atomic.Int32
-	shellStartHook = func(s string) {
+	l.sess.StartHook = func(s string) {
 		if s == "enter" {
 			enters.Add(1)
 		}
@@ -408,7 +397,6 @@ func startupRound(t *testing.T, stage string, end func() (context.Context, func(
 			<-gate
 		}
 	}
-	defer func() { shellStartHook = nil }()
 	type outcome struct {
 		res loop.Result
 		err error
@@ -467,10 +455,12 @@ func startupRound(t *testing.T, stage string, end func() (context.Context, func(
 	}
 }
 
-// Cancellation during startup cannot miss a shell or hang the round. Serial: see startupRound.
+// Cancellation during startup cannot miss a shell or hang the round. The start hook belongs to the round's own session, so it runs in parallel.
 func TestShellLifecycleCancelStartup(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"enter", "starting", "started"} {
 		t.Run(stage, func(t *testing.T) {
+			t.Parallel()
 			startupRound(t, stage, func() (context.Context, func(), func()) {
 				ctx, cancel := context.WithCancel(context.Background())
 				return ctx, cancel, cancel
@@ -479,10 +469,12 @@ func TestShellLifecycleCancelStartup(t *testing.T) {
 	}
 }
 
-// Deadline during startup cannot miss late registration. Serial: see startupRound.
+// Deadline during startup cannot miss late registration. The start hook belongs to the round's own session, so it runs in parallel.
 func TestShellLifecycleDeadlineStartup(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"enter", "starting", "started"} {
 		t.Run(stage, func(t *testing.T) {
+			t.Parallel()
 			startupRound(t, stage, func() (context.Context, func(), func()) {
 				ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 				return ctx, cancel, func() { <-ctx.Done() }
@@ -492,6 +484,7 @@ func TestShellLifecycleDeadlineStartup(t *testing.T) {
 	// The standalone CLI: the whole-round deadline stops a running shell and its
 	// SIGTERM-resistant descendant before the process exits.
 	t.Run("cli", func(t *testing.T) {
+		t.Parallel()
 		w := newWorld(t).signIn()
 		command := `echo $$ > shell.pid; ` + resistant(w.root, "desc") + ` wait`
 		f := newFakeProvider(t, []exchange{{Items: []map[string]any{call("c1", "shell", map[string]any{"command": command})}}, {Hang: true}})

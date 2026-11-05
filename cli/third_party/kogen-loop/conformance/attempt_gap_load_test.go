@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/provider"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // gapClock is a scripted client clock: it moves only when a request is sent or a wait sleeps.

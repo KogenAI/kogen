@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // With any response or call hook installed the engine keeps its documented order: the whole

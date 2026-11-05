@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 const testKey = "SYNTHETIC_API_KEY_0001"

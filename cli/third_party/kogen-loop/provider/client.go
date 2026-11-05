@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // ResponseBudget is the fixed absolute budget of one logical Respond call (GPT-8).

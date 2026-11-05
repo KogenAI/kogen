@@ -7,9 +7,9 @@ import (
 	"slices"
 	"sync"
 
-	"kogen-loop/internal/footprint"
-	"kogen-loop/sys"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/internal/footprint"
+	"github.com/KogenAI/kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // stage runs the tool calls of one response while it is still arriving. It is the

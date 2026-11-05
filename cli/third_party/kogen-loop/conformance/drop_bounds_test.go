@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/loop"
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // The optional loop stopping bounds are deleted, not deprecated or replaced: no option, typed

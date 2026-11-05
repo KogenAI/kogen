@@ -11,7 +11,7 @@ import (
 
 	"github.com/KogenAI/kogen-executor/executor"
 	"github.com/KogenAI/kogen-executor/executor/claudecode"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // TestRuntimeLayout: kogen's provider list and uninstall use Root, kogen's list and readiness

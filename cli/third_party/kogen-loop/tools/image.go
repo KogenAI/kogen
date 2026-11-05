@@ -15,9 +15,9 @@ import (
 	"slices"
 	"unicode/utf8"
 
-	"kogen-loop/api"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // view_image: one local PNG, read-only, bounded, delivered to the model as typed pixels

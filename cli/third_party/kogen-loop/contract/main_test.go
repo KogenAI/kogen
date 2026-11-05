@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // TestMain follows kogen-loop's own sys tests and kogen's main: a command run under the

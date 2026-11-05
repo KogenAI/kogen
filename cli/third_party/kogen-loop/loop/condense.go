@@ -8,11 +8,11 @@ import (
 	"slices"
 	"strings"
 
-	"kogen-loop/api"
-	"kogen-loop/internal/delivery"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/internal/delivery"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // CondensedHeader opens the content of the user message that carries a condensed summary of

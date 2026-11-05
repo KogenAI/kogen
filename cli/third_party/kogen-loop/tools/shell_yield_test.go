@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 	"os"
 	"path/filepath"
 	"strconv"

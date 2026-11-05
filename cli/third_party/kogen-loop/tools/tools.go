@@ -22,8 +22,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"kogen-loop/api"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // Output is what a tool returns: text, or typed parts (the pixels of view_image), which the
@@ -48,6 +48,9 @@ type Classified struct {
 	MalformedClass string
 	// ShellWait is the bounded wait of a shell call that reached it, nil for every other call.
 	ShellWait *ShellWait
+	// ExitStatus is the completed command's status (128+signal when killed) of a shell call whose
+	// text reports one, nil for every other call, including refused ones.
+	ExitStatus *int
 }
 
 // ShellWait is the bounded wait of one shell call.
@@ -110,7 +113,19 @@ type Tools struct {
 	// would otherwise take, starts no timer and treats a value received from the returned
 	// channel as that wait elapsing. It cannot change the wait itself.
 	ShellAfter func(wait time.Duration) <-chan time.Time
-	shells     *shellRegistry
+	// Now is a test seam. Production leaves it nil and uses time.Now. When set, it is the
+	// clock of the shell-wait record's wait instants (WaitStarted, WaitEnded) and of the
+	// session's elapsed_ms measurement of each call.
+	Now    func() time.Time
+	shells *shellRegistry
+}
+
+// clock reads Now, or time.Now when Now is nil.
+func (t *Tools) clock() time.Time {
+	if t.Now != nil {
+		return t.Now()
+	}
+	return time.Now()
 }
 
 const (
@@ -168,11 +183,20 @@ func (t *Tools) Call(c Call) (Output, error) { return t.CallContext(nil, c) }
 
 // CallContext runs a response call like RunContext.
 func (t *Tools) CallContext(ctx context.Context, c Call) (Output, error) {
-	return t.RunContext(ctx, c.Name, c.Args())
+	classified, err := t.CallClassified(ctx, c)
+	return classified.Output(), err
 }
 
 // CallClassified runs a response call like RunClassified.
 func (t *Tools) CallClassified(ctx context.Context, c Call) (Classified, error) {
+	if slices.Contains(t.Enabled, c.Name) && (c.Name == ListFilesTool || c.Name == SearchTextTool) {
+		v, err := decodeJSONKeeping([]byte(c.Arguments), true)
+		args, ok := v.(map[string]any)
+		if err != nil || !ok {
+			return Classified{Text: "error: malformed arguments; expected a JSON object", MalformedClass: api.MalformedWrongArgumentType}, nil
+		}
+		return t.RunClassified(ctx, c.Name, args)
+	}
 	return t.RunClassified(ctx, c.Name, c.Args())
 }
 
@@ -196,13 +220,6 @@ func badArg(args map[string]any, key, msg string) Classified {
 }
 
 func failed(kind, text string) Classified { return Classified{Text: text, ErrorKind: kind} }
-
-func optionalPath(args map[string]any) string {
-	if p, ok := args["path"].(string); ok {
-		return p
-	}
-	return "."
-}
 
 // expand is the absolute, cleaned form of path against root; a leading ~ is the home folder.
 // Only write_file uses it: the reading tools are confined to the root (see contain).
@@ -237,6 +254,134 @@ func relativeTo(abs, root string) string {
 func (t *Tools) resolve(path string) (abs, rel string) {
 	abs = expand(path, t.Root)
 	return abs, relativeTo(abs, t.Root)
+}
+
+// resolveWrite is resolve for write_file: a link right before a ".." is followed first, so
+// the ".." steps up from the link's target as the file system does. The rest is taken as
+// written and a component that does not exist is removed by a ".." after it, as Clean does.
+// A link before a ".." must resolve to an existing directory, or the error is the reason.
+func (t *Tools) resolveWrite(path string) (abs, rel string, err error) {
+	if strings.ContainsRune(path, 0) || !slices.Contains(splitPath(path), "..") {
+		abs, rel = t.resolve(path)
+		return abs, rel, nil
+	}
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			path = home + path[1:]
+		}
+	}
+	rooted := filepath.IsAbs(path)
+	if !rooted {
+		root := filepath.Clean(t.Root)
+		rooted = filepath.IsAbs(root)
+		path = root + "/" + path
+	}
+	var stack []string
+	for _, c := range splitPath(path) {
+		if c != ".." {
+			stack = append(stack, c)
+			continue
+		}
+		if len(stack) == 0 || stack[len(stack)-1] == ".." {
+			if !rooted {
+				stack = append(stack, c)
+			}
+			continue
+		}
+		top := strings.Join(stack, "/")
+		if rooted {
+			top = "/" + top
+		}
+		if fi, err := os.Lstat(top); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if top, err = filepath.Abs(top); err != nil {
+				return "", "", err
+			}
+			if stack, err = resolveLinkDir(top); err != nil {
+				return "", "", err
+			}
+			rooted = true
+		}
+		stack = stack[:len(stack)-1]
+	}
+	abs = strings.Join(stack, "/")
+	if rooted {
+		abs = "/" + abs
+	} else if abs == "" {
+		abs = "."
+	}
+	root := t.Root
+	if rooted && !filepath.IsAbs(root) {
+		if root, err = filepath.Abs(root); err != nil {
+			return "", "", err
+		}
+	}
+	rel = relativeTo(abs, root)
+	// A followed link leaves a path without links, which names the root without its links.
+	if filepath.IsAbs(rel) {
+		if canonical, err := filepath.EvalSymlinks(root); err == nil {
+			rel = relativeTo(abs, canonical)
+		}
+	}
+	return abs, rel, nil
+}
+
+// maxWriteLinks bounds the links followed to resolve one link before a "..".
+const maxWriteLinks = 40
+
+// resolveLinkDir is the components of the existing directory the link at the absolute path
+// link leads to, without links: every component is resolved from "/", so a ".." in a target
+// steps up from where the folders holding the link really are. A target or component that
+// is missing, a loop or more than maxWriteLinks links, and a target that is not a directory
+// are errors.
+func resolveLinkDir(link string) ([]string, error) {
+	var stack []string
+	pending := splitPath(link)
+	links := 0
+	for len(pending) > 0 {
+		c := pending[0]
+		pending = pending[1:]
+		if c == ".." {
+			if len(stack) > 0 {
+				if err := mustBeDir(stack); err != nil {
+					return nil, err
+				}
+				stack = stack[:len(stack)-1]
+			}
+			continue
+		}
+		cand := "/" + strings.Join(append(slices.Clone(stack), c), "/")
+		fi, err := os.Lstat(cand)
+		if err != nil {
+			return nil, err
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			stack = append(stack, c)
+			continue
+		}
+		if links++; links > maxWriteLinks {
+			return nil, syscall.ELOOP
+		}
+		target, err := os.Readlink(cand)
+		if err != nil {
+			return nil, err
+		}
+		if filepath.IsAbs(target) {
+			stack = nil
+		}
+		pending = append(splitPath(target), pending...)
+	}
+	return stack, mustBeDir(stack)
+}
+
+func mustBeDir(stack []string) error {
+	fi, err := os.Stat("/" + strings.Join(stack, "/"))
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return syscall.ENOTDIR
+	}
+	return nil
 }
 
 // errno names, as the Erlang file functions report them.
@@ -295,6 +440,9 @@ func (t *Tools) readFile(args map[string]any) Classified {
 	}
 	data, err := t.readContained(path)
 	switch {
+	case err == nil && (slices.Contains(data, 0) || !utf8.Valid(data)):
+		return Classified{Text: path + ": binary file, " + strconv.Itoa(len(data)) +
+			" bytes (contains a NUL byte or is not valid UTF-8); content not shown"}
 	case err == nil:
 		text := string(data)
 		if lines := lineCount(text); hasStart && from > lines {
@@ -400,7 +548,10 @@ func (t *Tools) writeFile(args map[string]any) Classified {
 	if msg != "" {
 		return badArg(args, "content", msg)
 	}
-	abs, rel := t.resolve(path)
+	abs, rel, err := t.resolveWrite(path)
+	if err != nil {
+		return failed(api.ToolErrorFile, "error: "+path+": "+reason(err))
+	}
 	if slices.Contains(t.Protected, rel) {
 		return failed(api.ToolErrorProtected, "refused: "+rel+" is part of the approved acceptance baseline")
 	}
@@ -630,7 +781,15 @@ func (t *Tools) session() *sys.Session {
 // pathspec is the Git path restriction for a path argument: none for the root itself. A path
 // that leaves the root, by name, home, `..` or a symlink, is refused with the error text.
 func (t *Tools) pathspec(args map[string]any) ([]string, Classified) {
-	path := cString(optionalPath(args)) // Git receives an argument only up to its first NUL
+	path := "."
+	if _, supplied := args["path"]; supplied {
+		var msg string
+		path, msg = stringArg(args, "path")
+		if msg != "" {
+			return nil, badArg(args, "path", msg)
+		}
+	}
+	path = cString(path) // Git receives an argument only up to its first NUL
 	// Git top-anchored pathspecs are relative to the Git worktree, which can be
 	// an ancestor of Tools.Root. They must not bypass root containment.
 	if strings.HasPrefix(path, ":/") || strings.HasPrefix(path, ":(") && strings.Contains(strings.SplitN(path, ")", 2)[0], "top") {
@@ -866,7 +1025,7 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (Classified, err
 		wait = 30 * time.Second
 	}
 	var elapsed <-chan time.Time
-	waitStarted := time.Now()
+	waitStarted := t.clock()
 	if t.ShellAfter != nil {
 		elapsed = t.ShellAfter(wait)
 	} else {
@@ -897,7 +1056,7 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (Classified, err
 		}
 		return Classified{}, ctx.Err()
 	}
-	waitEnded := time.Now()
+	waitEnded := t.clock()
 	spawned := j.cmd.Started()
 	if spawned.After(waitEnded) {
 		spawned = time.Time{}
@@ -922,7 +1081,8 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (Classified, err
 		if res.Rule != "" {
 			return Classified{Text: res.Output, Rule: res.Rule, ErrorKind: api.ToolErrorForeignKill, ShellWait: record}, nil
 		}
-		return Classified{Text: "exit status: " + strconv.Itoa(res.Status) + "\n" + res.Output, ShellWait: record}, nil
+		status := res.Status
+		return Classified{Text: "exit status: " + strconv.Itoa(status) + "\n" + res.Output, ShellWait: record, ExitStatus: &status}, nil
 	}
 	output := res.Output
 	if !utf8.ValidString(output) {
@@ -932,6 +1092,11 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (Classified, err
 	if completed {
 		envelope["status"] = "completed"
 		envelope["exit_status"] = res.Status
+	}
+	var exitStatus *int
+	if completed && res.Rule == "" {
+		status := res.Status
+		exitStatus = &status
 	}
 	raw, _ := json.Marshal(envelope)
 	if len(raw) > maxResult {
@@ -950,7 +1115,7 @@ func (t *Tools) shell(ctx context.Context, args map[string]any) (Classified, err
 		envelope["output"] = cutText(output, lo, lo/4)
 		raw, _ = json.Marshal(envelope)
 	}
-	return Classified{Text: string(raw), ShellWait: record}, nil
+	return Classified{Text: string(raw), ShellWait: record, ExitStatus: exitStatus}, nil
 }
 
 func (t *Tools) probe(args map[string]any) (string, error) {
@@ -980,17 +1145,34 @@ func Cut(text string) string {
 	return cutText(text, maxResult, defaultResultHead)
 }
 
+// CutOmitted is the byte range text[from:to] that Cut omits from text, and false when Cut
+// leaves text unchanged. Invalid UTF-8 bytes are replaced before bounding, as Cut does, so the
+// range is of the replaced text, which equals text when text is valid UTF-8.
+func CutOmitted(text string) (from, to int, cut bool) {
+	if !utf8.ValidString(text) {
+		text = string([]rune(text))
+	}
+	_, from, to = cutSpan(text, maxResult, defaultResultHead)
+	return from, to, to > from
+}
+
 func cutText(text string, bound, headSize int) string {
+	cut, _, _ := cutSpan(text, bound, headSize)
+	return cut
+}
+
+// cutSpan is cutText and the byte range text[from:to] it omits (from == to: nothing omitted).
+func cutSpan(text string, bound, headSize int) (cut string, from, to int) {
 	if len(text) <= bound {
-		return text
+		return text, 0, 0
 	}
 	head := validPrefix(text[:headSize])
 	if i := strings.LastIndexByte(head, '\n'); i >= 0 {
 		head = head[:i+1]
 	}
 	if strings.HasSuffix(head, "\n") {
-		if cut, ok := cutLines(text, head, bound, headSize); ok {
-			return cut
+		if cut, tail, ok := cutLines(text, head, bound, headSize); ok {
+			return cut, len(head), len(text) - len(tail)
 		}
 	}
 	marker := func(n int) string { return fmt.Sprintf("\n[... %d bytes omitted ...]\n", n) }
@@ -999,13 +1181,13 @@ func cutText(text string, bound, headSize int) string {
 	if i := strings.IndexByte(tail, '\n'); i >= 0 {
 		tail = tail[i+1:]
 	}
-	return head + marker(len(text)-len(head)-len(tail)) + tail
+	return head + marker(len(text)-len(head)-len(tail)) + tail, len(head), len(text) - len(tail)
 }
 
 // cutLines is the line form of cutText for a head that ends at a line boundary: the marker also
 // counts the complete lines omitted, with their line-number range when text is numbered. It
-// reports false when the tail has no line boundary.
-func cutLines(text, head string, bound, headSize int) (string, bool) {
+// returns the kept tail, and reports false when the tail has no line boundary.
+func cutLines(text, head string, bound, headSize int) (cut, tail string, ok bool) {
 	first, last, isNumbered := numberedRange(text)
 	total := strconv.Itoa(len(text))
 	width := len("\n[... " + total + " lines, " + total + " bytes omitted ...]\n")
@@ -1015,12 +1197,12 @@ func cutLines(text, head string, bound, headSize int) (string, bool) {
 	}
 	tailSize := bound - headSize - width
 	if tailSize < 0 {
-		return "", false
+		return "", "", false
 	}
-	tail := validSuffix(text[len(text)-tailSize:])
+	tail = validSuffix(text[len(text)-tailSize:])
 	i := strings.IndexByte(tail, '\n')
 	if i < 0 {
-		return "", false
+		return "", "", false
 	}
 	tail = tail[i+1:]
 	middle := text[len(head) : len(text)-len(tail)]
@@ -1036,8 +1218,12 @@ func cutLines(text, head string, bound, headSize int) (string, bool) {
 	} else {
 		marker = fmt.Sprintf("\n[... %d %s, %d bytes omitted ...]\n", lines, unit, len(middle))
 	}
-	return head + marker + tail, true
+	return head + marker + tail, tail, true
 }
+
+// NumberedRange is the first and last line number of numbered read_file text: every line
+// `N<tab>…` with consecutive numbers (the test the line-form cut marker applies).
+func NumberedRange(text string) (first, last int, ok bool) { return numberedRange(text) }
 
 // numberedRange reports whether every line of text begins with a decimal number (no leading zeros,
 // at least 1) and a tab, each one more than the line before, with the first and last numbers.

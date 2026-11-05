@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/api"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // rbExchange is one complete exchange of a conversation: a call and the output that answers it.

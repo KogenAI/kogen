@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"kogen-loop/loop"
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // A successful tool return does not imply the context is still live. In

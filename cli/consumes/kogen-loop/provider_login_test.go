@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/provider"
 )
 
 // TestCheckSeamsAcceptsOnlyLoopbackTestURLs: kogen's `provider login` and Intent commands refuse

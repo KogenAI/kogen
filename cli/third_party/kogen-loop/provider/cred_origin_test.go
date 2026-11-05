@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // L-CRED-ORIGIN: a saved openai-compatible key belongs to the origin it was logged in at.

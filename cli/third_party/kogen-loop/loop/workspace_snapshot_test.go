@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // Run is the engine Kogen's builder calls: it sends the caller's input, never a snapshot.

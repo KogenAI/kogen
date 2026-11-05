@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/KogenAI/kogen-build/build"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // landScript writes the candidate and finishes; the independent review then approves.

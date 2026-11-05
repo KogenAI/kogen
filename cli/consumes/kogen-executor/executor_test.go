@@ -6,7 +6,7 @@ import (
 
 	"github.com/KogenAI/kogen-executor/executor"
 	"github.com/KogenAI/kogen-executor/executor/claudecode"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // TestFailIsAnExecutorSysError: kogen's externalExecutor refuses an executor that is not

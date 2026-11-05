@@ -3,15 +3,18 @@ package provider
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // The two key providers differ only in names and in the reason their login failures carry.
@@ -363,5 +366,186 @@ func TestClaudeCodeTokenValidation(t *testing.T) {
 	}
 	if !validToken("sk-ant-oat01-SYN_TH.etic-0123") {
 		t.Error("plain token refused")
+	}
+}
+
+// countingReader supplies marker bytes (endlessly when limit is zero, else limit bytes) and
+// counts what it gave.
+type countingReader struct {
+	limit int
+	given atomic.Int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n := len(p)
+	if r.limit > 0 {
+		left := r.limit - int(r.given.Load())
+		if left <= 0 {
+			return 0, io.EOF
+		}
+		n = min(n, left)
+	}
+	for i := range p[:n] {
+		p[i] = "XQZJ"[i%4]
+	}
+	r.given.Add(int64(n))
+	return n, nil
+}
+
+// secretLogins are the logins that read a secret, with the exact refusal of invalid input.
+var secretLogins = []struct{ name, reason, invalid string }{
+	{"opencode-go", "login_failed", "invalid OpenCode Go key input; saved login unchanged"},
+	{"anthropic", "login", "invalid Anthropic key input; saved login unchanged"},
+	{ClaudeCodeName, "login_failed", "invalid Claude Code token input: the token must be one line of letters, digits, dot, underscore and hyphen only; saved login unchanged"},
+}
+
+func TestSecretInputLimitIsSixteenKiB(t *testing.T) {
+	if secretInputLimit != 16384 {
+		t.Fatalf("secretInputLimit = %d", secretInputLimit)
+	}
+}
+
+// An endless input is refused as an invalid value once its 16385th byte is read.
+func TestEndlessSecretInputIsRefusedAfterTheBound(t *testing.T) {
+	t.Parallel()
+	for _, p := range secretLogins {
+		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, nil)
+			if err := e.loginWith(p.name, piped("old-key\n")); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(e.credPath(p.name))
+			e.out.Reset()
+			endless := &countingReader{}
+			done := make(chan error, 1)
+			go func() { done <- e.loginWith(p.name, Input{Reader: endless}) }()
+			select {
+			case err := <-done:
+				se := mustErr(t, err)
+				if se.Class != "provider" || se.Reason != p.reason || se.Exit != 4 || se.Detail != p.invalid {
+					t.Fatalf("err = %v", se)
+				}
+				if strings.Contains(se.Error()+se.Render()+e.out.String()+e.errs.String(), "XQZJ") {
+					t.Fatal("the refusal carries the input")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("login did not end")
+			}
+			if got := endless.given.Load(); got != secretInputLimit+1 {
+				t.Errorf("consumed %d bytes", got)
+			}
+			if after, _ := os.ReadFile(e.credPath(p.name)); !bytes.Equal(after, before) || e.out.Len() != 0 {
+				t.Errorf("the saved login changed or %q was printed", e.out.String())
+			}
+		})
+	}
+}
+
+// The bound counts every byte, a trailing line ending included.
+func TestSecretInputBoundary(t *testing.T) {
+	t.Parallel()
+	for _, p := range secretLogins {
+		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, nil)
+			if err := e.loginWith(p.name, piped("old-key\n")); err != nil {
+				t.Fatal(err)
+			}
+			cred := func(n int) string { return strings.Repeat("a", n) }
+			for _, c := range []struct {
+				name, input string
+				saved       bool
+			}{
+				{"bound", cred(secretInputLimit), true},
+				{"bound minus one plus newline", cred(secretInputLimit-1) + "\n", true},
+				{"bound minus one plus crlf", cred(secretInputLimit-2) + "\r\n", true},
+				{"bound plus one", cred(secretInputLimit + 1), false},
+				{"bound plus newline", cred(secretInputLimit) + "\n", false},
+				{"bound plus crlf", cred(secretInputLimit) + "\r\n", false},
+				{"cut inside a utf-8 sequence", cred(secretInputLimit) + "é", false},
+			} {
+				before, _ := os.ReadFile(e.credPath(p.name))
+				e.out.Reset()
+				err := e.loginWith(p.name, piped(c.input))
+				after, _ := os.ReadFile(e.credPath(p.name))
+				if c.saved {
+					if err != nil || e.readCreds(p.name)["api_key"] != strings.TrimSpace(c.input) {
+						t.Errorf("%s: err = %v", c.name, err)
+					}
+					continue
+				}
+				se := mustErr(t, err)
+				if se.Class != "provider" || se.Reason != p.reason || se.Exit != 4 || se.Detail != p.invalid {
+					t.Errorf("%s: %v", c.name, se)
+				}
+				if strings.Contains(se.Error()+se.Render()+e.out.String()+e.errs.String(), "aaaa") {
+					t.Errorf("%s: the refusal carries the input", c.name)
+				}
+				if !bytes.Equal(after, before) || e.out.Len() != 0 {
+					t.Errorf("%s changed the saved login or printed %q", c.name, e.out.String())
+				}
+			}
+		})
+	}
+}
+
+// pausedReader holds its first Read until released, then supplies marker bytes freely.
+type pausedReader struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+	countingReader
+}
+
+func (r *pausedReader) Read(p []byte) (int, error) {
+	r.once.Do(func() { close(r.started); <-r.release })
+	return r.countingReader.Read(p)
+}
+
+// A cancelled login returns the context error at once; the reader it left behind consumes at
+// most the bound plus one byte of an input that resumes supplying.
+func TestCancelledSecretLoginReaderStopsAtTheBound(t *testing.T) {
+	t.Parallel()
+	for _, p := range secretLogins {
+		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, nil)
+			if err := e.loginWith(p.name, piped("old-key\n")); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(e.credPath(p.name))
+			in := &pausedReader{started: make(chan struct{}), release: make(chan struct{})}
+			e.c.Input = &Input{Reader: in}
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- e.c.Login(ctx, e.s, p.name, nil) }()
+			<-in.started
+			cancel()
+			select {
+			case err := <-done:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("err = %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("login did not return")
+			}
+			close(in.release)
+			var last int64 = -1
+			for i := 0; i < 100; i++ {
+				time.Sleep(20 * time.Millisecond)
+				now := in.given.Load()
+				if now > 0 && now == last {
+					break
+				}
+				last = now
+			}
+			if got := in.given.Load(); got != secretInputLimit+1 {
+				t.Errorf("consumed %d bytes after the cancel", got)
+			}
+			if after, _ := os.ReadFile(e.credPath(p.name)); !bytes.Equal(after, before) {
+				t.Error("a cancelled login changed the saved login")
+			}
+		})
 	}
 }

@@ -1,0 +1,18 @@
+# Allowlist for scripts/slowtests.go (run: go run scripts/slowtests.go).
+#
+# Format, one entry per line:
+#   <import path> <TestName> # <reason>
+# <TestName> is a top-level test function of that package. The reason is required and starts with
+# "real binary", "real signal" or "real network-free timer", then ": " and what the test waits on.
+#
+# An entry is only for a test that must wait on a real binary, a real signal or a real network-free
+# timer. A slow test that fits none of these is not listed here: it is shortened instead.
+# An entry whose test no longer produces events is printed as "stale" and should be removed.
+github.com/KogenAI/kogen-loop/loop TestDiscardedAttemptBatchPreservesOtherShell # real signal: shells that trap SIGTERM are escalated to SIGKILL after the grace period
+github.com/KogenAI/kogen-loop/sys TestInterruptKillsAGroupThatIgnoresSIGTERM # real signal: SIGINT then SIGTERM then SIGKILL escalation on a group that ignores SIGTERM
+github.com/KogenAI/kogen-loop/conformance TestDeadlineTerminatesARunningShellGroup # real binary: the built kogen-loop CLI runs a shell and its 3 s deadline must terminate the group
+github.com/KogenAI/kogen-loop/contract TestRunKillGroupOnExit # real signal: a background sleep group is swept by KillGroupOnExit and the test waits for the group to disappear
+github.com/KogenAI/kogen-loop/conformance TestShellLifecycleYieldSnapshot # real binary: real git and a shell writer are observed over a fixed 2 s window
+github.com/KogenAI/kogen-loop/tools TestShellNewCommandCompletesWithinBound # real binary: a shell command runs sleep 2 and the test waits for it to complete
+github.com/KogenAI/kogen-loop/provider TestSuperGrokDeviceLifetimeExpiresWhileAPollIsInFlight # real network-free timer: waits for the 2 s device code lifetime on the real clock
+github.com/KogenAI/kogen-loop/provider TestClientResponseBudgetStall # real network-free timer: waits for the 2 s response budget to elapse on the real clock

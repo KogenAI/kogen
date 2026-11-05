@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/loop"
-	"kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
 )
 
 func shellResult(t *testing.T, r loop.Request, id string) string {

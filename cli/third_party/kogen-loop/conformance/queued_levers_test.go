@@ -15,10 +15,10 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/api"
-	"kogen-loop/loop"
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // removedLevers are the exported names of the queued experimental levers and of the support

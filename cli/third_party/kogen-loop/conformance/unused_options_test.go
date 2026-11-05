@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/loop"
-	"kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
 )
 
 // The five unused options are removed, not deprecated: no field, interface or constant is left
@@ -61,7 +61,7 @@ func TestUnusedOptionsRemoved(t *testing.T) {
 	build := func(t *testing.T, source string) (string, error) {
 		t.Helper()
 		dir := t.TempDir()
-		module := "module probe\n\ngo " + string(goVersion[1]) + "\n\nrequire kogen-loop v0.0.0\n\nreplace kogen-loop => " + root + "\n"
+		module := "module probe\n\ngo " + string(goVersion[1]) + "\n\nrequire github.com/KogenAI/kogen-loop v0.0.0\n\nreplace github.com/KogenAI/kogen-loop => " + root + "\n"
 		for name, content := range map[string]string{"go.mod": module, "main.go": source} {
 			if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
 				t.Fatal(err)
@@ -74,7 +74,7 @@ func TestUnusedOptionsRemoved(t *testing.T) {
 		return string(out), err
 	}
 	program := func(body string) string {
-		return "package main\n\nimport (\n\t\"kogen-loop/loop\"\n\t\"kogen-loop/provider\"\n)\n\n" +
+		return "package main\n\nimport (\n\t\"github.com/KogenAI/kogen-loop/loop\"\n\t\"github.com/KogenAI/kogen-loop/provider\"\n)\n\n" +
 			"var _ = provider.Request{CacheID: \"id\"}\n" +
 			"var _ = loop.Direct{CacheID: \"id\"}\n" +
 			"var _ = loop.Round{Terminal: []string{\"finish\"}}\n" +

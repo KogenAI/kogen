@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/api"
-	"kogen-loop/loop"
-	"kogen-loop/provider"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // scripted is a loop.Requester that answers each request with the next scripted response,
@@ -266,7 +266,7 @@ func TestLoopUsageState(t *testing.T) {
 // TestAPIProtocolAndLibrary pins the ids a pin check compares: the process protocol and the library API.
 // Adapted from kogen cli/loop_pin_test.go and kogen-build build/executor_native.go.
 func TestAPIProtocolAndLibrary(t *testing.T) {
-	if api.Protocol != "kogen-loop/v1" || api.Library != "loop/v1" {
+	if api.Protocol != "kogen-loop"+"/v1" || api.Library != "loop/v1" {
 		t.Fatalf("protocol %q library %q", api.Protocol, api.Library)
 	}
 }

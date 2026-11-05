@@ -25,7 +25,7 @@ import (
 	"strings"
 	"syscall"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // GitResult is a finished Git command; stdout and stderr stay separate.

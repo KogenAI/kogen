@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 	"github.com/KogenAI/kogen-setup/setup"
 	"github.com/KogenAI/kogen-verification/verify"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
 )
 
 // reply writes one scripted streamed response of the loopback provider.

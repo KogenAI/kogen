@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/api"
 )
 
 func TestSearchTextRejectsNULPatterns(t *testing.T) {

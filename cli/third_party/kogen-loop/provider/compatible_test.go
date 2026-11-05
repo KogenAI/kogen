@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // KOGEN-057 (intent go-core-migration, Open model selection): any model and effort is sent

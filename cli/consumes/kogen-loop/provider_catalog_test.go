@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/provider"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // Signatures kogen's callers use: cli/native.go and cli/readiness/readiness.go.

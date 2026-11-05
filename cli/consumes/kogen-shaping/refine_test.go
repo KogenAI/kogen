@@ -7,8 +7,8 @@ import (
 
 	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-loop/sys"
 	"github.com/KogenAI/kogen-shaping/shape"
-	"kogen-loop/sys"
 )
 
 const externalShaperConfig = acceptanceConfig + "models:\n  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: high}\n"

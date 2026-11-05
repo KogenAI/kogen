@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // These tests drive Client.Respond against a real local HTTP server. The server sends only what

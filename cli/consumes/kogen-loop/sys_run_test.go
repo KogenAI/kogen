@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 func run(t *testing.T, f *fixture, command string, opts sys.Options) sys.Result {

@@ -3,7 +3,7 @@ package tools
 import (
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 func TestShellRefusesForeignKill(t *testing.T) {

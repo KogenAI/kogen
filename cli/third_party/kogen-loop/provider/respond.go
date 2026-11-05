@@ -14,8 +14,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"kogen-loop/internal/delivery"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/internal/delivery"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // Request is one logical model request: the role, the policy text, the whole conversation

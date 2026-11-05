@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // hermeticEnv is an explicit environment for a session: a PATH to find git and sh, its own

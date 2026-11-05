@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // resetHandoff is the working-window reset message a request carries, or nil.

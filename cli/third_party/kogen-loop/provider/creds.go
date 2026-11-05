@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // credentials are one provider's saved login: the parsed JSON object, nil when no file

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 func run(t *testing.T, tools *Tools, name string, args map[string]any) string {

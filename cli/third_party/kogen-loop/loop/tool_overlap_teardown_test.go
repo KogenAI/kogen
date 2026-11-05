@@ -9,16 +9,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	_ "unsafe" // go:linkname
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
-
-// shellStartHook is sys's test-only seam at the shell-start boundary ("enter", "starting",
-// "started"); nil outside the test that sets it.
-//
-//go:linkname shellStartHook kogen-loop/sys.startHook
-var shellStartHook func(stage string)
 
 func olPidFile(t *testing.T, path string) int {
 	t.Helper()
@@ -38,8 +31,6 @@ func olBackground(path string) string {
 // Every round ends the process groups it started, on success and on every kind of failure,
 // whether the shell was starting, running or had left a background process; groups that
 // existed before the round and processes outside every group are not touched.
-// Serial parent: the starting-shell case installs the process-global sys start hook.
-// The other cases resume in parallel only after that hook has been removed.
 func TestToolOverlapTeardown(t *testing.T) {
 	type fixture struct {
 		root string
@@ -149,17 +140,17 @@ func TestToolOverlapTeardown(t *testing.T) {
 	// A shell that is starting when the round is cancelled is stopped by the round, which
 	// returns only after it: the process exists but is not yet registered with the session.
 	t.Run("starting shell on cancel", func(t *testing.T) {
+		t.Parallel()
 		f := setup(t)
 		dir := t.TempDir()
 		ready := olFifo(t, dir, "ready")
 		entered, release := make(chan struct{}), make(chan struct{})
-		shellStartHook = func(stage string) {
+		f.sess.StartHook = func(stage string) {
 			if stage == "starting" {
 				close(entered)
 				<-release
 			}
 		}
-		t.Cleanup(func() { shellStartHook = nil })
 		sent := make(chan struct{})
 		prov := newOLProvider(t, "responses",
 			func(s *olStream) {

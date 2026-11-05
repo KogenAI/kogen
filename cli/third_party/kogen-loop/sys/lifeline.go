@@ -28,6 +28,9 @@ const sweepEscalation = 5 * time.Second
 // Zombies are not members: nothing is left in them to stop. A failed observation is an
 // error and callers treat it as presence.
 func groupOthers(pgid, self int) (bool, error) {
+	if others, handled, err := platformGroupOthers(pgid, self); handled {
+		return others, err
+	}
 	if data, err := os.ReadFile("/proc/self/stat"); err == nil && len(data) > 0 {
 		return procGroupOthers(pgid, self)
 	}

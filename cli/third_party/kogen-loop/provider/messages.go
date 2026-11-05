@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"kogen-loop/internal/delivery"
+	"github.com/KogenAI/kogen-loop/internal/delivery"
 )
 
 // Anthropic speaks the streamed Messages API at /v1/messages with an API key. The complete

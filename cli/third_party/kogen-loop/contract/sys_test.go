@@ -6,14 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // TestErrorLine pins the error line `<class>/<reason>: <detail>` and its `\n` form.
@@ -295,7 +297,11 @@ func TestRunKillGroupOnExit(t *testing.T) {
 	if err != nil || r.Status != 0 || r.Output != "started\n" || len(groups) != 1 {
 		t.Fatalf("Run = %+v, %v, groups %v", r, err, groups)
 	}
-	waitGone(t, groups[0], "the swept group")
+	// Run returned only once the group had no member, so none may be live now. Whether the
+	// host's init has already reaped the swept processes is not part of that guarantee.
+	if live := liveMembers(t, groups[0]); len(live) != 0 {
+		t.Fatalf("the swept group %d has live members after Run returned: %q", groups[0], live)
+	}
 
 	left, _, _ := newSession(t)
 	if _, err := left.Run("sleep 60 & echo started", left.Cwd, sys.Options{}); err != nil {
@@ -306,7 +312,31 @@ func TestRunKillGroupOnExit(t *testing.T) {
 		t.Fatalf("without the option the background process should remain: %v", g)
 	}
 	sys.Terminate(g)
-	waitGone(t, g[0], "the group Terminate stopped")
+	if live := liveMembers(t, g[0]); len(live) != 0 {
+		t.Fatalf("the group %d Terminate stopped has live members after it returned: %q", g[0], live)
+	}
+}
+
+// liveMembers lists, from one ps listing, the rows of the process group pgid that are not zombie,
+// dead or exiting. Those rows are not members that can still run.
+func liveMembers(t *testing.T, pgid int) []string {
+	t.Helper()
+	out, err := exec.Command("ps", "-A", "-o", "pid=,pgid=,stat=").Output()
+	if err != nil {
+		t.Fatalf("ps -A -o pid=,pgid=,stat=: %v", err)
+	}
+	var live []string
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 || f[1] != strconv.Itoa(pgid) {
+			continue
+		}
+		if strings.ContainsRune("ZXE", rune(f[2][0])) {
+			continue
+		}
+		live = append(live, strings.Join(f, " "))
+	}
+	return live
 }
 
 // waitGone waits for the process group to have no member (kill reports ESRCH). A group that only has

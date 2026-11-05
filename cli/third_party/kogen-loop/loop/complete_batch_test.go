@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 func fcall(id, name, args string) map[string]any {

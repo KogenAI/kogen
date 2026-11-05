@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"kogen-loop/api"
-	"kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/loop"
 )
 
 // A refused shell call is ordinary tool feedback: its tool.result carries "rule", an

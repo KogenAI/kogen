@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"kogen-loop/internal/delivery"
+	"github.com/KogenAI/kogen-loop/internal/delivery"
 )
 
 // resultKind is how one transport attempt ended.

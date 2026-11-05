@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/api"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // shellTimer is one wait a shell call asked its test for; sending on fire is the wait elapsing.

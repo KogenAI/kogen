@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 var goRole = Role{Provider: "opencode-go", Model: "kimi-k3", Effort: "high"}

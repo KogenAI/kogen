@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // TestCutRecordedBytes pins the delivered strings for the line-alignment fixtures.

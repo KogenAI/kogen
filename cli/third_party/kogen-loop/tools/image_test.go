@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/provider"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 func pngChunk(typ string, data []byte) []byte {

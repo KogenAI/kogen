@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // hermeticEnv is the process environment without the user's or the system's Git

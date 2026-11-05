@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/api"
-	"kogen-loop/loop"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 func userTexts(t *testing.T, body map[string]any) []string {

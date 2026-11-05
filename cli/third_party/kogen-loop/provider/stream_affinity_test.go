@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // affinityObservation is deliberately detached from the transport so the very same

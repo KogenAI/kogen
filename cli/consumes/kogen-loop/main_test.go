@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // TestMain isolates the process from the caller: no inherited GIT_* or KOGEN_* variable, no

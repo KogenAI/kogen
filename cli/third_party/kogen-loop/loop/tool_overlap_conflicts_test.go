@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 func olCall(id, name string, args map[string]any) map[string]any {

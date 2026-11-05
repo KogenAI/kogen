@@ -7,10 +7,10 @@ import (
 
 	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 	"github.com/KogenAI/kogen-shaping/shape"
 	"github.com/KogenAI/kogen-verification/verify"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
 )
 
 // kogen cli/engine.go and cli/facts.go call these four functions with the session's context and

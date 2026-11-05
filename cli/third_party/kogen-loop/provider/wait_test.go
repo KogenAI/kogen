@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 func validationOf(t *testing.T, err error) map[string]any {

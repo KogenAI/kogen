@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/api"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // The session's tool.result carries handle_yielded for a yielding command and bound for the

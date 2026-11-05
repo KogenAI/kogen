@@ -15,8 +15,8 @@ import (
 	"sync"
 	"testing"
 
-	"kogen-loop/provider"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // fixture is one synthetic world: a HOME of its own under t.TempDir() and the session kogen

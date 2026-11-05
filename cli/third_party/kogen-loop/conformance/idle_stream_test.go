@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"kogen-loop/api"
-	"kogen-loop/loop"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/loop"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // idleClock is the injected Client.Now/Sleep: a sleep advances it without waiting.

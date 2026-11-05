@@ -9,8 +9,8 @@ import (
 
 	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-executor/executor/claudecode"
+	"github.com/KogenAI/kogen-loop/sys"
 	"github.com/KogenAI/kogen-verification/verify"
-	"kogen-loop/sys"
 )
 
 func TestText(t *testing.T) {

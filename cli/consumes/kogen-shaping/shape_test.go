@@ -9,8 +9,8 @@ import (
 
 	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-executor/executor"
+	"github.com/KogenAI/kogen-loop/sys"
 	"github.com/KogenAI/kogen-shaping/shape"
-	"kogen-loop/sys"
 )
 
 // shapeWith calls shape.Shape as kogen's runEngine does for `kogen intent shape`; requestPath is

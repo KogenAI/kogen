@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/api"
 )
 
 func TestDecodeTaskRequiresExactlyOneObject(t *testing.T) {

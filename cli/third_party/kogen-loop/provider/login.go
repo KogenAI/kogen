@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 // RedirectFunc delivers the browser's redirect for a ChatGPT sign-in: it shows or opens

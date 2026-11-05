@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KogenAI/kogen-loop/sys"
 	"github.com/KogenAI/kogen-shaping/shape"
-	"kogen-loop/sys"
 )
 
 var shaRe = regexp.MustCompile(`SHA-256: ([0-9a-f]{64})\n`)

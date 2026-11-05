@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,10 +18,10 @@ import (
 	"sync"
 	"time"
 
-	"kogen-loop/api"
-	"kogen-loop/provider"
-	"kogen-loop/sys"
-	"kogen-loop/tools"
+	"github.com/KogenAI/kogen-loop/api"
+	"github.com/KogenAI/kogen-loop/provider"
+	"github.com/KogenAI/kogen-loop/sys"
+	"github.com/KogenAI/kogen-loop/tools"
 )
 
 // DefaultInstructions is the model instruction text of a Session that names none.
@@ -84,7 +85,67 @@ type Session struct {
 	input    []any
 	pending  *terminalRef // the terminal call of the last round, if it ended with one
 	seq      int
-	requests int // requests started in the current round (read by Attempt)
+	requests int       // requests started in the current round (read by Attempt)
+	cutReads []cutRead // cut read_file results of this Session, in tool.result order; saved in session.json as cut_reads
+}
+
+// cutRead is a cut read_file result whose tool.result event was emitted: the file it read
+// (root-relative cleaned path, never emitted) and the line numbers its cut omitted. It is
+// saved in session.json as cut_reads and restored by ResumeSession.
+type cutRead struct {
+	CallID any    `json:"call_id"`
+	File   string `json:"file"`
+	From   int    `json:"from"`
+	To     int    `json:"to"`
+}
+
+// readLines describes a numbered read_file result: its file, its raw first and last line
+// numbers, and the line numbers its cut omitted (nil when uncut).
+type readLines struct {
+	file        string
+	first, last int
+	omitted     *[2]int
+}
+
+// readLinesOf is the line numbers a read_file call's raw result covers, false for any other
+// result (another tool, an error, a notice, text that is not numbered read_file text).
+func (s *Session) readLinesOf(call tools.Call, raw string) (readLines, bool) {
+	if call.Name != tools.ReadFileTool {
+		return readLines{}, false
+	}
+	path, ok := call.Args()["path"].(string)
+	if !ok {
+		return readLines{}, false
+	}
+	first, last, ok := tools.NumberedRange(raw)
+	if !ok {
+		return readLines{}, false
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(s.cfg.Root, path)
+	}
+	path = filepath.Clean(path)
+	if rel, err := filepath.Rel(s.cfg.Root, path); err == nil {
+		path = rel
+	}
+	r := readLines{file: path, first: first, last: last}
+	if from, to, cut := tools.CutOmitted(raw); cut {
+		// Each line counts with the newline that ends it: the first omitted byte lies in the
+		// line after the newlines before it, the last omitted byte in the line after the
+		// newlines before that byte.
+		r.omitted = &[2]int{first + strings.Count(raw[:from], "\n"), first + strings.Count(raw[:to-1], "\n")}
+	}
+	return r, true
+}
+
+// delivered is how many line numbers of a..b this result delivered as complete lines: its raw
+// lines, minus its own omitted range when it was cut.
+func (r readLines) delivered(a, b int) int {
+	overlap := func(lo, hi int) int { return max(0, min(hi, b)-max(lo, a)+1) }
+	if r.omitted == nil {
+		return overlap(r.first, r.last)
+	}
+	return overlap(r.first, r.omitted[0]-1) + overlap(r.omitted[1]+1, r.last)
 }
 
 // terminalRef names the terminal call a completed round ended with.
@@ -102,9 +163,15 @@ type transcript struct {
 	DefinitionsSHA256  string       `json:"definitions_sha256"`
 	Terminal           *terminalRef `json:"terminal"`
 	Input              []any        `json:"input"`
+	CutReads           []cutRead    `json:"cut_reads,omitempty"`
 }
 
 const transcriptName = "session.json"
+
+// transcriptLimit is the largest session.json ResumeSession reads. It is far above any transcript a
+// normal run writes: the conversation is kept under the request ceiling and one response body is read
+// to at most 64 MiB.
+const transcriptLimit = 64 << 20
 
 func invalid(detail string) error {
 	return sys.Fail(api.ErrClassLoop, api.ErrInvalidTask, detail, api.ExitInvalid)
@@ -142,15 +209,23 @@ func ResumeSession(cfg SessionConfig) (*Session, error) {
 		return nil, err
 	}
 	path := filepath.Join(cfg.Dir, transcriptName)
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, mismatch("no session transcript at " + path)
 		}
 		return nil, mismatch("cannot read the session transcript: " + err.Error())
 	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, mismatch("cannot read the session transcript: " + err.Error())
+	}
+	if info.Size() > transcriptLimit {
+		return nil, mismatch(fmt.Sprintf("the session transcript at %s is %d bytes, more than the limit of %d bytes", path, info.Size(), int64(transcriptLimit)))
+	}
 	var t transcript
-	dec := json.NewDecoder(bytes.NewReader(data))
+	dec := json.NewDecoder(io.LimitReader(f, transcriptLimit))
 	dec.UseNumber()
 	if err := dec.Decode(&t); err != nil {
 		return nil, mismatch("the session transcript is not valid: " + err.Error())
@@ -168,7 +243,7 @@ func ResumeSession(cfg SessionConfig) (*Session, error) {
 	case t.DefinitionsSHA256 != definitionsDigest(s.defs):
 		return nil, mismatch("the transcript was written with other tool definitions")
 	}
-	s.id, s.input, s.pending = t.SessionID, t.Input, t.Terminal
+	s.id, s.input, s.pending, s.cutReads = t.SessionID, t.Input, t.Terminal, t.CutReads
 	s.direct.CacheID = s.id
 	return s, nil
 }
@@ -289,6 +364,9 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 	rules := map[string]string{}
 	categories := map[string]map[string]any{}
 	shellWaits := map[string]map[string]any{}
+	exitStatuses := map[string]int{}
+	elapsedMS := map[string]int64{}
+	reads := map[string]readLines{}
 	s.requests = 0
 	rd := Round{
 		Owner: "loop", Role: s.cfg.Role, Instructions: s.instructions, Definitions: s.defs,
@@ -321,13 +399,25 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 		// The engine cuts what it runs itself; the session runs the call here to learn
 		// whether the cut applied, which the engine's order does not report.
 		HandleCall: func(ctx context.Context, call tools.Call) (Handled, error) {
+			now := func() time.Time {
+				if s.tools.Now != nil {
+					return s.tools.Now()
+				}
+				return time.Now()
+			}
+			began := now()
 			classified, err := s.tools.CallClassified(ctx, call)
+			finished := now()
 			if err != nil {
 				return Handled{}, err
 			}
+			elapsedMS[fmt.Sprint(call.CallID())] = finished.Sub(began).Milliseconds()
 			out := classified.Output()
 			cut := out.Cut()
 			cutCalls[fmt.Sprint(call.CallID())] = cut.Text != out.Text
+			if r, ok := s.readLinesOf(call, out.Text); ok {
+				reads[fmt.Sprint(call.CallID())] = r
+			}
 			if out.Rule != "" {
 				rules[fmt.Sprint(call.CallID())] = out.Rule
 			}
@@ -338,6 +428,9 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			}
 			if w := classified.ShellWait; w != nil {
 				shellWaits[fmt.Sprint(call.CallID())] = shellWaitFields(w)
+			}
+			if classified.ExitStatus != nil {
+				exitStatuses[fmt.Sprint(call.CallID())] = *classified.ExitStatus
 			}
 			return Handled{Handled: true, Output: cut}, nil
 		},
@@ -352,7 +445,7 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			}
 			fields := map[string]any{
 				"call_id": call.CallID(), "name": call.Name, "result_sha256": sum, "bytes": size,
-				"cut": cutCalls[fmt.Sprint(call.CallID())],
+				"cut": cutCalls[fmt.Sprint(call.CallID())], "elapsed_ms": elapsedMS[fmt.Sprint(call.CallID())],
 			}
 			if rule := rules[fmt.Sprint(call.CallID())]; rule != "" {
 				fields["rule"] = rule
@@ -362,6 +455,27 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			}
 			if w := shellWaits[fmt.Sprint(call.CallID())]; w != nil {
 				fields["shell_wait"] = w
+			}
+			if n, ok := exitStatuses[fmt.Sprint(call.CallID())]; ok {
+				fields["exit_status"] = n
+			}
+			if r, ok := reads[fmt.Sprint(call.CallID())]; ok {
+				var recovers []map[string]any
+				for _, c := range s.cutReads {
+					if c.File != r.file {
+						continue
+					}
+					if n := r.delivered(c.From, c.To); n > 0 {
+						recovers = append(recovers, map[string]any{"call_id": c.CallID, "lines": n})
+					}
+				}
+				if recovers != nil {
+					fields["recovers"] = recovers
+				}
+				if r.omitted != nil {
+					fields["omitted_lines"] = []int{r.omitted[0], r.omitted[1]}
+					s.cutReads = append(s.cutReads, cutRead{CallID: call.CallID(), File: r.file, From: r.omitted[0], To: r.omitted[1]})
+				}
 			}
 			s.emit(api.EventToolResult, fields)
 			return nil
@@ -454,7 +568,7 @@ func (s *Session) persist(input []any, pending *terminalRef) error {
 	t := transcript{
 		Protocol: api.Protocol, SessionID: s.id, Role: role,
 		InstructionsSHA256: digest(s.instructions), DefinitionsSHA256: definitionsDigest(s.defs),
-		Terminal: pending, Input: input,
+		Terminal: pending, Input: input, CutReads: s.cutReads,
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
