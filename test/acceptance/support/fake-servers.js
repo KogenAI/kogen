@@ -74,6 +74,7 @@ class FakeServers {
     this.script = null;
     this.requests = [];
     this.contractChecks = [];
+    this.decisionChecks = 0;
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -138,6 +139,7 @@ class FakeServers {
     this.script = null;
     this.requests = [];
     this.contractChecks = [];
+    this.decisionChecks = 0;
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -160,6 +162,7 @@ class FakeServers {
     this.kindCounts.clear();
     this.requests = [];
     this.contractChecks = [];
+    this.decisionChecks = 0;
     this.responseItems = [];
     this.toolResults = [];
     this.seenToolResults = new Set();
@@ -263,6 +266,20 @@ class FakeServers {
     }
     const body = await decodeRequest(req);
     const tools = (body.tools || []).map(tool => tool.name);
+    if (tools.includes('submit_decision_check')) {
+      // Shape's decision check is answered apart from the scripted conversation, like the contract and
+      // question checks, with the smallest valid answer (no decision item) and zero usage, so the totals
+      // scenarios pin stay unchanged. Under the fault script it gets a text message and no function call.
+      const id = `decision_check_${++this.decisionChecks}`;
+      const item = this.script?.name === 'shape-decision-check-without-call' ? message('No decision item.', id) : functionCall('submit_decision_check', { items: [] }, id);
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      res.write(responseEvent('response.created', { response: { id: `resp_${id}` } }));
+      res.write(responseEvent('response.output_item.done', { output_index: 0, item }));
+      res.end(responseEvent('response.completed', {
+        response: { usage: { input_tokens: 0, input_tokens_details: { cached_tokens: 0 }, output_tokens: 0, output_tokens_details: { reasoning_tokens: 0 } } },
+      }));
+      return;
+    }
     const contract = tools.includes('submit_contract_review') ? ['submit_contract_review', { findings: [] }] : tools.includes('submit_contract_confirmation') ? ['submit_contract_confirmation', { verdicts: [] }] : null;
     if (contract) {
       // Shape's contract check (SHP-8) is answered apart from the scripted conversation: it finds no

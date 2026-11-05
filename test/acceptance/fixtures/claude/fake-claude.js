@@ -318,6 +318,32 @@ function contractCheckAnswer(prompt) {
   return null;
 }
 
+// Shape's decision check asks for a list of items with a statement and a verdict. It is answered
+// apart from the scripted roles with the smallest valid answer, and leaves no record: no counters,
+// prompts, argv, sessions, tool calls, wakeup evidence or cost.
+function isDecisionCheck() {
+  try {
+    const item = (JSON.parse(flag('--json-schema')).properties || {}).items?.items?.properties || {};
+    return Boolean(item.statement && item.verdict);
+  } catch { return false; }
+}
+
+function answerDecisionCheck() {
+  const session = flag('--session-id') || flag('--resume');
+  out({
+    type: 'system', subtype: 'init', cwd: fs.realpathSync(process.cwd()), session_id: session, tools: ['Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Read', 'Write'],
+    mcp_servers: [], model: flag('--model') || 'claude-sonnet-5-5', permissionMode: 'acceptEdits',
+    apiKeySource: 'none', claude_code_version: String(script.version || '2.1.306').split(' ')[0],
+    uuid: '00000000-0000-4000-8000-ffffffffffff',
+  });
+  out({
+    type: 'result', subtype: 'success', is_error: false, duration_ms: 1000, duration_api_ms: 900, num_turns: 1,
+    result: 'Done.', stop_reason: 'end_turn', terminal_reason: 'completed', session_id: session, total_cost_usd: 0,
+    usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 }, permission_denials: [],
+    structured_output: { items: [] },
+  });
+}
+
 function answerContractCheck(prompt, structured) {
   fs.mkdirSync(state, { recursive: true });
   const session = flag('--session-id') || flag('--resume');
@@ -337,6 +363,7 @@ function answerContractCheck(prompt, structured) {
 }
 
 readPrompt().then(prompt => {
+  if (isDecisionCheck()) return answerDecisionCheck();
   const structured = contractCheckAnswer(prompt);
   if (structured) return answerContractCheck(prompt, structured);
   begin(prompt);
