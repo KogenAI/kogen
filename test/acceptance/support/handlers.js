@@ -179,16 +179,26 @@ function acceptanceScenarioNames(world, slug) {
   return names;
 }
 
-// The review card content rule: sections, every scenario of the Intent and every baseline
-// path the suite knows. Other lines and extra Files paths are allowed. Returns the card's SHA-256.
+// The Intent's title as kogen reads it: the text after "# " on the first line of intent.md that starts with "# ".
+function intentTitle(world, slug) {
+  const intent = fs.readFileSync(projectFile(world, `.kogen/intents/${slug}/intent.md`), 'utf8');
+  const heading = intent.split(/\r?\n/).find(line => line.startsWith('# '));
+  assert.ok(heading, `intent.md of ${slug} has no "# " title line`);
+  return heading.slice(2).trim();
+}
+
+// The review card content rule: the Intent title line, the approver format, sections, every scenario of the
+// Intent and every baseline path the suite knows. Other lines and extra Files paths are allowed.
+// Returns the card's SHA-256.
 function assertReviewCard(world, slug, stdout) {
   const lines = String(stdout).split(/\r?\n/);
   const fail = what => assert.fail(`review card of ${slug} has no ${what}`);
-  if (!lines.some(line => line.startsWith(`Intent: ${slug}`))) fail(`line starting "Intent: ${slug}"`);
+  const titleLine = `Intent: ${slug} \u2014 ${intentTitle(world, slug)}`;
+  if (!lines.includes(titleLine)) fail(`line "${titleLine}"`);
   const hashes = lines.map(line => line.match(/^SHA-256: ([0-9a-f]{64})$/)?.[1]).filter(Boolean);
   if (hashes.length !== 1) fail(`single "SHA-256: <64 lowercase hex>" line (found ${hashes.length})`);
   const hash = hashes[0];
-  if (!lines.some(line => line.startsWith('Approver: '))) fail('line starting "Approver: "');
+  if (!lines.some(line => /^Approver: [^\s<>][^<>]* <[^\s<>]+>$/.test(line))) fail('line "Approver: <name> <<email>>"');
   const acceptance = lines.indexOf('Acceptance');
   if (acceptance < 0) fail('Acceptance section');
   const files = lines.indexOf('Files', acceptance + 1);

@@ -1,0 +1,38 @@
+# Assert full card title and approver format
+
+Slug: fix-k-acceptance-no-card-hash
+Model: not applicable — this tightens one test-suite assertion and its specification text; kogen has no new state
+Acceptance:
+- .kogen/intents/fix-k-acceptance-no-card-hash/acceptance.feature
+- features/steps/fix-k-acceptance-no-card-hash__suite.js
+
+The landed Intent `k-acceptance-no-card-hash` replaced the 03 card scenario's byte-compared card blocks with the review card content rule, `assertReviewCard(world, slug, stdout)` in `test/acceptance/support/handlers.js`. That rule only checks a line starting `Intent: <slug>` and a line starting `Approver: `. The old block asserted `Intent: is-even — Add an is-even helper` and `Approver: {ident}`. So the Intent's title and the `Name <email>` approver format are no longer asserted. Shaping reproduced this on the unchanged tree: with the release from this checkout, a wrapper that shows `Intent: is-even — Add an is-odd helper` instead of the real title line, or `Approver: Kogen Acceptance` instead of `Approver: Kogen Acceptance <kogen@example.invalid>`, leaves "The review card shows the Intent, its scenarios and its files" (spec/features/03-approval-and-build-start.feature) green.
+
+After this change the content rule asserts the full Intent title line and the approver format. The rule changes as follows, and nothing else in it changes:
+- **Title line.** Replace "a line starting `Intent: <slug>`" with: a line exactly `Intent: <slug> — <title>` (an em dash U+2014 between single spaces). `<title>` is the text after `# ` on the first line of `.kogen/intents/<slug>/intent.md` that starts with `# `, with surrounding whitespace trimmed. This is how kogen reads the title. When the line is missing, the step fails with `review card of <slug> has no line "Intent: <slug> — <title>"`, for example `review card of is-even has no line "Intent: is-even — Add an is-even helper"`.
+- **Approver line.** Replace "a line starting `Approver: `" with: a line `Approver: <name> <<email>>` that matches `^Approver: [^\s<>][^<>]* <[^\s<>]+>$`. The name is nonempty, does not start with whitespace and has no `<` or `>`. It is followed by one space and a nonempty email without whitespace, `<` or `>` in angle brackets. This is the `Name <email>` form of `git var GIT_AUTHOR_IDENT` that kogen shows when `--by` is not given. Every step that applies the rule runs `kogen intent approve <slug>` without `--by`. When the line is missing, the step fails with `review card of <slug> has no line "Approver: <name> <<email>>"`, for example `review card of is-even has no line "Approver: <name> <<email>>"`.
+
+These checks apply wherever the rule applies: `stdout shows the review card of "<slug>"` (the 03 card scenario), `approveThroughKogen`, "the caller noted the review card hash of" and "the caller approves … with the hash from its review card". The rest of the rule stays unchanged: the single `SHA-256:` line, the sections, the scenarios, the baseline paths, the `Approve with:` command, the captured hash and the other failure messages. The 03 feature file is unchanged. The Build also updates the rule's description in `spec/features/STEPS.md` ("Review card content"), replacing the two "line starting" phrases with the two rules above. In `spec/prose/03-approval-and-build-start.md` AUT-1, after the card example, the sentence "Acceptance checks the card's content: …" also names the `Intent:` line with the Intent's title and the `Approver:` line in `Name <email>` form.
+
+Boundaries: kogen's runtime behavior, `cli/`, the component pins and the vendored loop are unchanged. No scenario of `spec/features` is added, removed or renamed. The approve and refine steps that use the full hash kogen reports (`intent/hash_mismatch … is now <sha256>`) stay as they are.
+
+## Decisions
+- Assert the full Intent title line and the approver format in the review card checked by the 03 card scenario. (source: request)
+- Breaking the behaviour must turn the test red, and the unchanged release must keep it green. Every existing test stays green and nothing unrelated changes. (source: request)
+
+## Source comparison
+- Addressed Problem "`Intent: <slug>` and `Approver: ` are now prefix-only": both prefix checks in `assertReviewCard` become the full title line and the `Name <email>` format. Reproduced before shaping on the unchanged tree with the release `dist/kogen-a210e2b1-darwin-arm64.tar.gz`. A wrong title and an approver without its email both left the 03 card scenario green. The two red scenarios of this Intent carry these exact inputs.
+- Addressed Need "First show it": the two fault scenarios are this Intent's baseline red on the unchanged tree. The 03 card scenario passes there instead of failing at `stdout shows the review card of "is-even"`. Need "fails on the broken behaviour and passes on main": the fault scenarios, the pass-through wrapper control and the scenario that runs the 03 card and approval scenarios against the unchanged release. Need "Keep every existing test green": the rule changes only what it asserts about two lines that kogen renders as `"Intent: " + slug + " — " + Title` and `"Approver: " + approver` (kogen-shaping f04edcea9896 `shape/approve.go` approveCard). The configured checks and the full suite remain the Build's normal verification.
+- Problem sentence about "the hash of its acceptance baseline" step not catching a wrong kogen hash: not changed. The landed Intent settled that the suite never computes the hash and uses the hash kogen reports. The Need asks only for the title line and the approver format. The card's `Approve with:` line repeating its own `SHA-256:` line stays asserted.
+- Old 03 block literals `Intent: is-even — Add an is-even helper` and `Approver: {ident}` (`Kogen Acceptance <kogen@example.invalid>`) appear in this Intent's feature file as the real lines the wrappers replace.
+- Automatic retry cause (`no candidate/intent/shape line in ~/logs/fix-k-acceptance-no-card-hash.log on kogen-macbook-runner`): this concerns the delivery host's log of the previous Shape attempt, not repository behavior. This attempt answers it by completing Shape with a full submitted package. Nothing is added to the repository for it.
+
+## Tests
+- The card rule rejects a wrong Intent title: the Intent scenario "A review card with a wrong Intent title turns the card scenario red" (regression)
+- The card rule rejects an approver line that is not `Name <email>`: the Intent scenario "A review card whose approver is not Name <email> turns the card scenario red" (regression)
+- Real cards still pass the stricter rule: the Intent scenarios "Card and approval scenarios pass with the stricter card rule" and "A review card passed through the same wrapper unchanged stays green" (scenario)
+- STEPS.md and the AUT-1 prose stay consistent with the feature files: the configured `spec` check, `(cd spec && sh check.sh)` (existing)
+
+## Feasibility
+- Shaping ran the 03 card scenario against wrapped copies of `dist/kogen-a210e2b1-darwin-arm64.tar.gz` on the unchanged tree. With the title line or the approver line replaced, the wrapper logged the replacement, and the scenario passed with exit 0, which reproduces the finding. Each suite run took about 7 to 12 s.
+- evidence: {"id":"suite-observer","kind":"observer","inputs":["features/steps/fix-k-acceptance-no-card-hash__suite.js"],"observers":["features/steps/fix-k-acceptance-no-card-hash__suite.js"],"checks":[{"name":"good","command":"node features/steps/fix-k-acceptance-no-card-hash__suite.js --control good","exit":0,"output":"observer accepted\n"},{"name":"bad","command":"node features/steps/fix-k-acceptance-no-card-hash__suite.js --control bad","exit":1,"output":"observer rejected\n"}]}
