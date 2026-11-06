@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/KogenAI/kogen-coordinator/git"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -209,5 +211,52 @@ func TestMalformedCatalogAndMissingSnapshotFields(t *testing.T) {
 	putFact(t, c, object{"schema_version": 1, "checkout": c, "last_built": object{"slug": "fixture", "run_id": "1234abcd"}})
 	if got := contextData(c); got["integration_state"] != "invalid" {
 		t.Fatal(got)
+	}
+}
+
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = stdout }()
+	f()
+	w.Close()
+	b, _ := io.ReadAll(r)
+	return string(b)
+}
+
+func TestInspectUnknownRunNamesNextCommand(t *testing.T) {
+	c := factProject(t)
+	for id, detail := range map[string]string{
+		"run-1":    "not a run id: a run id is 8 lowercase hexadecimal characters, for example 0a1b2c3d",
+		"0A1B2C3D": "not a run id: a run id is 8 lowercase hexadecimal characters, for example 0a1b2c3d",
+		"0a1b2c3d": "no run with this id in this checkout",
+	} {
+		out := captureStdout(t, func() {
+			if handled, code := localRead([]string{"intent", "inspect", "--project", c["root"].(string), id}); !handled || code != 1 {
+				t.Fatal(id, handled, code)
+			}
+		})
+		var got struct {
+			Error map[string]any `json:"error"`
+		}
+		if e := json.Unmarshal([]byte(out), &got); e != nil {
+			t.Fatal(id, e, out)
+		}
+		want := map[string]any{"class": "intent", "reason": "run_not_found", "detail": detail, "paths": []any{}, "next": "kogen intent list"}
+		if !reflect.DeepEqual(got.Error, want) {
+			t.Fatal(id, got.Error)
+		}
+	}
+	out := captureStdout(t, func() { localRead([]string{"intent", "inspect", "--project", c["root"].(string)}) })
+	var got struct {
+		Error map[string]any `json:"error"`
+	}
+	if e := json.Unmarshal([]byte(out), &got); e != nil || got.Error["next"] != nil || len(got.Error) != 4 {
+		t.Fatal(e, out)
 	}
 }

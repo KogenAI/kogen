@@ -56,8 +56,20 @@ invalid environment/configuration returns exit 3. Read success is exit 0,
 including empty lists; usage is 2 (`intent/invalid_argument`), absent projects
 are 3 (`environment/not_project`), unavailable paths are 3
 (`environment/project_unavailable`), unknown runs are 1
-(`intent/run_not_found`). Invalid required local records return 3
+(`intent/run_not_found`; see below). Invalid required local records return 3
 (`environment/local_data_invalid`); context instead safely reports invalid.
+
+`kogen intent inspect <run-id>` for an unknown run says which case it is in
+`error.detail` and adds the string `error.next`, always `kogen intent list`
+(the command that lists run ids); `reason`, `paths` and the exit code do not
+change. An id that is not 8 lowercase hexadecimal characters has detail
+`not a run id: a run id is 8 lowercase hexadecimal characters, for example 0a1b2c3d`;
+a well-formed id with no record in this checkout has detail
+`no run with this id in this checkout`. No other error object has `next`.
+When standard output is a terminal, one sentence `<detail>. Next: <next>` is
+also written to standard error after the JSON line; if standard output is a
+pipe, a file or `/dev/null`, nothing is added, even when standard error is a
+terminal.
 
 ## Pending shape questions
 

@@ -236,6 +236,22 @@ func response(kind string, c object, data any, reason string, code int) int {
 	return code
 }
 
+const (
+	notRunIDDetail  = "not a run id: a run id is 8 lowercase hexadecimal characters, for example 0a1b2c3d"
+	runAbsentDetail = "no run with this id in this checkout"
+	runNotFoundNext = "kogen intent list"
+)
+
+// runNotFound answers an unknown run: the JSON line says which case it is and names the
+// command that lists runs; a terminal on standard output also gets one sentence on standard error.
+func runNotFound(kind string, c object, detail string) int {
+	json.NewEncoder(os.Stdout).Encode(object{"schema_version": 1, "kind": kind, "checkout": c, "data": nil, "error": object{"class": "intent", "reason": "run_not_found", "detail": detail, "paths": []string{}, "next": runNotFoundNext}})
+	if isTerminal(os.Stdout) {
+		fmt.Fprintf(os.Stderr, "%s. Next: %s\n", detail, runNotFoundNext)
+	}
+	return 1
+}
+
 // localRead handles bounded native reads before any installed runtime is consulted.
 func localRead(args []string) (bool, int) {
 	if len(args) > 1 && args[0] == "intent" && args[1] == "usage" {
@@ -368,12 +384,12 @@ func localRead(args []string) (bool, int) {
 	}
 	if kind == "run" {
 		if !runID.MatchString(pos[0]) {
-			return true, response(kind, c, nil, "run_not_found", 1)
+			return true, runNotFound(kind, c, notRunIDDetail)
 		}
 		var r object
 		e := localJSON(filepath.Join(c["root"].(string), ".kogen/local/facts", pos[0]+".json"), &r)
 		if os.IsNotExist(e) {
-			return true, response(kind, c, nil, "run_not_found", 1)
+			return true, runNotFound(kind, c, runAbsentDetail)
 		}
 		if e != nil || !validRun(r) || r["checkout_id"] != c["id"] || r["run_id"] != pos[0] {
 			return true, response(kind, c, nil, "local_data_invalid", 3)
