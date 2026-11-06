@@ -97,6 +97,13 @@ function configText() {
     '    run: \'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "${KOGEN_TEST_ACCEPTANCE_RUNNER:-$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js}" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"\'',
     '    steps_dir: features/steps',
     'protect: [.style.cfg]',
+    '',
+  ].join('\n');
+}
+
+// The team lineup file of a hand-configured fixture; the model roles live only in the models files.
+function modelsText() {
+  return [
     'models:',
     '  shape:  {model: gpt-6.1-sol, effort: high}',
     '  build:  {model: gpt-6.1-sol, effort: medium}',
@@ -106,7 +113,8 @@ function configText() {
 }
 
 function setConfigKey(world, key, value) {
-  const file = projectFile(world, '.kogen/project.yaml');
+  const relative = key.startsWith('models.') ? '.kogen/models.yaml' : '.kogen/project.yaml';
+  const file = projectFile(world, relative);
   let content = fs.readFileSync(file, 'utf8');
   const lineMap = {
     'commands.setup': /^  setup:.*$/m,
@@ -130,7 +138,7 @@ function setConfigKey(world, key, value) {
     content = content.replace(line, `${key === 'protect' || key === 'shape_workers' ? key : key.endsWith('.run') ? '    run' : key.endsWith('.steps_dir') ? '    steps_dir' : `  ${key.split('.').at(-1)}`}: ${formatted}`);
   }
   fs.writeFileSync(file, content);
-  git(world, ['add', '--', '.kogen/project.yaml']);
+  git(world, ['add', '--', relative]);
   const commit = world.git(world.project, ['commit', '-q', '-m', 'Acceptance config change']);
   assert.equal(commit.status, 0, commit.stderr || commit.stdout);
 }
@@ -150,6 +158,7 @@ function currentBaselineFiles(world, slug) {
   }
   for (const file of acceptanceFiles(world, slug)) files.add(file);
   files.add('.kogen/project.yaml');
+  files.add('.kogen/models.yaml');
   const cfg = fs.readFileSync(projectFile(world, '.kogen/project.yaml'), 'utf8');
   const protect = cfg.match(/^protect:\s*\[(.*?)\]\s*$/m);
   if (protect) for (const item of protect[1].split(',').map(part => part.trim()).filter(Boolean)) files.add(item.replace(/^['"]|['"]$/g, ''));
@@ -262,6 +271,13 @@ function initTemplate() {
     '    run: null        # the acceptance command (VER-3)',
     '    steps_dir: null  # where shaping writes step-definition files',
     'protect: []          # check configuration the Build must not change, e.g. .credo.exs',
+    '',
+  ].join('\n');
+}
+
+// The team lineup file kogen init writes for a ChatGPT sign-in: the default roles.
+function initModelsTemplate() {
+  return [
     'models:',
     '  shape:',
     '    model: gpt-6.1-sol',
@@ -727,9 +743,9 @@ function configuredModel(world, expected, tokenIndex) {
   const line = expected.slice(0, tokenIndex).split(/\r?\n/).at(-1).trim();
   const role = line.split(/\s+/)[0];
   assert.ok(role, `could not resolve model role from line: ${line}`);
-  const config = fs.readFileSync(projectFile(world, '.kogen/project.yaml'), 'utf8');
+  const config = fs.readFileSync(projectFile(world, '.kogen/models.yaml'), 'utf8');
   const match = config.match(new RegExp(`^\\s+${escapeRegex(role)}:\\s*\\{model:\\s*([^,}]+),\\s*effort:\\s*([^}]+)\\}`, 'm'));
-  assert.ok(match, `models.${role} is missing from .kogen/project.yaml`);
+  assert.ok(match, `models.${role} is missing from .kogen/models.yaml`);
   return { model: match[1].trim(), effort: match[2].trim() };
 }
 
@@ -869,18 +885,20 @@ async function initProject(world, configure) {
   const configFile = projectFile(world, '.kogen/project.yaml');
   mkdirp(path.dirname(configFile));
   fs.writeFileSync(configFile, initTemplate());
+  fs.writeFileSync(projectFile(world, '.kogen/models.yaml'), initModelsTemplate());
   const ignore = projectFile(world, '.gitignore');
   let text = fs.existsSync(ignore) ? fs.readFileSync(ignore, 'utf8') : '';
   if (!text.split(/\r?\n/).includes('.kogen/local/')) text += `${text && !text.endsWith('\n') ? '\n' : ''}.kogen/local/\n`;
   fs.writeFileSync(ignore, text);
-  git(world, ['add', '--', '.kogen/project.yaml', '.gitignore']);
+  git(world, ['add', '--', '.kogen/project.yaml', '.kogen/models.yaml', '.gitignore']);
   const initCommit = world.git(world.project, ['commit', '-q', '-m', 'Add Kogen configuration']);
   assert.equal(initCommit.status, 0, initCommit.stderr || initCommit.stdout);
   if (configure) {
     // Hand-configured fixtures declare the installed runner, just as a real init
     // can select Kogen's bridge without depending on workspace node_modules.
     fs.writeFileSync(projectFile(world, '.kogen/project.yaml'), configText());
-    git(world, ['add', '--', '.kogen/project.yaml']);
+    fs.writeFileSync(projectFile(world, '.kogen/models.yaml'), modelsText());
+    git(world, ['add', '--', '.kogen/project.yaml', '.kogen/models.yaml']);
     const commit = world.git(world.project, ['commit', '-q', '-m', 'Configure acceptance checks']);
     assert.equal(commit.status, 0, commit.stderr || commit.stdout);
   }
@@ -1807,6 +1825,7 @@ async function dispatchAssertions(world, label, args, attachment) {
     const configFile = projectFile(world, '.kogen/project.yaml');
     mkdirp(path.dirname(configFile));
     fs.writeFileSync(configFile, initTemplate());
+    fs.writeFileSync(projectFile(world, '.kogen/models.yaml'), initModelsTemplate());
     const ignore = projectFile(world, '.gitignore');
     let text = fs.existsSync(ignore) ? fs.readFileSync(ignore, 'utf8') : '';
     if (!text.split(/\r?\n/).includes('.kogen/local/')) text += `${text && !text.endsWith('\n') ? '\n' : ''}.kogen/local/\n`;

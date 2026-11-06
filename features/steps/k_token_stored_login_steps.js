@@ -52,7 +52,11 @@ process.exit(r.status === null ? 1 : r.status);
 `;
 
 function yaml() {
-  return "version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - {name: local-check, run: 'true'}\n  acceptance:\n    run: '" + RUNNER + "'\n    steps_dir: features/steps\nprotect: []\nmodels:\n  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: high}\n  build: {provider: chatgpt, model: gpt-6.1-sol, effort: medium}\n  review: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\nshape_workers:\n  enabled: false\n";
+  return "version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - {name: local-check, run: 'true'}\n  acceptance:\n    run: '" + RUNNER + "'\n    steps_dir: features/steps\nprotect: []\nshape_workers:\n  enabled: false\n";
+}
+
+function lineup() {
+  return "models:\n  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: high}\n  build: {provider: chatgpt, model: gpt-6.1-sol, effort: medium}\n  review: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\n";
 }
 
 async function setup(world, accepted) {
@@ -67,6 +71,7 @@ async function setup(world, accepted) {
   put(path.join(repo, 'README.md'), '# Fixture\n');
   put(path.join(repo, '.gitignore'), '.kogen/local/\n');
   put(path.join(repo, '.kogen/project.yaml'), yaml());
+  put(path.join(repo, '.kogen/models.yaml'), lineup());
   put(path.join(repo, 'features/steps/fixture_steps.js'), "const {Then}=require('@cucumber/cucumber');Then('the fixture holds',()=>{});\n");
   put(path.join(d, 'request.md'), 'Preserve the fixture.\n');
   for (const a of [['init', '-q', '--initial-branch=main'], ['config', 'user.name', 'T'], ['config', 'user.email', 't@example.invalid'], ['add', '.'], ['commit', '-qm', 'baseline']]) {

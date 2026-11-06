@@ -34,7 +34,7 @@ if (process.env.KOGEN_PROTECTION_CHILD === '1') {
     return { type: 'message', id: 'item_plan', role: 'assistant', content: [{ type: 'output_text', text: value }] };
   }
   function protection(config) {
-    const section = config.split(/^protect:\s*\n/m)[1]?.split(/^models:/m)[0] || '';
+    const section = config.split(/^protect:\s*\n/m)[1] || '';
     return [...section.matchAll(/^  - '((?:[^']|'')*)'\s*$/gm)].map(m => m[1].replaceAll("''", "'"));
   }
   function checkNames(config) {

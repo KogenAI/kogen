@@ -1,17 +1,7 @@
-# Starting template only: replace empty commands with your real checks and acceptance.
-# Not verified project checks; never overwrite an existing approved configuration blindly.
-version: 1
-commands:
-  setup: []
-  fix: []
-  checks: []
-  acceptance:
-    run: null
-    steps_dir: null
-protect: []
+# Team model lineup: copy this file to .kogen/models.yaml (a host-local .kogen/local/models.yaml
+# can override single roles on one machine). Not a project file: commands, protect and
+# acceptance stay in .kogen/project.yaml.
 models:
   shape: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
   build: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
   review: {provider: anthropic, model: claude-opus-5-5, effort: medium}
-shape_workers:
-  enabled: false

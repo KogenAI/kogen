@@ -10,13 +10,21 @@ When('I read reviewer defaults from {string}', function (source) {
   try {
     const file = path.join(dir, 'main.go');
     fs.writeFileSync(file, `package main
-import ("encoding/json"; "os"; "github.com/KogenAI/kogen-coordinator/project")
+import ("encoding/json"; "os"; "path/filepath"; "github.com/KogenAI/kogen-coordinator/project")
+func write(root, rel, text string) {
+  path := filepath.Join(root, rel)
+  if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { panic(err) }
+  if err := os.WriteFile(path, []byte(text), 0o644); err != nil { panic(err) }
+}
 func main() {
   roles := project.DefaultModels()
   if os.Args[1] != "builtin" {
-    text := project.Template()
-    if os.Args[1] == "explicit" { text = "version: 1\\nmodels:\\n  review: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\\n" }
-    c, err := project.ParseConfig(text, "project.yaml")
+    root, err := os.MkdirTemp("", "reviewer-lineup-")
+    if err != nil { panic(err) }
+    defer os.RemoveAll(root)
+    write(root, project.ConfigPath, project.Template())
+    if os.Args[1] == "explicit" { write(root, project.ModelsPath, "models:\\n  review: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\\n") }
+    c, err := project.LoadConfig(root)
     if err != nil { panic(err) }
     roles = c.Models
   }

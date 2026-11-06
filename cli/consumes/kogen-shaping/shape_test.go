@@ -155,7 +155,7 @@ func TestShapeAsksKogensExecutorForAnExternalShapeRole(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFx(t, false)
-			f.configure(externalShaperConfig)
+			f.configureExternalShaper()
 			f.commitAll("external shaper")
 			var roles []project.Role
 			exit, _, err := f.shapeWith("Add it.", "", func(role project.Role) (executor.Executor, error) {
@@ -173,7 +173,7 @@ func TestShapeAsksKogensExecutorForAnExternalShapeRole(t *testing.T) {
 	}
 	t.Run("not provided", func(t *testing.T) {
 		f := newFx(t, false)
-		f.configure(externalShaperConfig)
+		f.configureExternalShaper()
 		f.commitAll("external shaper")
 		exit, _, err := f.shapeWith("Add it.", "", nil)
 		wantError(t, exit, err, "executor", "unavailable", 1)

@@ -337,7 +337,7 @@ Feature: Project setup
       Add calc.is_even(n).
       """
     Then the exit code is 3
-    And stdout contains "environment/project_config_invalid: {abs:.kogen/project.yaml}"
+    And stdout contains "environment/project_config_invalid: {abs:.kogen/models.yaml}"
     And stdout contains "executor"
     And the fake ChatGPT server received 0 requests
 
@@ -351,6 +351,6 @@ Feature: Project setup
       Add calc.is_even(n).
       """
     Then the exit code is 3
-    And stdout contains "environment/project_config_invalid: {abs:.kogen/project.yaml}"
+    And stdout contains "environment/project_config_invalid: {abs:.kogen/models.yaml}"
     And stdout contains "provider"
     And the fake ChatGPT server received 0 requests

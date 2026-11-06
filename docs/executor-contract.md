@@ -130,7 +130,7 @@ Shape and Review (`structured`: true) receive `Task.Schema` and request schema-c
 
 ## 5. Configuration
 
-`.kogen/project.yaml`, on each of `models.shape`, `models.build` and `models.review` independently:
+`.kogen/models.yaml` (or the host-local `.kogen/local/models.yaml`), on each of `models.shape`, `models.build` and `models.review` independently; `.kogen/project.yaml` refuses a `models:` key:
 
 ```yaml
 models:

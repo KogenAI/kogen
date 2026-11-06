@@ -490,8 +490,19 @@ func roleKeys(r project.Role) []string {
 	return keys
 }
 
-func yaml(models string) string {
-	return "version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: 'true'\n    steps_dir: features/steps\nprotect: []\n" + models
+func yaml(extra string) string {
+	return "version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: 'true'\n    steps_dir: features/steps\nprotect: []\n" + extra
+}
+
+// load reads a project whose model lineup is the team models file with the given text.
+func load(models string) (*project.Config, error) {
+	root, err := os.MkdirTemp("", "lineup-")
+	must(err)
+	defer os.RemoveAll(root)
+	must(os.MkdirAll(filepath.Join(root, ".kogen"), 0o755))
+	must(os.WriteFile(filepath.Join(root, project.ConfigPath), []byte(yaml("")), 0o644))
+	must(os.WriteFile(filepath.Join(root, project.ModelsPath), []byte(models), 0o644))
+	return project.LoadConfig(root)
 }
 
 func tool(name string) m {
@@ -529,7 +540,7 @@ func main() {
 	}
 	switch mode {
 	case "native":
-		legacy, err := project.ParseConfig(yaml("models:\n  shape: {model: gpt-6.1-sol, effort: high}\n  build: {model: gpt-6.1-sol, effort: medium}\n  review: {model: gpt-6.1-sol, effort: high}\n"), "project.yaml")
+		legacy, err := load("models:\n  shape: {model: gpt-6.1-sol, effort: high}\n  build: {model: gpt-6.1-sol, effort: medium}\n  review: {model: gpt-6.1-sol, effort: high}\n")
 		must(err)
 		legacyKeys := m{}
 		for role, r := range legacy.Models {
@@ -571,13 +582,12 @@ func main() {
 		fmt.Println("{}")
 	case "legacy-config":
 		// The configuration facts of the legacy scenario: role keys, worker keys, an explicit chatgpt role, the saved shape.
-		base := yaml("models:\n  shape: {model: gpt-6.1-sol, effort: high}\n  build: {model: gpt-6.1-sol, effort: medium}\n  review: {model: gpt-6.1-sol, effort: high}\n")
-		legacy, err := project.ParseConfig(base, "project.yaml")
+		legacy, err := load("models:\n  shape: {model: gpt-6.1-sol, effort: high}\n  build: {model: gpt-6.1-sol, effort: medium}\n  review: {model: gpt-6.1-sol, effort: high}\n")
 		must(err)
-		withWorkers, err := project.ParseConfig(base+"shape_workers:\n  enabled: true\n  read: {model: gpt-6.1-sol, effort: low}\n  probe: {model: gpt-6.1-sol, effort: low}\n  draft: {model: gpt-6.1-sol, effort: medium}\n", "project.yaml")
+		withWorkers, err := project.ParseConfig(yaml("")+"shape_workers:\n  enabled: true\n  read: {model: gpt-6.1-sol, effort: low}\n  probe: {model: gpt-6.1-sol, effort: low}\n  draft: {model: gpt-6.1-sol, effort: medium}\n", "project.yaml")
 		must(err)
 		explicit := m{}
-		if c, err := project.ParseConfig(yaml("models:\n  shape: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\n"), "project.yaml"); err != nil {
+		if c, err := load("models:\n  shape: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\n"); err != nil {
 			explicit["error"] = err.Error()
 		} else {
 			r := c.Models["shape"]
@@ -699,11 +709,12 @@ async function kogen(c, args, extra = {}) {
   });
   return { args, exit: r.code, stdout: r.stdout, stderr: r.stderr, started, ended: Date.now() };
 }
-const configYaml = models => `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - name: present\n      run: 'test -f app.txt'\n  acceptance:\n    run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'\n    steps_dir: 'features/steps'\nprotect: []\nmodels:\n${models}`;
+const configYaml = () => `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - name: present\n      run: 'test -f app.txt'\n  acceptance:\n    run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'\n    steps_dir: 'features/steps'\nprotect: []\n`;
+const modelsYaml = models => `models:\n${models}`;
 async function project(c, models, files) {
   const put = (p, text) => { const f = path.join(c.repo, p); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
   put('README.md', '# Fixture project\n'); put('app.txt', 'baseline\n'); put('.gitignore', '.kogen/local/\n');
-  put('features/steps/README.md', 'Cucumber step definitions.\n'); put('.kogen/project.yaml', configYaml(models));
+  put('features/steps/README.md', 'Cucumber step definitions.\n'); put('.kogen/project.yaml', configYaml()); put('.kogen/models.yaml', modelsYaml(models));
   for (const [p, b] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(c.repo, p)), { recursive: true }); fs.writeFileSync(path.join(c.repo, p), b); }
   for (const a of [['init', '-q', '--initial-branch=main'], ['config', 'user.name', 'Kogen Integration'], ['config', 'user.email', 'kogen-integration@example.invalid'], ['add', '-A'], ['commit', '-q', '-m', 'fixture baseline']]) await H.gitBang(c, a);
 }

@@ -80,7 +80,8 @@ class Lab {
     this.put('.gitignore', '.kogen/local/\n');
     this.put('README.md', '# Replay fixture\n\nA tiny project for the production replay.\n');
     const role = (name, effort) => `  ${name}:\n    model: gpt-6.1-sol\n    effort: ${effort}\n`;
-    this.put('.kogen/project.yaml', `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${ACCEPTANCE}'\n    steps_dir: 'features/steps'\nprotect: []\nmodels:\n${role('shape', 'high')}${role('build', 'medium')}${role('review', 'high')}`);
+    this.put('.kogen/project.yaml', `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${ACCEPTANCE}'\n    steps_dir: 'features/steps'\nprotect: []\n`);
+    this.put('.kogen/models.yaml', `models:\n${role('shape', 'high')}${role('build', 'medium')}${role('review', 'high')}`);
     this.git(['add', '-A']); this.git(['commit', '-qm', 'Initial commit']);
     if (withPackage) this.addPackage();
   }

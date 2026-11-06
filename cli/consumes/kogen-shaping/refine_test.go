@@ -11,7 +11,15 @@ import (
 	"github.com/KogenAI/kogen-shaping/shape"
 )
 
-const externalShaperConfig = acceptanceConfig + "models:\n  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: high}\n"
+// externalShaperModels is the team models file whose shape role is an external executor.
+const externalShaperModels = "models:\n  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: high}\n"
+
+// configureExternalShaper selects the external shape role in the team models file, without committing it.
+func (f *fx) configureExternalShaper() {
+	f.t.Helper()
+	f.configure(acceptanceConfig)
+	f.write(project.ModelsPath, externalShaperModels)
+}
 
 // refine calls shape.Refine as kogen's runEngine does for `kogen intent refine`.
 func (f *fx) refine(hash string, external shape.External) (int, string, error) {
@@ -74,7 +82,7 @@ func TestRefineAsksKogensExecutorForAnExternalShapeRole(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFx(t, false)
-			f.configure(externalShaperConfig)
+			f.configureExternalShaper()
 			f.commitAll("external shaper")
 			f.addIntent()
 			sha := f.card()
@@ -94,7 +102,7 @@ func TestRefineAsksKogensExecutorForAnExternalShapeRole(t *testing.T) {
 	}
 	t.Run("not provided", func(t *testing.T) {
 		f := newFx(t, false)
-		f.configure(externalShaperConfig)
+		f.configureExternalShaper()
 		f.commitAll("external shaper")
 		f.addIntent()
 		exit, _, err := f.refine(f.card(), nil)

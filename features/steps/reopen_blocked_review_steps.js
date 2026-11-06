@@ -59,7 +59,8 @@ commands:
     run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
     steps_dir: features/steps
 protect: [gate.cjs]
-models:
+`);
+    put(this, '.kogen/models.yaml', `models:
   shape: {model: gpt-6.1-sol, effort: high}
   build: {model: gpt-6.1-sol, effort: medium}
   review: {model: gpt-6.1-sol, effort: high}
@@ -69,7 +70,7 @@ models:
     put(this, `${dir}/model.qnt`, 'module fixture {\n var n: int\n action init = n\' = 0\n action step = n\' = n + 1\n val Valid = n >= 0\n}\n');
     put(this, `${dir}/acceptance.feature`, 'Feature: Candidate\n  Scenario: Candidate implementation\n    Then the reopened candidate is implemented\n');
     put(this, 'features/steps/app_steps.js', `const {Then}=require('@cucumber/cucumber');const fs=require('node:fs');const assert=require('node:assert/strict');Then('the reopened candidate is implemented',()=>{const app=fs.readFileSync('app.txt','utf8').trim();fs.appendFileSync(process.env.RB_TRACE,JSON.stringify([fs.realpathSync('.'),app,'acceptance'])+'\\n');assert.ok(['builder preserved','reviewer repaired','cleared repair'].includes(app));});\n`);
-    const originalPaths = ['gate.cjs', '.kogen/project.yaml', `${dir}/intent.md`, `${dir}/acceptance.feature`, `${dir}/model.qnt`, 'features/steps/app_steps.js'];
+    const originalPaths = ['gate.cjs', '.kogen/project.yaml', '.kogen/models.yaml', `${dir}/intent.md`, `${dir}/acceptance.feature`, `${dir}/model.qnt`, 'features/steps/app_steps.js'];
     const baseline = new Map(originalPaths.map(p => [path.join(this.project, p), fs.readFileSync(path.join(this.project, p))]));
     const newBin = path.join(this.prefix, 'bin/kogen');
     this.commandOverride = cross ? process.env.KOGEN_REOPEN_OLD_BIN : newBin;

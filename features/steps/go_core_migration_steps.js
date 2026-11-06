@@ -198,7 +198,7 @@ function cacheRoles(provider, baseUrl) {
   // ChatGPT is the default provider: its roles omit the provider field, as an older project does.
   // OpenAI-compatible names its host with base_url (the fake's /v1), never through KOGEN_PROVIDER_URL.
   const role = effort => `{${provider === 'chatgpt' ? '' : 'provider: ' + provider + ', '}model: ${CACHE_MODELS[provider]}, effort: ${effort}${provider === 'openai-compatible' ? ', base_url: ' + baseUrl : ''}}`;
-  return `models:\n  shape: ${role('high')}\n  build: ${role('high')}\n  review: ${role('high')}\nshape_workers:\n  enabled: false\n`;
+  return `models:\n  shape: ${role('high')}\n  build: ${role('high')}\n  review: ${role('high')}\n`;
 }
 function seedLogin(home, provider) {
   // Credentials stored the way each provider's login stores them (0600 file in a 0700 private folder).
@@ -236,7 +236,8 @@ async function cacheJourney(provider) {
     else if (provider !== 'openai-compatible') seedLogin(home, provider); // openai-compatible runs keyless: no login at all
     const runner = 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"';
     put(path.join(repo, '.gitignore'), '.kogen/local/\n'); put(path.join(repo, 'README.md'), '# Prompt caching fixture\n'); put(path.join(repo, 'app.txt'), 'baseline\n');
-    put(path.join(repo, '.kogen/project.yaml'), `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${runner}'\n    steps_dir: features/steps\nprotect: []\n${cacheRoles(provider, fake.url + '/v1')}`);
+    put(path.join(repo, '.kogen/project.yaml'), `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${runner}'\n    steps_dir: features/steps\nprotect: []\n`);
+    put(path.join(repo, '.kogen/models.yaml'), cacheRoles(provider, fake.url + '/v1'));
     put(path.join(repo, '.kogen/intents/fixture/intent.md'), '# Preserve the caching fixture\n\nSlug: fixture\nModel: not applicable — plain fixture wiring\nAcceptance:\n- .kogen/intents/fixture/acceptance.feature\n- features/steps/fixture_steps.js\n\nAllow baseline or candidate text in app.txt.\n\n## Decisions\n- Preserve fixture text (source: request)\n\n## Source comparison\n- addressed: fixture request; prose and scenario preserve text.\n\n## Tests\n- Fixture text: local scenario (scenario)\n\n## Feasibility\n- none\n');
     put(path.join(repo, '.kogen/intents/fixture/acceptance.feature'), 'Feature: Fixture\n  Scenario: Preserve text\n    Then caching fixture text is present\n');
     put(path.join(repo, 'features/steps/fixture_steps.js'), "const {Then}=require('@cucumber/cucumber');const fs=require('node:fs');Then('caching fixture text is present',()=>{if(!['baseline\\n','candidate\\n'].includes(fs.readFileSync('app.txt','utf8')))throw Error('invalid text');});\n");
@@ -340,7 +341,8 @@ async function openModelCase(c, prefix, { provider, model = OPEN_MODEL, effort =
     const role = `{${provider === 'chatgpt' ? '' : 'provider: ' + provider + ', '}model: ${model}, effort: ${effort}${base}}`;
     const runner = 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"';
     put(path.join(repo, '.gitignore'), '.kogen/local/\n'); put(path.join(repo, 'README.md'), '# Open model selection fixture\n');
-    put(path.join(repo, '.kogen/project.yaml'), `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${runner}'\n    steps_dir: features/steps\nprotect: []\nmodels:\n  shape: ${role}\n  build: ${role}\n  review: ${role}\nshape_workers:\n  enabled: false\n`);
+    put(path.join(repo, '.kogen/project.yaml'), `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${runner}'\n    steps_dir: features/steps\nprotect: []\n`);
+    put(path.join(repo, '.kogen/models.yaml'), `models:\n  shape: ${role}\n  build: ${role}\n  review: ${role}\n`);
     put(path.join(repo, 'request.md'), 'Add a greeting file.\n');
     for (const args of [['init', '-q', '--initial-branch=main'], ['config', 'user.name', 'Open Model Fixture'], ['config', 'user.email', 'open-model@example.invalid'], ['add', '.'], ['commit', '-qm', 'baseline']]) await git(args);
     out.run = await cli(['intent', command, 'greeting', 'request.md']);

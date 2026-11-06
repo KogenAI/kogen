@@ -16,7 +16,6 @@ const INIT_ID = 'without-chatgpt-init';
 const DOCTOR_ID = 'without-chatgpt-doctor';
 const KEY = 'sk-ant-FIXTURE-KEY';
 const PRESET_LINES = [
-  'version: 1',
   '  shape: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}',
   '  build: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}',
   '  review: {provider: anthropic, model: claude-opus-5-5, effort: medium}',
@@ -59,13 +58,17 @@ function guideProblems(text) {
     if (!outside.lines.some(l => l.startsWith(pre))) p.push(`step 2 excerpt has no line starting: ${pre}`);
   }
   if (!sub) { p.push('step 4 has no "### Without ChatGPT" subsection'); return p; }
-  for (const f of ['anthropic-only.yaml', '.kogen/project.yaml', 'go mod download', 'go test ./...', 'kogen init', 'kogen doctor', 'kogen provider login anthropic']) need('Without ChatGPT', sub, f);
+  for (const f of ['anthropic-only.yaml', '.kogen/project.yaml', '.kogen/models.yaml', 'go mod download', 'go test ./...', 'kogen init', 'kogen doctor', 'kogen provider login anthropic']) need('Without ChatGPT', sub, f);
   const yaml = fenceOf(sub, 'yaml');
   if (!yaml) p.push('Without ChatGPT has no yaml example');
   else {
     const body = yaml.lines.join('\n');
-    for (const f of ['version: 1', 'go mod download', 'go test ./...', 'acceptance:', 'steps_dir:', 'KOGEN_ACCEPTANCE_FEATURES', 'provider: anthropic', 'claude-opus-5-5']) need('the yaml example', body, f);
+    for (const f of ['version: 1', 'go mod download', 'go test ./...', 'acceptance:', 'steps_dir:', 'KOGEN_ACCEPTANCE_FEATURES']) need('the yaml example', body, f);
+    if (/^models:/m.test(body)) p.push('the yaml example of .kogen/project.yaml has a models key');
   }
+  const models = fenceOf(sub, 'yaml models');
+  if (!models) p.push('Without ChatGPT has no "yaml models" example of .kogen/models.yaml');
+  else for (const f of ['models:', 'provider: anthropic', 'claude-opus-5-5']) need('the models example', models.lines.join('\n'), f);
   for (const id of [INIT_ID, DOCTOR_ID]) if (!fenceOf(sub, `text ${id}`)) p.push(`Without ChatGPT has no "text ${id}" excerpt`);
   return p;
 }
@@ -113,11 +116,11 @@ function goodGuide() {
     'The automatic discovery of `kogen init` needs a ChatGPT login; otherwise use the configuration-first path in step 4.', '',
     '## 4. Initialise the project', '',
     '### Without ChatGPT', '',
-    'Copy anthropic-only.yaml to .kogen/project.yaml, run kogen provider login anthropic, then kogen init and kogen doctor.', '',
+    'Copy anthropic-only.yaml to .kogen/models.yaml, write .kogen/project.yaml, run kogen provider login anthropic, then kogen init and kogen doctor.', '',
     F + 'sh', 'kogen provider login anthropic', 'kogen init', 'kogen doctor', F, '',
     F + 'yaml', 'version: 1', 'commands:', '  setup:', "    - 'go mod download'", '  checks:', "    - {name: test, run: 'go test ./...'}",
-    '  acceptance:', '    run: "$KOGEN_ACCEPTANCE_FEATURES"', "    steps_dir: 'features/steps'",
-    'models:', '  shape: {provider: anthropic, model: claude-opus-5-5, effort: medium}', F, '',
+    '  acceptance:', '    run: "$KOGEN_ACCEPTANCE_FEATURES"', "    steps_dir: 'features/steps'", F, '',
+    F + 'yaml models', 'models:', '  shape: {provider: anthropic, model: claude-opus-5-5, effort: medium}', F, '',
     F + 'text ' + INIT_ID, 'Initialized Kogen in <repo>', F, '',
     F + 'text ' + DOCTOR_ID, 'ok config - .kogen/project.yaml is valid', F, '',
     '## 5. Shape', '',
@@ -201,9 +204,11 @@ async function runJourney(guide) {
   const yaml = fenceOf(subsectionOf(guide), 'yaml');
   assert.ok(yaml, 'the guide has no yaml example in Without ChatGPT');
   fs.mkdirSync(path.join(c.repo, '.kogen'), { recursive: true });
-  fs.copyFileSync(PRESET, path.join(c.repo, '.kogen/project.yaml'));
+  const lineup = fenceOf(subsectionOf(guide), 'yaml models');
+  assert.ok(lineup, 'the guide has no "yaml models" example in Without ChatGPT');
   const written = yaml.lines.join('\n') + '\n';
   fs.writeFileSync(path.join(c.repo, '.kogen/project.yaml'), written);
+  fs.writeFileSync(path.join(c.repo, '.kogen/models.yaml'), lineup.lines.join('\n') + '\n');
 
   const init = await Hh.runKogen(c, ['init']);
   outputs[INIT_ID] = init.out;
@@ -290,11 +295,12 @@ if (require.main === module) {
     for (const l of PRESET_LINES) assert.ok(lines.includes(l), `preset lacks the line: ${l}`);
     assert.equal(lines.filter(l => /provider: /.test(l)).length, 3);
   });
-  Then('kogen doctor accepts the preset as the configuration with an Anthropic key', { timeout: 900000 }, async function () {
+  Then('kogen doctor accepts the preset as the models file with an Anthropic key', { timeout: 900000 }, async function () {
     const c = await newCase(true);
     await login(c);
     fs.mkdirSync(path.join(c.repo, '.kogen'), { recursive: true });
-    fs.copyFileSync(PRESET, path.join(c.repo, '.kogen/project.yaml'));
+    fs.copyFileSync(PRESET, path.join(c.repo, '.kogen/models.yaml'));
+    fs.writeFileSync(path.join(c.repo, '.kogen/project.yaml'), 'version: 1\n');
     const r = await helper().runKogen(c, ['doctor', '--quick']);
     assert.ok(/^ok config - \.kogen\/project\.yaml is valid$/m.test(r.out), r.out);
     assert.ok(/^ok models - shape, build, review ready$/m.test(r.out), r.out);

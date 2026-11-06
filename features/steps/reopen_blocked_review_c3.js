@@ -68,7 +68,8 @@ commands:
     run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
     steps_dir: features/steps
 protect: [gate.cjs]
-models:
+`);
+    put(this, '.kogen/models.yaml', `models:
   shape: {model: gpt-6.1-sol, effort: high}
   build: {model: gpt-6.1-sol, effort: medium}
   review: {model: gpt-6.1-sol, effort: high}

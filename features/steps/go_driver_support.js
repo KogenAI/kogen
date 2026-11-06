@@ -429,7 +429,7 @@ async function candidateTree(context, start, excluded = []) {
   } finally { fs.rmSync(index, { force: true }); }
 }
 // The baseline hash of an Intent as its approval card shows it: SHA-256 over the sorted baseline files, each as
-// `path NUL sha256(bytes) LF` (the Intent's files, its Acceptance paths, .kogen/project.yaml and the protected files).
+// `path NUL sha256(bytes) LF` (the Intent's files, its Acceptance paths, .kogen/project.yaml, .kogen/models.yaml when it exists and the protected files).
 async function baselinePaths(context, slug, protect = []) {
   const root = context.repo;
   const md = intentMd(slug), feature = featurePath(slug);
@@ -441,7 +441,8 @@ async function baselinePaths(context, slug, protect = []) {
   const first = [md, feature].filter(p => own.includes(p));
   const files = (await git(context, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])).split('\0').filter(Boolean);
   const protectedFiles = [...new Set(protect.flatMap(pat => { pat = pat.replace(/\/+$/, ''); return files.filter(f => f === pat || f.startsWith(`${pat}/`)); }))].sort();
-  return [...new Set([...first, ...listed, ...own, '.kogen/project.yaml', ...protectedFiles])];
+  const lineup = fs.existsSync(path.join(root, '.kogen/models.yaml')) ? ['.kogen/models.yaml'] : [];
+  return [...new Set([...first, ...listed, ...own, '.kogen/project.yaml', ...lineup, ...protectedFiles])];
 }
 async function baselineHash(context, slug, protect = []) {
   const root = context.repo;
@@ -450,16 +451,15 @@ async function baselineHash(context, slug, protect = []) {
 }
 
 // Rewrites the commands of the project's .kogen/project.yaml (setup, fix, checks [{name, run}], protect), keeping its
-// acceptance command and models as `kogen init` wrote them. Nothing is committed.
+// acceptance command as `kogen init` wrote it (the models live in .kogen/models.yaml, which is left alone). Nothing is committed.
 function configure(context, { setup = [], fix = [], checks = [], protect = [], acceptance: accept } = {}) {
   const file = path.join(context.repo, '.kogen/project.yaml');
   const text = fs.readFileSync(file, 'utf8');
   const q = x => `'${String(x).replaceAll("'", "''")}'`;
   const list = (key, items, render) => items.length ? `  ${key}:\n${items.map(i => `    - ${render(i)}`).join('\n')}\n` : `  ${key}: []\n`;
   const acceptance = accept ? `  acceptance:\n    run: ${q(accept.run)}\n    steps_dir: ${q(accept.stepsDir)}\n` : text.slice(text.indexOf('  acceptance:'), text.indexOf('protect:'));
-  const models = text.slice(text.indexOf('models:'));
   const protectText = protect.length ? `protect:\n${protect.map(p => `  - ${q(p)}`).join('\n')}\n` : 'protect: []\n';
-  fs.writeFileSync(file, `version: 1\ncommands:\n${list('setup', setup, q)}${list('fix', fix, q)}${list('checks', checks, c => `name: ${c.name}\n      run: ${q(c.run)}`)}${acceptance}${protectText}${models}`);
+  fs.writeFileSync(file, `version: 1\ncommands:\n${list('setup', setup, q)}${list('fix', fix, q)}${list('checks', checks, c => `name: ${c.name}\n      run: ${q(c.run)}`)}${acceptance}${protectText}`);
 }
 
 // A tiny Go program that uses Kogen's packages (a module outside the repository that replaces "kogen" by <repo>/cli and "kogen-loop" by <repo>/cli/third_party/kogen-loop), for

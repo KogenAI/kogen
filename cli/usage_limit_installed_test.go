@@ -107,7 +107,9 @@ commands:
     steps_dir: 'features/steps'
 protect:
   - 'accept.sh'
-models:
+`
+	write(".kogen/project.yaml", cfg, 0644)
+	write(".kogen/models.yaml", `models:
   shape:
     model: gpt-6.1-sol
     effort: high
@@ -119,8 +121,7 @@ models:
     executor: claude-code
     model: claude-sonnet-5-5
     effort: high
-`
-	write(".kogen/project.yaml", cfg, 0644)
+`, 0644)
 	write("accept.sh", "#!/bin/sh\nif grep -qx red app.txt; then echo synthetic-red; exit 1; fi\ncp reports/green.ndjson \"$KOGEN_ACCEPTANCE_REPORT\"\n", 0755)
 	write("app.txt", "baseline\n", 0644)
 	script := filepath.Join(state, "script.json")

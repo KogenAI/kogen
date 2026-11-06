@@ -22,7 +22,7 @@ kogen provider login chatgpt                   # signs in through your browser
 In a Git repository of your own with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
 
 ```sh
-kogen init                                     # finds and checks the project's commands, commits .kogen/project.yaml
+kogen init                                     # finds and checks the project's commands, commits .kogen/project.yaml and the model lineup .kogen/models.yaml
 kogen intent shape my-feature ../request.md    # the request, kept outside the repository; answer questions on stdin: printf '1: a\n' | kogen intent shape my-feature -
 kogen intent approve my-feature                # shows the card; approve with the hash it prints
 kogen intent build my-feature                  # builds, verifies, reviews and commits

@@ -20,8 +20,10 @@ const FIXTURE_ID = ['-c', 'user.name=Fold Fixture', '-c', 'user.email=fold@examp
 const CONFIG = [
   'version: 1', 'commands:', '  setup: []', '  fix: []', '  checks: []', '  acceptance:',
   `    run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'`,
-  "    steps_dir: 'features/steps'", 'protect: []', 'models:',
-  '  shape: {model: gpt-6.1-sol, effort: high}', '  build: {model: gpt-6.1-sol, effort: medium}', '  review: {model: gpt-6.1-sol, effort: high}', '',
+  "    steps_dir: 'features/steps'", 'protect: []', '',
+].join('\n');
+const MODELS = [
+  'models:', '  shape: {model: gpt-6.1-sol, effort: high}', '  build: {model: gpt-6.1-sol, effort: medium}', '  review: {model: gpt-6.1-sol, effort: high}', '',
 ].join('\n');
 
 const gitEnv = w => ({ PATH: process.env.PATH, HOME: w.home, GIT_CONFIG_GLOBAL: w.gitconfig, GIT_CONFIG_NOSYSTEM: '1' });
@@ -47,6 +49,7 @@ async function workspace(w, { git: makeRepo = true, commit = false, identity = f
     write(w, 'app.txt', 'baseline\n');
     if (config) {
       write(w, '.kogen/project.yaml', CONFIG);
+      write(w, '.kogen/models.yaml', MODELS);
       write(w, '.gitignore', '.kogen/local/\n');
       write(w, 'features/steps/README.md', 'Cucumber step definitions.\n');
     }

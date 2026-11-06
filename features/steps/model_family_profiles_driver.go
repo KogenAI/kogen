@@ -120,11 +120,19 @@ func run(s selection) (map[string]any, error) {
 		roleLine += ", base_url: '" + s.BaseURL + "'"
 	}
 	roleLine += "}\n"
-	text := "version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n"
-	if s.Mode != "defaults" {
-		text += "models:\n" + roleLine
+	root := filepath.Join(home, "project")
+	if err := os.MkdirAll(filepath.Join(root, ".kogen"), 0o755); err != nil {
+		return nil, err
 	}
-	cfg, err := project.ParseConfig(text, ".kogen/project.yaml")
+	if err := os.WriteFile(filepath.Join(root, project.ConfigPath), []byte("version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n"), 0o644); err != nil {
+		return nil, err
+	}
+	if s.Mode != "defaults" {
+		if err := os.WriteFile(filepath.Join(root, project.ModelsPath), []byte("models:\n"+roleLine), 0o644); err != nil {
+			return nil, err
+		}
+	}
+	cfg, err := project.LoadConfig(root)
 	if err != nil {
 		return nil, err
 	}

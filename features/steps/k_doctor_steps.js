@@ -15,11 +15,12 @@ let sharedSuite;
 const suiteOnce = () => sharedSuite || (sharedSuite = H.setupSuite());
 const dirs = [];
 
-const yamlFor = ({ checks = [], shape = '{model: gpt-6.1-sol, effort: high}', build = '{model: gpt-6.1-sol, effort: medium}', review = '{model: gpt-6.1-sol, effort: high}' } = {}) =>
+const yamlFor = ({ checks = [] } = {}) =>
   'version: 1\ncommands:\n  setup: []\n  fix: []\n' +
   (checks.length ? '  checks:\n' + checks.map(c => `    - name: ${c.name}\n      run: '${c.run.replaceAll("'", "''")}'\n`).join('') : '  checks: []\n') +
-  '  acceptance:\n    run: null\n    steps_dir: null\nprotect: []\nmodels:\n' +
-  `  shape: ${shape}\n  build: ${build}\n  review: ${review}\n`;
+  '  acceptance:\n    run: null\n    steps_dir: null\nprotect: []\n';
+const modelsFor = ({ shape = '{model: gpt-6.1-sol, effort: high}', build = '{model: gpt-6.1-sol, effort: medium}', review = '{model: gpt-6.1-sol, effort: high}' } = {}) =>
+  `models:\n  shape: ${shape}\n  build: ${build}\n  review: ${review}\n`;
 
 function realGit() {
   const r = spawnSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' });
@@ -37,7 +38,7 @@ function git(w, args, identity) {
   return r.stdout.trim();
 }
 
-async function fixture(world, { yaml, identity, chatgpt, claude }) {
+async function fixture(world, { yaml, models = modelsFor(), identity, chatgpt, claude }) {
   const suite = await suiteOnce();
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kdoctor-')));
   dirs.push(root);
@@ -59,6 +60,7 @@ async function fixture(world, { yaml, identity, chatgpt, claude }) {
   git(w, ['init', '-q', '--initial-branch=main']);
   fs.mkdirSync(path.join(w.repo, '.kogen'));
   fs.writeFileSync(path.join(w.repo, '.kogen', 'project.yaml'), yaml);
+  fs.writeFileSync(path.join(w.repo, '.kogen', 'models.yaml'), models);
   fs.writeFileSync(path.join(w.repo, 'app.txt'), 'baseline\n');
   git(w, ['add', '-A']);
   git(w, ['commit', '-q', '-m', 'fixture'], true);
@@ -105,18 +107,18 @@ function snapshot(w) {
 }
 
 Given('a doctor fixture repository with no Git identity, no provider login and an unsupported effort', { timeout: 900000 }, async function () {
-  await fixture(this, { yaml: yamlFor({ shape: '{model: gpt-6.1-sol, effort: ultra}' }), identity: false, chatgpt: false });
+  await fixture(this, { yaml: yamlFor(), models: modelsFor({ shape: '{model: gpt-6.1-sol, effort: ultra}' }), identity: false, chatgpt: false });
 });
 Given('a doctor fixture repository with an identity and a ChatGPT login whose committed check {string} runs {string}', { timeout: 900000 }, async function (name, run) {
   await fixture(this, { yaml: yamlFor({ checks: [{ name, run }] }), identity: true, chatgpt: true });
 });
 Given('a doctor fixture repository with an identity whose roles use the claude-code executor and no claude on PATH', { timeout: 900000 }, async function () {
   const r = '{executor: claude-code, model: claude-sonnet-5-5, effort: high}';
-  await fixture(this, { yaml: yamlFor({ shape: r, build: r, review: r }), identity: true, chatgpt: false });
+  await fixture(this, { yaml: yamlFor(), models: modelsFor({ shape: r, build: r, review: r }), identity: true, chatgpt: false });
 });
 Given('a doctor fixture repository with an identity whose roles use the claude-code executor and a claude reporting version {string}', { timeout: 900000 }, async function (v) {
   const r = '{executor: claude-code, model: claude-sonnet-5-5, effort: high}';
-  await fixture(this, { yaml: yamlFor({ shape: r, build: r, review: r }), identity: true, chatgpt: false, claude: v });
+  await fixture(this, { yaml: yamlFor(), models: modelsFor({ shape: r, build: r, review: r }), identity: true, chatgpt: false, claude: v });
 });
 Given('the checkout identity is recorded', function () { this.snapshot = snapshot(this); });
 
@@ -129,7 +131,7 @@ When('I run kogen doctor in text and in JSON form', { timeout: 300000 }, async f
 When('I apply the fixes the doctor printed', function () {
   git(this, ['config', 'user.name', 'Doctor Fixture']);
   git(this, ['config', 'user.email', 'doctor@example.invalid']);
-  const file = path.join(this.repo, '.kogen', 'project.yaml');
+  const file = path.join(this.repo, '.kogen', 'models.yaml');
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('effort: ultra', 'effort: high'));
   git(this, ['commit', '-q', '-am', 'fix effort'], true);
   H.seedCredentials({ home: this.home });

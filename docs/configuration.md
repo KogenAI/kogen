@@ -16,11 +16,9 @@ commands:
     run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
     steps_dir: 'features/steps'   # where shaping writes step-definition files
 protect: ['.formatter.exs']       # check configuration a Build must not change
-models:
-  shape:  {model: gpt-6.1-sol, effort: high}
-  build:  {model: gpt-6.1-sol, effort: medium}
-  review: {model: gpt-6.1-terra, effort: medium}
 ```
+
+The model lineup is not in this file: it lives in `.kogen/models.yaml` (see [The model lineup](#the-model-lineup)), and a root `models:` key in `.kogen/project.yaml` is refused.
 
 - **Commands** run with `/bin/sh -c` in the repository root, with your environment, stdin closed and no time limit. Kogen adds `KOGEN_NODE` and `KOGEN_CUCUMBER` (its own Node and Cucumber) and, for the acceptance command, `KOGEN_ACCEPTANCE_FEATURES`, `KOGEN_ACCEPTANCE_REPORT` and `KOGEN_ACCEPTANCE_RUN` (a fresh random value for each run). When the acceptance command ends, whatever the ending, Kogen stops every process that carries this run's `KOGEN_ACCEPTANCE_RUN` and all their descendants, including servers a step put in the background with `setsid`; processes of other runs or started elsewhere are left alone. A process that removes the variable from its environment and whose parent is no longer running when the command ends cannot be attributed and is not stopped.
 - **Checks** are `{name, run}` with unique lowercase names (letters, digits, dashes); `acceptance` and `model` are reserved. A check that already fails on the unchanged tree does not stop a Build from starting: the Build records every check's result first (name, command, status and output, in order), shows the failures to you and the builder, and still requires every configured check to pass before it lands. The record is evidence, not a waiver, and the Build's result and output compare each check before and after (`passed`, `failed` or `not run`).
@@ -29,7 +27,22 @@ models:
 - **Acceptance.** Kogen ships Cucumber 13.3.0 and runs it on its own Node, so the project needs no Node of its own. A project that already has `@cucumber/cucumber` in its `package.json` keeps its own, run as `"$KOGEN_NODE" node_modules/@cucumber/cucumber/bin/cucumber.js ...`. Step files go in `steps_dir` and use `require('@cucumber/cucumber')`.
 - **protect** lists paths or globs of actual verification definitions/settings (linter rules, formatter settings, suppression files). They are part of every Intent's approved baseline, so a Build cannot pass a check by weakening them. Dependency manifests and lockfiles are editable inputs when they only declare dependencies/project metadata: for example ordinary `mix.exs`, `package.json`, nested `go.mod`, `mix.lock`, `package-lock.json`, `npm-shrinkwrap.json` and `go.sum` are not protected merely because setup, format, compile, tests, vet, audit or another check consumes them. `cli/go.mod` is an editable input. A combined manifest is eligible when it embeds verification settings (such as eslintConfig) or itself defines a configured executable check, such as a package.json script used by an npm check or a Mix alias invoked by a configured command; that manifest remains whole-file protected. There is no field-level or dependency-only exception to explicit whole-file protection. Init rejects dependency-only protection with a path-specific correction request rather than silently deleting it. Existing committed configuration remains authoritative and is not migrated automatically.
 - A genuine shaping conflict means a required edit cannot be avoided without changing the requested outcome and a currently protected path is involved. Shaping reports the protected path and reason without writing a ready Intent or starting approval/Build. Revise the request, or review and commit `.kogen/project.yaml` outside Build, then shape again while preserving checks and actual check configuration. That manual review changes the approval baseline; it is not approval of a protected edit. There is no protected-edit override. If a combined manifest is explicitly protected, revising the request is the available Build path.
-- **Models** and efforts live only here; no command takes model flags. Defaults are Sol 6.1 high for shaping, Sol 6.1 medium for building and Terra 6.1 medium for review, for every review size. Any nonempty `model` is accepted for every provider and sent unchanged; `effort` is checked against the route's known list when the file is read (see [Open model selection](#open-model-selection)). There is no separate planner; an older `models.plan` entry is ignored.
+- **Models** and efforts live only in the models files, `.kogen/models.yaml` and the host-local `.kogen/local/models.yaml`, never in this file (see [The model lineup](#the-model-lineup)); no command takes model flags. Defaults are Sol 6.1 high for shaping, Sol 6.1 medium for building and Terra 6.1 medium for review, for every review size. Any nonempty `model` is accepted for every provider and sent unchanged; `effort` is checked against the route's known list when a models file is read (see [Open model selection](#open-model-selection)). There is no separate planner; a `plan` entry is refused as an unknown key.
+
+### The model lineup
+
+`.kogen/models.yaml` is the team lineup: a root `models:` mapping with the roles `shape`, `build` and `review`. `kogen init` writes and commits it next to `.kogen/project.yaml`: the default roles, or the Claude Code roles (`executor: claude-code`) when Claude Code is the only login. A role the file omits keeps its default; the defaults are the ones in the previous bullet.
+
+```yaml
+models:
+  shape:  {model: gpt-6.1-sol, effort: high}
+  build:  {model: gpt-6.1-sol, effort: medium}
+  review: {model: gpt-6.1-terra, effort: medium}
+```
+
+`.kogen/local/models.yaml` is an optional host-local override in the same form. It is not committed (`.kogen/local/` is ignored by Git), so it changes the lineup on one machine only. The precedence is defaults, then `.kogen/models.yaml`, then `.kogen/local/models.yaml`, and each role a file names replaces the whole role: a local `build: {provider: opencode-go, model: kimi-k3, effort: high}` leaves `shape` and `review` as the team file says. Every command (shape, refine, build, review) and the `models` line of the readiness report use this lineup.
+
+`.kogen/project.yaml` refuses a root `models:` key as `environment/project_config_invalid` (exit 3) with its file and `line N: models is no longer read from .kogen/project.yaml; move the model lineup to .kogen/models.yaml`. A models file with a bad role is refused the same way, naming that file. `docs/presets/` holds ready lineups to copy to `.kogen/models.yaml`: each is only a `models:` mapping.
 
 Init detects Go at the root or under `cli/`; other layouts can be supplied from the README. It deduplicates identical check commands; different commands remain because test paths and filters can change coverage. Machine bootstrap (`mix local.hex`, `mix local.rebar`) belongs in prerequisites rather than recurring setup.
 
@@ -166,7 +179,7 @@ Native shell/read_file tools remain text-only; explicit view_image alone deliver
 
 ## Providers
 
-`models.shape`, `models.build` and `models.review` accept optional `provider: chatgpt`, `provider: supergrok`, `provider: opencode-go`,
+`models.shape`, `models.build` and `models.review` of `.kogen/models.yaml` accept optional `provider: chatgpt`, `provider: supergrok`, `provider: opencode-go`,
 `provider: anthropic` or `provider: openai-compatible`.
 Omission preserves the exact legacy `{model, effort}` map and defaults; explicit
 `chatgpt` routes identically. No template migration is required. An unknown provider
@@ -177,7 +190,7 @@ old Build resume. Obtain fresh exact approval.
 Model and effort are open: see [Open model selection](#open-model-selection) below for
 what is sent, what a refusal looks like and the recommended models.
 
-After installed qualification, the recommended subscription roles are:
+After installed qualification, the recommended subscription roles, for `.kogen/models.yaml`, are:
 
 ```yaml
 models:
@@ -186,7 +199,7 @@ models:
   review: {provider: supergrok, model: grok-4.7, effort: high}
 ```
 
-This repository retains its existing ChatGPT bootstrap configuration. Automatic command discovery with bare `kogen init`
+This repository retains its existing ChatGPT bootstrap lineup. Automatic command discovery with bare `kogen init`
 still requires ChatGPT; configuration-first bootstrap below does not. Shape checks its role, Refine checks
 Shape, and Build/resume checks Build and Review; unused providers need no login.
 
@@ -256,7 +269,7 @@ are not unlimited: time, region, availability and rate restrictions apply. None 
 a default or fallback. ChatGPT can build again (steering-13 supersedes its temporary
 conservation window); there is no account-credit toggle.
 
-Complete version-1 starting templates (not verified project checks):
+Starting lineups, each a team models file holding only a root `models:` mapping (not verified project checks):
 - [OpenCode Go only](presets/opencode-go-only.yaml): Kimi/high for all roles.
 - [Anthropic only](presets/anthropic-only.yaml): Sonnet 5.5/medium for shape and build, Opus 5.5/medium for review.
 - [SuperGrok only](presets/supergrok-only.yaml): Grok high/medium/high.
@@ -265,13 +278,12 @@ Complete version-1 starting templates (not verified project checks):
 - [SuperGrok and Go](presets/supergrok-opencode-go.yaml): Grok/high, Kimi/high, Grok/high.
 
 These are explicit starting tradeoffs, not benchmark winners or a fallback policy.
-Workers remain disabled. No preset is automatically applied to this repository.
-For **configuration-first** bootstrap without ChatGPT, prepare your real
-`.kogen/project.yaml` from a preset, replace empty setup/fix/check/protect lists and
-null acceptance run/steps_dir with your own reviewed project commands and acceptance,
-then use the existing `kogen init` leftover-configuration commit path. Commit your
-application first. Bare init discovery still requires ChatGPT. No preset command,
-init provider selector or automatic router is added.
+No preset is automatically applied to this repository.
+For **configuration-first** bootstrap without ChatGPT, copy a preset to `.kogen/models.yaml`
+and write your real `.kogen/project.yaml` (`version: 1` with your own reviewed setup, fix,
+checks, protect and acceptance run/steps_dir), then use the existing `kogen init`
+leftover-configuration commit path. Commit your application first. Bare init discovery still
+requires ChatGPT or Claude Code. No preset command, init provider selector or automatic router is added.
 
 `kogen provider login opencode-go` accepts only your personal workspace key on stdin
 (piped input supported; interactive input is not echoed). Do not put keys in argv,
@@ -353,7 +365,7 @@ savings claim, release/global installation or billing change follows.
 
 ### Anthropic Claude API-key roles
 
-Select `provider: anthropic` explicitly in any role or enabled Shape worker.
+Select `provider: anthropic` explicitly in any role of `.kogen/models.yaml`.
 The recommended models are `claude-opus-5-5` and `claude-sonnet-5-5`, with `low`,
 `medium`, `high` or `max`. `xhigh`, which upstream also documents, is accepted too;
 any other effort is rejected when the file is read. Any nonempty model is sent unchanged. These documentation-backed
@@ -428,7 +440,7 @@ separate, unclaimed obligations.
 
 No provider has a list of allowed models: any nonempty `model` is accepted and sent
 unchanged. Known models are only recommended defaults and hints. Efforts are checked
-when `.kogen/project.yaml` is read, for every `models` role,
+when `.kogen/models.yaml` or `.kogen/local/models.yaml` is read, for every `models` role,
 by exact case-sensitive match: `provider: anthropic` and `executor: claude-code`
 accept `low`, `medium`, `high`, `xhigh`, `max`; `provider: supergrok` accepts `low`,
 `medium`, `high`, `xhigh`. ChatGPT, OpenCode Go and OpenAI-compatible have no known
@@ -448,7 +460,7 @@ model <model> with effort <effort> was sent to <Label> unchanged and not retried
 ```
 
 The request is never retried and no other model is tried. Change `model` or `effort`
-for that role in `.kogen/project.yaml`. An OpenAI-compatible host's own error text is
+for that role in `.kogen/models.yaml` (the line above is the pinned library's wording and still names `.kogen/project.yaml`). An OpenAI-compatible host's own error text is
 shown too, as one line `OpenAI-compatible said: …` (control characters removed, at
 most 300 bytes, a saved key redacted), because a local server's message, such as
 Ollama's "try pulling it first", is often the fix. ChatGPT and SuperGrok already put
@@ -464,7 +476,7 @@ account or refreshes credentials. All other strings remain experimental, may fai
 and are not blocked. Newly recorded attempts include selection `compatibility`;
 old records without it stay unknown. Contextual refusal diagnostics additionally
 name the actual role/provider/model/effort, supported/experimental status and editable
-`models.<role>.model` / `models.<role>.effort` selectors in `.kogen/project.yaml`.
+`models.<role>.model` / `models.<role>.effort` selectors in `.kogen/models.yaml` (or `.kogen/local/models.yaml`).
 
 Recommended model per role and provider (a starting point, not a requirement):
 
@@ -532,7 +544,7 @@ message all name `openai-compatible`. Roles that omit `provider` stay on ChatGPT
 
 ## Role executors
 
-Each of `models.shape` (Shape and Refine), `models.build` and `models.review` may independently name who runs the role:
+Each of `models.shape` (Shape and Refine), `models.build` and `models.review` of `.kogen/models.yaml` may independently name who runs the role:
 
 ```yaml
 models:
@@ -569,9 +581,8 @@ Removal note: the opt-in native tool-call fingerprint stop (`project.Role.NoProg
 and its `native_no_progress` outcome, added in 090f36b) was removed unused; it was
 never a YAML or CLI option. The legacy spellings `NoProgress` and `no_progress` are
 not supported settings and nothing reads them. Like any other unrecognized role key
-they are not applied: strict loading of `.kogen/project.yaml` reports them as before,
-and the lenient view used by init's readiness lines leaves that role at its default. Default
-configuration is unchanged. The verification-level `no_progress` stop (a native builder
+they are not applied: loading `.kogen/models.yaml` reports them as before, and the
+readiness `models` line names the refused file. Default configuration is unchanged. The verification-level `no_progress` stop (a native builder
 answering without a tool call to the same red verification pass; when acceptance scenarios are still not passing it first gets one notice naming them, and the stop comes only if the same red repeats after that notice) and
 `executor_no_progress` remain.
 

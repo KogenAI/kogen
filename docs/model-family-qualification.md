@@ -37,8 +37,9 @@ is not HTTP success, cache-hit evidence, access or an availability guarantee. Ol
 retained records without it remain unknown and are not rewritten or upgraded;
 the usage reader preserves recorded classification without reconstructing history.
 Provider refusals retain existing stop/no-fallback behavior and contextual diagnostics
-name the editable selector, e.g. `.kogen/project.yaml models.review.model` and
-`models.review.effort`, not a fabricated numeric line. Review SuperGrok
+name the editable selector, e.g. `models.review.model` and `models.review.effort`
+(the lineup is in `.kogen/models.yaml`; the pinned library's text still names
+`.kogen/project.yaml`), not a fabricated numeric line. Review SuperGrok
 `no-such-model` with HTTP 400 `model not found` sends once and stops.
 
 ## Operational policy and documented bounds

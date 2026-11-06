@@ -63,8 +63,11 @@ func Text(checks []Check) string {
 func Run(s *sys.Session, in Input) []Check {
 	checks := []Check{checkInstall(s, in)}
 	repo, gitCheck := checkGit(s, in)
-	cfgCheck, cfg := checkConfig(repo, in)
-	return append(checks, gitCheck, cfgCheck, checkModels(cfg, in))
+	root := in.Project
+	if repo != nil {
+		root = repo.Dir
+	}
+	return append(checks, gitCheck, checkConfig(root), checkModels(root, in))
 }
 
 func toolEnv(t verify.Tools) map[string]string {
@@ -115,33 +118,28 @@ func checkGit(s *sys.Session, in Input) (*git.Repo, Check) {
 	return repo, ok("git", "repository "+repo.Dir)
 }
 
-func checkConfig(repo *git.Repo, in Input) (Check, *project.Config) {
-	root := in.Project
-	if repo != nil {
-		root = repo.Dir
-	}
+func checkConfig(root string) Check {
 	text, err := os.ReadFile(filepath.Join(root, project.ConfigPath))
 	if err != nil {
-		return fail("config", project.ConfigPath+" is missing", "in your project, run kogen init"), project.ReadableConfig("")
+		return fail("config", project.ConfigPath+" is missing", "in your project, run kogen init")
 	}
-	cfg, err := project.ParseConfig(string(text), filepath.Join(root, project.ConfigPath))
+	_, err = project.ParseConfig(string(text), filepath.Join(root, project.ConfigPath))
 	if err == nil {
-		return ok("config", project.ConfigPath+" is valid"), cfg
+		return ok("config", project.ConfigPath+" is valid")
 	}
-	readable := project.ReadableConfig(string(text))
 	e, isKogen := sys.AsError(err)
 	if !isKogen || len(e.Lines) == 0 {
 		msg := err.Error()
 		if isKogen {
 			msg = e.Detail
 		}
-		return fail("config", msg, "edit "+project.ConfigPath), readable
+		return fail("config", msg, "edit "+project.ConfigPath)
 	}
 	var lines []string
 	for _, l := range e.Lines {
 		lines = append(lines, strings.TrimPrefix(strings.SplitN(l, ":", 2)[0], "line "))
 	}
-	return fail("config", strings.Join(e.Lines, "; "), "edit "+project.ConfigPath+" at line "+strings.Join(lines, ", ")), readable
+	return fail("config", strings.Join(e.Lines, "; "), "edit "+project.ConfigPath+" at line "+strings.Join(lines, ", "))
 }
 
 type namedRole struct {
@@ -149,7 +147,29 @@ type namedRole struct {
 	role project.Role
 }
 
-func checkModels(cfg *project.Config, in Input) Check {
+// refusedLineup is the models line when project.LoadConfig refuses the lineup: it names the
+// file the refusal names (the project file when it names none) and says to edit it.
+func refusedLineup(root string, err error) Check {
+	file, detail := project.ConfigPath, err.Error()
+	if e, isKogen := sys.AsError(err); isKogen {
+		detail = e.Detail
+		if len(e.Lines) > 0 {
+			detail = strings.Join(e.Lines, "; ")
+			if rel, relErr := filepath.Rel(root, e.Detail); relErr == nil && filepath.IsLocal(rel) {
+				file = filepath.ToSlash(rel)
+			}
+		}
+	}
+	return fail("models", file+": "+detail, "edit "+file)
+}
+
+// checkModels examines the roles of the lineup project.LoadConfig reads: the defaults, then
+// .kogen/models.yaml, then .kogen/local/models.yaml.
+func checkModels(root string, in Input) Check {
+	cfg, err := project.LoadConfig(root)
+	if err != nil {
+		return refusedLineup(root, err)
+	}
 	var roles []namedRole
 	for _, n := range project.ModelRoles {
 		roles = append(roles, namedRole{n, cfg.Models[n]})

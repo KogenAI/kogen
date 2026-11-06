@@ -3,6 +3,8 @@ package consumes
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,10 +13,12 @@ import (
 	"github.com/KogenAI/kogen-loop/sys"
 )
 
-// kogen cli/readiness/readiness.go parses the project's configuration text and, when that fails,
-// reads what it can of it.
+// kogen cli/readiness/readiness.go validates the project's configuration text with ParseConfig
+// and reads the model lineup (the defaults, .kogen/models.yaml, .kogen/local/models.yaml) with
+// LoadConfig.
 var (
 	_ func(string, string) (*project.Config, error) = project.ParseConfig
+	_ func(string) (*project.Config, error)         = project.LoadConfig
 	_ func(string) *project.Config                  = project.ReadableConfig
 	_ func(project.Role) bool                       = project.Role.External
 )
@@ -66,16 +70,45 @@ func TestParsedConfigHasARoleForEveryModelRole(t *testing.T) {
 	}
 }
 
-// TestRoleProviderAndExecutor: a role's Provider is the file's provider; a role with `executor:
-// claude-code` has Executor project.ExecutorClaudeCode and is External, one with the native
-// executor is not.
+// loadRoles writes a project file and the given models files (by relative path) in a temporary
+// project and returns the configuration project.LoadConfig reads from them.
+// The model lineup files project.LoadConfig reads: the team file and the host-local override.
+const (
+	modelsFile      = ".kogen/models.yaml"
+	localModelsFile = ".kogen/local/models.yaml"
+)
+
+func loadRoles(t *testing.T, files map[string]string) *project.Config {
+	t.Helper()
+	root := t.TempDir()
+	files[project.ConfigPath] = "version: 1\n"
+	for rel, text := range files {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg, err := project.LoadConfig(root)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	return cfg
+}
+
+// TestRoleProviderAndExecutor: a role's Provider is the models file's provider; a role with
+// `executor: claude-code` has Executor project.ExecutorClaudeCode and is External, one with the
+// native executor is not. The roles come from .kogen/models.yaml through project.LoadConfig, a
+// role of .kogen/local/models.yaml replaces the whole role of the team file, and a role no file
+// names stays the default.
 func TestRoleProviderAndExecutor(t *testing.T) {
-	cfg := parse(t, `version: 1
-models:
+	cfg := loadRoles(t, map[string]string{modelsFile: `models:
   shape: {provider: anthropic, model: m, effort: high}
   build: {executor: claude-code, model: m, effort: high}
   review: {executor: native, model: m, effort: high}
-`)
+`})
 	shape, build, review := cfg.Models["shape"], cfg.Models["build"], cfg.Models["review"]
 	if shape.Provider != "anthropic" || shape.External() || shape.Executor != "" {
 		t.Fatalf("shape = %+v (external %v)", shape, shape.External())
@@ -92,6 +125,51 @@ models:
 	if only := (project.Role{Executor: project.ExecutorClaudeCode}); !only.External() {
 		t.Fatalf("a role with only the claude-code executor is not External: %+v", only)
 	}
+
+	local := loadRoles(t, map[string]string{
+		modelsFile:      "models:\n  shape: {provider: anthropic, model: m, effort: high}\n  build: {provider: supergrok, model: g, effort: high}\n",
+		localModelsFile: "models:\n  build: {executor: claude-code, model: l, effort: low}\n",
+	})
+	if got := local.Models["shape"]; got.Provider != "anthropic" || got.Model != "m" {
+		t.Fatalf("shape = %+v, want the team role", got)
+	}
+	if got := local.Models["build"]; got.Provider != "" || got.Executor != project.ExecutorClaudeCode || got.Model != "l" {
+		t.Fatalf("build = %+v, want the host-local role replacing the whole team role", got)
+	}
+	if got, want := local.Models["review"], project.DefaultModels()["review"]; got != want {
+		t.Fatalf("review = %+v, want the default %+v", got, want)
+	}
+}
+
+// TestModelsKeyOfTheProjectFileIsRefused: a root models key of .kogen/project.yaml is refused by
+// ParseConfig and LoadConfig with environment/project_config_invalid (exit 3), the file and the
+// line `line N: models is no longer read from .kogen/project.yaml; move the model lineup to
+// .kogen/models.yaml`.
+func TestModelsKeyOfTheProjectFileIsRefused(t *testing.T) {
+	const text = "version: 1\nmodels:\n  shape: {provider: anthropic, model: m, effort: high}\n"
+	const line = "line 2: models is no longer read from .kogen/project.yaml; move the model lineup to .kogen/models.yaml"
+	check := func(what string, err error, file string) {
+		t.Helper()
+		var e *sys.Error
+		if !errors.As(err, &e) {
+			t.Fatalf("%s: error %v (%T), want *sys.Error", what, err, err)
+		}
+		if e.Class != "environment" || e.Reason != "project_config_invalid" || e.Detail != file || e.Exit != 3 || !slices.Equal(e.Lines, []string{line}) {
+			t.Fatalf("%s: %+v", what, e)
+		}
+	}
+	_, err := project.ParseConfig(text, "project.yaml")
+	check("ParseConfig", err, "project.yaml")
+	root := t.TempDir()
+	file := filepath.Join(root, project.ConfigPath)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = project.LoadConfig(root)
+	check("LoadConfig", err, file)
 }
 
 // requireFixedWorkers: ShapeWorkers is the fixed value project.Workers{Enabled: false, Roles:
@@ -173,19 +251,16 @@ func TestParseConfigOldKogenFolderHasNoLines(t *testing.T) {
 	}
 }
 
-// TestReadableConfigKeepsWhatItCanRead: of an invalid file it keeps the model roles it accepted
-// (the invalid problem aside), with a role for every model role; of text it cannot read, or no
-// text, it gives a native role with no provider for each model role. Whatever the text, the
-// shaping workers are the fixed disabled value with an empty, non-nil Roles map.
+// TestReadableConfigKeepsWhatItCanRead: of an invalid file it keeps what validation accepted, and
+// the model roles are project.DefaultModels() for every role (a models key is refused, not
+// applied; no provider, not External), as they are for text it cannot read, or no text. Whatever
+// the text, the shaping workers are the fixed disabled value with an empty, non-nil Roles map.
 func TestReadableConfigKeepsWhatItCanRead(t *testing.T) {
 	partial := project.ReadableConfig("version: 1\nbogus: 1\nmodels:\n  shape: {provider: anthropic, model: m, effort: high}\n  build: {executor: claude-code, model: m, effort: high}\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low, provider: supergrok}\n")
 	for _, name := range project.ModelRoles {
-		if _, ok := partial.Models[name]; !ok {
-			t.Fatalf("Models has no %s", name)
+		if partial.Models[name] != project.DefaultModels()[name] || partial.Models[name].Provider != "" || partial.Models[name].External() {
+			t.Fatalf("Models[%s] = %+v, want the default", name, partial.Models[name])
 		}
-	}
-	if partial.Models["shape"].Provider != "anthropic" || !partial.Models["build"].External() || partial.Models["review"].External() {
-		t.Fatalf("Models = %+v", partial.Models)
 	}
 	requireFixedWorkers(t, "partial", partial)
 
@@ -196,7 +271,7 @@ func TestReadableConfigKeepsWhatItCanRead(t *testing.T) {
 		}
 		for _, name := range project.ModelRoles {
 			role, ok := cfg.Models[name]
-			if !ok || role.Provider != "" || role.External() {
+			if !ok || role != project.DefaultModels()[name] || role.Provider != "" || role.External() {
 				t.Fatalf("ReadableConfig(%q).Models[%s] = %+v (present %v)", text, name, role, ok)
 			}
 		}

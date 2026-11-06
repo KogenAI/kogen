@@ -87,7 +87,8 @@ def main():
         (repo / 'README.md').write_text('# Cache journey\n\nA tiny exact text change. Run node check.js. The configured check accepts baseline and candidate; Intent acceptance must require exactly candidate.\n')
         (repo / '.gitignore').write_text('.kogen/local/\n')
         runner = 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
-        (repo / '.kogen/project.yaml').write_text('version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - {name: check, run: "node check.js"}\n  acceptance:\n    run: \'' + runner + '\'\n    steps_dir: features/steps\nprotect: []\nmodels:\n  shape: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\n  build: {provider: chatgpt, model: gpt-6.1-sol, effort: medium}\n  review: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}\nshape_workers:\n  enabled: false\n')
+        (repo / '.kogen/project.yaml').write_text('version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - {name: check, run: "node check.js"}\n  acceptance:\n    run: \'' + runner + '\'\n    steps_dir: features/steps\nprotect: []\n')
+        (repo / '.kogen/models.yaml').write_text('models:\n  shape: {provider: chatgpt, model: gpt-6.1-sol, effort: high}\n  build: {provider: chatgpt, model: gpt-6.1-sol, effort: medium}\n  review: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}\n')
         run('git-init', ['git', 'init', '-q', '--initial-branch=main'])
         run('baseline-check', ['node', 'check.js'])
         run('initial-add', ['git', 'add', '.'])

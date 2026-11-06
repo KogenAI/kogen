@@ -131,16 +131,72 @@ func TestInstallCheck(t *testing.T) {
 	}
 }
 
-func TestModelsChecks(t *testing.T) {
-	home := t.TempDir()
-	cfgText := "version: 1\nmodels:\n  shape: {provider: supergrok, model: grok-4.7, effort: high}\n  build: {provider: supergrok, model: grok-4.7, effort: high}\n"
-	c := checkModels(readable(cfgText), Input{Home: home})
-	if c.Status != "fail" || c.Fix != "kogen provider login supergrok; kogen provider login chatgpt" {
-		t.Fatalf("%+v", c)
+func writeProjectFile(t *testing.T, root, rel, text string) {
+	t.Helper()
+	path := filepath.Join(root, rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func readable(text string) *project.Config { return project.ReadableConfig(text) }
+func TestModelsChecks(t *testing.T) {
+	home := t.TempDir()
+	const projectText = "version: 1\n"
+	t.Run("a project without a models file keeps the default lineup", func(t *testing.T) {
+		root := t.TempDir()
+		writeProjectFile(t, root, project.ConfigPath, projectText)
+		c := checkModels(root, Input{Home: home})
+		want := Check{"models", "fail", "shape: chatgpt has no stored login; build: chatgpt has no stored login; review: chatgpt has no stored login", "kogen provider login chatgpt"}
+		if c != want {
+			t.Fatalf("%+v", c)
+		}
+	})
+	t.Run("the team models file names the roles and a role it omits stays the default", func(t *testing.T) {
+		root := t.TempDir()
+		writeProjectFile(t, root, project.ConfigPath, projectText)
+		writeProjectFile(t, root, project.ModelsPath, "models:\n  shape: {provider: supergrok, model: grok-4.7, effort: high}\n  build: {provider: supergrok, model: grok-4.7, effort: high}\n")
+		c := checkModels(root, Input{Home: home})
+		if c.Status != "fail" || c.Fix != "kogen provider login supergrok; kogen provider login chatgpt" ||
+			c.Detail != "shape: supergrok has no stored login; build: supergrok has no stored login; review: chatgpt has no stored login" {
+			t.Fatalf("%+v", c)
+		}
+	})
+	t.Run("the host-local models file wins per role", func(t *testing.T) {
+		root := t.TempDir()
+		writeProjectFile(t, root, project.ConfigPath, projectText)
+		writeProjectFile(t, root, project.ModelsPath, "models:\n  shape: {provider: supergrok, model: grok-4.7, effort: high}\n  build: {provider: supergrok, model: grok-4.7, effort: high}\n  review: {provider: supergrok, model: grok-4.7, effort: high}\n")
+		writeProjectFile(t, root, project.LocalModelsPath, "models:\n  build: {provider: opencode-go, model: kimi-k3, effort: high}\n")
+		c := checkModels(root, Input{Home: home})
+		want := Check{"models", "fail", "shape: supergrok has no stored login; build: opencode-go has no stored login; review: supergrok has no stored login", "kogen provider login supergrok; kogen provider login opencode-go"}
+		if c != want {
+			t.Fatalf("%+v", c)
+		}
+	})
+	t.Run("a refused models file is a fail line naming the file", func(t *testing.T) {
+		root := t.TempDir()
+		writeProjectFile(t, root, project.ConfigPath, projectText)
+		writeProjectFile(t, root, project.LocalModelsPath, "models:\n  build: {provider: nowhere, model: m, effort: high}\n")
+		c := checkModels(root, Input{Home: home})
+		if c.Status != "fail" || !strings.HasPrefix(c.Detail, project.LocalModelsPath+": line 2: ") || c.Fix != "edit "+project.LocalModelsPath {
+			t.Fatalf("%+v", c)
+		}
+	})
+	t.Run("a models key in the project file is a fail line naming the project file", func(t *testing.T) {
+		root := t.TempDir()
+		writeProjectFile(t, root, project.ConfigPath, "version: 1\nmodels:\n  shape: {provider: supergrok, model: grok-4.7, effort: high}\n")
+		c := checkModels(root, Input{Home: home})
+		want := Check{"models", "fail", project.ConfigPath + ": line 2: models is no longer read from " + project.ConfigPath + "; move the model lineup to " + project.ModelsPath, "edit " + project.ConfigPath}
+		if c != want {
+			t.Fatalf("%+v", c)
+		}
+		if got := checkConfig(root); got.Status != "fail" || got.Detail != "line 2: models is no longer read from "+project.ConfigPath+"; move the model lineup to "+project.ModelsPath {
+			t.Fatalf("%+v", got)
+		}
+	})
+}
 
 func gitRepo(t *testing.T) string {
 	t.Helper()
@@ -162,7 +218,7 @@ func TestOutsideRepositoryAndMissingConfigFixes(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 	dir := gitRepo(t)
-	if c, _ := checkConfig(nil, Input{Project: dir}); c.Status != "fail" || c.Fix != "in your project, run kogen init" {
+	if c := checkConfig(dir); c.Status != "fail" || c.Fix != "in your project, run kogen init" {
 		t.Fatalf("%+v", c)
 	}
 }

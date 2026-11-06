@@ -58,7 +58,8 @@ commands:
     steps_dir: features/steps
 protect:
   - validate.cjs
-models:
+`);
+    put(this, '.kogen/models.yaml', `models:
   shape: {model: gpt-6.1-sol, effort: high}
   build: {model: gpt-6.1-sol, effort: medium}
   review: {model: gpt-6.1-sol, effort: high}

@@ -66,7 +66,7 @@ In your repository, with a clean committed tree:
 kogen init
 ```
 
-`init` discovers how the project builds and tests, asks the configured model about its commands, keeps only the checks that pass on your committed tree, sets up acceptance with Cucumber, and commits `.kogen/project.yaml` as `Add Kogen configuration`. To change models, effort or checks later, edit `.kogen/project.yaml` and commit it (see `docs/configuration.md`).
+`init` discovers how the project builds and tests, asks the configured model about its commands, keeps only the checks that pass on your committed tree, sets up acceptance with Cucumber, and commits `.kogen/project.yaml` (the commands) and `.kogen/models.yaml` (the model lineup) as `Add Kogen configuration`. To change models or effort later, edit `.kogen/models.yaml` and commit it, or put a role in the host-local, uncommitted `.kogen/local/models.yaml` to change it on one machine; to change checks, edit `.kogen/project.yaml` and commit it (see `docs/configuration.md`).
 
 ```output init
 kogen: detecting the project's commands
@@ -93,7 +93,7 @@ kogen provider login anthropic
 mkdir -p .kogen
 ```
 
-Create `.kogen/project.yaml` with the complete example below, a Go module project. Adapt its setup, checks and acceptance to your project's real ones. The same model lines are in `docs/presets/anthropic-only.yaml` in the Kogen repository for reference.
+Create `.kogen/project.yaml` with the complete example below, a Go module project. Adapt its setup, checks and acceptance to your project's real ones. The model lineup goes in its own file, `.kogen/models.yaml`: copy it from the second example, which is `docs/presets/anthropic-only.yaml` in the Kogen repository. `.kogen/project.yaml` refuses a `models:` key.
 
 ```yaml
 version: 1
@@ -107,15 +107,16 @@ commands:
     run: 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require ''features/steps/*.js'' --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"'
     steps_dir: 'features/steps'
 protect: []
+```
+
+```yaml models
 models:
   shape: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
   build: {provider: anthropic, model: claude-sonnet-5-5, effort: medium}
   review: {provider: anthropic, model: claude-opus-5-5, effort: medium}
-shape_workers:
-  enabled: false
 ```
 
-Leave `.kogen/project.yaml` uncommitted. `kogen init` then takes its leftover-configuration path and commits it as `Add Kogen configuration` together with the `.gitignore` entry for `.kogen/local/`. (If it were already committed, init would only report that Kogen is already initialized and would not add that entry.) Then run init:
+Leave `.kogen/project.yaml` and `.kogen/models.yaml` uncommitted. `kogen init` then takes its leftover-configuration path and commits them as `Add Kogen configuration` together with the `.gitignore` entry for `.kogen/local/`. (If it were already committed, init would only report that Kogen is already initialized and would not add that entry.) Then run init:
 
 ```sh
 kogen init

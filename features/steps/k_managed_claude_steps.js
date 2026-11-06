@@ -480,7 +480,8 @@ process.exit(r.status === null ? 1 : r.status);
     put(path.join(repo, 'README.md'), '# Managed runtime fixture\n');
     put(path.join(repo, 'app.txt'), 'baseline\n');
     const role = '{executor: claude-code, model: claude-sonnet-5-5, effort: high}';
-    put(path.join(repo, '.kogen/project.yaml'), `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - {name: local-check, run: 'true'}\n  acceptance:\n    run: '${RUNNER}'\n    steps_dir: features/steps\nprotect: []\nmodels:\n  shape: ${role}\n  build: ${role}\n  review: ${role}\nshape_workers:\n  enabled: false\n`);
+    put(path.join(repo, '.kogen/project.yaml'), `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks:\n    - {name: local-check, run: 'true'}\n  acceptance:\n    run: '${RUNNER}'\n    steps_dir: features/steps\nprotect: []\n`);
+    put(path.join(repo, '.kogen/models.yaml'), `models:\n  shape: ${role}\n  build: ${role}\n  review: ${role}\n`);
     for (const a of [['init', '-q', '--initial-branch=main'], ['config', 'user.name', 'Managed Fixture'], ['config', 'user.email', 'managed@example.invalid'], ['add', '.'], ['commit', '-qm', 'Fixture baseline']]) git(c, a);
     put(path.join(repo, dir, 'intent.md'), `# Build the managed fixture app
 

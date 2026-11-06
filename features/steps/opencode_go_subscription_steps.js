@@ -81,13 +81,14 @@ if (require.main === module) {
     return installed;
   }
   const runner = 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"';
-  function yaml(models) { return `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${runner}'\n    steps_dir: features/steps\nprotect: []\nmodels:\n${['shape','build','review'].map(r=>`  ${r}: {provider: ${models.provider||'opencode-go'}, model: ${models.model||'kimi-k3'}, effort: ${models.effort||'high'}}`).join('\n')}\nshape_workers:\n  enabled: false\n`; }
+  function yaml(models) { return `version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: '${runner}'\n    steps_dir: features/steps\nprotect: []\nshape_workers:\n  enabled: false\n`; }
+  function lineup(models) { return `models:\n${['shape','build','review'].map(r=>`  ${r}: {provider: ${models.provider||'opencode-go'}, model: ${models.model||'kimi-k3'}, effort: ${models.effort||'high'}}`).join('\n')}\n`; }
   function fixtureIntent(title='Preserve the Go fixture') { return `# ${title}\n\nSlug: fixture\nModel: not applicable — a text fixture has no meaningful state\nAcceptance:\n- .kogen/intents/fixture/acceptance.feature\n- features/steps/fixture_steps.js\n\nPreserve app.txt as baseline or the requested Go candidate.\n\n## Decisions\n- Preserve the fixture (source: request)\n\n## Source comparison\n- addressed: fixture request; contract prose and acceptance preserve app.txt.\n\n## Tests\n- preserve the fixture: installed fixture scenario (scenario)\n\n## Feasibility\n- none\n`; }
   async function context(world) {
     const d=temp(), home=path.join(d,'home'), repo=path.join(d,'repo'); fs.mkdirSync(home); fs.mkdirSync(repo);
     const fake=new FakeServers(); await fake.start(); world.goFake=fake;
     const env={HOME:home,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:path.join(home,'.gitconfig'),KOGEN_PROVIDER_URL:fake.providerUrl,KOGEN_AUTH_URL:fake.authUrl,OPENCODE_API_KEY:world.goInput.borrowed,XAI_API_KEY:world.goInput.borrowed}; write(env.GIT_CONFIG_GLOBAL,'');
-    write(path.join(repo,'README.md'),'# Local Go fixture\n'); write(path.join(repo,'app.txt'),'baseline\n'); write(path.join(repo,'.gitignore'),'.kogen/local/\n'); write(path.join(repo,'.kogen/project.yaml'),yaml({}));
+    write(path.join(repo,'README.md'),'# Local Go fixture\n'); write(path.join(repo,'app.txt'),'baseline\n'); write(path.join(repo,'.gitignore'),'.kogen/local/\n'); write(path.join(repo,'.kogen/project.yaml'),yaml({})); write(path.join(repo,'.kogen/models.yaml'),lineup({}));
     write(path.join(repo,'.kogen/intents/fixture/intent.md'),fixtureIntent());
     write(path.join(repo,'.kogen/intents/fixture/acceptance.feature'),'Feature: Local fixture\n  Scenario: Preserve text\n    Then the Go fixture is present\n');
     write(path.join(repo,'features/steps/fixture_steps.js'),`const {Then}=require('@cucumber/cucumber'); const fs=require('node:fs'); Then('the Go fixture is present',()=>{if(!['baseline\\n','Go candidate\\n'].includes(fs.readFileSync('app.txt','utf8'))) throw Error('fixture changed incorrectly');});\n`);
@@ -151,10 +152,15 @@ func main() {
 	var result any
 	switch mode {
 	case "config", "preset":
-		file := str(c, "yaml")
-		text, err := os.ReadFile(file)
+		text, err := os.ReadFile(str(c, "yaml"))
 		must(err)
-		config, err := project.ParseConfig(string(text), file)
+		root, err := os.MkdirTemp("", "lineup-")
+		must(err)
+		defer os.RemoveAll(root)
+		must(os.MkdirAll(filepath.Join(root, ".kogen"), 0o755))
+		must(os.WriteFile(filepath.Join(root, project.ConfigPath), []byte(project.Template()), 0o644))
+		must(os.WriteFile(filepath.Join(root, project.ModelsPath), text, 0o644))
+		config, err := project.LoadConfig(root)
 		var e *sys.Error
 		switch {
 		case errors.As(err, &e):
@@ -283,7 +289,7 @@ func main() {
       w.goObserved={exit:r.code,login_guidance:r.out.includes('provider/login:')&&r.out.includes('kogen provider login opencode-go'),requests:c.records.length,no_public_secret:publicSafe(input,r.out)};return;
     }
     if(mode==='config') {
-      const f=path.join(c.d,'invalid.yaml');write(f,yaml(settings));
+      const f=path.join(c.d,'invalid.yaml');write(f,lineup(settings));
       w.goObserved={...await nativeRun(c,input,{...settings,mode,yaml:f}),requests:c.records.length};return;
     }
     if(mode==='budget') {w.goObserved=await nativeRun(c,input,{mode});return;}

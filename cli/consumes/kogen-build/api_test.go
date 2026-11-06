@@ -3,7 +3,6 @@ package consumes
 import (
 	"context"
 	"reflect"
-	"regexp"
 	"testing"
 
 	"github.com/KogenAI/kogen-build/build"
@@ -66,13 +65,8 @@ func TestInputFields(t *testing.T) {
 // externalExecutor does for an executor it does not provide.
 func TestExternalIsTheExecutorFactoryOfBuildRoles(t *testing.T) {
 	e := newEnv(t)
-	roleEntry := regexp.MustCompile(`(?m)^  build:\n(?:    .*\n)+`)
-	yaml := e.read(".kogen/project.yaml")
-	if !roleEntry.MatchString(yaml) {
-		t.Fatalf("no build role in:\n%s", yaml)
-	}
-	e.write(".kogen/project.yaml", roleEntry.ReplaceAllLiteralString(yaml, "  build:\n    executor: claude-code\n    model: claude-sonnet-5-5\n    effort: high\n"))
-	e.run("git", "add", ".kogen/project.yaml")
+	e.write(project.ModelsPath, "models:\n  build: {executor: claude-code, model: claude-sonnet-5-5, effort: high}\n")
+	e.run("git", "add", project.ModelsPath)
 	e.run("git", "commit", "-qm", "build with an external executor")
 	e.approve()
 

@@ -261,8 +261,8 @@ async function exercise(mode) {
     put(w, '.gitignore', '.kogen/local/\n'); put(w, 'README.md', readme); put(w, 'notes.txt', 'first note\n'); put(w, 'guard.txt', 'GUARD_EXACT_031\n');
     put(w, 'src/named.txt', 'this other only licence\nEXPLICIT_RANGE_EXACT_031\n');
     for (let i = 0; i < 24; i++) put(w, 'licences/text-' + i + '.txt', ('this other only licence permission copyright\n').repeat(240));
-    const config = 'version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: \'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"\'\n    steps_dir: features/steps\nprotect: [guard.txt]\nmodels:\n  shape: {model: gpt-6.1-sol, effort: high}\n';
-    put(w, '.kogen/project.yaml', config);
+    const config = 'version: 1\ncommands:\n  setup: []\n  fix: []\n  checks: []\n  acceptance:\n    run: \'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"\'\n    steps_dir: features/steps\nprotect: [guard.txt]\n';
+    put(w, '.kogen/project.yaml', config); put(w, '.kogen/models.yaml', 'models:\n  shape: {model: gpt-6.1-sol, effort: high}\n');
     git(w, ['add', '-A']); git(w, ['commit', '-qm', 'native fixture']);
     fs.mkdirSync(path.join(w.env.HOME, '.kogen/credentials'), { recursive: true });
     fs.writeFileSync(path.join(w.env.HOME, '.kogen/credentials/chatgpt.json'), JSON.stringify({ client_id: 'oaiapp_test', access_token: 'compact-fixture-token', refresh_token: 'compact-fixture-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600 }));
