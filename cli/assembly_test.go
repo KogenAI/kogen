@@ -12,6 +12,7 @@ import (
 
 // TestAssemblyUsesThePinnedComponents inspects the executable from the release archive,
 // rather than inferring its dependencies from the test binary.
+// It catches a release executable with unpinned or replaced components.
 func TestAssemblyUsesThePinnedComponents(t *testing.T) {
 	want := map[string]string{
 		"github.com/KogenAI/kogen-coordinator":  "",
@@ -52,7 +53,7 @@ func TestAssemblyUsesThePinnedComponents(t *testing.T) {
 			t.Errorf("%s missing from manifest require declarations", path)
 		}
 	}
-	archive := testrelease.Package(t, repoRoot(t))
+	archive := testrelease.Shared(t, repoRoot(t)).Archive
 	dir := t.TempDir()
 	if out, err := exec.Command("tar", "-xzf", archive, "-C", dir).CombinedOutput(); err != nil {
 		t.Fatalf("extract: %v\n%s", err, out)

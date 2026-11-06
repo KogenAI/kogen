@@ -11,17 +11,17 @@ import (
 	"kogen/internal/testrelease"
 )
 
+// Catches per-base baseline reuse that breaks on the installed binary.
 func TestBaselinePerBaseInstalled(t *testing.T) {
 	t.Parallel()
 	source, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	baselineInstalledFrom(t, source)
+	baselineInstalledFrom(t, testrelease.Shared(t, source).Archive)
 }
 
-func baselineInstalledFrom(t *testing.T, source string) {
-	archive := testrelease.Package(t, source)
+func baselineInstalledFrom(t *testing.T, archive string) {
 	unpack := t.TempDir()
 	cmd := exec.Command("tar", "-xzf", archive, "-C", unpack)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -103,12 +103,14 @@ func baselineInstalledFrom(t *testing.T, source string) {
 
 func fmtBranch(i int) string { return []string{"trial-one", "trial-two", "trial-three"}[i] }
 
+// Catches packaging or an installed workflow that writes into the source checkout, or a release
+// that does not carry the current uncommitted source.
 func TestBaselinePackagingIsolation(t *testing.T) {
 	source, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, check := testrelease.Fixture(t, source)
-	defer check()
-	baselineInstalledFrom(t, root)
+	release := testrelease.Shared(t, source)
+	defer release.CheckCheckout(t)
+	baselineInstalledFrom(t, release.Archive)
 }

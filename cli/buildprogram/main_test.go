@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/KogenAI/kogen-coordinator/durable"
+	"kogen/internal/testrelease"
 )
 
 // Every Build runs hundreds of git commands, and on macOS /usr/bin/git is the xcode-select
@@ -33,6 +34,7 @@ func TestMain(m *testing.M) {
 	}
 	durable.SkipSyncInTests()
 	code := m.Run()
+	testrelease.Cleanup()
 	if shim != "" {
 		os.RemoveAll(shim)
 	}

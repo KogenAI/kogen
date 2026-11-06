@@ -13,15 +13,17 @@ import (
 	"testing"
 )
 
+// Catches a usage-limit stop or resume across rounds that breaks on the real installed binary.
 func TestUsageLimitResumeInstalledRound2(t *testing.T) { usageLimitInstalled(t, 2) }
+
+// Catches a usage-limit stop or resume across rounds that breaks on the real installed binary.
 func TestUsageLimitResumeInstalledRound3(t *testing.T) { usageLimitInstalled(t, 3) }
 
 // Synthetic rate_limit events reproduce the historical error envelope, not a live account.
 func usageLimitInstalled(t *testing.T, limit int) {
-	usageLimitInstalledFrom(t, limit, repoRoot(t))
+	usageLimitInstalledFrom(t, limit, repoRoot(t), testrelease.Shared(t, repoRoot(t)).Archive)
 }
-func usageLimitInstalledFrom(t *testing.T, limit int, root string) {
-	archive := testrelease.Package(t, root, "--version", fmt.Sprintf("usage-limit-round%d", limit))
+func usageLimitInstalledFrom(t *testing.T, limit int, root, archive string) {
 	unpack := t.TempDir()
 	cmd := exec.Command("tar", "-xzf", archive, "-C", unpack)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -284,10 +286,15 @@ models:
 	}
 }
 
+// Catches packaging or an installed workflow that writes into the source checkout, or a release
+// that does not carry the current uncommitted source.
 func TestUsageLimitPackagingIsolationRound2(t *testing.T) { usageIsolation(t, 2) }
+
+// Catches packaging or an installed workflow that writes into the source checkout, or a release
+// that does not carry the current uncommitted source.
 func TestUsageLimitPackagingIsolationRound3(t *testing.T) { usageIsolation(t, 3) }
 func usageIsolation(t *testing.T, round int) {
-	root, check := testrelease.Fixture(t, repoRoot(t))
-	defer check()
-	usageLimitInstalledFrom(t, round, root)
+	release := testrelease.Shared(t, repoRoot(t))
+	defer release.CheckCheckout(t)
+	usageLimitInstalledFrom(t, round, release.Checkout, release.Archive)
 }
