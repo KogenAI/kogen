@@ -24,6 +24,8 @@ func TestText(t *testing.T) {
 // `auth status --json`, and puts a decoy `claude` first on PATH that must never run.
 func managedClaude(t *testing.T, home, version, auth string) (decoyRan func() bool) {
 	t.Helper()
+	// The stand-in is not the pinned size, and readiness never installs, so this origin is never contacted.
+	t.Setenv(claudecode.SeamEnv, "http://127.0.0.1:1")
 	dir := filepath.Dir(claudecode.RuntimePath(home))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
