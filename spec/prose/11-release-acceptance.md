@@ -5,15 +5,15 @@ The release counts only when the installed product completes real features on re
 **REL-1 — Real use.** On each platform, a fresh user `HOME`, one rerunnable script that stops at the first failed check and prints a transcript with UTC times:
 
 1. download the archive with `curl`, extract it, run `install.sh`; `kogen version` works from `/`;
-2. `kogen provider login chatgpt` through the real browser; `kogen provider list` shows `chatgpt: signed in`;
-3. clone the project fresh and run `kogen init`: it configures the project itself (SET-2); the script checks the configuration against the project's expected checks and acceptance runner, and changes it only where the project needs what `init` cannot know (a project's own flaky-test rerun, for example), committed;
+2. log in: `kogen provider login chatgpt` through the real browser, or, unattended, the command in `KOGEN_LIVE_CREDENTIALS` (a seat's Claude Code token arrives that way: `kogen provider login claude-code < <token file>`). `kogen provider list` then decides the route: `claude-code` when it shows `claude-code: token saved (not verified)` and no `chatgpt: signed in` line, otherwise `chatgpt` (which shows `chatgpt: signed in`);
+3. clone the project fresh and run `kogen init`: it configures the project itself (SET-2); the script checks that the `.kogen/models.yaml` init wrote runs shape, build and review on the route (`executor: claude-code` and no `provider:`, or `provider: chatgpt` and no executor other than native), on `claude-code` that the managed Claude Code runtime is installed in the run home, and then checks the configuration against the project's expected checks and acceptance runner, and changes it only where the project needs what `init` cannot know (a project's own flaky-test rerun, for example), committed;
 4. shape a request that leaves one UI/UX choice open; answer any question it asks; the Intent is ready with its scenarios failing;
 5. read the Intent and step files, then approve with the card's hash;
 6. `kogen intent build <slug>`, send SIGINT during it: exit 130 within 15 seconds, no new commit; discard the listed edits;
-7. `kogen intent build <slug>` again: at least one real tool call runs with the default configuration (LOOP-11) and the Build lands with `review: approved`; the transcript records whether a repair happened (not required);
+7. `kogen intent build <slug>` again: at least one real model round runs with the default configuration (LOOP-11: a `tool_call` event on `chatgpt`, an `executor_round` event of executor `claude-code` on `claude-code`) and the Build lands with `review: approved`; the transcript records whether a repair happened (not required);
 8. without Kogen, run the project's own acceptance command and tests on the new commit; check the commit's subject, `Kogen-Intent:` trailer, missing AI attribution, signature exactly as that host's Git configuration says (signed on hosts where the user signs), and changed paths; read the saved review;
-9. no Kogen process is alive and no token from `~/.kogen/credentials/chatgpt.json` appears in the project, `.kogen/local/` or logs;
-10. `kogen uninstall`: `kogen` is gone; the project and `~/.kogen` are intact.
+9. no Kogen process is alive and no token of the route's credential (`access_token` and `refresh_token` of `~/.kogen/credentials/chatgpt.json`, or `api_key` of `~/.kogen/credentials/claude-code.json`) appears in the project, `.kogen/local/` or logs; on `claude-code` no ChatGPT login hint (`provider login chatgpt`) appears in the transcript or the command outputs either;
+10. `kogen uninstall`: `kogen` is gone; the project and `~/.kogen` (including `~/.kogen/credentials/<route>.json`) are intact.
 
 **REL-2 — Projects.** The example app in `examples/` (in the repository) and Kogen itself (REL-3). The feature for each is fixed in its request before the run. Real projects kept outside the repository, each with its own settings file passed to `test/live/real-use.sh` by path, are an external acceptance check: REL-1 runs on them before a release, and their result is reported, but REL-6 does not wait for it.
 

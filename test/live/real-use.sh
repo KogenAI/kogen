@@ -12,6 +12,18 @@
 # Step 2 is the real browser login: it runs `kogen provider login chatgpt` and waits for the
 # person at the browser. With KOGEN_LIVE_CREDENTIALS=<command> set, that command writes the
 # credentials into the fresh HOME instead (for an unattended rerun by the implementer).
+#
+# The run proves the route the run home's login selects, read from `kogen provider list` after
+# step 2: "claude-code" when the list has `claude-code: token saved (not verified)` and no
+# `chatgpt: signed in` line, otherwise "chatgpt".
+#   (a) Claude Code only: a seat's Claude Code token arrives through KOGEN_LIVE_CREDENTIALS, e.g.
+#         KOGEN_LIVE_CREDENTIALS='kogen provider login claude-code < <token file>' \
+#           sh test/live/real-use.sh <project> <archive-url>
+#       init writes `executor: claude-code` for shape, build and review and installs Kogen's managed
+#       Claude Code runtime; the Build's model work is its executor_round events.
+#   (b) ChatGPT: the browser login, or KOGEN_LIVE_CREDENTIALS writing ~/.kogen/credentials/chatgpt.json.
+#       init writes `provider: chatgpt` for the three roles; the Build's model work is its tool_call
+#       events.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 project=$1 url=$2
@@ -53,13 +65,57 @@ if [ -n "${KOGEN_LIVE_CREDENTIALS:-}" ]; then
 else
   run_logged kogen provider login chatgpt
 fi
-check 'kogen provider list | grep -q "^chatgpt: signed in"' "kogen provider list shows chatgpt: signed in"
+list=$(kogen provider list) || fail "kogen provider list failed"
+if printf '%s\n' "$list" | grep -q '^claude-code: token saved (not verified)$' && ! printf '%s\n' "$list" | grep -q '^chatgpt: signed in'; then
+  route=claude-code
+else
+  route=chatgpt
+fi
+say "route: $route"
+if [ "$route" = claude-code ]; then
+  check 'printf "%s\n" "$list" | grep -q "^claude-code: token saved (not verified)$"' "kogen provider list shows claude-code: token saved (not verified)"
+else
+  check 'printf "%s\n" "$list" | grep -q "^chatgpt: signed in"' "kogen provider list shows chatgpt: signed in"
+fi
 
 # 3. Fresh clone, init, assert the selected commands, commit project-specific adjustments.
 git clone -q "$REPO" "$run_dir/project"
 cd "$run_dir/project"
 start=$(git rev-parse HEAD)
 run_logged kogen init
+check 'python3 - "$route" .kogen/models.yaml <<'"'"'EOF'"'"'
+import sys
+route, roles, top, current = sys.argv[1], {}, False, None
+for line in open(sys.argv[2]).read().split("\n"):
+    if line.rstrip() == "models:":
+        top, current = True, None
+    elif top and line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":"):
+        current = roles[line.strip()[:-1]] = {}
+    elif current is not None and line.startswith("    ") and ":" in line:
+        key, value = line.strip().split(":", 1)
+        current[key] = value.strip()
+    elif line.strip():
+        top, current = top and line.startswith(" "), None
+for name in ("shape", "build", "review"):
+    role = roles.get(name)
+    if role is None:
+        sys.exit(1)
+    if route == "claude-code":
+        ok = role.get("executor") == "claude-code" and "provider" not in role
+    else:
+        ok = role.get("provider") == "chatgpt" and role.get("executor", "native") == "native"
+    if not ok:
+        sys.exit(1)
+EOF' ".kogen/models.yaml from kogen init runs shape, build and review on $route"
+if [ "$route" = claude-code ]; then
+  runtime_installed() {
+    line=$(kogen provider list | sed -n 's/^claude-code runtime: Claude Code \([^ ]*\) installed (\(.*\))$/\1 \2/p' | head -1)
+    [ -n "$line" ] || return 1
+    version=${line%% *} binary=${line#* }
+    [ "$binary" = "$HOME/.kogen/claude-code/$version/claude" ] && [ -f "$binary" ] && [ -x "$binary" ]
+  }
+  check 'runtime_installed' "the managed Claude Code runtime is installed in the run home"
+fi
 cat .kogen/project.yaml >> "$log"
 configure
 git add -A
@@ -107,12 +163,16 @@ for f in $(sed -n 's/^  edited: //p' "$run_dir/build1.out" | tr ',' ' '); do
 done
 say "discarded the listed edits"
 
-# 7. Build again: tool calls run, the Build lands with review approved.
+# 7. Build again: model work runs, the Build lands with review approved.
 set +e; kogen intent build "$SLUG" > "$run_dir/build2.out" 2>> "$log"; code=$?; set -e
 cat "$run_dir/build2.out" >> "$log"
 [ $code -eq 0 ] || fail "the second Build ended with exit $code"
 run=$(ls -t .kogen/local/runs | head -1)
-check 'grep -q "\"event\":\"tool_call\"" .kogen/local/runs/$run/log.jsonl' "at least one tool call ran with the default configuration"
+if [ "$route" = claude-code ]; then
+  check 'grep "\"event\":\"executor_round\"" .kogen/local/runs/$run/log.jsonl | grep -q "\"executor\":\"claude-code\""' "at least one Claude Code round ran in the Build"
+else
+  check 'grep -q "\"event\":\"tool_call\"" .kogen/local/runs/$run/log.jsonl' "at least one tool call ran with the default configuration"
+fi
 check 'grep -q "^  review: approved" "$run_dir/build2.out"' "the Build landed with review: approved"
 if grep -q '"green":false' ".kogen/local/runs/$run/log.jsonl" || grep -q '"verdict":"changes"' ".kogen/local/runs/$run/log.jsonl"; then
   say "repair: yes (a failing pass or a changes review was repaired)"
@@ -140,10 +200,11 @@ say "read the saved review(s) above"
 
 # 9. No Kogen process alive, no token anywhere.
 check '! pgrep -f "$HOME/.local/lib/kogen" >/dev/null' "no Kogen process is alive"
-python3 - "$HOME/.kogen/credentials/chatgpt.json" "$run_dir/project" "$run_dir" > "$run_dir/leak.txt" <<'EOF'
+python3 - "$HOME/.kogen/credentials/$route.json" "$run_dir/project" "$run_dir" "$route" > "$run_dir/leak.txt" <<'EOF'
 import json, os, sys
 c = json.load(open(sys.argv[1]))
-secrets = [c[k].encode() for k in ("access_token", "refresh_token") if c.get(k)]
+keys = ("api_key",) if sys.argv[4] == "claude-code" else ("access_token", "refresh_token")
+secrets = [c[k].encode() for k in keys if c.get(k)]
 paths = [os.path.join(sys.argv[3], f) for f in os.listdir(sys.argv[3]) if os.path.isfile(os.path.join(sys.argv[3], f))]
 for p in paths:
     if any(s in open(p, "rb").read() for s in secrets):
@@ -161,10 +222,13 @@ for base, _, files in os.walk(sys.argv[2]):
             print(p)
 EOF
 check '[ ! -s "$run_dir/leak.txt" ]' "no credential token in the project, .kogen/local, the transcript or the command outputs"
+if [ "$route" = claude-code ]; then
+  check '[ -z "$(find "$run_dir" -maxdepth 1 -type f -exec grep -l "provider login chatgpt" {} +)" ]' "no ChatGPT login hint in the transcript or the command outputs"
+fi
 
 # 10. Uninstall.
 run_logged kogen uninstall
 hash -r
-check '! command -v kogen >/dev/null && [ ! -e "$HOME/.local/bin/kogen" ] && [ ! -e "$HOME/.local/lib/kogen" ]' "kogen is gone"
-check '[ -f "$HOME/.kogen/credentials/chatgpt.json" ] && [ -f .kogen/project.yaml ] && [ "$(git rev-parse HEAD)" = "$new" ]' "the project and ~/.kogen are intact"
+check '[ "$(command -v kogen || true)" != "$HOME/.local/bin/kogen" ] && [ ! -e "$HOME/.local/bin/kogen" ] && [ ! -e "$HOME/.local/lib/kogen" ]' "kogen is gone"
+check '[ -f "$HOME/.kogen/credentials/$route.json" ] && [ -f .kogen/project.yaml ] && [ "$(git rev-parse HEAD)" = "$new" ]' "the project and ~/.kogen are intact"
 say "REL-1 passed for $project"

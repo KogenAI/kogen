@@ -24,6 +24,7 @@ Release checks:
 ```sh
 sh test/suite.sh                               # every deterministic layer and scenario; run on macOS and Linux
 sh test/live/real-use.sh example file://$PWD/dist/<archive>   # real use on the example app (REL-1)
+KOGEN_LIVE_CREDENTIALS='kogen provider login claude-code < <token file>' sh test/live/real-use.sh example file://$PWD/dist/<archive>   # the same on the Claude Code route, unattended (REL-1)
 sh test/live/self-repo.sh /tmp/kogen-self && KOGEN_SELF_REPO=/tmp/kogen-self sh test/live/real-use.sh kogen file://$PWD/dist/<archive>   # installed self-hosting qualification attempt (REL-1)
 sh test/live/self-build-check.sh <run folder>/project      # REL-3 on what that run landed; real-use.sh prints the run folder
 sh examples/tiny_tasks-qualification/qualify.sh               # qualifies the example app's own checks
