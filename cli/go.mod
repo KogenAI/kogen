@@ -10,7 +10,7 @@ require (
 	github.com/KogenAI/kogen-review v0.0.0-20261105185714-66be20d31658
 	github.com/KogenAI/kogen-setup v0.0.0-20261105091508-8958731c2ff5
 	github.com/KogenAI/kogen-shaping v0.0.0-20261105181959-c3f9c5e099e7
-	github.com/KogenAI/kogen-verification v0.0.0-20261105151659-f5babef00998
+	github.com/KogenAI/kogen-verification v0.0.0-20261105215409-1b5fb1437a09
 )
 
 require golang.org/x/text v0.43.0 // indirect
