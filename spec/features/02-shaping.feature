@@ -560,6 +560,8 @@ Feature: Shaping
     And stdout contains "Questions for is-even:"
     And stdout contains "This question is an authentication or security handoff, not a design choice."
     And stdout contains "Sign in to the provider before shaping can check this account-scoped capability."
+    And stdout contains "a) I have signed in (recommended)"
+    And stdout contains "b) Pause shaping until I have signed in"
     And the folder ".kogen/intents/is-even" does not exist
 
   @SHP-13

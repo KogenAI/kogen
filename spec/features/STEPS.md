@@ -61,7 +61,7 @@ Shape's decision check is answered apart from the script too and is not among th
 | `shape-decision-check-without-call` | answers the decision check with one assistant text message and no function call, with zero usage; every other Shape request like `shape-ready-is-even` |
 | `shape-uninspected-submit` | submits a structurally valid `is-even` package three times and never calls `read_file`, `list_files` or `search_text` |
 | `shape-engineering-question` | submits three times one question whose `kind` is `engineering` and whose text is `Which protocol and endpoint should the integration use?` |
-| `shape-auth-handoff` | submits once a `kind` `handoff` question whose text is `Sign in to the provider before shaping can check this account-scoped capability.` |
+| `shape-auth-handoff` | submits once a `kind` `handoff` question whose text is `Sign in to the provider before shaping can check this account-scoped capability.`, with options `I have signed in` (recommended) and `Pause shaping until I have signed in` |
 | `shape-narrow-retry` | submits complete artifacts with a missing decision source, corrects only prose, then acknowledges unchanged red without losing feature/steps |
 | `shape-observed-repair` | submits a hook fixture defect, repairs it after observed feedback, then acknowledges legitimate product-red observations |
 | `refine-title` | submits only the existing Intent prose with a clarified title; all other artifacts are reused |

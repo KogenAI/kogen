@@ -575,7 +575,7 @@ class FakeServers {
       case 'shape-engineering-question':
         return { items: [functionCall('submit', { questions: [{ question: 'Which protocol and endpoint should the integration use?', kind: 'engineering' }] }, `shape_engineering_${ordinal}`)] };
       case 'shape-auth-handoff':
-        return { items: [functionCall('submit', { questions: [{ question: 'Sign in to the provider before shaping can check this account-scoped capability.', kind: 'handoff' }] }, `shape_handoff_${ordinal}`)] };
+        return { items: [functionCall('submit', { questions: [{ question: 'Sign in to the provider before shaping can check this account-scoped capability.', kind: 'handoff', options: [{ label: 'I have signed in', recommended: true }, { label: 'Pause shaping until I have signed in' }] }] }, `shape_handoff_${ordinal}`)] };
       case 'shape-invalid-three-times':
         return { items: [functionCall('submit', { files: [{ path: '../forbidden.txt', content: 'no' }] }, `shape_invalid_${ordinal}`)] };
       case 'shape-protected-conflict':
