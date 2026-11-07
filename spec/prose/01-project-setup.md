@@ -8,7 +8,7 @@
 
 1. refuses without a Git identity (SET-5), writing nothing;
 2. refuses when a path it writes has uncommitted changes: `environment/dirty_tree: <path> has uncommitted changes; commit, stash or discard them first` (exit 5). The paths are `.kogen/project.yaml`, `.kogen/models.yaml`, `.gitignore` and, for a bridge (SET-13), `features/steps/README.md`. Other uncommitted changes are allowed; they stay out of the commit and out of the checks, which run on the committed tree (SET-12);
-3. refuses without a login before any request (GPT-5, `provider/login: not signed in; run kogen provider login for a supported provider`, exit 4);
+3. refuses without a login before any request (GPT-5, `provider/login: not signed in; run kogen provider login for a supported provider`, exit 4, followed by five detail lines naming the sign-in routes: the browser sign-in `kogen provider login chatgpt`, the two standard-input routes for `anthropic` and `claude-code`, `kogen provider --help lists every route`, and the pointer to the configuration-first files in `docs/getting-started.md`);
 4. detects candidate commands (SET-10) and asks the shaping model once (SET-11);
 5. runs the candidates on a copy of the committed tree and keeps those that pass (SET-12), adding the bridge when needed (SET-13);
 6. writes `.kogen/project.yaml` (the template below with the kept commands) and `.kogen/models.yaml` (the team lineup), appends `.kogen/local/` to the root `.gitignore`, copies the bridge files, and commits exactly those paths with a plain `git commit` (GIT-5 identity and signing rules), message `Add Kogen configuration`.

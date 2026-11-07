@@ -58,17 +58,20 @@ func TestResumeContinuesAStoppedBuildAndLandsWithExitZero(t *testing.T) {
 }
 
 // TestResumeRefusalsAreSysErrorsWithTheirExit: a resume that cannot continue is a *sys.Error whose
-// Exit is Resume's exit, with the notice that no run was created. An id that is no checkpoint is
-// candidate/resume_unsupported; a checkpoint whose HEAD moved is candidate/resume_refused. Both
+// Exit is Resume's exit, with the notice that no run was created. An id that is not a Build id, or has
+// no recorded Build, is candidate/resume_unsupported; a checkpoint whose HEAD moved is candidate/resume_refused. Both
 // exit 1, and nothing is asked of the model.
 func TestResumeRefusalsAreSysErrorsWithTheirExit(t *testing.T) {
 	t.Run("unknown id", func(t *testing.T) {
 		e := newEnv(t)
-		for _, id := range []string{"nothex", "00000000"} {
+		for id, want := range map[string]string{
+			"nothex":   "candidate/resume_unsupported: \"nothex\" is not a Build id; a Build id is 8 lowercase hexadecimal characters, such as 0a1b2c3d; kogen intent list lists Build attempts",
+			"00000000": "candidate/resume_unsupported: Build 00000000: no Build with this id in this checkout; kogen intent list lists Build attempts",
+		} {
 			r := e.resume(id)
 			refusal := asRefusal(t, r.err)
-			if r.exit != 1 || refusal.Exit != 1 || !strings.HasPrefix(refusal.Render(), "candidate/resume_unsupported: Build "+id+": ") {
-				t.Fatalf("exit %d, error %q (exit %d)", r.exit, refusal.Render(), refusal.Exit)
+			if r.exit != 1 || refusal.Exit != 1 || !strings.HasPrefix(refusal.Render(), want) {
+				t.Fatalf("id %q: exit %d, error %q (exit %d), want prefix %q", id, r.exit, refusal.Render(), refusal.Exit, want)
 			}
 			contains(t, "rendering", refusal.Render(), "no newly created Build run")
 		}

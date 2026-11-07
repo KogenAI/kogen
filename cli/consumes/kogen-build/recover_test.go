@@ -76,19 +76,31 @@ func TestRecoverRefusalsAreSysErrorsWithTheirExit(t *testing.T) {
 		name, want string
 		id         func(id string) string
 		output     func(e *env) string
+		prepare    func(t *testing.T, e *env, id string)
 	}{
-		{"unknown id", "candidate/recovery_unsupported: unknown checkpoint", func(string) string { return "nothex" }, nil},
-		{"absent checkpoint", "candidate/recovery_unsupported: absent checkpoint", func(string) string { return "00000000" }, nil},
+		{"unknown id", "candidate/recovery_unsupported: \"nothex\" is not a Build id; a Build id is 8 lowercase hexadecimal characters, such as 0a1b2c3d; kogen intent list lists Build attempts",
+			func(string) string { return "nothex" }, nil, nil},
+		{"no recorded Build", "candidate/recovery_unsupported: Build 00000000: no Build with this id in this checkout; kogen intent list lists Build attempts",
+			func(string) string { return "00000000" }, nil, nil},
+		{"absent checkpoint", "candidate/recovery_unsupported: unknown checkpoint: absent checkpoint", nil, nil,
+			func(t *testing.T, e *env, id string) {
+				if err := os.Remove(filepath.Join(e.root, ".kogen", "local", "runs", id, "checkpoint.json")); err != nil {
+					t.Fatal(err)
+				}
+			}},
 		{"output inside the checkout", "candidate/recovery_refused: output destination is inside checkout", nil,
-			func(e *env) string { return filepath.Join(e.root, "archive") }},
+			func(e *env) string { return filepath.Join(e.root, "archive") }, nil},
 		{"output exists", "candidate/recovery_refused: output destination already exists or is unsafe: ", nil,
-			func(e *env) string { return e.aux }},
+			func(e *env) string { return e.aux }, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			flag := filepath.Join(physical(t, t.TempDir()), "red")
 			e := newEnv(t, redWhile(flag))
 			id := e.blocked(t, flag)
+			if c.prepare != nil {
+				c.prepare(t, e, id)
+			}
 			if c.id != nil {
 				id = c.id(id)
 			}

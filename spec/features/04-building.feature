@@ -190,7 +190,7 @@ Feature: Building
     When the caller runs "kogen intent resume 00000000"
     Then the exit code is 1
     And stdout contains "candidate/resume_unsupported"
-    And stdout contains "checkpoint"
+    And stdout contains "no Build with this id in this checkout"
     And HEAD is unchanged
     And the fake ChatGPT server received 0 requests
 
