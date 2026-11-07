@@ -95,7 +95,7 @@ function outputProblems(text, outputs) {
     const lines = f.lines.map(l => l.trim()).filter(l => l && l !== '...');
     if (!lines.length) problems.push(`${id}: empty output excerpt`);
     const actual = String(outputs[id] ?? '').split('\n').map(l => l.trim());
-    for (const l of lines) if (!actual.some(a => placeholderRe(l).test(a))) problems.push(`${id}: excerpt line is not in the actual output: ${l}`);
+    for (const l of lines) if (!actual.some(a => (l.startsWith('Next: kogen intent shape ') ? a === l : placeholderRe(l).test(a)))) problems.push(`${id}: excerpt line is not in the actual output: ${l}`);
   });
   for (const id of Object.keys(OUTPUT_COMMAND)) if (!seen.has(id)) problems.push(`no output excerpt for step ${id}`);
   return problems;

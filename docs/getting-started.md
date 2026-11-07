@@ -16,7 +16,7 @@ kogen <version>
 
 ## 2. Check
 
-Kogen has no separate check command. Readiness comes from two places: the readiness lines that end `kogen init` (step 4), and the error each command prints when it cannot proceed, which names what is missing and the fix. The readiness lines make no model call and change nothing.
+Kogen has no separate check command. Readiness comes from two places: the readiness lines in `kogen init` output (step 4), and the error each command prints when it cannot proceed, which names what is missing and the fix. The readiness lines make no model call and change nothing.
 
 The readiness lines are `install` (the program and its bundled node, cucumber and quint run; fix: reinstall), `git` (you are inside a Git repository and Git has a `user.name` and `user.email`), `config` (`.kogen/project.yaml` exists and is valid) and `models` (every role has a stored login for its provider; fix: `kogen provider login <provider>`, step 3; for `claude-code` roles a stored token or a claude.ai sign-in of Kogen's own runtime, fix: `kogen provider login claude-code`). Each failing line is followed by one `  fix:` line.
 
@@ -80,9 +80,10 @@ ok install - <version>; node, cucumber and quint run
 ok git - repository <repo>
 ok config - .kogen/project.yaml is valid
 ok models - shape, build, review ready
+Next: kogen intent shape <slug> <request-file>
 ```
 
-The last four lines are the readiness lines of step 2; everything should be `ok`. A `fail` line is followed by its fix, and does not change init's exit status.
+The four readiness lines of step 2 should all be `ok`; the final line names the command for your first feature. A `fail` line is followed by its fix, and does not change init's exit status. If acceptance or checks are missing, init instead prints the existing setup hints.
 
 ### Without ChatGPT
 
@@ -129,6 +130,7 @@ ok install - <version>; node, cucumber and quint run
 ok git - repository <repo>
 ok config - .kogen/project.yaml is valid
 ok models - shape, build, review ready
+Next: kogen intent shape <slug> <request-file>
 ```
 
 ## 5. Shape

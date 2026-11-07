@@ -92,7 +92,7 @@ function excerptProblems(lines, actual) {
   const want = lines.map(l => l.trim()).filter(l => l && l !== '...');
   if (!want.length) return ['empty output excerpt'];
   const act = String(actual).split('\n').map(l => l.trim());
-  return want.filter(l => !act.some(a => placeholderRe(l).test(a))).map(l => `excerpt line is not in the actual output: ${l}`);
+  return want.filter(l => !act.some(a => (l.startsWith('Next: kogen intent shape ') ? a === l : placeholderRe(l).test(a)))).map(l => `excerpt line is not in the actual output: ${l}`);
 }
 
 // ------------------------------------------------------------------ controls

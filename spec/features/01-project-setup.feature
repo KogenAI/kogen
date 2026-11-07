@@ -62,6 +62,7 @@ Feature: Project setup
       ok git - repository {abs:.}
       ok config - .kogen/project.yaml is valid
       ok models - shape, build, review ready
+      Next: kogen intent shape <slug> <request-file>
       """
     And the file ".kogen/project.yaml" contains "    - name: format"
     And the file ".kogen/project.yaml" contains "      run: 'mix format --check-formatted'"
@@ -91,6 +92,7 @@ Feature: Project setup
       ok git - repository {abs:.}
       ok config - .kogen/project.yaml is valid
       ok models - shape, build, review ready
+      Next: kogen intent shape <slug> <request-file>
       """
     And the new commit changes exactly:
       | path                |
