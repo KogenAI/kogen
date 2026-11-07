@@ -38,7 +38,7 @@ func TestInitReadinessNext(t *testing.T) {
 	}
 	write(install, "lib/VERSION", "kogen fixture\n", 0600)
 	write(install, "node-path", filepath.Join(install, "node"), 0600)
-	write(install, "node", "#!/bin/sh\nexit 0\n", 0700)
+	write(install, "node", "#!/bin/sh\nexit 0\n", 0755)
 	write(home, ".kogen/credentials/claude-code.json", `{"provider":"claude-code","api_key":"sk-ant-oat01-synthetic"}`, 0600)
 	write(repo, ".kogen/models.yaml", "models:\n  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: medium}\n  build: {executor: claude-code, model: claude-sonnet-5-5, effort: medium}\n  review: {executor: claude-code, model: claude-sonnet-5-5, effort: medium}\n", 0600)
 	const acceptance = "  acceptance:\n    run: 'true'\n    steps_dir: features/steps\n"
