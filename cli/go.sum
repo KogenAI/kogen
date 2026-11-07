@@ -1,13 +1,13 @@
-github.com/KogenAI/kogen-build v0.0.0-20261106130303-88b77ba3dbf3 h1:8y6Gs3e+gAMPHzO9etNs+MvcO9HD1kXwDKTP0DdMVhg=
-github.com/KogenAI/kogen-build v0.0.0-20261106130303-88b77ba3dbf3/go.mod h1:hXcaAI2iE57hpvr3Knc8ODf2UijiNrHUfHOsHXJidCk=
+github.com/KogenAI/kogen-build v0.0.0-20261106191737-45d5823fa40c h1:aGuBgGb6OvR3RkMqpnDSsYKTR7Ee0M0I+oLVgnMW9j0=
+github.com/KogenAI/kogen-build v0.0.0-20261106191737-45d5823fa40c/go.mod h1:hXcaAI2iE57hpvr3Knc8ODf2UijiNrHUfHOsHXJidCk=
 github.com/KogenAI/kogen-coordinator v0.0.0-20261106121202-e91a9e0ac65b h1:Ia1/GWbiggtVLoNcS8Pjrio3npy2P4TQvufiIvfeUkw=
 github.com/KogenAI/kogen-coordinator v0.0.0-20261106121202-e91a9e0ac65b/go.mod h1:MMc15p3YwlY71dMxfCdX6QlR2jXJbSxL6YA9Y7971c8=
 github.com/KogenAI/kogen-executor v0.0.0-20261106121702-55b372c4dd31 h1:8+965fw78eLzlNbXxrxk+/K2CZWNSjEQEhj/XshGWaY=
 github.com/KogenAI/kogen-executor v0.0.0-20261106121702-55b372c4dd31/go.mod h1:dpPbIVCNEfFubxLT6iw/yCDVRO0ltgHm6d5ET6nV4hs=
 github.com/KogenAI/kogen-review v0.0.0-20261106124750-cdcbbe3e357a h1:ux+q5+ozZXffRPHJmV/PpZlPky3uqrMr3c6UhZky7dw=
 github.com/KogenAI/kogen-review v0.0.0-20261106124750-cdcbbe3e357a/go.mod h1:On0w1xLpTkU5wdBl79dbrYdOKlRi25zszwD4bbgLuLM=
-github.com/KogenAI/kogen-setup v0.0.0-20261106122420-c0afc56136fe h1:NhxbHJL7knSucg2+mXoLCm+n3QPPPHrE9gBN2XTHDME=
-github.com/KogenAI/kogen-setup v0.0.0-20261106122420-c0afc56136fe/go.mod h1:6znLphDiw78M1Y8+WK0DkkMaz0s4SlD/Y3x0st6EHV0=
+github.com/KogenAI/kogen-setup v0.0.0-20261106184805-43be668ea101 h1:C6tAgXRHmY+SDnPym8LLDhJ4en0t0eXuHRUuE3DPeno=
+github.com/KogenAI/kogen-setup v0.0.0-20261106184805-43be668ea101/go.mod h1:6znLphDiw78M1Y8+WK0DkkMaz0s4SlD/Y3x0st6EHV0=
 github.com/KogenAI/kogen-shaping v0.0.0-20261106124640-0484edf817f6 h1:Q3Gbf6WQJ1fyuC0qWvFVyYuzH+kf6DpAZkkc2S3q2Is=
 github.com/KogenAI/kogen-shaping v0.0.0-20261106124640-0484edf817f6/go.mod h1:IyfodUn6KbRhbM/X9J833p2ed8v0xBSqZwJGxzJBCYM=
 github.com/KogenAI/kogen-verification v0.0.0-20261106121212-e1ff81b79447 h1:bNIILeQdDmuz2k2nBjuf7wl9rmEExBsr+xyJ5QqLkDk=

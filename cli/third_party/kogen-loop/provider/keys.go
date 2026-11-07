@@ -25,12 +25,12 @@ type Input struct {
 	Stty func(args ...string) (string, error)
 }
 
-// StdinInput is the process's standard input; it is a terminal when it is a character device.
+// StdinInput is the process's standard input; it is a terminal only when the terminal
+// driver says so (/dev/null, a closed standard input, pipes and files are not).
 func StdinInput() Input {
-	info, err := os.Stdin.Stat()
 	return Input{
 		Reader:   os.Stdin,
-		Terminal: err == nil && info.Mode()&os.ModeCharDevice != 0,
+		Terminal: isTerminal(os.Stdin),
 		Stty: func(args ...string) (string, error) {
 			cmd := exec.Command("stty", args...)
 			cmd.Stdin = os.Stdin
@@ -48,8 +48,10 @@ const secretInputLimit = 16 << 10
 // terminal could not be silenced, a read error, invalid UTF-8): the login is then
 // "interrupted" and keeps the saved key. tooLong is true when a non-terminal input holds
 // more than secretInputLimit bytes; no part of it is returned and the login refuses it as
-// an invalid value. The read asks the input for at most secretInputLimit+1 bytes in total.
-func (in Input) secret(ctx context.Context) (value string, ok, tooLong bool, err error) {
+// an invalid value. empty is true when the input ended before any byte was read (zero bytes
+// and EOF, terminal or not); the login then names standard input. The read asks the input
+// for at most secretInputLimit+1 bytes in total.
+func (in Input) secret(ctx context.Context) (value string, ok, tooLong, empty bool, err error) {
 	if in.Terminal {
 		stty := in.Stty
 		if stty == nil {
@@ -57,11 +59,11 @@ func (in Input) secret(ctx context.Context) (value string, ok, tooLong bool, err
 		}
 		state, serr := stty("-g")
 		if serr != nil {
-			return "", false, false, nil
+			return "", false, false, false, nil
 		}
 		defer stty(strings.TrimSpace(state))
 		if _, serr := stty("-echo"); serr != nil {
-			return "", false, false, nil
+			return "", false, false, false, nil
 		}
 	}
 	type read struct {
@@ -84,11 +86,15 @@ func (in Input) secret(ctx context.Context) (value string, ok, tooLong bool, err
 	select {
 	case r := <-got:
 		if !in.Terminal && len(r.data) > secretInputLimit {
-			return "", false, true, nil
+			return "", false, true, false, nil
 		}
-		return string(r.data), (r.err == nil || r.err == io.EOF) && utf8.Valid(r.data), false, nil
+		ended := r.err == nil || r.err == io.EOF
+		if ended && len(r.data) == 0 && (!in.Terminal || r.err == io.EOF) {
+			return "", true, false, true, nil
+		}
+		return string(r.data), ended && utf8.Valid(r.data), false, false, nil
 	case <-ctx.Done():
-		return "", false, false, ctx.Err()
+		return "", false, false, false, ctx.Err()
 	}
 }
 
@@ -140,7 +146,7 @@ func loginReason(p Info) string {
 func (k *call) loginKey(in Input, origin string) error {
 	p := k.info
 	fail := func(detail string) error { return providerFail(loginReason(p), detail) }
-	value, ok, tooLong, err := in.secret(k.ctx)
+	value, ok, tooLong, empty, err := in.secret(k.ctx)
 	if err != nil {
 		if ie := k.interrupted(); ie != nil {
 			return ie
@@ -149,6 +155,9 @@ func (k *call) loginKey(in Input, origin string) error {
 	}
 	if tooLong {
 		return fail("invalid " + p.Label + " key input; saved login unchanged")
+	}
+	if empty {
+		return fail("no " + p.Label + " key input was read from standard input; pipe the key: printf '%s' \"$KEY\" | kogen provider login " + p.Name + "; saved login unchanged")
 	}
 	if !ok {
 		return fail(p.Label + " input interrupted; saved login unchanged")
@@ -228,7 +237,7 @@ func validToken(s string) bool {
 func (k *call) loginToken(in Input) error {
 	fail := func(detail string) error { return providerFail("login_failed", detail+"; saved login unchanged") }
 	const invalidToken = "invalid Claude Code token input: the token must be one line of letters, digits, dot, underscore and hyphen only"
-	value, ok, tooLong, err := in.secret(k.ctx)
+	value, ok, tooLong, empty, err := in.secret(k.ctx)
 	if err != nil {
 		if ie := k.interrupted(); ie != nil {
 			return ie
@@ -237,6 +246,9 @@ func (k *call) loginToken(in Input) error {
 	}
 	if tooLong {
 		return fail(invalidToken)
+	}
+	if empty {
+		return fail("no Claude Code token input was read from standard input; pipe the token: printf '%s' \"$TOKEN\" | kogen provider login claude-code")
 	}
 	if !ok {
 		return fail("Claude Code token input interrupted")

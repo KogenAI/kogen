@@ -549,3 +549,51 @@ func TestCancelledSecretLoginReaderStopsAtTheBound(t *testing.T) {
 		})
 	}
 }
+
+// A secret read that ends before any byte, from a pipe or from a terminal, names standard
+// input and the piped form of that login, without a value and without "interrupted".
+func TestZeroByteSecretInputNamesStandardInput(t *testing.T) {
+	t.Parallel()
+	const hint = "printf '%s' \"$KEY\" | kogen provider login "
+	for _, p := range secretLogins {
+		want := "no " + map[string]string{"opencode-go": "OpenCode Go", "anthropic": "Anthropic", ClaudeCodeName: "Claude Code"}[p.name] + " key input was read from standard input; pipe the key: " + hint + p.name + "; saved login unchanged"
+		if p.name == ClaudeCodeName {
+			want = "no Claude Code token input was read from standard input; pipe the token: printf '%s' \"$TOKEN\" | kogen provider login claude-code; saved login unchanged"
+		}
+		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, nil)
+			if err := e.loginWith(p.name, piped("old-key\n")); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(e.credPath(p.name))
+			st := &ssty{}
+			for name, in := range map[string]Input{
+				"pipe":     piped(""),
+				"terminal": {Reader: strings.NewReader(""), Terminal: true, Stty: st.run},
+			} {
+				se := mustErr(t, e.loginWith(p.name, in))
+				if se.Class != "provider" || se.Reason != p.reason || se.Exit != 4 || se.Detail != want || strings.Contains(se.Render(), "interrupted") {
+					t.Errorf("%s: %v", name, se)
+				}
+				if after, _ := os.ReadFile(e.credPath(p.name)); !bytes.Equal(after, before) {
+					t.Errorf("%s changed the saved login", name)
+				}
+			}
+			if !reflect.DeepEqual(st.calls, []string{"-g", "-echo", "saved:state"}) {
+				t.Errorf("terminal calls %v", st.calls)
+			}
+		})
+	}
+}
+
+func TestZeroByteSecretInputNamesStandardInputForOpenAICompatible(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, nil)
+	e.c.Input = &Input{Reader: strings.NewReader("")}
+	se := mustErr(t, e.c.LoginWithBaseURL(context.Background(), e.s, "openai-compatible", "https://models.example/v1", nil))
+	want := "no OpenAI-compatible key input was read from standard input; pipe the key: printf '%s' \"$KEY\" | kogen provider login openai-compatible; saved login unchanged"
+	if se.Reason != "login_failed" || se.Exit != 4 || se.Detail != want {
+		t.Fatalf("%v", se)
+	}
+}
