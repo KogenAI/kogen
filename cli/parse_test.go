@@ -68,10 +68,10 @@ Logins belong to this machine, never to a repo.
 		{name: "long top help flag", args: []string{"--help"}, want: topPage},
 		{name: "short top help flag", args: []string{"-h"}, want: topPage},
 		{name: "help command help flag", args: []string{"help", "--help"}, want: topPage},
-		{name: "init help flag", args: []string{"init", "--help"}, want: topPage},
-		{name: "intent group help flag", args: []string{"intent", "--help"}, want: intentPage},
-		{name: "intent leaf help flag", args: []string{"intent", "build", "--help"}, want: intentPage},
-		{name: "provider leaf help flag", args: []string{"provider", "list", "-h"}, want: providerPage},
+		{name: "init help flag", args: []string{"init", "--help"}, want: commandHelp("init")},
+		{name: "intent group help flag", args: []string{"intent", "--help"}, want: commandHelp("intent")},
+		{name: "intent leaf help flag", args: []string{"intent", "build", "--help"}, want: commandHelp("intent build")},
+		{name: "provider leaf help flag", args: []string{"provider", "list", "-h"}, want: commandHelp("provider list")},
 	}
 
 	for _, tt := range tests {

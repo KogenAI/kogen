@@ -141,7 +141,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 			return nil, pages[group], nil
 		}
 		if len(args) == 2 && isHelpFlag(args[1]) {
-			return nil, pages[group], nil
+			return nil, commandHelp(group), nil
 		}
 		l, ok := leaves[group+" "+args[1]]
 		if !ok {
@@ -160,6 +160,7 @@ func parse(args []string) (*invocation, string, *usageError) {
 	opts := map[string]string{}
 	var pos []string
 	endOpts := false
+	help := false
 	for i := 0; i < len(rest); i++ {
 		tok := rest[i]
 		switch {
@@ -167,8 +168,8 @@ func parse(args []string) (*invocation, string, *usageError) {
 			pos = append(pos, tok)
 		case tok == "--":
 			endOpts = true
-		case isHelpFlag(tok) && i == len(rest)-1:
-			return nil, pages[leaf.page], nil
+		case isHelpFlag(tok):
+			help = true
 		case !strings.HasPrefix(tok, "--"):
 			return fail("unknown option '%s'", tok)
 		default:
@@ -189,6 +190,9 @@ func parse(args []string) (*invocation, string, *usageError) {
 			}
 			opts[name] = value
 		}
+	}
+	if help {
+		return nil, commandHelp(leaf.path), nil
 	}
 	if len(pos) < len(leaf.positional)-leaf.optional {
 		return fail("missing %s", leaf.positional[len(pos)])
@@ -269,6 +273,9 @@ func executorHook(args []string, stdin io.Reader, stdout, stderr io.Writer) (cod
 // run is one kogen invocation and returns its exit code. locate finds the installation root
 // for the commands that need it.
 func run(args []string, locate func() (string, error)) int {
+	if handled, code := helpDispatch(args); handled {
+		return code
+	}
 	if handled, code := localRead(args); handled {
 		return code
 	}

@@ -39,9 +39,7 @@ func usageCommand(args []string) int {
 		case "--lineage":
 			lineage = true
 			continue
-		case "--help", "-h":
-			fmt.Println("Usage: kogen intent usage [RUN-ID] [--lineage] [--project DIR] [--json] [--limit 1..100]\nFilters: --slug --phase --role --model --effective-model --effort --effective-effort --outcome --pass --repair --since --until\n--group-by project,slug,lineage,phase,role,model,effective-model,effort,effective-effort,outcome,pass,repair")
-			return 0
+
 		}
 		if strings.HasPrefix(a, "--") {
 			k, v, has := strings.Cut(strings.TrimPrefix(a, "--"), "=")

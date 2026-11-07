@@ -281,14 +281,6 @@ func localRead(args []string) (bool, int) {
 	default:
 		return false, 0
 	}
-	if len(rest) > 0 && isHelpFlag(rest[len(rest)-1]) {
-		if kind == "context" {
-			fmt.Println("Usage: kogen context [--json] [--project DIR]")
-		} else {
-			fmt.Print(intentPage)
-		}
-		return true, 0
-	}
 	project := ""
 	limit := 20
 	cursor := ""

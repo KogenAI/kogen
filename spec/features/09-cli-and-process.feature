@@ -59,23 +59,10 @@ Feature: CLI and process
       """
     When the caller runs "kogen init --help"
     Then the exit code is 0
-    And stdout is:
-      """
-      Commands:
-        context    Read checkout-local facts (JSON)
-        completion zsh  Print standalone Zsh completion
-        init       Prepare this Git repository for Kogen
-        intent     Shape, approve and build an Intent
-        provider   Sign in to a provider and show logins
-        uninstall  Remove the installed kogen
-        version    Show the Kogen version
-        help       List commands
-
-      Run kogen <command> to see its subcommands and options.
-      """
+    And stdout matches "^Usage: kogen init"
 
   @CLI-2 @CLI-3
-  Scenario Outline: Command help flags print the existing command page
+  Scenario Outline: Command help flags print their own command page
     When the caller runs "<command>"
     Then the exit code is 0
     And stdout matches "<first_line>"
@@ -84,14 +71,14 @@ Feature: CLI and process
       | command                      | first_line                          |
       | kogen help --help            | ^Commands:                          |
       | kogen intent --help          | ^Usage: kogen intent                |
-      | kogen intent shape --help    | ^Usage: kogen intent                |
-      | kogen intent approve -h      | ^Usage: kogen intent                |
-      | kogen intent build --help    | ^Usage: kogen intent                |
+      | kogen intent shape --help    | ^Usage: kogen intent shape          |
+      | kogen intent approve -h      | ^Usage: kogen intent approve        |
+      | kogen intent build --help    | ^Usage: kogen intent build          |
       | kogen provider --help        | ^Usage: kogen provider              |
-      | kogen provider list --help   | ^Usage: kogen provider              |
-      | kogen provider login -h      | ^Usage: kogen provider              |
-      | kogen uninstall --help       | ^Commands:                          |
-      | kogen version --help         | ^Commands:                          |
+      | kogen provider list --help   | ^Usage: kogen provider list         |
+      | kogen provider login -h      | ^Usage: kogen provider login        |
+      | kogen uninstall --help       | ^Usage: kogen uninstall             |
+      | kogen version --help         | ^Usage: kogen version               |
 
   @CLI-2 @CLI-3
   Scenario Outline: Usage errors print the message, a blank line and the page meant
