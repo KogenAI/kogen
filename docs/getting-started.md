@@ -42,6 +42,17 @@ kogen provider login claude-code    # Claude Code token from claude setup-token
 kogen provider login anthropic      # Anthropic API key
 ```
 
+### Without a browser (scripts, agents, remote shells)
+
+A person must supply the secret in the shell variable: `ANTHROPIC_API_KEY` is the Anthropic API key, and `CLAUDE_CODE_TOKEN` is the token made with `claude setup-token`. Both commands read the secret from standard input:
+
+```sh
+printf '%s' "$ANTHROPIC_API_KEY" | kogen provider login anthropic
+printf '%s' "$CLAUDE_CODE_TOKEN" | kogen provider login claude-code
+```
+
+ChatGPT requires a browser on the same machine at port 1455 and has no unattended form.
+
 The automatic discovery of `kogen init` needs a ChatGPT login. With only another provider, such as an Anthropic key, use the configuration-first path in step 4 ("Without ChatGPT").
 
 Others are `supergrok`, `opencode-go` and `openai-compatible`. List what is saved (no network access):
