@@ -36,7 +36,7 @@ const intentMD = "# Fixture intent\n\nSlug: fixture\nModel: not applicable — n
 type reply func(w http.ResponseWriter, r *http.Request)
 
 // fx is a temporary Git repository with its own identity, no signing and an empty hooks folder,
-// a HOME of its own (signed in to ChatGPT when asked), fake node and Cucumber paths, a committed
+// a HOME of its own (signed in to ChatGPT when asked), a Node stand-in and a Cucumber package folder, a committed
 // project whose acceptance command replays a prepared report and a loopback provider on a free
 // port that plays a script. Nothing reaches the network.
 type fx struct {
@@ -64,7 +64,7 @@ func newFx(t *testing.T, signedIn bool, script ...reply) *fx {
 	}
 	f := &fx{t: t, base: base, home: filepath.Join(base, "home"), aux: filepath.Join(base, "aux"), bin: filepath.Join(base, "bin"),
 		root: filepath.Join(base, "repo"), hooks: filepath.Join(base, "hooks"), script: script}
-	for _, d := range []string{f.home, f.aux, f.bin, f.root, f.hooks, filepath.Join(base, "cucumber")} {
+	for _, d := range []string{f.home, f.aux, f.bin, f.root, f.hooks, filepath.Join(base, "cucumber", "@cucumber", "cucumber")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -73,6 +73,10 @@ func newFx(t *testing.T, signedIn bool, script ...reply) *fx {
 	t.Cleanup(f.srv.Close)
 	f.env = envWith(os.Environ(), "HOME="+f.home, "KOGEN_PROVIDER_URL="+f.srv.URL)
 	f.tools = verify.Tools{Node: filepath.Join(f.bin, "node"), Cucumber: filepath.Join(base, "cucumber")}
+	// A Node stand-in passes the install check: an existing, regular, executable file.
+	if err := os.WriteFile(f.tools.Node, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if signedIn {
 		dir := filepath.Join(f.home, ".kogen", "credentials")
 		if err := os.MkdirAll(dir, 0o700); err != nil {

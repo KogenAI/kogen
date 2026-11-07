@@ -14,7 +14,7 @@ kogen resolves the installed tools once per command: `verify.ToolsFromInstall(jo
 
 - `tools_test.go`: `verify.ToolsFromInstall` is `func(string) verify.Tools`; `verify.Tools` has the string fields `Node`, `Quint` and `Cucumber` (`TestToolsFields`).
 - `TestToolsFromInstallNamesTheNodeOfTheInstall`: `Node` is the path the install root's `node-path` file names, without its trailing line ending.
-- `TestToolsFromInstallWithoutNodePathFile`: without a readable `node-path`, `Node` is that file's own path (a command naming it fails; no other node runs).
+- `TestToolsFromInstallWithoutNodePathFile`: without a readable `node-path`, `Node` is empty (no other node runs).
 - `TestToolsFromInstallLocatesQuintAndCucumberUnderLib`: `Quint` is `<root>/lib/quint/node_modules/@informalsystems/quint/dist/src/cli.js` and `Cucumber` is `<root>/lib/cucumber/node_modules`, the same paths `cli/main.go` exports as `KOGEN_QUINT` and `KOGEN_CUCUMBER`.
 
 ## Isolation

@@ -31,6 +31,13 @@ func buildKogen(t *testing.T) string {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 	writeFile(t, filepath.Join(root, "lib", "VERSION"), "kogen dev+12345678 (test)\n", 0o644)
+	// The install check needs a Node stand-in named by node-path and a Cucumber package folder.
+	node := filepath.Join(root, "node")
+	writeFile(t, node, "#!/bin/sh\nexit 0\n", 0o755)
+	writeFile(t, filepath.Join(root, "node-path"), node, 0o644)
+	if err := os.MkdirAll(filepath.Join(root, "lib", "cucumber", "node_modules", "@cucumber", "cucumber"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	return bin
 }
 

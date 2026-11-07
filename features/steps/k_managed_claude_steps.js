@@ -1,6 +1,6 @@
 'use strict';
 // K-MANAGED-CLAUDE acceptance: the installed Kogen installs and runs its own pinned Claude Code
-// runtime (2.1.312, under ~/.kogen/claude-code) from the loopback download seam
+// runtime (2.1.318, under ~/.kogen/claude-code) from the loopback download seam
 // KOGEN_CLAUDE_CODE_URL, never the Claude Code on PATH, and leaves the user's own Claude Code
 // setup untouched. The served or seeded runtime is a wrapper that records how Kogen started it
 // and then runs the repository's fake claude (test/acceptance/fixtures/claude/fake-claude.js),
@@ -20,7 +20,7 @@ const { spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '../..');
 const FAKE = path.join(ROOT, 'test/acceptance/fixtures/claude/fake-claude.js');
-const PIN = '2.1.312';
+const PIN = '2.1.318';
 const SLUG = 'managed-fixture';
 const MIN = 60000;
 const RUNNER = 'NODE_PATH="$KOGEN_CUCUMBER" "$KOGEN_NODE" "$KOGEN_CUCUMBER/@cucumber/cucumber/bin/cucumber.js" --strict --require "features/steps/*.js" --format "message:$KOGEN_ACCEPTANCE_REPORT" "$KOGEN_ACCEPTANCE_FEATURES"';
@@ -139,7 +139,7 @@ const runAll = (o, checks) => { for (const [fn, ...args] of checks) fn(o, ...arg
 // ------------------------------------------------------------------ controls
 
 function controls(bad) {
-  const home = '/h', m = `${home}/.kogen/claude-code`, rt = `${m}/2.1.312/claude`, cfg = `${m}/config`;
+  const home = '/h', m = `${home}/.kogen/claude-code`, rt = `${m}/2.1.318/claude`, cfg = `${m}/config`;
   const cred = `${home}/.kogen/credentials/claude-code.json`, served = 'a'.repeat(64);
   const env = { config: cfg, updates: '1' };
   const setup = {};
@@ -155,58 +155,58 @@ function controls(bad) {
   };
   const landed = structuredClone(base);
   Object.assign(landed, {
-    result: { code: 0, out: `kogen: installing Claude Code 2.1.312 into ${m}/2.1.312\nkogen: installed Claude Code 2.1.312 (sha256 ${served})\nLanded\n` },
-    list: { code: 0, out: `chatgpt: not signed in\nclaude-code runtime: Claude Code 2.1.312 installed (${rt})\n` },
+    result: { code: 0, out: `kogen: installing Claude Code 2.1.318 into ${m}/2.1.318\nkogen: installed Claude Code 2.1.318 (sha256 ${served})\nLanded\n` },
+    list: { code: 0, out: `chatgpt: not signed in\nclaude-code runtime: Claude Code 2.1.318 installed (${rt})\n` },
     children: [{ self: `${m}/.partial-ab12/claude`, args: ['--version'], ...env }, { self: rt, args: ['--version'], ...env }, { self: rt, args: ['auth', 'status', '--json'], ...env }, { self: rt, args: ['-p', '--session-id', 'x'], ...env }],
     roles: { build: 1, review: 1, shape: 0 }, hooks: [{ hook: 'pretool', tool_name: 'Write', path: 'app.txt', decision: 'allow' }],
     oldBefore: { type: 'file', mode: 0o755, sha: 'b'.repeat(64) }, oldAfter: { type: 'file', mode: 0o755, sha: 'b'.repeat(64) },
-    managed: ['2.1.300', '2.1.312', 'config', 'install.lock'], headAfter: '2'.repeat(40), app: 'built on the managed Claude Code\n',
-    committed: { 'app.txt': 'built on the managed Claude Code\n' }, downloads: ['/2.1.312/manifest.json', '/2.1.312/darwin-arm64/claude'],
+    managed: ['2.1.300', '2.1.318', 'config', 'install.lock'], headAfter: '2'.repeat(40), app: 'built on the managed Claude Code\n',
+    committed: { 'app.txt': 'built on the managed Claude Code\n' }, downloads: ['/2.1.318/manifest.json', '/2.1.318/darwin-arm64/claude'],
   });
   landed.files[rt] = { type: 'file', mode: 0o755, sha: served };
   const landedChecks = [
     [C.landed, 'app.txt', 'built on the managed Claude Code\\n'],
-    [C.line, 'kogen: installing Claude Code 2.1.312 into <home>/.kogen/claude-code/2.1.312'],
-    [C.line, 'kogen: installed Claude Code 2.1.312 (sha256 <served-sha256>)'],
-    [C.runtimeBytes, '<home>/.kogen/claude-code/2.1.312/claude'], [C.servedTimes, '2.1.312', 1],
-    [C.children, '<home>/.kogen/claude-code/2.1.312/claude', '<home>/.kogen/claude-code/config', '1'],
+    [C.line, 'kogen: installing Claude Code 2.1.318 into <home>/.kogen/claude-code/2.1.318'],
+    [C.line, 'kogen: installed Claude Code 2.1.318 (sha256 <served-sha256>)'],
+    [C.runtimeBytes, '<home>/.kogen/claude-code/2.1.318/claude'], [C.servedTimes, '2.1.318', 1],
+    [C.children, '<home>/.kogen/claude-code/2.1.318/claude', '<home>/.kogen/claude-code/config', '1'],
     [C.roles], [C.hook, 'app.txt'], [C.dirMode, '<home>/.kogen/claude-code/config', '700'], [C.noPartial],
     [C.pathNeverRun], [C.oldUnchanged], [C.setupUnchanged],
-    [C.listLine, 'claude-code runtime: Claude Code 2.1.312 installed (<home>/.kogen/claude-code/2.1.312/claude)'],
+    [C.listLine, 'claude-code runtime: Claude Code 2.1.318 installed (<home>/.kogen/claude-code/2.1.318/claude)'],
   ];
   const refused = structuredClone(base);
   Object.assign(refused, {
-    result: { code: 1, out: 'executor/unavailable: the downloaded Claude Code reports 2.1.314 (Claude Code), not 2.1.312; nothing was installed\n' },
-    children: [{ self: `${m}/.partial-cd34/claude`, args: ['--version'], ...env }], downloads: ['/2.1.312/manifest.json', '/2.1.312/darwin-arm64/claude'],
+    result: { code: 1, out: 'executor/unavailable: the downloaded Claude Code reports 2.1.314 (Claude Code), not 2.1.318; nothing was installed\n' },
+    children: [{ self: `${m}/.partial-cd34/claude`, args: ['--version'], ...env }], downloads: ['/2.1.318/manifest.json', '/2.1.318/darwin-arm64/claude'],
   });
   const refusedChecks = [
-    [C.refused, 'executor/unavailable', 'the downloaded Claude Code reports 2.1.314 (Claude Code), not 2.1.312; nothing was installed'],
-    [C.nothingInstalled, '2.1.312'], [C.noRounds], [C.projectUnchanged], [C.pathNeverRun], [C.setupUnchanged],
+    [C.refused, 'executor/unavailable', 'the downloaded Claude Code reports 2.1.314 (Claude Code), not 2.1.318; nothing was installed'],
+    [C.nothingInstalled, '2.1.318'], [C.noRounds], [C.projectUnchanged], [C.pathNeverRun], [C.setupUnchanged],
   ];
   const kept = structuredClone(base);
   Object.assign(kept, {
-    result: { code: 1, out: `executor/unavailable: the downloaded Claude Code 2.1.312 does not match its pinned SHA-256; nothing was installed\n` },
-    downloads: ['/2.1.312/manifest.json', '/2.1.312/darwin-arm64/claude'],
+    result: { code: 1, out: `executor/unavailable: the downloaded Claude Code 2.1.318 does not match its pinned SHA-256; nothing was installed\n` },
+    downloads: ['/2.1.318/manifest.json', '/2.1.318/darwin-arm64/claude'],
   });
   const keptChecks = [
-    [C.refused, 'executor/unavailable', 'the downloaded Claude Code 2.1.312 does not match its pinned SHA-256; nothing was installed'],
-    [C.nothingInstalled, '2.1.312'], [C.neverStarted], [C.projectUnchanged],
+    [C.refused, 'executor/unavailable', 'the downloaded Claude Code 2.1.318 does not match its pinned SHA-256; nothing was installed'],
+    [C.nothingInstalled, '2.1.318'], [C.neverStarted], [C.projectUnchanged],
   ];
   const wrong = structuredClone(base);
   Object.assign(wrong, {
-    result: { code: 1, out: `executor/unavailable: Kogen's Claude Code at ${rt} reports 2.1.314 (Claude Code), not the pinned 2.1.312; remove ${m}/2.1.312 to reinstall it\n` },
-    children: [{ self: rt, args: ['--version'], ...env }], managed: ['2.1.312', 'config'],
+    result: { code: 1, out: `executor/unavailable: Kogen's Claude Code at ${rt} reports 2.1.314 (Claude Code), not the pinned 2.1.318; remove ${m}/2.1.318 to reinstall it\n` },
+    children: [{ self: rt, args: ['--version'], ...env }], managed: ['2.1.318', 'config'],
   });
   wrong.files[rt] = { type: 'file', mode: 0o755, sha: 'c'.repeat(64) };
   const wrongChecks = [
-    [C.refused, 'executor/unavailable', "Kogen's Claude Code at <home>/.kogen/claude-code/2.1.312/claude reports 2.1.314 (Claude Code), not the pinned 2.1.312; remove <home>/.kogen/claude-code/2.1.312 to reinstall it"],
+    [C.refused, 'executor/unavailable', "Kogen's Claude Code at <home>/.kogen/claude-code/2.1.318/claude reports 2.1.314 (Claude Code), not the pinned 2.1.318; remove <home>/.kogen/claude-code/2.1.318 to reinstall it"],
     [C.noDownload], [C.noRounds], [C.projectUnchanged], [C.pathNeverRun],
   ];
   const status = structuredClone(base);
-  status.list = { code: 0, out: 'chatgpt: not signed in\nclaude-code: token saved (not verified)\nclaude-code runtime: Claude Code 2.1.312 not installed\nOfficial compatibility (text/tool input, normal routes only):\n' };
+  status.list = { code: 0, out: 'chatgpt: not signed in\nclaude-code: token saved (not verified)\nclaude-code runtime: Claude Code 2.1.318 not installed\nOfficial compatibility (text/tool input, normal routes only):\n' };
   const statusChecks = [
-    [C.listLine, 'claude-code runtime: Claude Code 2.1.312 not installed'],
-    [C.listAfter, 'claude-code runtime: Claude Code 2.1.312 not installed', 'claude-code: token saved (not verified)'],
+    [C.listLine, 'claude-code runtime: Claude Code 2.1.318 not installed'],
+    [C.listAfter, 'claude-code runtime: Claude Code 2.1.318 not installed', 'claude-code: token saved (not verified)'],
   ];
   const removed = structuredClone(base);
   Object.assign(removed, {
@@ -238,7 +238,7 @@ function controls(bad) {
     x => { delete x.setupAfter[`${home}/.claude.json`]; },
     x => { x.files[rt].sha = 'f'.repeat(64); },
     x => { x.files[rt].mode = 0o644; },
-    x => { x.downloads.push('/2.1.312/darwin-arm64/claude'); },
+    x => { x.downloads.push('/2.1.318/darwin-arm64/claude'); },
     x => { x.hooks = []; },
     x => { x.hooks[0].decision = 'deny'; },
     x => { x.roles.review = 0; },
@@ -249,13 +249,13 @@ function controls(bad) {
     x => { x.headAfter = x.headBefore; },
     x => { x.files[cfg].mode = 0o755; },
     x => { x.managed.push('.partial-ab12'); },
-    x => { x.list.out = 'claude-code runtime: Claude Code 2.1.312 not installed\n'; },
+    x => { x.list.out = 'claude-code runtime: Claude Code 2.1.318 not installed\n'; },
   ]) rejected(landed, landedChecks, mutate);
   for (const mutate of [
     x => { x.result.code = 0; },
     x => { x.result.out = 'executor/unavailable: something else\n'; },
     x => { x.result.out = x.result.out.replace('executor/unavailable', 'executor/failed'); },
-    x => { x.managed.push('2.1.312'); },
+    x => { x.managed.push('2.1.318'); },
     x => { x.managed.push('.partial-cd34'); },
     x => { x.children.push({ self: rt, args: ['-p'], ...env }); },
     x => { x.roles.build = 1; },
@@ -265,10 +265,10 @@ function controls(bad) {
     x => { x.setupAfter[`${home}/.claude/.credentials.json`].mode = 0o600; },
   ]) rejected(refused, refusedChecks, mutate);
   rejected(kept, keptChecks, x => { x.children.push({ self: `${m}/.partial-ef56/claude`, args: ['--version'], ...env }); });
-  rejected(kept, keptChecks, x => { x.managed.push('2.1.312'); });
-  rejected(wrong, wrongChecks, x => { x.downloads.push('/2.1.312/manifest.json'); });
+  rejected(kept, keptChecks, x => { x.managed.push('2.1.318'); });
+  rejected(wrong, wrongChecks, x => { x.downloads.push('/2.1.318/manifest.json'); });
   rejected(wrong, wrongChecks, x => { x.result.out = x.result.out.replace('2.1.314 (Claude Code)', '2.1.314'); });
-  rejected(status, statusChecks, x => { x.list.out = 'claude-code runtime: Claude Code 2.1.312 not installed\nclaude-code: token saved (not verified)\n'; });
+  rejected(status, statusChecks, x => { x.list.out = 'claude-code runtime: Claude Code 2.1.318 not installed\nclaude-code: token saved (not verified)\n'; });
   rejected(status, statusChecks, x => { x.list.out = 'claude-code: token saved (not verified)\n'; });
   for (const mutate of [
     x => { x.uninstall.code = 3; },

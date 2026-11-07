@@ -41,7 +41,7 @@ const flag = name => {
 };
 
 if (args.length === 1 && args[0] === '--version') {
-  process.stdout.write(`${script.version || '2.1.312 (Claude Code)'}\n`);
+  process.stdout.write(`${script.version || '2.1.318 (Claude Code)'}\n`);
   return;
 }
 if (args[0] === 'auth' && args[1] === 'status') {
@@ -123,7 +123,7 @@ function begin(prompt) {
   out({
     type: 'system', subtype: 'init', cwd, session_id: sessionId, tools: ['Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Read', 'Write'],
     mcp_servers: [], model: flag('--model') || 'claude-sonnet-5-5', permissionMode: 'acceptEdits',
-    apiKeySource: round.api_key_source || 'none', claude_code_version: String(script.version || '2.1.312').split(' ')[0],
+    apiKeySource: round.api_key_source || 'none', claude_code_version: String(script.version || '2.1.318').split(' ')[0],
     uuid: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
   });
 

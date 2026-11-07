@@ -63,7 +63,7 @@ async function setup(world, accepted) {
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-ktoken-')));
   const home = path.join(d, 'home'), repo = path.join(d, 'repo'), bin = path.join(d, 'bin'), state = path.join(d, 'state');
   for (const x of [home, repo, bin, state]) fs.mkdirSync(x, {recursive: true});
-  put(path.join(home, '.kogen/claude-code/2.1.312/claude'), SHIM, 0o755);
+  put(path.join(home, '.kogen/claude-code/2.1.318/claude'), SHIM, 0o755);
   put(path.join(state, 'accepted'), accepted);
   put(path.join(home, '.gitconfig'), '');
   const env = {...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'), KT_STATE: state};

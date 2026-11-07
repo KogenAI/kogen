@@ -138,6 +138,21 @@ func TestApproveRefusalsAreSysErrorsWithTheirExit(t *testing.T) {
 		exit, err := shape.Approve(s.Context(), s, shape.ApproveInput{Project: plain, Slug: slug, Tools: f.tools})
 		wantError(t, exit, err, "environment", "not_a_git_repo", 3)
 	})
+	t.Run("Node target of the install is missing", func(t *testing.T) {
+		f := newFx(t, false)
+		f.addIntent()
+		if err := os.Remove(f.tools.Node); err != nil {
+			t.Fatal(err)
+		}
+		exit, _, err := f.approve("", "")
+		e := wantError(t, exit, err, "environment", "tool_missing", 3)
+		if !strings.HasPrefix(e.Render(), "environment/tool_missing: ") {
+			t.Fatalf("Render = %q", e.Render())
+		}
+		if f.exists(".kogen/local/approvals/fixture.json") {
+			t.Fatal("an install without its Node approved the Intent")
+		}
+	})
 	t.Run("no Git identity names no approver", func(t *testing.T) {
 		f := newFx(t, false)
 		f.addIntent()

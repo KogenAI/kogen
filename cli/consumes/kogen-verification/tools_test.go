@@ -42,12 +42,12 @@ func TestToolsFromInstallNamesTheNodeOfTheInstall(t *testing.T) {
 	}
 }
 
-// TestToolsFromInstallWithoutNodePathFile: when node-path cannot be read, the Node is the
-// file's own path, so a command naming it fails visibly instead of running another node.
+// TestToolsFromInstallWithoutNodePathFile: when node-path cannot be read, the Node is empty,
+// so no other node runs.
 func TestToolsFromInstallWithoutNodePathFile(t *testing.T) {
 	root := t.TempDir()
-	if got, want := verify.ToolsFromInstall(root).Node, filepath.Join(root, "node-path"); got != want {
-		t.Fatalf("Node = %q, want %q", got, want)
+	if got := verify.ToolsFromInstall(root).Node; got != "" {
+		t.Fatalf("Node = %q, want empty", got)
 	}
 }
 

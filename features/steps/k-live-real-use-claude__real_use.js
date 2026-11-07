@@ -146,7 +146,7 @@ function controls(mode) {
     outputs: { 'transcript.txt': transcript, 'shape.out': 'Scenarios: 3 (3 fail now, 0 pass now)\n', 'build2.out': '  review: approved\n', 'leak.txt': '' },
     models: claudeModels, subject: 'Add an is-even helper', calc,
     chatgpt: { received: [], kinds: [] },
-    seam: ['/2.1.312/manifest.json', '/2.1.312/darwin-arm64/claude'],
+    seam: ['/2.1.318/manifest.json', '/2.1.318/darwin-arm64/claude'],
     claude: { shape: 3, build: 2, review: 1, schemas: [INIT_KEYS, ['files', 'questions', 'blocked'], ['files', 'questions', 'blocked']] },
   };
   const chatgptRun = { ...good, models: chatgptModels, seam: [], claude: { shape: 0, build: 0, review: 0, schemas: [] }, chatgpt: { received: ['POST /v1/responses'], kinds: ['init', 'shape', 'build', 'review'] } };
@@ -169,10 +169,10 @@ function controls(mode) {
     [{ ...good, chatgpt: { received: ['POST /v1/responses'], kinds: ['init'] } }, o => O.noChatgpt(o)],
     [{ ...good, chatgpt: { received: ['auth POST /api/accounts/oauth/token'], kinds: [] } }, o => O.noChatgpt(o)],
     [{ ...chatgptRun, chatgpt: { received: ['POST /v1/responses'], kinds: ['init', 'shape', 'build'] } }, o => O.chatgptAnswered(o, ['init', 'shape', 'build', 'review'])],
-    [{ ...good, seam: [...good.seam, '/2.1.312/darwin-arm64/claude'] }, o => O.seamOnce(o)],
+    [{ ...good, seam: [...good.seam, '/2.1.318/darwin-arm64/claude'] }, o => O.seamOnce(o)],
     [{ ...good, seam: [] }, o => O.seamOnce(o)],
     [{ ...good, seam: [...good.seam, '/latest'] }, o => O.seamOnce(o)],
-    [{ ...chatgptRun, seam: ['/2.1.312/manifest.json'] }, o => O.seamNone(o)],
+    [{ ...chatgptRun, seam: ['/2.1.318/manifest.json'] }, o => O.seamNone(o)],
     [{ ...good, claude: { ...good.claude, schemas: [INIT_KEYS] } }, o => O.claudeRoles(o)],
     [{ ...good, claude: { ...good.claude, schemas: [['files', 'questions', 'blocked'], ['files', 'questions', 'blocked']] } }, o => O.claudeRoles(o)],
     [{ ...good, claude: { ...good.claude, build: 0 } }, o => O.claudeRoles(o)],

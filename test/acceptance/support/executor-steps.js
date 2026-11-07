@@ -11,14 +11,14 @@ function shell(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
-const PINNED = '2.1.312';
+const PINNED = '2.1.318';
 
 function runtimePath(world) {
   assert.ok(world.home, 'the scenario has no home directory');
   return path.join(world.home, '.kogen', 'claude-code', PINNED, 'claude');
 }
 
-// Installs the fake as Kogen's Claude Code, $HOME/.kogen/claude-code/2.1.312/claude: the one
+// Installs the fake as Kogen's Claude Code, $HOME/.kogen/claude-code/2.1.318/claude: the one
 // executable Kogen runs, never one on PATH. It runs the Node fake with the named script; the state
 // folder lives outside the project, so it never joins Build custody.
 function installFakeClaude(world, name) {

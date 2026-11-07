@@ -36,7 +36,7 @@ func managedClaude(t *testing.T, home, version, auth string) (decoyRan func() bo
 	}
 	bin := t.TempDir()
 	ran := filepath.Join(bin, "ran")
-	decoy := "#!/bin/sh\necho ran > '" + ran + "'\necho '2.1.312 (Claude Code)'\n"
+	decoy := "#!/bin/sh\necho ran > '" + ran + "'\necho '2.1.318 (Claude Code)'\n"
 	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(decoy), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func storeToken(t *testing.T, home string) {
 
 func TestClaudeChecks(t *testing.T) {
 	signedIn := `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}`
-	const pinned = "2.1.312 (Claude Code)"
+	const pinned = "2.1.318 (Claude Code)"
 	const signInFix = "kogen provider login claude-code"
 	const noSignIn = "claude-code: no stored token and no claude.ai subscription sign-in"
 	t.Run("another version names the path and the fix", func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestClaudeChecks(t *testing.T) {
 		storeToken(t, home)
 		p, f := checkClaude(Input{Home: home})
 		path := claudecode.RuntimePath(home)
-		if len(p) != 1 || p[0] != "claude-code: Kogen's Claude Code at "+path+" reports 2.1.314 (Claude Code), not the pinned 2.1.312" ||
+		if len(p) != 1 || p[0] != "claude-code: Kogen's Claude Code at "+path+" reports 2.1.314 (Claude Code), not the pinned 2.1.318" ||
 			len(f) != 1 || f[0] != "rm -rf "+claudecode.RuntimeDir(home) || decoy() {
 			t.Fatalf("%q %q", p, f)
 		}

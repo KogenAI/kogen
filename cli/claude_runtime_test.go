@@ -64,7 +64,7 @@ func TestProviderListRuntimeLine(t *testing.T) {
 		saveClaudeToken(t, home)
 		lines := list(home)
 		i := runtimeLine(lines)
-		if i < 1 || lines[i-1] != "claude-code: token saved (not verified)" || lines[i] != "claude-code runtime: Claude Code 2.1.312 not installed" || lines[i+1] != official {
+		if i < 1 || lines[i-1] != "claude-code: token saved (not verified)" || lines[i] != "claude-code runtime: Claude Code 2.1.318 not installed" || lines[i+1] != official {
 			t.Fatalf("%q", lines)
 		}
 	})
@@ -74,7 +74,7 @@ func TestProviderListRuntimeLine(t *testing.T) {
 			t.Fatal(err)
 		}
 		lines := list(home)
-		if i := runtimeLine(lines); i < 0 || lines[i] != "claude-code runtime: Claude Code 2.1.312 not installed" || lines[i+1] != official {
+		if i := runtimeLine(lines); i < 0 || lines[i] != "claude-code runtime: Claude Code 2.1.318 not installed" || lines[i+1] != official {
 			t.Fatalf("%q", lines)
 		}
 	})
@@ -82,7 +82,7 @@ func TestProviderListRuntimeLine(t *testing.T) {
 		home := t.TempDir()
 		path := installRuntimeFile(t, home)
 		lines := list(home)
-		if i := runtimeLine(lines); i < 0 || lines[i] != "claude-code runtime: Claude Code 2.1.312 installed ("+path+")" || lines[i+1] != official {
+		if i := runtimeLine(lines); i < 0 || lines[i] != "claude-code runtime: Claude Code 2.1.318 installed ("+path+")" || lines[i+1] != official {
 			t.Fatalf("%q", lines)
 		}
 	})
@@ -92,7 +92,7 @@ func TestProviderListRuntimeLine(t *testing.T) {
 			t.Fatal(err)
 		}
 		lines := list(home)
-		if i := runtimeLine(lines); i < 0 || lines[i] != "claude-code runtime: Claude Code 2.1.312 not installed" {
+		if i := runtimeLine(lines); i < 0 || lines[i] != "claude-code runtime: Claude Code 2.1.318 not installed" {
 			t.Fatalf("%q", lines)
 		}
 	})

@@ -311,7 +311,7 @@ Feature: Building
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
     And stdout contains "executor/unavailable"
-    And stdout contains "not the pinned 2.1.312"
+    And stdout contains "not the pinned 2.1.318"
     And the fake claude ran 0 rounds
     And the file "calc.py" is unchanged
     And HEAD is unchanged

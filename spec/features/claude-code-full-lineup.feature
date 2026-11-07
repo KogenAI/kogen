@@ -205,7 +205,7 @@ Feature: Claude Code serves a complete independent lineup
       """
     Then the exit code is 1
     And stdout contains "executor/unavailable"
-    And stdout contains "not the pinned 2.1.312"
+    And stdout contains "not the pinned 2.1.318"
     And no Intent named is-even exists
     Given a broken Kogen Claude Code runtime is installed
     When the caller runs "kogen intent shape is-even -" with stdin:
@@ -429,7 +429,7 @@ Feature: Claude Code serves a complete independent lineup
     Then the exit code is 0
     And stdout matches "executors"
     And stdout matches "executors.*review"
-    And stdout contains "claude-code 2.1.312 (Claude Code)"
+    And stdout contains "claude-code 2.1.318 (Claude Code)"
 
 
   @LOOP-14 @LOOP-15 @SET-14 @SHP-1

@@ -38,8 +38,8 @@ v2 executors may serve the **shape** (including Refine), **build** and **review*
   An explicit `executor/usage_limit` stop is the narrow exception: after process, baseline and HEAD custody checks, explicit Resume starts a labelled fresh conversation at the interrupted logical round, carrying ordinary authority, the preserved candidate and prior verification feedback. Historical results remain tree-bound; no account switching or automatic retry occurs. Generic API errors remain `executor/failed`. Claude Code still reports `resume: none`.
 
   Existing version 3 checkpoints resume as before.
-- **E6 Credentials and billing.** Executors use only the user's own subscription: for Claude Code, the token the user saved with `kogen provider login claude-code`, given to Kogen's own pinned Claude Code runtime (`~/.kogen/claude-code/2.1.312/claude`, installed by Kogen at the first role that needs it; `KOGEN_CLAUDE_CODE_URL` is a test-only loopback download seam). The Claude Code adapter:
-  - never resolves `claude` on `PATH` and runs exactly that executable, whose `--version` must start with `2.1.312` at every role start (otherwise `executor/unavailable`, no download or replacement), keeping the path it started with for all of its rounds;
+- **E6 Credentials and billing.** Executors use only the user's own subscription: for Claude Code, the token the user saved with `kogen provider login claude-code`, given to Kogen's own pinned Claude Code runtime (`~/.kogen/claude-code/2.1.318/claude`, installed by Kogen at the first role that needs it; `KOGEN_CLAUDE_CODE_URL` is a test-only loopback download seam). The Claude Code adapter:
+  - never resolves `claude` on `PATH` and runs exactly that executable, whose `--version` must start with `2.1.318` at every role start (otherwise `executor/unavailable`, no download or replacement), keeping the path it started with for all of its rounds;
   - gives every child (the installation's `--version`, `--version`, `auth status --json` and every round) exactly one `CLAUDE_CONFIG_DIR=<home>/.kogen/claude-code/config` and exactly one `DISABLE_UPDATES=1`, removing inherited values of both;
   - removes API-key, base-URL, cloud-provider and nested-session variables from the child environment;
   - never passes `--bare`;
@@ -174,7 +174,7 @@ Build-level guarantees (E1–E3) are tested once in `cli/build` with a fake `Exe
 - `cli/loop-pin.json` records its `protocol`, `library` and source digest, and a test recomputes the digest.
 - A kogen-loop change reaches Kogen only as a reviewable copy diff plus a pin update. The copy builds offline and inside Kogen's scratch verification copies.
 - An executor contract change updates this file, `executor.go`, the conformance scripts and every adapter driver in the same change.
-- The Claude Code adapter records the exact `claude --version` and the init event's reported model and auth route on every run. It refuses any version but the pinned `2.1.312`; a newer Kogen release pins a newly tested version into its own directory, and older version directories are never modified or run.
+- The Claude Code adapter records the exact `claude --version` and the init event's reported model and auth route on every run. It refuses any version but the pinned `2.1.318`; a newer Kogen release pins a newly tested version into its own directory, and older version directories are never modified or run.
 
 ## Process-group safety (K-SAFE)
 

@@ -372,7 +372,8 @@ Feature: Shaping
     And the file ".kogen/intents/is-even/acceptance.feature" exists
     When the caller runs "kogen intent approve is-even"
     Then the exit code is 1
-    And stdout contains "intent/not_ready: the Intent is not ready to build"
+    And stdout contains "intent/not_ready: Shape refused this draft; refusing check: step_selfcheck"
+    And stdout contains "  acceptance.feature line <line>: undefined step: When is-even: the caller doubles 4"
     And the file ".kogen/local/approvals/is-even.json" does not exist
 
     Examples:

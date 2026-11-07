@@ -104,6 +104,18 @@ func buildApproveCLI(t *testing.T, spec approveSpec) *approveCLI {
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
+	// The install check needs a Node stand-in named by node-path and a Cucumber package folder.
+	install := filepath.Dir(filepath.Dir(bin))
+	node := filepath.Join(install, "node")
+	if err := os.WriteFile(node, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(install, "node-path"), []byte(node), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(install, "lib", "cucumber", "node_modules", "@cucumber", "cucumber"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	c := &approveCLI{t: t, bin: bin, Root: t.TempDir(), Aux: t.TempDir(), Home: t.TempDir()}
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "GIT_") && !strings.HasPrefix(kv, "HOME=") {

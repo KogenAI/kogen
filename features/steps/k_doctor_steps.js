@@ -52,7 +52,7 @@ async function fixture(world, { yaml, models = modelsFor(), identity, chatgpt, c
   let pathValue = bin;
   if (claude) {
     // Kogen's own Claude Code runtime, never a `claude` on PATH.
-    const rdir = path.join(w.home, '.kogen', 'claude-code', '2.1.312'); fs.mkdirSync(rdir, { recursive: true });
+    const rdir = path.join(w.home, '.kogen', 'claude-code', '2.1.318'); fs.mkdirSync(rdir, { recursive: true });
     fs.writeFileSync(path.join(rdir, 'claude'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo '${claude} (Claude Code)'; exit 0; fi\necho '{}'\nexit 0\n`, { mode: 0o755 });
   }
   w.pathValue = pathValue;
