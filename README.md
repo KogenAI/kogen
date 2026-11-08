@@ -51,7 +51,7 @@ kogen provider login chatgpt
 
 ## Quickstart
 
-In a Git repository of your own with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
+Run these in your own Git repository (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
 
 ```sh
 kogen init                                     # finds and checks the project's commands, commits .kogen/project.yaml and the model lineup .kogen/models.yaml
@@ -59,6 +59,8 @@ kogen intent shape my-feature ../request.md    # the request, kept outside the r
 kogen intent approve my-feature                # shows the card; approve with the hash it prints
 kogen intent build my-feature                  # builds, verifies, reviews and commits
 ```
+
+A truly empty Git worktree gets a configuration-only `Initial commit`. An unborn repository with uncommitted files is rejected with `environment/no_commits`. In a committed repository, init adds `Add Kogen configuration`; commit generated runnable source first, then init adds a separate `Add Kogen configuration` setup commit.
 
 For a step-by-step guide from install to your first landed feature, see [docs/getting-started.md](docs/getting-started.md); `kogen help` lists every command.
 

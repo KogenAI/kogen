@@ -1,6 +1,6 @@
 # Getting started
 
-This guide takes you from nothing installed to your first feature landed in your own Git repository. You need Git, a repository with at least one commit, and a model route you can sign in to. Every output block below is an excerpt of a real run (`...` marks lines left out; `<name>` stands for a hash, id, path or duration that differs on your machine).
+This guide takes you from nothing installed to your first feature landed in your own Git repository. You need Git, a Git repository, and a model route you can sign in to. Every output block below is an excerpt of a real run (`...` marks lines left out; `<name>` stands for a hash, id, path or duration that differs on your machine).
 
 ## 1. Install
 
@@ -104,13 +104,15 @@ anthropic: not signed in
 
 ## 4. Initialise the project
 
-In your repository, with a clean committed tree:
+Run init in your Git repository:
 
 ```sh
 kogen init
 ```
 
-`init` discovers how the project builds and tests, asks the configured model about its commands, keeps only the checks that pass on your committed tree, sets up acceptance with Cucumber, and commits `.kogen/project.yaml` (the commands) and `.kogen/models.yaml` (the model lineup) as `Add Kogen configuration`. To change models or effort later, edit `.kogen/models.yaml` and commit it, or put a role in the host-local, uncommitted `.kogen/local/models.yaml` to change it on one machine; to change checks, edit `.kogen/project.yaml` and commit it (see `docs/configuration.md`).
+A truly empty Git worktree gets a configuration-only `Initial commit`. An unborn repository with uncommitted files is rejected with `environment/no_commits`. In a committed repository, init adds `Add Kogen configuration`; commit generated runnable source first, then init adds a separate `Add Kogen configuration` setup commit.
+
+`init` discovers how the project builds and tests, asks the configured model about its commands, keeps only the checks that pass on your committed tree, sets up acceptance with Cucumber, and commits `.kogen/project.yaml` (the commands) and `.kogen/models.yaml` (the model lineup). To change models or effort later, edit `.kogen/models.yaml` and commit it, or put a role in the host-local, uncommitted `.kogen/local/models.yaml` to change it on one machine; to change checks, edit `.kogen/project.yaml` and commit it (see `docs/configuration.md`).
 
 ```output init
 kogen: detecting the project's commands
