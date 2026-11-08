@@ -290,7 +290,7 @@ Feature: Claude Code serves a complete independent lineup
     Then the exit code is 5
     And stdout contains "Questions for is-even:"
     And stdout contains "1. How should the result be presented to the user?"
-    And stdout contains "a) show a text label (recommended)"
+    And stdout contains "a) show a text label"
     And no Intent named is-even exists
     When the caller runs "kogen intent shape is-even -" with stdin:
       """

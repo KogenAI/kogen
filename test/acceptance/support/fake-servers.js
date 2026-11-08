@@ -314,7 +314,7 @@ class FakeServers {
       const text = flatten(body).join('\n');
       const handoff = text.includes('Sign in to the provider');
       const technical = text.includes('Which protocol and endpoint');
-      const count = text.includes('Which visual emphasis') ? 2 : 1;
+      const count = text.includes('Which visual emphasis') || text.includes('Confirm the provider security check') ? 2 : 1;
       const cls = handoff ? 'handoff' : technical ? 'technical' : 'ui_ux';
       const why = handoff ? 'authentication must be completed by the caller' : technical ? 'the repository and documentation can establish the protocol' : 'the request leaves this interface choice open';
       const item = functionCall('submit_question_check', { items: Array.from({ length: count }, (_, i) => ({ number: i + 1, class: cls, why })) }, 'question_check');
@@ -548,16 +548,33 @@ class FakeServers {
         }
         return inspectedSubmit({ files }, `shape_observation_${ordinal}`);
       case 'shape-asks-one':
-        return { items: [functionCall('submit', { questions: [{ question: 'How should the result be presented to the user?', options: [{ label: 'show a text label', recommended: true }, { label: 'show an icon' }] }] }, `shape_q_${ordinal}`)] };
+        return { items: [functionCall('submit', { questions: [{ question: 'How should the result be presented to the user?', options: [{ label: 'show a text label' }, { label: 'show an icon' }] }] }, `shape_q_${ordinal}`)] };
       case 'shape-asks-two':
         return { items: [functionCall('submit', { questions: [
-          { question: 'How should the result be presented to the user?', options: [{ label: 'show a text label', recommended: true }, { label: 'show an icon' }] },
-          { question: 'Which visual emphasis should the result use?', options: [{ label: 'normal emphasis', recommended: true }, { label: 'strong emphasis' }] },
+          { question: 'How should the result be presented to the user?', options: [{ label: 'show a text label' }, { label: 'show an icon' }] },
+          { question: 'Which visual emphasis should the result use?', options: [{ label: 'normal emphasis' }, { label: 'strong emphasis' }] },
         ] }, `shape_q2_${ordinal}`)] };
       case 'shape-asks-one-then-writes':
         return record.text.includes('1: a')
           ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- Show a text label for the result. (source: answer 1)' }) }, `shape_answer_${ordinal}`)
           : this.shapeResponse('shape-asks-one', ordinal, record);
+      case 'shape-handoff-two-then-writes':
+        return record.text.includes('1: a') && record.text.includes('2: a')
+          ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- Provider sign-in was completed. (source: answer 1)\n- The security check was completed. (source: answer 2)' }) }, `shape_handoff_answers_${ordinal}`)
+          : { items: [functionCall('submit', { questions: [
+            { question: 'Sign in to the provider.', kind: 'handoff', options: [{ label: 'I have signed in', recommended: true }, { label: 'Pause shaping' }] },
+            { question: 'Confirm the provider security check.', kind: 'handoff', options: [{ label: 'I have confirmed', recommended: true }, { label: 'Pause shaping' }] },
+          ] }, `shape_handoff_two_${ordinal}`)] };
+      case 'shape-recommended-then-writes': {
+        if (record.text.includes('decide this recommended answer without asking')) {
+          return inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- Show a text label for the result. (assumption: use the recommended presentation) (source: request)' }) }, `shape_recommended_${ordinal}`);
+        }
+        const response = this.shapeResponse('shape-asks-one', ordinal, record);
+        const args = JSON.parse(response.items[0].arguments);
+        args.questions[0].options[0].recommended = true;
+        response.items[0].arguments = JSON.stringify(args);
+        return response;
+      }
       case 'shape-asks-two-then-writes':
         return record.text.includes('1: a') && record.text.includes('2: a')
           ? inspectedSubmit({ files: intentFiles('is-even', { decision: '(source: request)\n- Show a text label for the result. (source: answer 1)\n- Use normal emphasis. (source: answer 2)' }) }, `shape_answers_${ordinal}`)
@@ -568,7 +585,7 @@ class FakeServers {
           : { items: [functionCall('submit', { questions: [{ question: 'Which protocol and endpoint should the integration use?', options: [{ label: 'HTTP JSON', recommended: true }, { label: 'gRPC' }] }] }, `shape_technical_q_${ordinal}`)] };
       case 'shape-not-ready-then-asks':
         return record.text.includes('undefined step: When is-even: the caller doubles 4')
-          ? { items: [functionCall('submit', { questions: [{ question: 'How should the result be presented to the user?', options: [{ label: 'show a text label', recommended: true }, { label: 'show an icon' }] }] }, `shape_after_not_ready_${ordinal}`)] }
+          ? { items: [functionCall('submit', { questions: [{ question: 'How should the result be presented to the user?', options: [{ label: 'show a text label' }, { label: 'show an icon' }] }] }, `shape_after_not_ready_${ordinal}`)] }
           : inspectedSubmit({ files: intentFiles('is-even', { undefinedStep: true }) }, `shape_not_ready_${ordinal}`);
       case 'shape-uninspected-submit':
         return { items: [functionCall('submit', { files }, `shape_uninspected_${ordinal}`)] };

@@ -14,8 +14,7 @@
                 "question": "How should the result be presented to the user?",
                 "options": [
                   {
-                    "label": "show a text label",
-                    "recommended": true
+                    "label": "show a text label"
                   },
                   {
                     "label": "show an icon"

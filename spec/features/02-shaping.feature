@@ -294,7 +294,7 @@ Feature: Shaping
       """
       Questions for is-even:
       1. How should the result be presented to the user?
-         a) show a text label (recommended)
+         a) show a text label
          b) show an icon
       Answer one per line as <n>: <letter or your words>, e.g. printf '1: a\n' | kogen intent shape is-even -
       Or enter all: recommended to use every question's recommended option.
@@ -316,8 +316,8 @@ Feature: Shaping
     And the file ".kogen/local/approvals/is-even.json" does not exist
 
   @SHP-6 @SHP-7 @model:shaping
-  Scenario: All recommended answers continue shaping
-    Given the fake ChatGPT server plays script "shape-asks-two-then-writes"
+  Scenario: All recommended handoff answers continue shaping
+    Given the fake ChatGPT server plays script "shape-handoff-two-then-writes"
     And the caller ran "kogen intent shape is-even -" with stdin "Add calc.is_even(n) and show its result to the user; choose the visual presentation."
     When the caller runs "kogen intent shape is-even -" with stdin:
       """
@@ -586,3 +586,15 @@ Feature: Shaping
       """
     Then the exit code is 0
     And request 1 contains "Kogen records each documentation tool lookup as its own progress line, shaping event and retained record; a probe transcript and an optional Intent provenance line are not that record."
+
+  @SHP-6 @model:shaping
+  Scenario: A recommended interface choice is decided without asking
+    Given the fake ChatGPT server plays script "shape-recommended-then-writes"
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n) and show its result to the user; choose the visual presentation.
+      """
+    Then the exit code is 0
+    And request 2 contains "decide this recommended answer without asking"
+    And the file ".kogen/intents/is-even/intent.md" contains "(assumption: use the recommended presentation)"
+    And the folder ".kogen/local/approvals/is-even.json" does not exist
