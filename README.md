@@ -4,7 +4,33 @@ This repository is `kogen`, the command-line program that is Kogen's small core.
 
 ## Install
 
-Development prereleases are published at https://github.com/KogenAI/kogen/releases, and `packaging/install-kogen.sh` installs them into `~/.local` without administrator rights. It runs on macOS on Apple Silicon and on Linux x86-64 with glibc. To build and install from source instead, you need Git, and Go 1.27 and Node 24 from `.tool-versions` (for example with [mise](https://mise.jdx.dev)).
+Install the latest published release:
+
+```sh
+curl -fsSL https://github.com/KogenAI/kogen/releases/latest/download/install-kogen.sh | sh
+```
+
+To install a chosen release instead, replace `<tag>` with a release tag from https://github.com/KogenAI/kogen/releases:
+
+```sh
+curl -fsSL https://github.com/KogenAI/kogen/releases/latest/download/install-kogen.sh | sh -s -- --version <tag>
+```
+
+Development prereleases are published on the releases page. The installer downloads the archive, verifies its checksum and installs into `~/.local` without administrator rights. Supported platforms are `darwin-arm64` (macOS Apple Silicon), `darwin-x86_64` (macOS Intel), `linux-x86_64` (Linux x86-64 with glibc), and `linux-arm64` (Linux ARM64 with glibc).
+
+If `~/.local/bin` is not on `PATH`, the installer prints an “Add to PATH” line. Add it to your shell configuration, or run the following for the current shell:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Check the installed version:
+
+```sh
+kogen version
+```
+
+To build and install from source as a contributor, you need Git, and Go 1.27 and Node 24 from `.tool-versions` (for example with [mise](https://mise.jdx.dev)):
 
 ```sh
 git clone https://github.com/KogenAI/kogen
@@ -13,8 +39,14 @@ mise install                                   # Go and Node from .tool-versions
 sh packaging/package.sh                        # builds dist/kogen-<version>-<platform>.tar.gz
 tar -xzf dist/kogen-*.tar.gz -C /tmp
 sh /tmp/kogen-*/install.sh                     # installs into ~/.local; needs no administrator rights
-export PATH="$HOME/.local/bin:$PATH"           # if install.sh says ~/.local/bin is not on your PATH
-kogen provider login chatgpt                   # signs in through your browser
+```
+
+After installing from source, check the version with `kogen version` as above.
+
+Sign in through your browser:
+
+```sh
+kogen provider login chatgpt
 ```
 
 ## Quickstart
