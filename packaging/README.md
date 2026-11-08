@@ -16,7 +16,7 @@ Supported platforms: macOS on Apple Silicon and Linux x86-64 with glibc, at the 
 
 ## Use
 
-In a Git repository with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
+Run these commands in a Git repository with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
 
 ```sh
 kogen provider login chatgpt
