@@ -54,6 +54,9 @@ func renderMessages(info Info, req Request, id string, input []any) (rendered, e
 			choice = p.Settings.Tools
 		}
 		toolChoice := map[string]any{"type": choice}
+		if req.RequireTool {
+			toolChoice = map[string]any{"type": "any"}
+		}
 		if req.ToolChoice != "" {
 			toolChoice = map[string]any{"type": "tool", "name": req.ToolChoice}
 		}

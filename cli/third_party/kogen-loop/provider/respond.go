@@ -31,6 +31,10 @@ type Request struct {
 	// provider/unsupported_capability before any transport, never ignoring it. Empty sends
 	// today's exact bytes.
 	ToolChoice string
+	// RequireTool requires a call to any available tool, allowing preparation tools
+	// before a terminal submission. ToolChoice takes precedence when both are set.
+	// It uses the same route capability check as ToolChoice. False preserves bytes.
+	RequireTool bool
 	// Single makes ChatGPT attempts single-shot: no retry of transient or unreadable
 	// answers and no refresh after a 401 (the other providers keep their retries).
 	Single bool

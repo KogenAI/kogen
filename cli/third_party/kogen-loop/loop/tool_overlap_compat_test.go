@@ -169,7 +169,7 @@ func TestToolOverlapCompatibility(t *testing.T) {
 			{Hooks{}, []string{"BeforeRequest", "AfterResponse", "BeforeCall", "HandleCall", "AfterCall"}},
 			{Handled{}, []string{"Handled", "Output", "Terminal"}},
 			{Result{}, []string{"Ending", "Terminal", "Input", "Response", "Requests"}},
-			{provider.Request{}, []string{"Role", "Instructions", "Input", "Tools", "ToolChoice", "Single", "CacheID", "Scope", "Cache", "Context"}},
+			{provider.Request{}, []string{"Role", "Instructions", "Input", "Tools", "ToolChoice", "RequireTool", "Single", "CacheID", "Scope", "Cache", "Context"}},
 			{provider.Response{}, []string{"Items", "Usage", "Known", "UsageState", "ID", "Model", "Effort", "CacheStatus", "OperationID", "Metadata"}},
 			{provider.Client{}, []string{"HTTP", "Now", "Sleep", "Cache", "Locker", "Input", "Version", "ResponseBudget", "httpOnce", "defHTTP"}},
 			{tools.Tools{}, []string{"Root", "Session", "Repo", "Enabled", "Protected", "Excluded", "Probe", "Documentation", "ShellAfter", "Now", "shells"}},

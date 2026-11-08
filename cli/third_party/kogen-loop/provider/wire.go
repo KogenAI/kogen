@@ -23,8 +23,8 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		return rendered{}, imageRefusal(info)
 	}
 	info.wire = effectiveWire(info, req.Role)
-	if req.ToolChoice != "" && !toolChoiceSupported(info, req.Role) {
-		return rendered{}, providerFail("unsupported_capability", "ToolChoice cannot force a tool on "+info.Label+" ("+wireLabel(info.wire)+" route "+info.Name+"): its thinking mode refuses a forced tool; leave ToolChoice empty")
+	if (req.ToolChoice != "" || req.RequireTool) && !toolChoiceSupported(info, req.Role) {
+		return rendered{}, providerFail("unsupported_capability", "ToolChoice/RequireTool cannot force a tool on "+info.Label+" ("+wireLabel(info.wire)+" route "+info.Name+"): its thinking mode refuses a forced tool; leave ToolChoice empty and RequireTool false")
 	}
 	switch info.wire {
 	case wireChat:
@@ -52,6 +52,9 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 		body["tool_choice"] = "auto"
 		if p := ResolveProfile(req.Role); p != nil {
 			body["tool_choice"] = p.Settings.Tools
+		}
+		if req.RequireTool {
+			body["tool_choice"] = "required"
 		}
 		if req.ToolChoice != "" {
 			body["tool_choice"] = map[string]any{"type": "function", "name": req.ToolChoice}
