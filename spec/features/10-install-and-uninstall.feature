@@ -15,6 +15,7 @@ Feature: Install and uninstall
     And the file "{home}/.local/bin/kogen" is a symlink into "{home}/.local/lib/kogen/"
     And the file "{home}/.local/lib/kogen/docs/testing-rules.md" exists
     And the file "{home}/.local/lib/kogen/docs/configuration.md" exists
+    And the file "{home}/.local/lib/kogen/docs/getting-started.md" exists
     And the file "{home}/.local/lib/kogen/LICENSE" exists
     And the file "{home}/.local/lib/kogen/NOTICE" exists
     And the file "{home}/.local/lib/kogen/lib/VERSION" exists

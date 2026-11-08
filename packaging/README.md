@@ -27,7 +27,7 @@ kogen intent approve my-feature    # read the card, then approve with its hash
 kogen intent build my-feature
 ```
 
-Run `kogen help` for every command. `kogen uninstall` removes the program and keeps `~/.kogen` (your login) and your projects.
+Run `kogen help` for every command. For a step-by-step guide from install to your first landed feature, see [docs/getting-started.md](docs/getting-started.md). `kogen uninstall` removes the program and keeps `~/.kogen` (your login) and your projects.
 
 
 For a **fresh** Build only, optional operator diagnostic data can be supplied with
@@ -41,6 +41,11 @@ protection, checks, review or commit rules. Old candidate observations are untru
 data, not automatic reuse, import or proof. After a demonstrated protected fixture
 correction, obtain new exact approval before a fresh Build. `intent resume` accepts
 no `--context`: it uses its saved conversation even if the source changes or vanishes.
+
+## Without a terminal
+
+Every Kogen command can be driven without a terminal: `kogen intent shape` takes its answers as `<n>: <letter>` lines on standard input or in a file (`printf '1: a\n' | kogen intent shape my-feature -`), and `kogen intent approve` takes the card hash (`kogen intent approve my-feature <sha256>`).
+Exit statuses: `0` means ready, `5` means needs approval (the card or the questions wait for you), any other nonzero status means refused, and the error line names why.
 
 ## License
 

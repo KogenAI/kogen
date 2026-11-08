@@ -16,6 +16,10 @@ import tarfile
 import tempfile
 
 
+# The docs that packaging/package.sh copies into the archive (INS-2).
+SHIPPED_DOCS = ('getting-started.md', 'testing-rules.md', 'configuration.md', 'usage.md', 'model-family-qualification.md', 'presets')
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -389,7 +393,7 @@ def expected_payload(src, trace, stage):
     def merge(prefix, rows):
         for key, value in rows.items():
             expected[(prefix + ('/' + key if key else '')).strip('/')] = value
-    for source, dest in [('packaging/install.sh', 'install.sh'), ('packaging/README.md', 'README.md'), ('LICENSE', 'LICENSE'), ('NOTICE', 'NOTICE'), ('packaging/licenses', 'licenses'), ('docs/testing-rules.md', 'docs/testing-rules.md'), ('docs/configuration.md', 'docs/configuration.md')]:
+    for source, dest in [('packaging/install.sh', 'install.sh'), ('packaging/README.md', 'README.md'), ('LICENSE', 'LICENSE'), ('NOTICE', 'NOTICE'), ('packaging/licenses', 'licenses'), *[('docs/' + d, 'docs/' + d) for d in SHIPPED_DOCS]]:
         merge(dest, snapshot(src / source))
     for bundle in ('quint', 'cucumber'):
         rows = json.loads((trace / (bundle + '.json')).read_text())
@@ -427,7 +431,7 @@ def exercise(configs):
         write(fixture / 'data', b'copied non-executable\x00\xff\n', 0o600)
         write(fixture / 'tool', b'#!/bin/sh\nexit 0\n', 0o700)
         (fixture / 'external-link').symlink_to(private / 'sentinel')
-        copied = ['LICENSE', 'NOTICE', 'packaging/install.sh', 'packaging/README.md', 'packaging/licenses', 'docs/testing-rules.md', 'docs/configuration.md', 'packaging/quint/package.json', 'packaging/quint/package-lock.json', 'packaging/cucumber/package.json', 'packaging/cucumber/package-lock.json']
+        copied = ['LICENSE', 'NOTICE', 'packaging/install.sh', 'packaging/README.md', 'packaging/licenses', *['docs/' + d for d in SHIPPED_DOCS], 'packaging/quint/package.json', 'packaging/quint/package-lock.json', 'packaging/cucumber/package.json', 'packaging/cucumber/package-lock.json']
         for name in copied:
             p = src / name
             for key, row in snapshot(p).items():
