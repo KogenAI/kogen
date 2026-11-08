@@ -23,11 +23,11 @@ func (f *fx) shapeWith(request, requestPath string, external shape.External) (in
 	return exit, out.String(), err
 }
 
-// asks is a model that asks one UI/UX question and lets it reach the user.
+// asks leaves a UI/UX choice without a recommendation for the user.
 func asks() []reply {
 	return []reply{
 		call("submit", map[string]any{"questions": []any{map[string]any{"question": "Which layout?", "options": []any{
-			map[string]any{"label": "grid", "recommended": true}, map[string]any{"label": "list"}}}}}),
+			map[string]any{"label": "grid"}, map[string]any{"label": "list"}}}}}),
 		call("submit_question_check", map[string]any{"items": []any{map[string]any{"number": 1, "class": "ui_ux", "why": "a ui_ux question"}}}),
 	}
 }
