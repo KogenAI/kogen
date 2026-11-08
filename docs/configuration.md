@@ -200,7 +200,8 @@ models:
 ```
 
 This repository retains its existing ChatGPT bootstrap lineup. Automatic command discovery with bare `kogen init`
-still requires ChatGPT; configuration-first bootstrap below does not. Shape checks its role, Refine checks
+works with any supported signed-in discovery route, including Claude Code and Anthropic, and does not require a
+ChatGPT account; configuration-first bootstrap below remains available. Shape checks its role, Refine checks
 Shape, and Build/resume checks Build and Review; unused providers need no login.
 
 `kogen provider login supergrok` uses Kogen's own device-code authorization with
@@ -282,8 +283,9 @@ No preset is automatically applied to this repository.
 For **configuration-first** bootstrap without ChatGPT, copy a preset to `.kogen/models.yaml`
 and write your real `.kogen/project.yaml` (`version: 1` with your own reviewed setup, fix,
 checks, protect and acceptance run/steps_dir), then use the existing `kogen init`
-leftover-configuration commit path. Commit your application first. Bare init discovery still
-requires ChatGPT or Claude Code. No preset command, init provider selector or automatic router is added.
+leftover-configuration commit path. Commit your application first. Bare init discovery works with any
+supported signed-in discovery route, including Claude Code and Anthropic, and does not require a ChatGPT account.
+No preset command, init provider selector or automatic router is added.
 
 `kogen provider login opencode-go` accepts only your personal workspace key on stdin
 (piped input supported; interactive input is not echoed). Do not put keys in argv,
