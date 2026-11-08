@@ -1,6 +1,6 @@
 # Kogen
 
-Kogen takes one requested feature through shaping, building, verifying, reviewing and committing, in your own Git repository, with your ChatGPT plan.
+Kogen takes one requested feature through shaping, building, verifying, reviewing and committing, in your own Git repository.
 
 ## Install
 
@@ -16,10 +16,17 @@ Supported platforms: macOS on Apple Silicon and Linux x86-64 with glibc, at the 
 
 ## Use
 
-Run these commands in a Git repository with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
+Sign in with any one of these routes:
 
 ```sh
-kogen provider login chatgpt
+kogen provider login chatgpt                                  # browser
+printf '%s' "$ANTHROPIC_API_KEY" | kogen provider login anthropic     # Anthropic key on stdin
+printf '%s' "$CLAUDE_CODE_TOKEN" | kogen provider login claude-code   # Claude Code token on stdin
+```
+
+Then run these commands in a Git repository with at least one commit (a Build needs a clean working tree, so keep the request file outside the repository, or commit it):
+
+```sh
 cd my-project && kogen init        # finds and checks the project's commands, commits the configuration
 kogen intent shape my-feature ../request.md
 kogen intent refine my-feature <full-sha256-from-review-card> ../correction.md  # unapproved ready drafts; existing owned files only

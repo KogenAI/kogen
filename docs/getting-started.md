@@ -86,7 +86,7 @@ printf '%s' "$CLAUDE_CODE_TOKEN" | kogen provider login claude-code
 
 ChatGPT requires a browser on the same machine at port 1455 and has no unattended form.
 
-The automatic discovery of `kogen init` needs a ChatGPT login. With only another provider, such as an Anthropic key, use the configuration-first path in step 4 ("Without ChatGPT").
+`kogen init` discovery works with any signed-in route: the browser ChatGPT login, an Anthropic key or a Claude Code token alone is enough.
 
 Others are `supergrok`, `opencode-go` and `openai-compatible`. List what is saved (no network access):
 
@@ -131,9 +131,11 @@ Next: kogen intent shape <slug> <request-file>
 
 The four readiness lines of step 2 should all be `ok`; the final line names the command for your first feature. A `fail` line is followed by its fix, and does not change init's exit status. If acceptance or checks are missing, init instead prints the existing setup hints.
 
+`kogen init` discovery works with any signed-in route, so after step 3 the command above is enough. When it succeeds, `ok models - shape, build, review ready` means the next command is `kogen intent shape <slug> <request-file>`.
+
 ### Without ChatGPT
 
-Log in to your provider, for example Anthropic (or the provider you use), then write the configuration yourself instead of letting `init` discover it:
+Without ChatGPT is the optional hand-written path: use it only if you prefer to write the configuration yourself instead of letting `init` discover it. Log in to your provider, for example Anthropic (or the provider you use), then write the configuration:
 
 ```sh
 kogen provider login anthropic

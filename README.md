@@ -43,10 +43,12 @@ sh /tmp/kogen-*/install.sh                     # installs into ~/.local; needs n
 
 After installing from source, check the version with `kogen version` as above.
 
-Sign in through your browser:
+Sign in with any one of these routes:
 
 ```sh
-kogen provider login chatgpt
+kogen provider login chatgpt                                  # browser
+printf '%s' "$ANTHROPIC_API_KEY" | kogen provider login anthropic     # Anthropic key on stdin
+printf '%s' "$CLAUDE_CODE_TOKEN" | kogen provider login claude-code   # Claude Code token on stdin
 ```
 
 ## Quickstart
