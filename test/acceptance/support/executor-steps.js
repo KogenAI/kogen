@@ -29,7 +29,11 @@ function installFakeClaude(world, name) {
   mkdirp(path.dirname(runtimePath(world)));
   mkdirp(stateDir);
   const shim = runtimePath(world);
-  fs.writeFileSync(shim, `#!/bin/sh\nKOGEN_FAKE_CLAUDE_SCRIPT=${shell(script)} KOGEN_FAKE_CLAUDE_STATE=${shell(stateDir)} exec ${shell(process.execPath)} ${shell(path.join(FIXTURES, 'fake-claude.js'))} "$@"\n`);
+  fs.writeFileSync(shim, `#!/bin/sh\nKOGEN_FAKE_CLAUDE_SCRIPT=${shell(script)} KOGEN_FAKE_CLAUDE_STATE=${shell(stateDir)} exec ${shell(process.execPath)} ${shell(path.join(FIXTURES, 'fake-claude.js'))} "$@"\nexit 127\n`);
+  const sizes = { 'darwin-arm64': 319598464, 'linux-x64': 337814032 };
+  const size = sizes[`${process.platform}-${process.arch}`];
+  assert.ok(size, `unsupported runtime platform: ${process.platform}-${process.arch}`);
+  fs.truncateSync(shim, size);
   fs.chmodSync(shim, 0o755);
   world.fakeClaude = { stateDir, script };
 }

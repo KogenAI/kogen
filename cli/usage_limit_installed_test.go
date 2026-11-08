@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -140,11 +141,19 @@ protect:
 	if err != nil {
 		t.Fatal(err)
 	}
-	shim := fmt.Sprintf("#!/bin/sh\nKOGEN_FAKE_CLAUDE_SCRIPT='%s' KOGEN_FAKE_CLAUDE_STATE='%s' exec '%s' '%s' \"$@\"\n", script, state, node, fake)
+	shim := fmt.Sprintf("#!/bin/sh\nKOGEN_FAKE_CLAUDE_SCRIPT='%s' KOGEN_FAKE_CLAUDE_STATE='%s' exec '%s' '%s' \"$@\"\nexit 127\n", script, state, node, fake)
 	if err := os.MkdirAll(claudecode.RuntimeDir(home), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(claudecode.RuntimePath(home), []byte(shim), 0755); err != nil {
+		t.Fatal(err)
+	}
+	sizes := map[string]int64{"darwin/arm64": 319598464, "linux/amd64": 337814032}
+	size, ok := sizes[runtime.GOOS+"/"+runtime.GOARCH]
+	if !ok {
+		t.Fatalf("unsupported runtime platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if err := os.Truncate(claudecode.RuntimePath(home), size); err != nil {
 		t.Fatal(err)
 	}
 	env := isolatedGit(home, "KOGEN_FAKE_CLAUDE_SCRIPT="+script, "KOGEN_FAKE_CLAUDE_STATE="+state)

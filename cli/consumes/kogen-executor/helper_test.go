@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -31,6 +32,14 @@ exit 9
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sizes := map[string]int64{"darwin/arm64": 319598464, "linux/amd64": 337814032}
+	size, ok := sizes[runtime.GOOS+"/"+runtime.GOARCH]
+	if !ok {
+		t.Fatalf("unsupported runtime platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if err := os.Truncate(path, size); err != nil {
 		t.Fatal(err)
 	}
 	return path
