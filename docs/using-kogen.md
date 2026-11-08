@@ -1,7 +1,7 @@
 # Using Kogen
 
 ## Getting started
-For a step-by-step guide from install to your first landed feature, see [docs/getting-started.md](docs/getting-started.md). Kogen is one Go program. You need Git, a supported subscription (bare `kogen init` discovery requires ChatGPT; see [configuration-first bootstrap](docs/configuration.md#opencode-go-and-role-presets)), and to build it Go 1.27 and Node 24 (for Quint and Cucumber); no Erlang or Elixir. The toolchain is in `.tool-versions`, for example with [mise](https://mise.jdx.dev): `mise install` (it also lists Elixir for the Elixir fixture project and the Tiny Tasks example, which are projects Kogen builds, not part of Kogen).
+For a step-by-step guide from install to your first landed feature, see [docs/getting-started.md](getting-started.md). Kogen is one Go program. You need Git, a supported subscription (bare `kogen init` discovery requires ChatGPT; see [configuration-first bootstrap](configuration.md#opencode-go-and-role-presets)), and to build it Go 1.27 and Node 24 (for Quint and Cucumber); no Erlang or Elixir. The toolchain is in `.tool-versions`, for example with [mise](https://mise.jdx.dev): `mise install` (it also lists Elixir for the Elixir fixture project and the Tiny Tasks example, which are projects Kogen builds, not part of Kogen).
 
 To build it from source, start from a plain clone and install the toolchain from `.tool-versions` (`mise install` above):
 
@@ -31,7 +31,7 @@ Within a shaping conversation, corrective file submissions retain earlier well-f
 
 For a generated project, commit the runnable scaffold first; `kogen init` then makes a separate `Add Kogen configuration` commit. A truly empty Git worktree can instead start with a configuration-only `Initial commit`; uncommitted application files must be committed before initialization. An uncommitted request belongs outside the repository.
 
-`kogen init` keeps only the checks that pass on your committed tree, and sets up acceptance with the Cucumber Kogen ships, or with the project's own; [docs/configuration.md](docs/configuration.md) explains `.kogen/project.yaml`. Dependency manifests and lockfiles (such as `mix.exs`, `package.json`, `go.mod` and their lockfiles) are editable inputs when they only describe project/dependency metadata. Dedicated formatter, linter and suppression settings remain protected. A combined manifest that defines a configured check, such as an npm check script or a Mix check alias, may be protected whole-file; it then has no dependency-only edit exception. If shaping reports a genuine conflict, revise the request, or review and commit `.kogen/project.yaml` outside Build and shape again. This manual review changes the approval baseline; it is not approval to edit a protected file in Build. Preserve checks and their actual configuration. `kogen init` ends with readiness lines (install, Git, configuration, model logins) with the exact fix under each failure, and a command that cannot proceed names what is missing and how to fix it in its error. `kogen help` lists every command, and `kogen uninstall` removes the program.
+`kogen init` keeps only the checks that pass on your committed tree, and sets up acceptance with the Cucumber Kogen ships, or with the project's own; [docs/configuration.md](configuration.md) explains `.kogen/project.yaml`. Dependency manifests and lockfiles (such as `mix.exs`, `package.json`, `go.mod` and their lockfiles) are editable inputs when they only describe project/dependency metadata. Dedicated formatter, linter and suppression settings remain protected. A combined manifest that defines a configured check, such as an npm check script or a Mix check alias, may be protected whole-file; it then has no dependency-only edit exception. If shaping reports a genuine conflict, revise the request, or review and commit `.kogen/project.yaml` outside Build and shape again. This manual review changes the approval baseline; it is not approval to edit a protected file in Build. Preserve checks and their actual configuration. `kogen init` ends with readiness lines (install, Git, configuration, model logins) with the exact fix under each failure, and a command that cannot proceed names what is missing and how to fix it in its error. `kogen help` lists every command, and `kogen uninstall` removes the program.
 
 ## Checkout facts and completion
 Use `kogen context` for JSON checkout activity and last-started Build facts,
@@ -39,7 +39,7 @@ Use `kogen context` for JSON checkout activity and last-started Build facts,
 `kogen intent preflight <slug>` for discovery and read-only investigation.
 The latter three accept `--json`; all four accept `--project <checkout>`.
 Context and completion are local reads that need no login, provider or network. See
-[the version 1 contract and standalone Zsh installation](docs/checkout-facts.md).
+[the version 1 contract and standalone Zsh installation](checkout-facts.md).
 Preflight is not authorization: Build still performs its normal safety checks.
 
 ## Prompt reuse and retained usage
@@ -49,7 +49,7 @@ weighted cache ratios, nullable writes/lifetimes, unknown/inconsistent counts,
 failures and provenance; totals cover selected evidence, not just displayed rows.
 This is not account or weekly usage. Every model conversation has one cache identity (at most 64 characters, kept across retries, resets and resume, never shared with another conversation). ChatGPT sends it as body `prompt_cache_key` and underscore headers `session_id` and `conversation_id`, SuperGrok as `prompt_cache_key` (with one bounded refusal retry), OpenCode Go as `x-opencode-session`, and Anthropic marks ephemeral `cache_control` breakpoints on the last tool, last system block and newest message (at most four); OpenAI-compatible hosts get no vendor field or header (a host with prefix caching still benefits from the frozen front and append-only history). Kogen keeps full stateless encrypted replay, independent reviewers and fresh safety/verification gates, and the usage report shows the cached share from each provider's raw cache fields. Cache acceptance is
 not proof of a hit, effective lifetime or live account qualification. See
-[usage scope, filters and uncertainty](docs/usage.md).
+[usage scope, filters and uncertainty](usage.md).
 
 ## Approval step limits and refusal diagnostics
 `kogen intent approve <slug>` bounds each command it executes during a fresh readiness

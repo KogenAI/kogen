@@ -4,16 +4,16 @@ This repository is `kogen`, the command-line program that is Kogen's small core.
 
 ## Install
 
-Install the latest published release:
+Install the latest release:
 
 ```sh
-curl -fsSL https://github.com/KogenAI/kogen/releases/latest/download/install-kogen.sh | sh
+curl -fsSL https://get.kogen.dev | sh
 ```
 
 To install a chosen release instead, replace `<tag>` with a release tag from https://github.com/KogenAI/kogen/releases:
 
 ```sh
-curl -fsSL https://github.com/KogenAI/kogen/releases/latest/download/install-kogen.sh | sh -s -- --version <tag>
+curl -fsSL https://get.kogen.dev | sh -s -- --version <tag>
 ```
 
 Development prereleases are published on the releases page. The installer downloads the archive, verifies its checksum and installs into `~/.local` without administrator rights. Supported platforms are `darwin-arm64` (macOS Apple Silicon), `darwin-x86_64` (macOS Intel), `linux-x86_64` (Linux x86-64 with glibc), and `linux-arm64` (Linux ARM64 with glibc).

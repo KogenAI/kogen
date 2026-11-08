@@ -10,7 +10,7 @@ cd kogen
 (cd test/acceptance && npm ci)
 ```
 
-Checks for an ordinary change, as [docs/testing-strategy.md](docs/testing-strategy.md) describes (the tests a change needs follow [docs/testing-rules.md](docs/testing-rules.md)):
+Checks for an ordinary change, as [docs/testing-strategy.md](testing-strategy.md) describes (the tests a change needs follow [docs/testing-rules.md](testing-rules.md)):
 
 ```sh
 (cd cli && go test -race ./...)                # Go tests: unit and integration, against real git in temp repos
