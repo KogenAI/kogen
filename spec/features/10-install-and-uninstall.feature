@@ -11,7 +11,7 @@ Feature: Install and uninstall
     Given no erl, elixir, mix or go program is on PATH
     When the caller runs "sh install.sh"
     Then the exit code is 0
-    And the last line of stdout matches "^Installed kogen (dev[+])?[0-9a-f]{8} in .+/[.]local$"
+    And the last line of stdout matches "^Installed kogen (v[0-9]+[.][0-9]+[.][0-9]+-dev[.]|dev[+])?[0-9a-f]{8} in .+/[.]local$"
     And the file "{home}/.local/bin/kogen" is a symlink into "{home}/.local/lib/kogen/"
     And the file "{home}/.local/lib/kogen/docs/testing-rules.md" exists
     And the file "{home}/.local/lib/kogen/docs/configuration.md" exists

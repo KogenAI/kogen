@@ -48,4 +48,4 @@ Feature: Release acceptance on real projects
     When the full deterministic suite and the packaging run from that checkout
     Then no required scenario is pending, skipped, undefined or excluded and spec/check.sh passes
     And go test ./... passes on both platforms
-    And the release built from that checkout reports the commit's short hash
+    And the release built from that checkout reports the commit's short hash or its public development tag

@@ -288,7 +288,7 @@ Feature: CLI and process
   Scenario Outline: Version works anywhere without a login
     When the caller runs "<command>" in the folder "/"
     Then the exit code is 0
-    And stdout matches "^kogen ([0-9a-f]{8} [(][0-9]{4}-[0-9]{2}-[0-9]{2}[)]|dev[+][0-9a-f]{8} [(][0-9]{4}-[0-9]{2}-[0-9]{2}, uncommitted source[)])$"
+    And stdout matches "^kogen (([0-9a-f]{8}|v[0-9]+[.][0-9]+[.][0-9]+-dev[.][0-9a-f]{8}) [(][0-9]{4}-[0-9]{2}-[0-9]{2}[)]|dev[+][0-9a-f]{8} [(][0-9]{4}-[0-9]{2}-[0-9]{2}, uncommitted source[)])$"
 
     Examples:
       | command         |

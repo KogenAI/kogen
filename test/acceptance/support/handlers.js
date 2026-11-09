@@ -1062,7 +1062,7 @@ const liveOnly = new Set([
   'the installed Kogen shapes and builds one small Kogen change there',
   'a clean checkout of the release commit',
   'no required scenario is pending, skipped, undefined or excluded and spec/check.sh passes',
-  'the release built from that checkout reports the commit\'s short hash',
+  'the release built from that checkout reports the commit\'s short hash or its public development tag',
   'kogen is gone and the project and ~/.kogen are intact',
 ]);
 const livePrefixes = ['a fresh user home on ', 'a fresh clone of ', 'a disposable repository with the candidate Kogen source'];

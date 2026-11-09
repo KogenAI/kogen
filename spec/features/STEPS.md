@@ -214,7 +214,7 @@ One JavaScript regular expression per line.
 ^the committed contents of "([^"]*)" contain "([^"]*)"$
 ^the\ environment\ variable\ "([^"]*)"\ is\ "([^"]*)"$
 ^a\ clean\ checkout\ of\ the\ release\ commit$
-^the\ release\ built\ from\ that\ checkout\ reports\ the\ commit's\ short\ hash$
+^the\ release\ built\ from\ that\ checkout\ reports\ the\ commit's\ short\ hash\ or\ its\ public\ development\ tag$
 ^the\ exit\ code\ is\ (\d+)$
 ^the\ extracted\ archive\ has\ no\ lib/VERSION$
 ^the\ fake\ ChatGPT\ authorization\ server\ is\ running$

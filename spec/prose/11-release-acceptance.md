@@ -21,7 +21,7 @@ The release counts only when the installed product completes real features on re
 
 **REL-4 — Deterministic suite.** Every scenario in `features/` except `@live` ones runs against the real application (the installed release where the Background says so), with a fake ChatGPT server and an isolated `HOME`, on both platforms, together with Kogen's own `go test ./...` (REL-7). At release no required scenario is pending, skipped, undefined or excluded, and `spec/check.sh` passes. Parsing the features and matching step patterns (what `check.sh` does) is not execution evidence; only running the scenarios is.
 
-**REL-5 — Release from a commit.** A distributed release is built from a clean checkout of a commit, so it reports `kogen <sha8>` (CLI-10), and the full deterministic suite (REL-4) and packaging pass on that checkout first. Kogen does not create release commits.
+**REL-5 — Release from a commit.** A distributed release is built from a clean checkout of a commit, and reports the commit-derived version (CLI-10). The full deterministic suite (REL-4) passes against the exact archive to be published. Kogen does not create release commits.
 
 **REL-6 — Ready.** REL-1 passes on both platforms for the example app and Kogen itself, REL-3 to REL-5 and REL-7 pass, and no wrong behavior, failing check, blocking review or interrupted run left a commit on the branch. (A commit undone under GIT-6 because a hook changed it was created and then removed from HEAD; it remains only in the reflog.)
 
