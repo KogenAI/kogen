@@ -42,9 +42,10 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 		for _, line := range provider.Status(home) {
 			fmt.Println(line)
 		}
-		if line, ok := runtimeStatus(home); ok {
-			fmt.Println(line)
+		if _, saved := provider.ClaudeCodeToken(home); !saved {
+			fmt.Println("claude-code: not signed in")
 		}
+		fmt.Println(runtimeStatus(home))
 		fmt.Print(provider.OfficialText())
 		return 0, true
 	case "login":
@@ -60,19 +61,13 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 	return 0, false
 }
 
-// runtimeStatus is the `claude-code runtime:` line of the provider list: only when a Claude Code
-// token is saved or Kogen's Claude Code folder exists. It runs nothing and makes no request.
-func runtimeStatus(home string) (string, bool) {
-	if _, saved := provider.ClaudeCodeToken(home); !saved {
-		if _, err := os.Lstat(claudecode.Root(home)); err != nil {
-			return "", false
-		}
-	}
+// runtimeStatus reports the pinned runtime's local presence without running it.
+func runtimeStatus(home string) string {
 	path := claudecode.RuntimePath(home)
 	if st, err := os.Stat(path); err == nil && st.Mode().IsRegular() {
-		return "claude-code runtime: Claude Code " + claudecode.Version + " installed (" + path + ")", true
+		return "claude-code runtime: Claude Code " + claudecode.Version + " installed (" + path + ")"
 	}
-	return "claude-code runtime: Claude Code " + claudecode.Version + " not installed", true
+	return "claude-code runtime: Claude Code " + claudecode.Version + " not installed"
 }
 
 // login signs in to one provider. Only openai-compatible differs: it reads the base URL the

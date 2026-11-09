@@ -61,7 +61,11 @@ A command that cannot proceed prints one of these errors instead:
 - An invalid configuration: `environment/project_config_invalid` with one `  line <n>: <message>` line per problem. Correct those lines in `.kogen/project.yaml`.
 - No model login: `provider/login: not signed in; run kogen provider login <provider>`. Sign in (step 3).
 - No Git identity: `environment/git_identity_missing: no Git user.name and user.email; run git config user.name "<name>" and git config user.email "<email>" (global or repository)`.
-- Claude Code as an executor: Kogen installs and runs its own pinned Claude Code (`2.1.318`, under `~/.kogen/claude-code/`) at the first role that needs it, never the `claude` on your `PATH`. A runtime that reports another version stops with `Kogen's Claude Code at <path> reports <answer>, not the pinned 2.1.318; remove <dir> to reinstall it`; a download that fails or does not match the pinned SHA-256 installs nothing (`executor/unavailable`); and a runtime without a token is not signed in (``make a token with `claude setup-token` and save it with `kogen provider login claude-code` ``). Without an own Claude Code, make the token with `CLAUDE_CONFIG_DIR="$HOME/.kogen/claude-code/config" "$HOME/.kogen/claude-code/2.1.318/claude" setup-token` once the runtime is installed. `kogen init` never downloads: a runtime that is not installed yet is no problem by itself, and a present one that does not report `2.1.318` is a `claude-code:` problem with the fix `rm -rf <home>/.kogen/claude-code/2.1.318`.
+- Claude Code as an executor: Kogen installs and runs its own pinned Claude Code (`2.1.318`, under `~/.kogen/claude-code/`) at the first role that needs it, never the `claude` on your `PATH`. A runtime that reports another version stops with `Kogen's Claude Code at <path> reports <answer>, not the pinned 2.1.318; remove <dir> to reinstall it`; a download that fails or does not match the pinned SHA-256 installs nothing (`executor/unavailable`); and a runtime without a token is not signed in (``make a token with `claude setup-token` and save it with `kogen provider login claude-code` ``). 
+
+Run `claude setup-token` with an ordinary Claude Code, then pipe the token to `kogen provider login claude-code`.
+
+The runtime path exists only after a Claude Code role such as Build or Refine installs it. `kogen init` never downloads: a runtime that is not installed yet is no problem by itself, and a present one that does not report `2.1.318` is a `claude-code:` problem with the fix `rm -rf <home>/.kogen/claude-code/2.1.318`.
 
 If a check fails on your unchanged tree, a Build still starts and records the failure as a baseline, but it can only land when every configured check passes, so the Intent has to repair that check as well (or you fix the project first).
 
@@ -99,6 +103,8 @@ chatgpt: signed in (<account>)
 supergrok: not signed in
 opencode-go: not signed in
 anthropic: not signed in
+claude-code: not signed in
+claude-code runtime: Claude Code 2.1.318 not installed
 ...
 ```
 

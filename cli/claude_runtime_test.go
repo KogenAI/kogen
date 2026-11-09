@@ -54,9 +54,15 @@ func TestProviderListRuntimeLine(t *testing.T) {
 		return -1
 	}
 
-	t.Run("neither a token nor the folder: no line", func(t *testing.T) {
-		if lines := list(t.TempDir()); runtimeLine(lines) >= 0 {
+	t.Run("neither a token nor the folder", func(t *testing.T) {
+		home := t.TempDir()
+		lines := list(home)
+		i := runtimeLine(lines)
+		if i < 1 || lines[i-1] != "claude-code: not signed in" || lines[i] != "claude-code runtime: Claude Code 2.1.318 not installed" || lines[i+1] != official {
 			t.Fatalf("%q", lines)
+		}
+		if _, err := os.Stat(claudecode.Root(home)); !os.IsNotExist(err) {
+			t.Fatalf("runtime folder created: %v", err)
 		}
 	})
 	t.Run("a token and no runtime", func(t *testing.T) {

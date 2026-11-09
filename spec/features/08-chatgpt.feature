@@ -15,6 +15,8 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: not signed in
+      claude-code: not signed in
+      claude-code runtime: Claude Code 2.1.318 not installed
       Official compatibility (text/tool input, normal routes only):
       chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
         shape/high [go-live-2026-10-24]
@@ -44,6 +46,8 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: not signed in
+      claude-code: not signed in
+      claude-code runtime: Claude Code 2.1.318 not installed
       Official compatibility (text/tool input, normal routes only):
       chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
         shape/high [go-live-2026-10-24]
@@ -69,6 +73,8 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: not signed in
+      claude-code: not signed in
+      claude-code runtime: Claude Code 2.1.318 not installed
       Official compatibility (text/tool input, normal routes only):
       chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
         shape/high [go-live-2026-10-24]
@@ -333,6 +339,8 @@ Feature: ChatGPT connection
       supergrok: signed in (grok@example.com)
       opencode-go: not signed in
       anthropic: not signed in
+      claude-code: not signed in
+      claude-code runtime: Claude Code 2.1.318 not installed
       Official compatibility (text/tool input, normal routes only):
       chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
         shape/high [go-live-2026-10-24]
@@ -355,6 +363,8 @@ Feature: ChatGPT connection
       supergrok: saved login cannot be used; run kogen provider login supergrok
       opencode-go: not signed in
       anthropic: not signed in
+      claude-code: not signed in
+      claude-code runtime: Claude Code 2.1.318 not installed
       Official compatibility (text/tool input, normal routes only):
       chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
         shape/high [go-live-2026-10-24]
@@ -380,6 +390,8 @@ Feature: ChatGPT connection
       supergrok: not signed in
       opencode-go: not signed in
       anthropic: key saved (not verified)
+      claude-code: not signed in
+      claude-code runtime: Claude Code 2.1.318 not installed
       Official compatibility (text/tool input, normal routes only):
       chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
         shape/high [go-live-2026-10-24]
