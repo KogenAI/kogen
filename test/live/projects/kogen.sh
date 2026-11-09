@@ -4,7 +4,7 @@ REPO=${KOGEN_SELF_REPO:?set KOGEN_SELF_REPO to the disposable repository made by
 SLUG=unreadable-login
 # Commit-msg hooks often reject messages that name an AI product or tool, so the request asks for
 # a title without one.
-REQUEST='When the saved ChatGPT login (~/.kogen/credentials/chatgpt.json) cannot be read, kogen provider list should say so and tell the user to sign in again, instead of reporting an internal error. The Intent title becomes a commit subject in a repository whose commit-msg hook rejects names of AI products and tools, so the title must not name one.'
+REQUEST='When the saved ChatGPT credential file (~/.kogen/credentials/chatgpt.json) contains invalid JSON, kogen provider list currently reports an unusable login and exits zero. It should instead exit 4 with the provider/login error, say that the saved login cannot be read, and give the actionable ChatGPT sign-in command. An absent credential should still be reported as signed out and exit zero. The Intent title becomes a commit subject in a repository whose commit-msg hook rejects names of AI products and tools, so the title must not name one.'
 INTERRUPT_AFTER=120
 
 configure() {

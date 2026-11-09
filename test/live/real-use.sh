@@ -6,7 +6,7 @@
 #
 # <project> names test/live/projects/<project>.sh, or is the path of such a file kept elsewhere (the
 # external acceptance check on other projects). It sets REPO, SLUG, REQUEST, configure(),
-# verify_without_kogen() and optionally INTERRUPT_AFTER (seconds into the first Build, default 60).
+# verify_without_kogen() and optionally INTERRUPT_AFTER (seconds to wait for the first Build to start, default 60).
 # <archive-url> is the release archive for this platform (https:// or file://).
 #
 # Step 2 is the real browser login: it runs `kogen provider login chatgpt` and waits for the
@@ -66,6 +66,7 @@ else
   run_logged kogen provider login chatgpt
 fi
 list=$(kogen provider list) || fail "kogen provider list failed"
+printf '%s\n' "$list" > "$run_dir/provider-list.out"
 if printf '%s\n' "$list" | grep -q '^claude-code: token saved (not verified)$' && ! printf '%s\n' "$list" | grep -q '^chatgpt: signed in'; then
   route=claude-code
 else
@@ -82,7 +83,7 @@ fi
 git clone -q "$REPO" "$run_dir/project"
 cd "$run_dir/project"
 start=$(git rev-parse HEAD)
-run_logged kogen init
+run_live_init "$project"
 check 'python3 - "$route" .kogen/models.yaml <<'"'"'EOF'"'"'
 import sys
 route, roles, top, current = sys.argv[1], {}, False, None
@@ -140,19 +141,31 @@ check 'grep -q "fail now" "$run_dir/shape.out"' "the Intent is ready with its sc
 
 # 5. Read the Intent and step files, approve with the card's hash.
 kogen intent approve "$SLUG" > "$run_dir/card.out" || [ $? -eq 5 ]
-cat "$run_dir/card.out" >> "$log"
+say "read the approval card in card.out"
+# Keep the exact reviewed files separate from command output. They can
+# legitimately describe a login command that this journey must not suggest.
 for f in $(sed -n '/^Files$/,/^Approve with:$/s/^  - //p' "$run_dir/card.out"); do
-  printf '\n----- %s\n' "$f" >> "$log"; cat "$f" >> "$log"
+  printf '\n----- %s\n' "$f" >> "$run_dir/reviewed-approval.txt"
+  cat "$f" >> "$run_dir/reviewed-approval.txt"
 done
+say "read the Intent and step files in reviewed-approval.txt"
 hash=$(sed -n "s/^  kogen intent approve $SLUG //p" "$run_dir/card.out")
 run_logged kogen intent approve "$SLUG" "$hash"
 
 # 6. Build, interrupt it, discard the edits.
+previous_runs="$run_dir/previous-build-runs.txt"
+for output in .kogen/local/runs/*/log.jsonl; do
+  [ ! -f "$output" ] || printf '%s\n' "$output"
+done > "$previous_runs"
 kogen intent build "$SLUG" > "$run_dir/build1.out" 2>> "$log" &
 pid=$!
-sleep "$INTERRUPT_AFTER"
-kill -INT $pid
+if ! wait_for_build_start "$pid" .kogen/local/runs "$SLUG" "$previous_runs" "$INTERRUPT_AFTER"; then
+  kill -TERM "$pid" 2>/dev/null || :
+  cat "$run_dir/build1.out" >> "$log"
+  fail "the first Build did not record a native start event"
+fi
 t0=$(date +%s)
+kill -INT "$pid" || fail "the first Build exited before SIGINT"
 set +e; wait $pid; code=$?; set -e
 took=$(( $(date +%s) - t0 ))
 cat "$run_dir/build1.out" >> "$log"
@@ -195,8 +208,8 @@ else
   check '! git cat-file commit HEAD | grep -q "^gpgsig"' "unsigned, as this host's Git configuration says"
 fi
 git show --stat --format='%H %s' HEAD >> "$log"
-cat .kogen/local/runs/$run/review-*.json >> "$log"
-say "read the saved review(s) above"
+cat .kogen/local/runs/$run/review-*.json > "$run_dir/reviewed-result.txt"
+say "read the saved review(s) in reviewed-result.txt"
 
 # 9. No Kogen process alive, no token anywhere.
 check '! pgrep -f "$HOME/.local/lib/kogen" >/dev/null' "no Kogen process is alive"
@@ -223,7 +236,7 @@ for base, _, files in os.walk(sys.argv[2]):
 EOF
 check '[ ! -s "$run_dir/leak.txt" ]' "no credential token in the project, .kogen/local, the transcript or the command outputs"
 if [ "$route" = claude-code ]; then
-  check '[ -z "$(find "$run_dir" -maxdepth 1 -type f -exec grep -l "provider login chatgpt" {} +)" ]' "no ChatGPT login hint in the transcript or the command outputs"
+  check 'claude_route_outputs_clean' "no ChatGPT login hint in the transcript or the command outputs"
 fi
 
 # 10. Uninstall.

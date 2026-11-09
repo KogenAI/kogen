@@ -20,12 +20,10 @@ fi
 mkdir -p "$REPO" "$KOGEN_LIVE_RUN_DIR/git-home" \
   "$KOGEN_LIVE_RUN_DIR/empty-template" "$KOGEN_LIVE_RUN_DIR/empty-hooks"
 cp -R "$example_source/." "$REPO/"
-GIT_CONFIG_GLOBAL="$KOGEN_LIVE_RUN_DIR/git-global-config"
-: > "$GIT_CONFIG_GLOBAL"
-
 (
   export HOME="$KOGEN_LIVE_RUN_DIR/git-home"
-  export GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM=1
+  export GIT_CONFIG_GLOBAL="$KOGEN_LIVE_RUN_DIR/git-global-config" GIT_CONFIG_NOSYSTEM=1
+  : > "$GIT_CONFIG_GLOBAL"
   cd "$REPO"
   git -c init.templateDir="$KOGEN_LIVE_RUN_DIR/empty-template" \
     -c core.hooksPath="$KOGEN_LIVE_RUN_DIR/empty-hooks" init -q
@@ -40,7 +38,7 @@ GIT_CONFIG_GLOBAL="$KOGEN_LIVE_RUN_DIR/git-global-config"
 )
 
 SLUG=complete-task
-REQUEST='Please extend Tiny Tasks so that a task can be completed without losing the rest of the list. BASE-1: adding a task assigns the next numeric ID and persists it for later commands. BASE-2: plain mix todo.list shows every task in insertion order, one per line as <id> [<status>] <title>, using open for current tasks. TASK-1: add mix todo.complete ID; it changes the identified task from open to done while preserving every task ID, title, insertion position, and other status. A task line uses done for a completed task. TASK-2: add mix todo.list --open; it prints every open task and no done task in insertion order using the same task-line format. Plain mix todo.list continues to show all tasks. You may choose the exact success confirmation shown after a task is completed.'
+REQUEST=$(cat "$example_source/FEATURE-REQUEST.md")
 INTERRUPT_AFTER=60
 
 configure() {
