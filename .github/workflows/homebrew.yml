@@ -1,0 +1,48 @@
+name: Update Homebrew tap
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: homebrew-tap
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Resolve latest published release and download assets
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          tag=$(gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100" --jq '[.[][] | select(.draft == false)] | sort_by(.published_at) | last | .tag_name // empty')
+          test -n "$tag" || { echo 'Homebrew: no published release found' >&2; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          gh release download "$tag" --dir "$RUNNER_TEMP/homebrew-assets" \
+            --pattern "kogen-$tag-darwin-arm64.tar.gz" \
+            --pattern "kogen-$tag-linux-x86_64.tar.gz" --pattern SHA256SUMS
+      - name: Require tap credentials
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: test -n "$TAP_TOKEN" || { echo 'Homebrew tap: HOMEBREW_TAP_TOKEN is missing' >&2; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          repository: KogenAI/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - name: Update and push tap
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git -C homebrew-tap config user.name 'github-actions[bot]'
+          git -C homebrew-tap config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          sh packaging/update-homebrew.sh "$TAG" homebrew-tap "$RUNNER_TEMP/homebrew-assets"

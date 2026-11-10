@@ -18,6 +18,14 @@ curl -fsSL https://get.kogen.dev | sh -s -- --version <tag>
 
 Development prereleases are published on the releases page. The installer downloads the archive, verifies its checksum and installs into `~/.local` without administrator rights. Supported platforms are `darwin-arm64` (macOS Apple Silicon), `darwin-x86_64` (macOS Intel), `linux-x86_64` (Linux x86-64 with glibc), and `linux-arm64` (Linux ARM64 with glibc).
 
+Alternatively, install with Homebrew:
+
+```sh
+brew install KogenAI/tap/kogen
+```
+
+Homebrew supports macOS Apple Silicon and Linux x86-64 with glibc only.
+
 If `~/.local/bin` is not on `PATH`, the installer prints an “Add to PATH” line. Add it to your shell configuration, or run the following for the current shell:
 
 ```sh
