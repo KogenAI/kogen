@@ -65,9 +65,22 @@ func copySource(source, dest string) error {
 	return nil
 }
 
+// isolatedGit is the process environment without any global or system Git configuration, so a
+// developer's hooks, signing and identity rules never reach the disposable checkout.
+func isolatedGit() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") {
+			env = append(env, kv)
+		}
+	}
+	return append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0")
+}
+
 func run(in string, args ...string) (string, error) {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = in
+	cmd.Env = isolatedGit()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("%v: %v\n%s", args, err, out)
@@ -90,7 +103,7 @@ func build(source string) (*Release, error) {
 	for _, args := range [][]string{
 		{"git", "init", "-q"},
 		{"git", "add", "."},
-		{"git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"},
+		{"git", "-c", "commit.gpgsign=false", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"},
 	} {
 		if _, err := run(r.Checkout, args...); err != nil {
 			return nil, err
@@ -158,6 +171,7 @@ func packageFrom(source, out string) (string, error) {
 	}
 	cmd := exec.Command("sh", "packaging/package.sh")
 	cmd.Dir = work
+	cmd.Env = isolatedGit()
 	built, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("package: %v\n%s", err, built)
