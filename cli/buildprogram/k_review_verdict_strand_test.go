@@ -10,6 +10,9 @@ import (
 	"testing"
 )
 
+// forcedRead is the tool choice of a reminder that sends the reviewer back to its unread pinned parts.
+var forcedRead = map[string]any{"type": "function", "name": "read_file"}
+
 // strandEdits is a reviewer turn that edits the checkout in every way (modification, deletion,
 // addition, mode) before the reviewer goes verdictless.
 func strandEdits(f *fakeProvider) handler {
@@ -87,11 +90,47 @@ func partNumber(path, dirName string) int {
 	return n
 }
 
+// undeliveredParts are the numbers of the parts, among the part files paths of the review whose
+// directory is named name, that the request itself does not show as delivered: by a completed
+// read_file in its window, by a native prefill message, or (in a current reset handoff) by not
+// being listed as unread.
+func undeliveredParts(t *testing.T, req map[string]any, paths []string, name string) []int {
+	known := map[int]bool{}
+	read, _ := inWindow(req)
+	for path := range read {
+		known[partNumber(path, name)] = true
+	}
+	for path := range prefilledParts(t, req) {
+		known[partNumber(path, name)] = true
+	}
+	if reset := resetHandoff(t, req); reset != nil {
+		if d, ok := reset["review_delivery"].(map[string]any); ok {
+			if source, ok := d["source"].(map[string]any); ok && source["current"] == true {
+				unread := map[int]bool{}
+				for _, n := range source["unread"].([]any) {
+					unread[int(n.(float64))] = true
+				}
+				for n := range paths {
+					if !unread[n+1] {
+						known[n+1] = true
+					}
+				}
+			}
+		}
+	}
+	var out []int
+	for n := range paths {
+		if !known[n+1] {
+			out = append(out, n+1)
+		}
+	}
+	return out
+}
+
 // confirmingReviewer is a reviewer that approves only after it has read what it cannot confirm
 // was delivered. In each request it reads, at most 8 per response, the parts of the review whose
-// part files match partsGlob that the request itself does not show as delivered: by a completed
-// read_file in its window, by a native prefill message, or (in a current reset handoff) by not
-// being listed as unread. When no part is left it approves.
+// part files match partsGlob that the request itself does not show as delivered (see
+// undeliveredParts). When no part is left it approves.
 func confirmingReviewer(t *testing.T, f *fakeProvider, partsGlob string) handler {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqs := f.reviewRequests()
@@ -100,34 +139,10 @@ func confirmingReviewer(t *testing.T, f *fakeProvider, partsGlob string) handler
 		if dirs, _ := filepath.Glob(partsGlob); len(dirs) == 1 {
 			paths = partPaths(dirs[0])
 		}
-		name := filepath.Base(partsGlob)
-		known := map[int]bool{}
-		read, _ := inWindow(req)
-		for path := range read {
-			known[partNumber(path, name)] = true
-		}
-		for path := range prefilledParts(t, req) {
-			known[partNumber(path, name)] = true
-		}
-		if reset := resetHandoff(t, req); reset != nil {
-			if d, ok := reset["review_delivery"].(map[string]any); ok {
-				if source, ok := d["source"].(map[string]any); ok && source["current"] == true {
-					unread := map[int]bool{}
-					for _, n := range source["unread"].([]any) {
-						unread[int(n.(float64))] = true
-					}
-					for n := range paths {
-						if !unread[n+1] {
-							known[n+1] = true
-						}
-					}
-				}
-			}
-		}
 		var pairs []any
-		for n, p := range paths {
-			if !known[n+1] && len(pairs) < 16 {
-				pairs = append(pairs, "read_file", map[string]any{"path": p})
+		for _, n := range undeliveredParts(t, req, paths, filepath.Base(partsGlob)) {
+			if len(pairs) < 16 {
+				pairs = append(pairs, "read_file", map[string]any{"path": paths[n-1]})
 			}
 		}
 		if len(pairs) > 0 {
@@ -197,8 +212,9 @@ func TestKReviewVerdictStrandPinnedResume(t *testing.T) {
 		eq(t, "fault", ev["fault"], any("forced_tool_not_called"))
 	}
 	// The stopped run's reviewer requests belong to exactly two conversations, review 1's then
-	// review 2's, each with a request that names submit_review as the tool choice; review 2's last
-	// such request carries the working-window reset.
+	// review 2's, each with a forced reminder: a request that names submit_review as the tool
+	// choice, or read_file while that review has pinned parts the request does not show as
+	// delivered. Review 2's last forced reminder carries the working-window reset.
 	var keys []string
 	lastForced := map[string]map[string]any{}
 	for _, req := range reqs {
@@ -211,18 +227,25 @@ func TestKReviewVerdictStrandPinnedResume(t *testing.T) {
 			}
 			keys = append(keys, key)
 		}
-		if jsonOf(req["tool_choice"]) == jsonOf(forcedSubmit) {
+		choice := jsonOf(req["tool_choice"])
+		forced := choice == jsonOf(forcedSubmit)
+		if choice == jsonOf(forcedRead) {
+			name := strconv.Itoa(len(keys)) + "-" + green
+			paths := partPaths(filepath.Join(e.runPath(id, "review-source"), name))
+			forced = len(undeliveredParts(t, req, paths, name)) > 0
+		}
+		if forced {
 			lastForced[key] = req
 		}
 	}
 	eq(t, "reviewer conversations", len(keys), 2)
 	for i, key := range keys {
 		if lastForced[key] == nil {
-			t.Fatalf("review %d's conversation has no request that names submit_review as its tool choice", i+1)
+			t.Fatalf("review %d's conversation has no forced reminder: no request names submit_review, or read_file while pinned parts are unread, as its tool choice", i+1)
 		}
 	}
 	if resetHandoff(t, lastForced[keys[1]]) == nil {
-		t.Fatal("review 2's last forced request carries no working-window reset")
+		t.Fatal("review 2's last forced reminder carries no working-window reset")
 	}
 
 	// The stopped result: the first reviewer's edits were discarded (and logged), the second
