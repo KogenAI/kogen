@@ -18,7 +18,7 @@ type tcRoute struct {
 var tcRoutes = []tcRoute{
 	{"chatgpt", "responses", func(t *testing.T) (*env, Role, func() []recorded) {
 		e, f := chatEnv(t, textAnswer("ok"))
-		return e, Role{Model: "gpt-6.1-sol", Effort: "high"}, f.requests
+		return e, Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, f.requests
 	}},
 	{"supergrok", "responses", func(t *testing.T) (*env, Role, func() []recorded) {
 		e, f := chatEnv(t, textAnswer("ok"))

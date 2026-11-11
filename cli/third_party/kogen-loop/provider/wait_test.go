@@ -56,7 +56,7 @@ func TestChatGPTRetiredOptionsRefusalsNeverStripTheRoutingKey(t *testing.T) {
 				}
 				e, f := chatEnv(t, jsonAnswer(400, map[string]any{"error": errBody}), textAnswer("never asked"))
 				obs := &observer{}
-				_, err := e.c.Respond(context.Background(), e.s, Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "policy", Single: single,
+				_, err := e.c.Respond(context.Background(), e.s, Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "policy", Single: single,
 					Input: []any{map[string]any{"role": "user", "content": "contract"}}, Scope: "evidence-dir"}, obs)
 				se := mustErr(t, err)
 				if se.Reason != "refused" || se.Detail != "ChatGPT refused the request: 400 prompt_cache_options is not supported on this model" {
@@ -173,7 +173,7 @@ func TestOtherSuperGrokRefusalsNeverStripTheKey(t *testing.T) {
 func TestUnrelatedRefusalNeverStripsOrReexecutes(t *testing.T) {
 	t.Parallel()
 	e, f := chatEnv(t, jsonAnswer(400, map[string]any{"error": map[string]any{"code": "context_length_exceeded", "param": "input", "message": "full"}}))
-	_, err := e.respond(Request{Role: Role{Model: "gpt-6.1-sol", Effort: "medium"}, Instructions: "policy"})
+	_, err := e.respond(Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "medium"}, Instructions: "policy"})
 	if se := mustErr(t, err); se.Reason != "context_too_long" || len(f.requests()) != 1 {
 		t.Fatalf("err = %v, %d requests", err, len(f.requests()))
 	}
@@ -642,7 +642,7 @@ func TestChatGPTExactKeyRefusalRetriesOnceAndPersistsAcrossRestore(t *testing.T)
 				t.Parallel()
 				refusal := jsonAnswer(400, map[string]any{"error": map[string]any{"code": code, "param": "prompt_cache_key", "message": "prompt_cache_key is not supported on this model"}})
 				e, f := chatEnv(t, refusal, textAnswer("accepted"), textAnswer("restored"))
-				req := Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "complete policy", Input: user("complete contract"), Scope: "same conversation", Single: single}
+				req := Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "complete policy", Input: user("complete contract"), Scope: "same conversation", Single: single}
 				obs := &observer{}
 				if _, err := e.c.Respond(context.Background(), e.s, req, obs); err != nil {
 					t.Fatal(err)

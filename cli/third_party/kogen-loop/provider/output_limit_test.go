@@ -281,7 +281,7 @@ func outServer(t *testing.T, wire string, h ...handler) (*env, Request) {
 		return e, Request{Role: grokRole, Instructions: "p", Input: user("x"), CacheID: "outlimit-cache"}
 	}
 	e.saveCreds("chatgpt", e.chatgptCreds())
-	return e, Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "p", Input: user("x"), CacheID: "outlimit-cache"}
+	return e, Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "p", Input: user("x"), CacheID: "outlimit-cache"}
 }
 
 func TestOutputLimitRunaway(t *testing.T) {

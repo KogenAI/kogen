@@ -373,7 +373,7 @@ func TestOpenCodeGoRefusesImagesBeforeAnyRequest(t *testing.T) {
 		t.Fatal("Render must refuse too")
 	}
 	// the other providers keep their image paths: nothing about images is decided here for them
-	if _, err := e.c.Render(Request{Role: Role{Model: "m", Effort: "e"}, Instructions: "p", Input: input}); err != nil {
+	if _, err := e.c.Render(Request{Role: Role{Provider: "chatgpt", Model: "m", Effort: "e"}, Instructions: "p", Input: input}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -382,10 +382,10 @@ func TestOpenCodeGoRefusesImagesBeforeAnyRequest(t *testing.T) {
 func TestRequestBoundaryIsMeasuredOnTheCompleteBodyOfEachAdapter(t *testing.T) {
 	t.Parallel()
 	for _, role := range []Role{
-		{Model: "gpt-6.1-sol", Effort: "high"}, grokRole, goRole,
+		{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, grokRole, goRole,
 		{Provider: "anthropic", Model: "claude-opus-5-5", Effort: "high"},
 	} {
-		t.Run(Name(role), func(t *testing.T) {
+		t.Run(role.Provider, func(t *testing.T) {
 			t.Parallel()
 			c := &Client{}
 			mk := func(n int) Request {
@@ -401,11 +401,11 @@ func TestRequestBoundaryIsMeasuredOnTheCompleteBodyOfEachAdapter(t *testing.T) {
 				if got := len(mustEncode(body)); got != tc.size {
 					t.Fatalf("rendered %d bytes, want %d", got, tc.size)
 				}
-				e, f := keyEnv(t, Name(role))
-				if Name(role) == "chatgpt" {
+				e, f := keyEnv(t, role.Provider)
+				if role.Provider == "chatgpt" {
 					e.saveCreds("chatgpt", e.chatgptCreds())
 				}
-				if Name(role) == "supergrok" {
+				if role.Provider == "supergrok" {
 					e.saveCreds("supergrok", e.supergrokCreds())
 				}
 				_, err := e.c.Respond(context.Background(), e.s, req, nil)

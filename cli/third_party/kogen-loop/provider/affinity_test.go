@@ -18,7 +18,7 @@ func TestChatGPTAffinityRendering(t *testing.T) {
 				sum := sha256.Sum256([]byte(id))
 				want = hex.EncodeToString(sum[:])
 			}
-			r, err := render(info, Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}}, wireID(id), unsupported)
+			r, err := render(info, Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}}, wireID(id), unsupported)
 			if err != nil {
 				t.Fatal(err)
 			}

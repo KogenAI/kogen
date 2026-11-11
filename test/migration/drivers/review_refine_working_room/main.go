@@ -40,7 +40,7 @@ func measure(spec map[string]any) map[string]any {
 	literal := spec["literal"].(string)
 	client := provider.NewClient("")
 	base := client.Body(provider.Request{
-		Role:         provider.Role{Model: "fixture", Effort: "high"},
+		Role:         provider.Role{Provider: "chatgpt", Model: "fixture", Effort: "high"},
 		Instructions: "policy",
 		Input:        []any{map[string]any{"role": "user", "content": literal}},
 	})

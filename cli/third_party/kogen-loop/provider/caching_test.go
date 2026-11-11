@@ -34,7 +34,7 @@ func responsesAnswer(n int) handler {
 }
 
 var cachingCases = []cachingCase{
-	{name: "chatgpt", role: Role{Model: "gpt-6.1-sol", Effort: "high"}, prep: func(e *env) { e.saveCreds("chatgpt", e.chatgptCreds()) }, answer: responsesAnswer,
+	{name: "chatgpt", role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, prep: func(e *env) { e.saveCreds("chatgpt", e.chatgptCreds()) }, answer: responsesAnswer,
 		routing: func(r recorded) string {
 			key, _ := r.JSON["prompt_cache_key"].(string)
 			if got := r.Header.Get("session_id"); got != key || r.Header.Get("conversation_id") != key || r.Header.Get("Session-Id") != "" {
@@ -293,7 +293,7 @@ func TestRetriesKeepTheConversationsIdentity(t *testing.T) {
 		t.Fatal("a retry changed the session")
 	}
 	e2, f2 := chatEnv(t, events(map[string]any{"type": "error", "error": map[string]any{"code": "server_error"}}), responsesAnswer(1))
-	if _, err := e2.c.Respond(context.Background(), e2.s, Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "p", Input: user("x"), Scope: "s"}, nil); err != nil {
+	if _, err := e2.c.Respond(context.Background(), e2.s, Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "p", Input: user("x"), Scope: "s"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	r := f2.requests()
@@ -312,7 +312,7 @@ func TestChatGPTSendsStatelessCachedRequestsOnEveryModel(t *testing.T) {
 	// the old gpt-5.6 split is gone: any model gets the same fields, never cache options
 	for _, model := range []string{"gpt-6.1-sol", "gpt-5.5", "gpt-5.4", "gpt-60", "fixture"} {
 		e, f := chatEnv(t, responsesAnswer(1))
-		_, err := e.c.Respond(context.Background(), e.s, Request{Role: Role{Model: model, Effort: "medium"}, Instructions: "policy", Input: user("x")}, nil)
+		_, err := e.c.Respond(context.Background(), e.s, Request{Role: Role{Provider: "chatgpt", Model: model, Effort: "medium"}, Instructions: "policy", Input: user("x")}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -471,17 +471,17 @@ func TestCacheStatesAreSavedPerConversationAndOnlySuperGrokRemembersARefusal(t *
 			t.Fatalf("%+v", st)
 		}
 	}
-	// an old checkpoint's unsupported flag (from the retired ChatGPT fallback) changes nothing now
-	cache := NewCache(map[string]CacheState{conversationKey(Role{Model: "gpt-6.1-sol", Effort: "high"}, "old"): {ID: "conversation-old", Unsupported: true, Response: "resp_old"}})
-	body := (&Client{Cache: cache}).Body(Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "p", Input: user("x"), Scope: "old"})
-	if body["prompt_cache_key"] != "conversation-old" || body["prompt_cache_options"] != nil {
+	// a saved ChatGPT refusal is honored as saved: nothing upgrades it
+	cache := NewCache(map[string]CacheState{conversationKey(Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, "old"): {ID: "conversation-old", Unsupported: true, Response: "resp_old"}})
+	body := (&Client{Cache: cache}).Body(Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "p", Input: user("x"), Scope: "old"})
+	if body["prompt_cache_key"] != nil || body["prompt_cache_options"] != nil {
 		t.Fatalf("%v", body)
 	}
 	// a long saved identity goes out as a stable 64-character value
 	long := strings.Repeat("x", 200)
-	cache = NewCache(map[string]CacheState{conversationKey(Role{Model: "m"}, "long"): {ID: long}})
-	k1 := (&Client{Cache: cache}).Body(Request{Role: Role{Model: "m"}, Scope: "long"})["prompt_cache_key"].(string)
-	k2 := (&Client{Cache: cache}).Body(Request{Role: Role{Model: "m"}, Scope: "long"})["prompt_cache_key"].(string)
+	cache = NewCache(map[string]CacheState{conversationKey(Role{Provider: "chatgpt", Model: "m"}, "long"): {ID: long}})
+	k1 := (&Client{Cache: cache}).Body(Request{Role: Role{Provider: "chatgpt", Model: "m"}, Scope: "long"})["prompt_cache_key"].(string)
+	k2 := (&Client{Cache: cache}).Body(Request{Role: Role{Provider: "chatgpt", Model: "m"}, Scope: "long"})["prompt_cache_key"].(string)
 	if len(k1) != MaxCacheID || k1 != k2 {
 		t.Fatalf("%q %q", k1, k2)
 	}

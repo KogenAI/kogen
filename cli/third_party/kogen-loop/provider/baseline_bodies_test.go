@@ -7,7 +7,7 @@ var baselineRoles = []struct {
 	role Role
 	info string
 }{
-	{"chatgpt", Role{Model: "gpt-6.1-sol", Effort: "high"}, "chatgpt"},
+	{"chatgpt", Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, "chatgpt"},
 	{"supergrok", grokRole, "supergrok"},
 	{"anthropic", claudeRole, "anthropic"},
 	{"anthropic-profile", Role{Provider: "anthropic", Model: "claude-sonnet-5-5", Effort: "high"}, "anthropic"},

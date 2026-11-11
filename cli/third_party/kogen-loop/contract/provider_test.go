@@ -457,10 +457,7 @@ func TestProviderRoleSelectsTheProvider(t *testing.T) {
 	if role.Provider != "anthropic" || role.Model != "claude-sonnet-5-5" || role.Effort != "high" || role.BaseURL != "" {
 		t.Fatalf("%+v", role)
 	}
-	if provider.Name(role) != "anthropic" || provider.Name(provider.Role{}) != "chatgpt" {
-		t.Fatalf("names %q %q", provider.Name(role), provider.Name(provider.Role{}))
-	}
-	if info, ok := provider.Lookup(""); !ok || info.Name != "chatgpt" {
+	if info, ok := provider.Lookup(""); ok || info.Name != "" {
 		t.Fatalf("Lookup(\"\") = %+v, %v", info, ok)
 	}
 	if info, ok := provider.Lookup("openai-compatible"); !ok || info.Name != "openai-compatible" {

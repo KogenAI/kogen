@@ -191,5 +191,5 @@ func TestProviderStreamAffinity(t *testing.T) {
 	})
 }
 func streamAffinityRequest(single bool) Request {
-	return Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "complete policy", Input: user("complete contract"), Scope: "same conversation", Single: single}
+	return Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "complete policy", Input: user("complete contract"), Scope: "same conversation", Single: single}
 }

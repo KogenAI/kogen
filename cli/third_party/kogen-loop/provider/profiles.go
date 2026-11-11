@@ -70,7 +70,7 @@ func Profiles() ProfileCatalog {
 // host or a response-reported model cannot inherit a vendor route's qualification.
 func ResolveProfile(r Role) *Profile {
 	for _, p := range Profiles().Profiles {
-		if p.Provider == Name(r) && p.Model == r.Model {
+		if p.Provider == r.Provider && p.Model == r.Model {
 			return &p
 		}
 	}
@@ -121,7 +121,7 @@ func (c Compatibility) Map() map[string]any {
 
 func Classify(req Request, s *sys.Session) Compatibility {
 	role, _ := req.Context["role"].(string)
-	c := Compatibility{Status: "experimental", Role: role, Provider: Name(req.Role), Model: req.Role.Model, Effort: req.Role.Effort}
+	c := Compatibility{Status: "experimental", Role: role, Provider: req.Role.Provider, Model: req.Role.Model, Effort: req.Role.Effort}
 	p := ResolveProfile(req.Role)
 	if p == nil {
 		return c

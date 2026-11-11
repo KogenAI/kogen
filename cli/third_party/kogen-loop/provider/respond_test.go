@@ -47,7 +47,7 @@ func TestRespondHappyPathWithFunctionCall(t *testing.T) {
 	obs := &observer{}
 	input := []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "contract"}, map[string]any{"type": "input_text", "text": "files"}}}}
 	resp, err := e.c.Respond(context.Background(), e.s, Request{
-		Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "policy", Input: input, Tools: []any{readTool("read_file")},
+		Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Instructions: "policy", Input: input, Tools: []any{readTool("read_file")},
 		Scope: []any{"run-1", "build", int64(0)}, Context: map[string]any{"phase": "build", "role": "build", "run_id": "r1", "slug": "is-even"},
 	}, obs)
 	if err != nil {
@@ -567,7 +567,7 @@ func sysRender(err error) string {
 func TestBodyDoesNotSendToolsWhenThereAreNone(t *testing.T) {
 	t.Parallel()
 	c := &Client{Cache: NewCache(nil)}
-	b := c.Body(Request{Role: Role{Model: "gpt-5.4", Effort: "low"}, Instructions: "policy", Input: []any{map[string]any{"role": "user", "content": "x"}}})
+	b := c.Body(Request{Role: Role{Provider: "chatgpt", Model: "gpt-5.4", Effort: "low"}, Instructions: "policy", Input: []any{map[string]any{"role": "user", "content": "x"}}})
 	if _, has := b["tools"]; has {
 		t.Fatal("tools sent")
 	}

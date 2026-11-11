@@ -152,20 +152,11 @@ func (c *Cache) resolve(req Request) (key string, st CacheState) {
 		key = "id:" + req.CacheID
 		st = c.states[key]
 		st.ID = req.CacheID
-		if Name(req.Role) == "chatgpt" && st.Control != "prompt_cache_key" {
-			st.Control = "prompt_cache_key"
-			st.Unsupported = false
-		}
 		c.states[key] = st
 		return key, st
 	}
 	key = conversationKey(req.Role, req.Scope)
 	st, _ = c.conversation(key)
-	if Name(req.Role) == "chatgpt" && st.Control != "prompt_cache_key" {
-		st.Control = "prompt_cache_key"
-		st.Unsupported = false
-		c.put(key, st)
-	}
 	return key, st
 }
 

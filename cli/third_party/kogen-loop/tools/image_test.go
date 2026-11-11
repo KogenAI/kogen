@@ -128,7 +128,7 @@ func TestOriginalBytesStayTypedThroughOutputCutDeletionAndCompleteJSONAccounting
 	}
 
 	body := provider.NewClient("test").Body(provider.Request{
-		Role:         provider.Role{Model: "gpt-6.1-sol", Effort: "high"},
+		Role:         provider.Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"},
 		Instructions: "Δ🙂 policy",
 		Input:        []any{output},
 		Tools:        AsAny(Defs(ViewImageTool)),

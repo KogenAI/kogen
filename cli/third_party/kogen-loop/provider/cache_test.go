@@ -188,16 +188,10 @@ func TestUsageValidatesDisjointWritesAndSubsetReasoning(t *testing.T) {
 // the provider part is the name of each role.
 func TestRoleNames(t *testing.T) {
 	t.Parallel()
-	roles := []Role{{Model: "m"}, {Provider: "supergrok"}, {Provider: "chatgpt"}, {Provider: ""}, {Provider: "opencode-go"}, {Provider: "anthropic"}}
-	var got []string
-	for _, r := range roles {
-		got = append(got, Name(r))
-	}
-	if !reflect.DeepEqual(got, []string{"chatgpt", "supergrok", "chatgpt", "chatgpt", "opencode-go", "anthropic"}) {
-		t.Fatal(got)
-	}
-	if _, ok := Lookup("grok"); ok {
-		t.Fatal("unknown provider found")
+	for _, name := range []string{"", "grok"} {
+		if _, ok := Lookup(name); ok {
+			t.Fatalf("Lookup(%q) found a provider", name)
+		}
 	}
 	names := []string{}
 	for _, p := range Catalog() {
@@ -229,31 +223,24 @@ func TestFingerprintHelper(t *testing.T) {
 	}
 }
 
-func TestLegacyOptionsSuppressionDoesNotSuppressNewRoutingKey(t *testing.T) {
+func TestCacheStateKeepsRefusalOnRestore(t *testing.T) {
 	t.Parallel()
-	req := Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Scope: "legacy conversation"}
-	cache := NewCache(nil)
-	key, original := cache.resolve(req)
-	legacy := original
-	legacy.Control = ""
-	legacy.Unsupported = true
-	cache = NewCache(map[string]CacheState{key: legacy})
-	_, current := cache.resolve(req)
-	if current.ID != original.ID || current.Unsupported || current.Control != "prompt_cache_key" {
-		t.Fatalf("legacy restore: %+v", current)
-	}
-	current.Unsupported = true
-	encoded, err := json.Marshal(current)
+	req := Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Scope: "conversation"}
+	key, st := NewCache(nil).resolve(req)
+	st.Unsupported = true
+	encoded, err := json.Marshal(st)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "control") {
+		t.Fatalf("old cache shape written: %s", encoded)
 	}
 	var restored CacheState
 	if err = json.Unmarshal(encoded, &restored); err != nil {
 		t.Fatal(err)
 	}
-	cache = NewCache(map[string]CacheState{key: restored})
-	_, current = cache.resolve(req)
+	_, current := NewCache(map[string]CacheState{key: restored}).resolve(req)
 	if !current.Unsupported {
-		t.Fatal("actual key refusal was lost on restore")
+		t.Fatal("key refusal was lost on restore")
 	}
 }

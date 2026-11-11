@@ -36,7 +36,7 @@ func roleOf(name string) Role {
 	if name == "supergrok" {
 		return grokRole
 	}
-	return Role{Model: "gpt-6.1-sol", Effort: "high"}
+	return Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}
 }
 
 func TestRecognizedStreamFailureCodesRetryOnBothRoutesAndEnvelopes(t *testing.T) {

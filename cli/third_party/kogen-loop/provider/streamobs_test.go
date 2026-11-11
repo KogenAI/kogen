@@ -94,7 +94,7 @@ func obsEnv(t *testing.T, wire string, attempts ...obsAttempt) (*env, *obsTransp
 	switch wire {
 	case "chatgpt":
 		e.saveCreds("chatgpt", e.chatgptCreds())
-		req.Role = Role{Model: "gpt-6.1-sol", Effort: "high"}
+		req.Role = Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}
 	case "anthropic":
 		e.saveCreds("anthropic", map[string]any{"provider": "anthropic", "api_key": testKey})
 		req.Role = claudeRole
@@ -641,7 +641,7 @@ func TestStreamObsCompatibility(t *testing.T) {
 			if !reflect.DeepEqual(keys, wantKeys) {
 				t.Errorf("record fields = %v, want %v", keys, wantKeys)
 			}
-			wantFields(t, wire, rec, map[string]any{"provider": Name(req.Role), "outcome": "completed", "error": nil, "wall_ms": int64(34), "provider_request_id": rec["provider_request_id"]})
+			wantFields(t, wire, rec, map[string]any{"provider": req.Role.Provider, "outcome": "completed", "error": nil, "wall_ms": int64(34), "provider_request_id": rec["provider_request_id"]})
 			if wire == "opencode-go" {
 				check := map[string]any{"first_byte_ms": nil, "ttft_ms": nil, "end_reason": nil, "stream_bytes": nil}
 				wantFields(t, wire, rec, check)

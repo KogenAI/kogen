@@ -2,7 +2,6 @@ package consumes
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,8 +24,7 @@ var (
 
 // The configuration fields and role fields kogen reads.
 var (
-	_           = func(c *project.Config) (map[string]project.Role, project.Workers) { return c.Models, c.ShapeWorkers }
-	_           = func(w project.Workers) (bool, map[string]project.Role) { return w.Enabled, w.Roles }
+	_           = func(c *project.Config) map[string]project.Role { return c.Models }
 	_           = func(r project.Role) (string, string) { return r.Provider, r.Executor }
 	_ [3]string = project.ModelRoles
 )
@@ -53,7 +51,7 @@ func TestConfigPathAndModelRoles(t *testing.T) {
 
 // TestParsedConfigHasARoleForEveryModelRole: the models map has an entry for each model role,
 // also when the file selects none, as readiness indexes it with every ModelRoles name. A role
-// the file does not name is native (no executor, so not External) and names no provider.
+// the file does not name is the default: it names a provider and no executor, so it is not External.
 func TestParsedConfigHasARoleForEveryModelRole(t *testing.T) {
 	cfg := parse(t, "version: 1\n")
 	for _, name := range project.ModelRoles {
@@ -61,12 +59,9 @@ func TestParsedConfigHasARoleForEveryModelRole(t *testing.T) {
 		if !ok {
 			t.Fatalf("Models has no %s", name)
 		}
-		if role.Provider != "" || role.Executor != "" || role.External() {
-			t.Fatalf("default %s role = %+v, want native with no provider", name, role)
+		if role.Provider == "" || role.Executor != "" || role.External() {
+			t.Fatalf("default %s role = %+v, want a provider and no executor", name, role)
 		}
-	}
-	if cfg.ShapeWorkers.Enabled || len(cfg.ShapeWorkers.Roles) != 0 {
-		t.Fatalf("ShapeWorkers = %+v, want disabled and empty", cfg.ShapeWorkers)
 	}
 }
 
@@ -172,39 +167,6 @@ func TestModelsKeyOfTheProjectFileIsRefused(t *testing.T) {
 	check("LoadConfig", err, file)
 }
 
-// requireFixedWorkers: ShapeWorkers is the fixed value project.Workers{Enabled: false, Roles:
-// an empty, non-nil map}, whatever the file said.
-func requireFixedWorkers(t *testing.T, what string, cfg *project.Config) {
-	t.Helper()
-	var workers project.Workers = cfg.ShapeWorkers
-	if workers.Enabled || workers.Roles == nil || len(workers.Roles) != 0 {
-		t.Fatalf("%s: ShapeWorkers = %#v, want disabled with an empty, non-nil Roles map", what, workers)
-	}
-}
-
-// TestShapeWorkers: the shape_workers key was removed and is ignored whatever its value, so
-// ShapeWorkers is always disabled with an empty, non-nil Roles map: with workers enabled and the
-// read, probe and draft roles given, without the section, with enabled: false, and with the
-// former refusal text (enabled, one role only).
-func TestShapeWorkers(t *testing.T) {
-	for _, c := range []struct{ name, text string }{
-		{"enabled with roles", `version: 1
-shape_workers:
-  enabled: true
-  read: {model: r, effort: low, provider: anthropic}
-  probe: {model: p, effort: low}
-  draft: {model: d, effort: low, provider: supergrok}
-`},
-		{"without the section", "version: 1\n"},
-		{"enabled: false", "version: 1\nshape_workers:\n  enabled: false\n  read: {model: r, effort: low}\n"},
-		{"enabled without roles", "version: 1\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low}\n"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			requireFixedWorkers(t, c.name, parse(t, c.text))
-		})
-	}
-}
-
 // TestParseConfigRefusalsAreSysErrorsWithLines: an invalid file is a *sys.Error whose Detail is
 // the file name passed in and whose Lines, one per problem, start `line <n>:`, which readiness
 // shows and turns into the lines to edit. Nothing is returned for the configuration.
@@ -214,6 +176,7 @@ func TestParseConfigRefusalsAreSysErrorsWithLines(t *testing.T) {
 		lines      []string
 	}{
 		{"unknown keys", "version: 1\nbogus: 1\nother: 2\n", []string{"line 2: unknown key bogus", "line 3: unknown key other"}},
+		{"removed shape_workers key", "version: 1\nshape_workers:\n  enabled: true\n", []string{"line 2: unknown key shape_workers"}},
 		{"unsupported version", "version: 2\n", []string{"line 1: version must be 1"}},
 		{"empty file", "", []string{"line 1: the file is empty"}},
 		{"unclosed flow", "version: 1\n\tbad: [\n", []string{"line 2: unclosed ["}},
@@ -253,16 +216,14 @@ func TestParseConfigOldKogenFolderHasNoLines(t *testing.T) {
 
 // TestReadableConfigKeepsWhatItCanRead: of an invalid file it keeps what validation accepted, and
 // the model roles are project.DefaultModels() for every role (a models key is refused, not
-// applied; no provider, not External), as they are for text it cannot read, or no text. Whatever
-// the text, the shaping workers are the fixed disabled value with an empty, non-nil Roles map.
+// applied; a provider, not External), as they are for text it cannot read, or no text.
 func TestReadableConfigKeepsWhatItCanRead(t *testing.T) {
 	partial := project.ReadableConfig("version: 1\nbogus: 1\nmodels:\n  shape: {provider: anthropic, model: m, effort: high}\n  build: {executor: claude-code, model: m, effort: high}\nshape_workers:\n  enabled: true\n  read: {model: r, effort: low, provider: supergrok}\n")
 	for _, name := range project.ModelRoles {
-		if partial.Models[name] != project.DefaultModels()[name] || partial.Models[name].Provider != "" || partial.Models[name].External() {
+		if partial.Models[name] != project.DefaultModels()[name] || partial.Models[name].Provider == "" || partial.Models[name].External() {
 			t.Fatalf("Models[%s] = %+v, want the default", name, partial.Models[name])
 		}
 	}
-	requireFixedWorkers(t, "partial", partial)
 
 	for _, text := range []string{"", "version: 1\n\tbad: [\n"} {
 		cfg := project.ReadableConfig(text)
@@ -271,10 +232,9 @@ func TestReadableConfigKeepsWhatItCanRead(t *testing.T) {
 		}
 		for _, name := range project.ModelRoles {
 			role, ok := cfg.Models[name]
-			if !ok || role != project.DefaultModels()[name] || role.Provider != "" || role.External() {
+			if !ok || role != project.DefaultModels()[name] || role.Provider == "" || role.External() {
 				t.Fatalf("ReadableConfig(%q).Models[%s] = %+v (present %v)", text, name, role, ok)
 			}
 		}
-		requireFixedWorkers(t, fmt.Sprintf("ReadableConfig(%q)", text), cfg)
 	}
 }

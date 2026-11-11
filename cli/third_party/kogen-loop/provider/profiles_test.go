@@ -32,7 +32,7 @@ func TestExactProfileQualification(t *testing.T) {
 			t.Fatalf("%+v: %+v", tc, c)
 		}
 	}
-	req := Request{Role: Role{Model: "gpt-6.1-sol", Effort: "high"}, Context: map[string]any{"role": "shape"}}
+	req := Request{Role: Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}, Context: map[string]any{"role": "shape"}}
 	for _, name := range []string{"KOGEN_PROVIDER_URL", "KOGEN_AUTH_URL"} {
 		if c := Classify(req, &sys.Session{Env: []string{name + "=http://127.0.0.1:1234"}}); c.Status != "experimental" {
 			t.Fatal(c)

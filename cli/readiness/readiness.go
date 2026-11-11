@@ -174,13 +174,6 @@ func checkModels(root string, in Input) Check {
 	for _, n := range project.ModelRoles {
 		roles = append(roles, namedRole{n, cfg.Models[n]})
 	}
-	if cfg.ShapeWorkers.Enabled {
-		for _, n := range []string{"read", "probe", "draft"} {
-			if r, found := cfg.ShapeWorkers.Roles[n]; found {
-				roles = append(roles, namedRole{"shape worker " + n, r})
-			}
-		}
-	}
 	var problems, fixes, names []string
 	seen := map[string]bool{}
 	needClaude := false

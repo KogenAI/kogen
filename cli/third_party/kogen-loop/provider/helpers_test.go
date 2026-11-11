@@ -321,7 +321,7 @@ func (e *env) readCreds(name string) map[string]any {
 }
 
 var (
-	fixtureRole = Role{Model: "fixture", Effort: "medium"}
+	fixtureRole = Role{Provider: "chatgpt", Model: "fixture", Effort: "medium"}
 	grokRole    = Role{Provider: "supergrok", Model: "grok-4.7", Effort: "low"}
 )
 

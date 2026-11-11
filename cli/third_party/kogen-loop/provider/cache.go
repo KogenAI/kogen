@@ -33,20 +33,18 @@ const MaxCacheID = 64
 type CacheState struct {
 	ID          string
 	Unsupported bool
-	Control     string
 	Response    string // "" = none
 }
 
 type cacheStateJSON struct {
 	ID          string  `json:"id"`
 	Unsupported bool    `json:"unsupported"`
-	Control     string  `json:"control,omitempty"`
 	Response    *string `json:"response"`
 }
 
 // MarshalJSON writes the checkpoint form {"id","unsupported","response"|null}.
 func (s CacheState) MarshalJSON() ([]byte, error) {
-	j := cacheStateJSON{ID: s.ID, Unsupported: s.Unsupported, Control: s.Control}
+	j := cacheStateJSON{ID: s.ID, Unsupported: s.Unsupported}
 	if s.Response != "" {
 		j.Response = &s.Response
 	}
@@ -59,7 +57,7 @@ func (s *CacheState) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &j); err != nil {
 		return err
 	}
-	*s = CacheState{ID: j.ID, Unsupported: j.Unsupported, Control: j.Control}
+	*s = CacheState{ID: j.ID, Unsupported: j.Unsupported}
 	if j.Response != nil {
 		s.Response = *j.Response
 	}
@@ -134,7 +132,7 @@ func (c *Cache) put(key string, s CacheState) {
 // window or a retry is not part of it, so they keep the identity; a different provider, model
 // or scope never shares one.
 func conversationKey(role Role, scope any) string {
-	return fingerprint([]any{Name(role), role.Model, scope}).(map[string]any)["sha256"].(string)
+	return fingerprint([]any{role.Provider, role.Model, scope}).(map[string]any)["sha256"].(string)
 }
 
 // Identity is the cache identity of the conversation (role, scope): the saved one, or a new

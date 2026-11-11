@@ -8,8 +8,7 @@
 // are fields the caller (or a test) controls.
 package provider
 
-// Role is a model role as the provider needs it: the provider ("" means a legacy ChatGPT
-// role), model and reasoning effort, sent unchanged, and for openai-compatible the base URL.
+// Role is a model role as the provider needs it: the provider (required), model and reasoning effort, sent unchanged, and for openai-compatible the base URL.
 type Role struct{ Provider, Model, Effort, BaseURL string }
 
 // wire is the request/response protocol a provider speaks.
@@ -58,25 +57,14 @@ func Catalog() []Info {
 	}
 }
 
-// Lookup finds a provider by name; "" is ChatGPT.
+// Lookup finds a provider by name; an empty or unknown name is not found.
 func Lookup(name string) (Info, bool) {
-	if name == "" {
-		name = "chatgpt"
-	}
 	for _, p := range Catalog() {
 		if p.Name == name {
 			return p, true
 		}
 	}
 	return Info{}, false
-}
-
-// Name is the provider a role routes to ("chatgpt" when the role omits it).
-func Name(r Role) string {
-	if r.Provider == "" {
-		return "chatgpt"
-	}
-	return r.Provider
 }
 
 func (p Info) supergrok() bool  { return p.Name == "supergrok" }

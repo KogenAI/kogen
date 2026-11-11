@@ -28,7 +28,7 @@ func TestProviderWireGoldens(t *testing.T) {
 		name string
 		role provider.Role
 	}{
-		{"chatgpt", provider.Role{Model: "gpt-6.1-sol", Effort: "high"}},
+		{"chatgpt", provider.Role{Provider: "chatgpt", Model: "gpt-6.1-sol", Effort: "high"}},
 		{"supergrok", provider.Role{Provider: "supergrok", Model: "grok-4.7", Effort: "low"}},
 		{"anthropic", provider.Role{Provider: "anthropic", Model: "claude-opus-5-5", Effort: "high"}},
 		{"anthropic-profile", provider.Role{Provider: "anthropic", Model: "claude-sonnet-5-5", Effort: "high"}},

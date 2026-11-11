@@ -138,7 +138,7 @@ func run(s selection) (map[string]any, error) {
 	}
 	cr := cfg.Models[s.Role]
 	r := provider.Role{Provider: cr.Provider, Model: cr.Model, Effort: cr.Effort, BaseURL: cr.BaseURL}
-	s.Provider = provider.Name(r)
+	s.Provider = r.Provider
 	s.Model = r.Model
 	s.Effort = r.Effort
 	dir := filepath.Join(home, ".kogen", "credentials")

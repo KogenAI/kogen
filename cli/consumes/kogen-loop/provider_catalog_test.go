@@ -34,7 +34,7 @@ var (
 )
 
 // TestLookupFindsTheProvidersKogenKnows: Lookup gives the Info of a provider name, whose Name is
-// the name, with "" meaning ChatGPT (a role without a provider), and reports an unknown name.
+// the name, and reports an empty or unknown name as not found.
 func TestLookupFindsTheProvidersKogenKnows(t *testing.T) {
 	for _, name := range []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible"} {
 		info, ok := provider.Lookup(name)
@@ -42,8 +42,8 @@ func TestLookupFindsTheProvidersKogenKnows(t *testing.T) {
 			t.Fatalf("Lookup(%q) = %q, %v", name, info.Name, ok)
 		}
 	}
-	if info, ok := provider.Lookup(""); !ok || info.Name != "chatgpt" {
-		t.Fatalf(`Lookup("") = %q, %v, want chatgpt`, info.Name, ok)
+	if info, ok := provider.Lookup(""); ok {
+		t.Fatalf(`Lookup("") = %q, %v, want not found`, info.Name, ok)
 	}
 	if _, ok := provider.Lookup("no-such-provider"); ok {
 		t.Fatalf("Lookup found a provider that does not exist")
@@ -162,7 +162,7 @@ func TestClaudeCodeTokenIsTheSavedTokenOrNone(t *testing.T) {
 // TestRequireLoginRefusesARoleWithoutAStoredLogin: readiness asks RequireLogin(home, roles of the
 // provider each configured role uses): nil when every used provider has a usable login, otherwise
 // a provider/login *sys.Error, exit 4, naming `kogen provider login <provider>`. Only the
-// providers of the roles are checked, an empty provider is ChatGPT, and a key that is optional
+// providers of the roles are checked, and a key that is optional
 // (openai-compatible) needs none.
 func TestRequireLoginRefusesARoleWithoutAStoredLogin(t *testing.T) {
 	home := t.TempDir()
@@ -173,14 +173,13 @@ func TestRequireLoginRefusesARoleWithoutAStoredLogin(t *testing.T) {
 	if err := provider.RequireLogin(home, role("openai-compatible")); err != nil {
 		t.Fatalf("keyless openai-compatible: %v", err)
 	}
-	wantFailure(t, provider.RequireLogin(home, role("")), 4, "provider/login: not signed in; run kogen provider login chatgpt\n")
 	wantFailure(t, provider.RequireLogin(home, role("chatgpt")), 4, "provider/login: not signed in; run kogen provider login chatgpt\n")
 	wantFailure(t, provider.RequireLogin(home, role("opencode-go")), 4, "provider/login: no usable OpenCode Go key; run kogen provider login opencode-go\n")
 	wantFailure(t, provider.RequireLogin(home, role("anthropic")), 4, "provider/login: no usable Anthropic key; run kogen provider login anthropic\n")
 
 	writeFile(t, credentialsFile(home, "anthropic"), `{"provider":"anthropic","api_key":"fixture-key"}`)
 	writeFile(t, credentialsFile(home, "chatgpt"), fmt.Sprintf(`{"client_id":"oaiapp_fixture","access_token":"a","refresh_token":"r","expires_at":%d}`, time.Now().Unix()+3600))
-	if err := provider.RequireLogin(home, []provider.Role{{Provider: "anthropic"}, {Provider: ""}}); err != nil {
+	if err := provider.RequireLogin(home, []provider.Role{{Provider: "anthropic"}, {Provider: "chatgpt"}}); err != nil {
 		t.Fatalf("saved logins: %v", err)
 	}
 	wantFailure(t, provider.RequireLogin(home, []provider.Role{{Provider: "anthropic"}, {Provider: "opencode-go"}}), 4,
