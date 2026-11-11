@@ -90,10 +90,7 @@ func TestExecutorHookRouteLeavesEveryOtherCommandLineAlone(t *testing.T) {
 func TestInstalledBinaryAnswersTheHookBeforeAnyOtherStartup(t *testing.T) {
 	// The program, as Claude Code starts it for every tool call: only the answer is printed,
 	// with no installation lookup, supervision or usage text, and a failing hook exits 2.
-	bin := filepath.Join(t.TempDir(), "kogen")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
+	bin := sharedCLI(t)
 	policy, root := hookFixture(t)
 	run := func(stdin string, args ...string) (int, string, string) {
 		cmd := exec.Command(bin, args...)

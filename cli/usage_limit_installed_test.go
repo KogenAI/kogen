@@ -22,6 +22,7 @@ func TestUsageLimitResumeInstalledRound3(t *testing.T) { usageLimitInstalled(t, 
 
 // Synthetic rate_limit events reproduce the historical error envelope, not a live account.
 func usageLimitInstalled(t *testing.T, limit int) {
+	t.Parallel()
 	usageLimitInstalledFrom(t, limit, repoRoot(t), testrelease.Shared(t, repoRoot(t)).Archive)
 }
 func usageLimitInstalledFrom(t *testing.T, limit int, root, archive string) {
@@ -304,6 +305,7 @@ func TestUsageLimitPackagingIsolationRound2(t *testing.T) { usageIsolation(t, 2)
 // that does not carry the current uncommitted source.
 func TestUsageLimitPackagingIsolationRound3(t *testing.T) { usageIsolation(t, 3) }
 func usageIsolation(t *testing.T, round int) {
+	t.Parallel()
 	release := testrelease.Shared(t, repoRoot(t))
 	defer release.CheckCheckout(t)
 	usageLimitInstalledFrom(t, round, release.Checkout, release.Archive)

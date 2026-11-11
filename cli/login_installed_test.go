@@ -214,10 +214,8 @@ func terminalLogin(t *testing.T, bin, home, provider, url string) {
 // Catches login custody of the built binary under pipes and a terminal: invalid UTF-8 saved as a
 // replacement key, a terminal not restored, an echoed key and changed saved credentials.
 func TestInstalledKeyLoginUnderPipesAndATerminal(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "kogen")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
+	t.Parallel()
+	bin := sharedCLI(t)
 	ran := map[string]int{}
 	for _, provider := range []string{"opencode-go", "anthropic", "openai-compatible"} {
 		url := ""

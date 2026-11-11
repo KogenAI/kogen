@@ -14,6 +14,7 @@ import (
 // rather than inferring its dependencies from the test binary.
 // It catches a release executable with unpinned or replaced components.
 func TestAssemblyUsesThePinnedComponents(t *testing.T) {
+	t.Parallel()
 	want := map[string]string{
 		"github.com/KogenAI/kogen-coordinator":  "",
 		"github.com/KogenAI/kogen-verification": "",

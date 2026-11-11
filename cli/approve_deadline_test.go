@@ -96,13 +96,25 @@ type approveSpec struct {
 
 func buildApproveCLI(t *testing.T, spec approveSpec) *approveCLI {
 	t.Helper()
+	return buildApproveCLIFrom(t, spec, sharedCLI(t))
+}
+
+// buildApproveCLIShortBound is buildApproveCLI for a binary whose step bound is
+// approveShortBound instead of 120 seconds, so the deadline tests need seconds, not minutes.
+func buildApproveCLIShortBound(t *testing.T, spec approveSpec) *approveCLI {
+	t.Helper()
+	return buildApproveCLIFrom(t, spec, shortBoundCLI(t))
+}
+
+func buildApproveCLIFrom(t *testing.T, spec approveSpec, built string) *approveCLI {
+	t.Helper()
 	prefix := t.TempDir()
 	bin := filepath.Join(prefix, "lib", "kogen", "bin", "kogen")
 	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
+	if err := copyExecutable(built, bin); err != nil {
+		t.Fatal(err)
 	}
 	// The install check needs a Node stand-in named by node-path and a Cucumber package folder.
 	install := filepath.Dir(filepath.Dir(bin))
@@ -410,26 +422,27 @@ func readPID(t *testing.T, path string) int {
 
 // ---- tests ----
 
-// Setup and the acceptance wrapper each take 65 seconds and succeed: together they exceed the
-// 120-second step bound, neither alone does, so the card is shown and the exact hash approves.
+// Setup and the acceptance wrapper each take 6 seconds and succeed: together they exceed the
+// step bound (6 seconds in the test binary, 120 in the product), neither alone does, so the card
+// is shown and the exact hash approves.
 func TestApproveDeadlineSplitCLI(t *testing.T) {
 	t.Parallel()
-	c := buildApproveCLI(t, approveSpec{
+	c := buildApproveCLIShortBound(t, approveSpec{
 		Setup:  []string{"sh ./setup.sh"},
 		Accept: "sh ./accept.sh",
 		Scripts: map[string]string{
-			"setup.sh":  "#!/bin/sh\necho run >> '@AUX@/setup-runs'\necho 'npm ci (an owned wait, nothing is installed)'\nsleep 65\n",
-			"accept.sh": "#!/bin/sh\necho run >> '@AUX@/accept-runs'\necho 'go build ./... (an owned wait, nothing is compiled)'\nsleep 65\ncp '@AUX@/green.ndjson' \"$KOGEN_ACCEPTANCE_REPORT\"\n",
+			"setup.sh":  "#!/bin/sh\necho run >> '@AUX@/setup-runs'\necho 'npm ci (an owned wait, nothing is installed)'\nsleep 6\n",
+			"accept.sh": "#!/bin/sh\necho run >> '@AUX@/accept-runs'\necho 'go build ./... (an owned wait, nothing is compiled)'\nsleep 6\ncp '@AUX@/green.ndjson' \"$KOGEN_ACCEPTANCE_REPORT\"\n",
 		},
 	})
 	before := c.gitState()
 
-	card := c.card(5 * time.Minute)
+	card := c.card(2 * time.Minute)
 	if card.Exit != 5 {
 		t.Fatalf("card exit %d, want 5\n%s\n%s", card.Exit, card.Stdout, card.Stderr)
 	}
-	if card.Elapsed < 120*time.Second {
-		t.Fatalf("the card took %s: the fixture must exceed the 120-second step bound overall", card.Elapsed)
+	if card.Elapsed < approveShortBound {
+		t.Fatalf("the card took %s: the fixture must exceed the %s step bound overall", card.Elapsed, approveShortBound)
 	}
 	requireLacks(t, "the card", card.Stdout+card.Stderr, "timed out", "step_timeout", "git add")
 	hash := fullHashRe.FindString(card.Stdout)
@@ -483,12 +496,12 @@ func TestApproveDeadlineSplitCLI(t *testing.T) {
 	}
 }
 
-// A setup step that blocks is stopped by its own 120-second bound and refused as a step timeout,
+// A setup step that blocks is stopped by its own step bound (approveShortBound here) and refused as a step timeout,
 // naming the steps that ran before it; nothing else runs, nothing is approved and nothing the
 // step started survives.
 func TestApproveDeadlineHungCLI(t *testing.T) {
 	t.Parallel()
-	c := buildApproveCLI(t, approveSpec{
+	c := buildApproveCLIShortBound(t, approveSpec{
 		Setup:  []string{"sh ./setup.sh"},
 		Accept: "sh ./accept.sh",
 		Scripts: map[string]string{
@@ -499,12 +512,12 @@ func TestApproveDeadlineHungCLI(t *testing.T) {
 	})
 	before := c.gitState()
 
-	res := c.card(4 * time.Minute)
+	res := c.card(2 * time.Minute)
 	if res.Exit != 3 {
 		t.Fatalf("exit %d, want the refusal exit 3\n%s\n%s", res.Exit, res.Stdout, res.Stderr)
 	}
-	if res.Elapsed < 115*time.Second || res.Elapsed > 200*time.Second {
-		t.Errorf("the refusal took %s: the unchanged 120-second step bound plus teardown", res.Elapsed)
+	if res.Elapsed < approveShortBound-time.Second || res.Elapsed > approveShortBound+80*time.Second {
+		t.Errorf("the refusal took %s: the %s step bound plus teardown", res.Elapsed, approveShortBound)
 	}
 	requireContains(t, "the refusal", res.Stdout, "environment/step_timeout", "setup-1", "timed out", "hung-setup-stderr-diagnostic", "snapshot: passed in", "materialize: passed in", "Not run: acceptance")
 	requireLacks(t, "the refusal", res.Stdout, "git add", "status 143", "setup_failed")
@@ -516,7 +529,7 @@ func TestApproveDeadlineHungCLI(t *testing.T) {
 	_, rec := c.readEvidence(res.Stdout)
 	setup := rec.step("setup-1")
 	if setup == nil || setup.TimedOut == nil || !*setup.TimedOut || setup.Status != "timed_out" || setup.DurationMS == nil ||
-		*setup.DurationMS < 119000 || *setup.DurationMS > 150000 {
+		*setup.DurationMS < (approveShortBound-time.Second).Milliseconds() || *setup.DurationMS > (approveShortBound+30*time.Second).Milliseconds() {
 		t.Fatalf("setup-1 evidence = %+v", setup)
 	}
 	if rec.Failure.Step != "setup-1" || !rec.Failure.TimedOut || rec.Failure.Reason != "step_timeout" {
@@ -559,6 +572,7 @@ func TestApproveDeadlineHungCLI(t *testing.T) {
 // A refused command's own stdout and stderr reach the refusal and the retained evidence: an
 // acceptance exit 134 without a report, a failing setup and a failing check inside the wrapper.
 func TestApproveFailureOutputCLI(t *testing.T) {
+	t.Parallel()
 	const out, errm = "command-stdout-diagnostic", "command-stderr-diagnostic"
 	emit := func(prefix string) string {
 		return prefix + "echo '" + out + "'\necho '" + errm + "' >&2\n"
@@ -657,6 +671,7 @@ var displayedStepRe = regexp.MustCompile(`(?m)^\s+(\S+): (?:passed in|failed wit
 // terminal statuses; steps never reached are only named. It is not readiness evidence and
 // neither it nor a later invocation disturbs other evidence.
 func TestApproveFailureEvidenceCLI(t *testing.T) {
+	t.Parallel()
 	setupOK := "#!/bin/sh\necho run >> '@AUX@/setup-runs'\nsleep 1\n"
 	for _, tc := range []struct {
 		name     string
@@ -793,6 +808,7 @@ func TestApproveFailureEvidenceCLI(t *testing.T) {
 // Secrets are masked before the diagnostic is cut to its bounds, so no bound can split one;
 // the existing 16 KiB display, 1 MiB record and line policy remain and keep both ends.
 func TestApproveFailureBoundsCLI(t *testing.T) {
+	t.Parallel()
 	const (
 		envSecret    = "ENVSECRET-9f1c27ab55d0"
 		credSecret   = "CREDSECRET-4be2c9017d3a"
