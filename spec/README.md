@@ -50,7 +50,7 @@ To read it, start with chapter 09 (the whole command surface). Then follow one I
 cd spec && npm ci && sh check.sh            # Node 24; npm ci only once
 ```
 
-`KOGEN_SPEC_NODE_MODULES` can point at an existing `node_modules` instead of running `npm ci`. `check.sh` does the following:
+`KOGEN_SPEC_NODE_MODULES` can point at an existing `node_modules` instead of running `npm ci`. The independent Quint runs go in parallel lanes (`KOGEN_SPEC_JOBS`, default half the CPU count, 2 to 4); the output keeps the order below and the first failure in that order decides the result. `check.sh` does the following:
 
 1. Parses every feature with `@cucumber/gherkin` 42.0.1 (scenarios under `Rule:` included; a scenario that compiles to no test case fails).
 2. Checks that every scenario has a requirement tag, that every requirement has a scenario, that every requirement id used in prose and this README is defined, and that every Quint name cited in prose is a conjunct of that model's `Safety`.
