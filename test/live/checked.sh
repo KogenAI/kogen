@@ -55,3 +55,10 @@ claude_route_outputs_clean() (
     -exec sh -c 'grep -IlF "provider login chatgpt" "$@"; [ "$?" -le 1 ]' sh {} +) || exit 1
   [ -z "$matches" ]
 )
+
+# no_ai_attribution: the new commit carries no AI attribution. The subject is the Intent title and may
+# name a product (ChatGPT, Claude, Codex) the change is about; attribution lives in the body.
+no_ai_attribution() {
+  ! git log -1 --format=%B | grep -qiE "co-authored-by|generated (with|by)" &&
+    ! git log -1 --format=%b | grep -qiE "claude|chatgpt|openai|codex"
+}

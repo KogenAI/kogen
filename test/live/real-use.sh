@@ -201,7 +201,7 @@ say "ok: the project's own acceptance command and tests pass without Kogen"
 title=$(sed -n '1s/^# //p' ".kogen/intents/$SLUG/intent.md")
 check '[ "$(git log -1 --format=%s)" = "$title" ]' "commit subject is the Intent title"
 check '[ "$(git log -1 --format=%b | grep -c .)" = 1 ] && git log -1 --format=%b | grep -qx "Kogen-Intent: $SLUG"' "the only trailer is Kogen-Intent: $SLUG"
-check '! git log -1 --format=%B | grep -qiE "co-authored-by|generated with|claude|chatgpt|openai|codex"' "no AI attribution"
+check 'no_ai_attribution' "no AI attribution"
 if [ "$(git config --get commit.gpgsign || true)" = "true" ]; then
   check 'git cat-file commit HEAD | grep -q "^gpgsig"' "signed, as this host's Git configuration says"
 else

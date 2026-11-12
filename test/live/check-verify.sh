@@ -64,4 +64,17 @@ wait "$child" 2>/dev/null || :
   printf '%s\n' 'Next: kogen provider login chatgpt' > "$run_dir/provider-list.out"
   if claude_route_outputs_clean; then fail "an actual runtime hint was missed"; fi
 )
+# A product name in the Intent title is not attribution (12 Nov: "Refuse unreadable ChatGPT login
+# in provider list" failed the release); an attribution trailer or "generated with" line is.
+(
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+  repo=$(mktemp -d); trap 'rm -rf "$repo"' EXIT; cd "$repo"
+  git init -q; git config user.name t; git config user.email t@example.invalid; git config commit.gpgsign false
+  git commit -q --allow-empty -m "Refuse unreadable ChatGPT login in provider list" -m "Kogen-Intent: unreadable-login"
+  no_ai_attribution || fail "a product name in the subject was taken for attribution"
+  git commit -q --allow-empty -m "Add login check" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+  if no_ai_attribution; then fail "a Co-Authored-By trailer was missed"; fi
+  git commit -q --allow-empty -m "Add login check" -m "Generated with Claude Code"
+  if no_ai_attribution; then fail "a generated-with line was missed"; fi
+)
 echo "check-verify: ok"
