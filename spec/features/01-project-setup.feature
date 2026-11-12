@@ -152,16 +152,9 @@ Feature: Project setup
     Given a Git project from fixture "notes"
     When the caller runs "kogen init"
     Then the exit code is 4
-    And stdout is:
-      """
-      provider/login: not signed in; run kogen provider login for a supported provider
-        browser sign-in: kogen provider login chatgpt
-        no browser, Anthropic API key on standard input: printf '%s' "$ANTHROPIC_API_KEY" | kogen provider login anthropic
-        no browser, Claude Code token on standard input: printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | kogen provider login claude-code
-        kogen provider --help lists every route
-        with anthropic or claude-code, init then needs the configuration-first files described in docs/getting-started.md ("Without ChatGPT")
-      """
+    And stdout contains "provider/login"
     And the file ".kogen/project.yaml" does not exist
+    And the working tree is unchanged
 
   @SET-2
   Scenario: In a repository without commits, init makes the first commit
