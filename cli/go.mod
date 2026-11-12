@@ -9,7 +9,7 @@ require (
 	github.com/KogenAI/kogen-loop v0.0.0
 	github.com/KogenAI/kogen-review v0.0.0-20261112070232-e7f9de12cb9b
 	github.com/KogenAI/kogen-setup v0.0.0-20261112083410-2aed318282ce
-	github.com/KogenAI/kogen-shaping v0.0.0-20261112115854-724315edf040
+	github.com/KogenAI/kogen-shaping v0.0.0-20261112153856-3d5c9e2909a1
 	github.com/KogenAI/kogen-verification v0.0.0-20261112083508-b8bbe50705d1
 )
 
