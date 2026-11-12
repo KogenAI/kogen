@@ -1,1 +1,0 @@
-Fresh packaged release; strict non-live runner, selectors 06-reviewing.feature:33 and :44, run 1: 2 scenarios passed, 30 steps passed (1m 20.661s).
