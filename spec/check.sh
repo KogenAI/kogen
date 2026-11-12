@@ -29,8 +29,9 @@ trap 'rm -rf "$T"' EXIT
 descendants() { for c in $(pgrep -P "$1" 2>/dev/null); do echo "$c"; descendants "$c"; done; }
 stop_all() {
   trap '' INT TERM HUP
+  : >"$T/fail.0" # no lane starts another task
   all=""
-  for p in $(jobs -p); do all="$all $p $(descendants "$p")"; done
+  for p in $LANES; do all="$all $p $(descendants "$p")"; done
   # shellcheck disable=SC2086
   [ -z "$all" ] || kill $all 2>/dev/null || true
   wait 2>/dev/null || true
@@ -38,6 +39,7 @@ stop_all() {
 }
 trap stop_all INT TERM HUP
 N=0
+LANES="" # the lane pids: dash's jobs -p lists nothing inside a trap, so they are kept here
 
 # task NAME CMD...: CMD is a shell function; its output and status go to $T/N.out and $T/N.rc.
 add() { N=$((N + 1)); eval "task_$N() { $*; }"; }
@@ -114,7 +116,7 @@ lane() {
   done
 }
 l=1
-while [ "$l" -le "$JOBS" ] && [ "$l" -le "$N" ]; do lane "$l" & l=$((l + 1)); done
+while [ "$l" -le "$JOBS" ] && [ "$l" -le "$N" ]; do lane "$l" & LANES="$LANES $!"; l=$((l + 1)); done
 wait
 
 n=1
