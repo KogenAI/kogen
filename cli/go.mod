@@ -5,7 +5,7 @@ go 1.27.2
 require (
 	github.com/KogenAI/kogen-build v0.0.0-20261113022426-ba5ac125300a
 	github.com/KogenAI/kogen-coordinator v0.0.0-20261113021958-d5efab69ee6b
-	github.com/KogenAI/kogen-executor v0.0.0-20261113023227-61a48f154880
+	github.com/KogenAI/kogen-executor v0.0.0-20261113140126-0d2a0b86a6d1
 	github.com/KogenAI/kogen-loop v0.0.0
 	github.com/KogenAI/kogen-review v0.0.0-20261113093438-401eb24058ff
 	github.com/KogenAI/kogen-setup v0.0.0-20261113030035-7ffe554b3341

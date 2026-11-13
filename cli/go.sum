@@ -2,8 +2,8 @@ github.com/KogenAI/kogen-build v0.0.0-20261113022426-ba5ac125300a h1:bFY58liHjbJ
 github.com/KogenAI/kogen-build v0.0.0-20261113022426-ba5ac125300a/go.mod h1:QX1mRDFyuawINnQEYh/8cpREtRc8ruLsgjBYuDTs4KA=
 github.com/KogenAI/kogen-coordinator v0.0.0-20261113021958-d5efab69ee6b h1:LpDGY8GKrDv41TzV4xy2JSsneA/xK8rhj4oE+k9PWZk=
 github.com/KogenAI/kogen-coordinator v0.0.0-20261113021958-d5efab69ee6b/go.mod h1:SR9BBvnCfFrNHnL7J3D9lCicIubivffh21/q/4TXIFk=
-github.com/KogenAI/kogen-executor v0.0.0-20261113023227-61a48f154880 h1:Dr4RI7KloW4i12RRWwqsMK23X5M+w+6adqSdJKvxYks=
-github.com/KogenAI/kogen-executor v0.0.0-20261113023227-61a48f154880/go.mod h1:1aw+rhdSBMEagexTyXdL7aRCYZO9Vj1zTx4c88AI+hE=
+github.com/KogenAI/kogen-executor v0.0.0-20261113140126-0d2a0b86a6d1 h1:i2zKMGFIK1W6wz4k52MAV7EBM/oxXrhx4cdtWyB8VGI=
+github.com/KogenAI/kogen-executor v0.0.0-20261113140126-0d2a0b86a6d1/go.mod h1:1aw+rhdSBMEagexTyXdL7aRCYZO9Vj1zTx4c88AI+hE=
 github.com/KogenAI/kogen-review v0.0.0-20261113093438-401eb24058ff h1:8sv8T3OGTDREa1zOKtHuGygA71dsiUtG5gtId3osCxE=
 github.com/KogenAI/kogen-review v0.0.0-20261113093438-401eb24058ff/go.mod h1:GerfruyyxJ+W0DGad6OzxbMVvTZKmakjYcXwXwccjmo=
 github.com/KogenAI/kogen-setup v0.0.0-20261113030035-7ffe554b3341 h1:mXdC8vrtBbAWfowB+cwnmJMMA9LPei0LW+7Ebw8Gg6E=
