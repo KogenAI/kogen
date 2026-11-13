@@ -64,7 +64,7 @@ func (s *CacheState) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Valid is the checkpoint check: IDs are 1..256 bytes (older checkpoints may hold longer
+// Valid is the checkpoint check: IDs are 1..256 bytes (a saved checkpoint may hold longer
 // identities than MaxCacheID; the wire then carries a stable 64-character digest of it).
 func (s CacheState) Valid() bool {
 	return len(s.ID) >= 1 && len(s.ID) <= 256 && len(s.Response) <= 256

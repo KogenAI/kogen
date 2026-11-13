@@ -291,7 +291,7 @@ func (s *recordingServer) RoundTrip(r *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
-func TestLCredOriginLegacy(t *testing.T) {
+func TestLCredOriginUnboundKey(t *testing.T) {
 	t.Parallel()
 	tls := newKeyFakeTLS(t, true, jsonAnswer(200, goText("no")))
 	plain := newKeyFake(t, jsonAnswer(200, goText("no")))
@@ -325,7 +325,7 @@ func TestLCredOriginLegacy(t *testing.T) {
 		}
 	}
 	if len(tls.requests())+len(plain.requests())+rec.count() != 0 {
-		t.Fatal("a request was sent with a legacy key")
+		t.Fatal("a request was sent with an unbound key")
 	}
 }
 

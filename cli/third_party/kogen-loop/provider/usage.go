@@ -145,7 +145,7 @@ func rawFrom(u map[string]any) rawUsage {
 	}
 }
 
-// compatible is the legacy total of a validated usage object: missing counts are zero.
+// compatible is the total of a validated usage object: missing counts are zero.
 func compatible(u map[string]any) Usage {
 	num := func(path ...string) int {
 		var cur any = u

@@ -54,7 +54,7 @@ func plaintextLoopback(origin string) bool {
 
 // compatibleToken is the key to send to an openai-compatible host, "" for a keyless host.
 // The saved key belongs to the origin it was logged in at: a different destination, a
-// plaintext destination or a legacy key without an origin sends nothing. Diagnostics name
+// plaintext destination or an unbound key without an origin sends nothing. Diagnostics name
 // origins only.
 func (k *call) compatibleToken() (string, error) {
 	dest, err := originOf(k.baseURL)

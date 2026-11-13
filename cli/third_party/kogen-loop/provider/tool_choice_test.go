@@ -159,3 +159,22 @@ func TestToolChoiceUnsupported(t *testing.T) {
 		}
 	}
 }
+
+// An omitted or invalid provider is refused by Render and Respond; no route is selected for it.
+func TestOmittedOrInvalidProviderIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"", "nobody"} {
+		e, _, requests := tcRoutes[0].setup(t)
+		req := tcRequest(Role{Provider: name, Model: "m", Effort: "e"}, true)
+		want := "unknown provider " + name
+		if _, err := e.c.Render(req); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Render %q: %v", name, err)
+		}
+		if _, err := tcRespondWith(t, e, req); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Respond %q: %v", name, err)
+		}
+		if n := len(requests()); n != 0 {
+			t.Errorf("%q: %d transport attempts", name, n)
+		}
+	}
+}
