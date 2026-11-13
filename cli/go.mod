@@ -3,14 +3,14 @@ module kogen
 go 1.27.2
 
 require (
-	github.com/KogenAI/kogen-build v0.0.0-20261112231933-8047f608ab74
-	github.com/KogenAI/kogen-coordinator v0.0.0-20261113010717-f923a8a39954
-	github.com/KogenAI/kogen-executor v0.0.0-20261113000446-8024c0614b51
+	github.com/KogenAI/kogen-build v0.0.0-20261113022426-ba5ac125300a
+	github.com/KogenAI/kogen-coordinator v0.0.0-20261113021958-d5efab69ee6b
+	github.com/KogenAI/kogen-executor v0.0.0-20261113023227-61a48f154880
 	github.com/KogenAI/kogen-loop v0.0.0
 	github.com/KogenAI/kogen-review v0.0.0-20261112223424-214cc9e8bbbc
-	github.com/KogenAI/kogen-setup v0.0.0-20261113005301-2349f50a5c15
-	github.com/KogenAI/kogen-shaping v0.0.0-20261113000534-600f67c6587c
-	github.com/KogenAI/kogen-verification v0.0.0-20261112220532-7f1b6ce64450
+	github.com/KogenAI/kogen-setup v0.0.0-20261113030035-7ffe554b3341
+	github.com/KogenAI/kogen-shaping v0.0.0-20261113031759-6622e5e20bcb
+	github.com/KogenAI/kogen-verification v0.0.0-20261113024304-b1572e671c95
 )
 
 require golang.org/x/text v0.43.0 // indirect
