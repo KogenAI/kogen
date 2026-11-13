@@ -7,9 +7,9 @@ require (
 	github.com/KogenAI/kogen-coordinator v0.0.0-20261113021958-d5efab69ee6b
 	github.com/KogenAI/kogen-executor v0.0.0-20261113023227-61a48f154880
 	github.com/KogenAI/kogen-loop v0.0.0
-	github.com/KogenAI/kogen-review v0.0.0-20261113053800-5395037611ae
+	github.com/KogenAI/kogen-review v0.0.0-20261113093438-401eb24058ff
 	github.com/KogenAI/kogen-setup v0.0.0-20261113030035-7ffe554b3341
-	github.com/KogenAI/kogen-shaping v0.0.0-20261113072248-1b25a99cdbea
+	github.com/KogenAI/kogen-shaping v0.0.0-20261113104330-849a98aaa63d
 	github.com/KogenAI/kogen-verification v0.0.0-20261113024304-b1572e671c95
 )
 
