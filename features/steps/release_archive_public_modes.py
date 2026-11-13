@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import pwd
 from pathlib import Path
 import shlex
 import shutil
@@ -168,9 +169,22 @@ def validate_seed(seed, locks, records):
     return rows
 
 
+def default_donor(records):
+    # The suite runs with HOME pointed at a disposable directory, so $HOME/.npm may be empty;
+    # the account's own cache (from the user database, which HOME does not redirect) is the same
+    # read-only qualification source. First location holding every lock-pinned blob wins.
+    homes = [Path.home()]
+    try:
+        homes.append(Path(pwd.getpwuid(os.getuid()).pw_dir))
+    except KeyError:
+        pass
+    donors = [h / '.npm/_cacache' for h in homes]
+    return next((d for d in donors if all((d / rel).is_file() for rel in records)), donors[0])
+
+
 def warm_cache(repo, donor=None, store=None):
     identity, locks, records = lock_inputs(repo)
-    donor = donor if donor is not None else Path.home() / '.npm/_cacache'
+    donor = donor if donor is not None else default_donor(records)
     # Stable across disposable scratch TMPDIRs; never a directory in an account home.
     store = store if store is not None else Path('/tmp') / ('kogen-public-npm-' + str(os.getuid()))
     private_directory(store)
@@ -236,6 +250,17 @@ def cache_controls(which):
         seed, _ = warm_cache(repo)
         seed_before = cache_snapshot(seed)
         identity, locks, records = lock_inputs(repo)
+        # The self-build suite's HOME is empty and no seed exists yet: preparation must still find the content.
+        saved_home = os.environ.get('HOME')
+        os.environ['HOME'] = str(root / 'empty-home')
+        try:
+            fresh, made = warm_cache(repo, store=root / 'fresh-store')
+        finally:
+            if saved_home is None:
+                del os.environ['HOME']
+            else:
+                os.environ['HOME'] = saved_home
+        assert made and cache_snapshot(fresh) == seed_before, 'empty-HOME preparation differs from the seed'
         reused, prepared = warm_cache(repo, donor=root / 'unavailable-donor')
         assert reused == seed and not prepared, 'seed reuse attempted preparation'
         cache = root / 'cache'
