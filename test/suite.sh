@@ -37,7 +37,7 @@ const logs = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-suite-'));
 const layers = [
   ['go', path.join(root, 'cli'), 'go', ['test', '-race', '-count=1', './...']],
   ['spec', path.join(root, 'spec'), 'sh', ['check.sh']],
-  ['live-helper', root, 'sh', ['test/live/check-verify.sh']],
+  ['live-helper', root, 'sh', ['-c', 'sh test/live/check-verify.sh && sh test/live/check-journey.sh']],
   ['acceptance', path.join(root, 'test/acceptance'), 'npm', ['test']],
 ];
 const groups = new Set();

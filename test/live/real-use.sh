@@ -7,7 +7,12 @@
 # <project> names test/live/projects/<project>.sh, or is the path of such a file kept elsewhere (the
 # external acceptance check on other projects). It sets REPO, SLUG, REQUEST, configure(),
 # verify_without_kogen() and optionally INTERRUPT_AFTER (seconds to wait for the first Build to start, default 60).
+# It may also define prepare_repo (run before REPO is cloned; nonzero stops the run as blocked) and
+# JOURNEY_FILE (the file the final commit must hold, default the Intent's acceptance.feature).
 # <archive-url> is the release archive for this platform (https:// or file://).
+#
+# The run records its stages (shape, approve, build, verify, review, commit) through journey.sh in
+# $run_dir/journey.tsv and concludes with $run_dir/journey-result.txt (see docs/live-release-journey.md).
 #
 # Step 2 is the real browser login: it runs `kogen provider login chatgpt` and waits for the
 # person at the browser. With KOGEN_LIVE_CREDENTIALS=<command> set, that command writes the
@@ -42,6 +47,10 @@ log="$run_dir/transcript.txt"
 say() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$log"; }
 fail() { say "FAIL: $*"; exit 1; }
 check() { if eval "$1"; then say "ok: $2"; else fail "$2"; fi; }
+. "$here/journey.sh"
+# A failure while a stage is open records that stage as failed before the run stops.
+fail() { say "FAIL: $*"; if [ -n "${journey_open:-}" ]; then journey_stage "$journey_open" failed; fi; exit 1; }
+journey_open=
 
 # A fresh user HOME that keeps the host's own Git configuration (identity, hooks, signing).
 real_home=$HOME
@@ -50,6 +59,9 @@ mkdir -p "$HOME"
 [ -f "$real_home/.gitconfig" ] && printf '[include]\n\tpath = %s/.gitconfig\n' "$real_home" > "$HOME/.gitconfig"
 [ -d "$real_home/.gnupg" ] && export GNUPGHOME="${GNUPGHOME:-$real_home/.gnupg}"
 say "run folder $run_dir, project $project, archive $url, $(uname -s)-$(uname -m)"
+journey_begin
+# A project whose source needs authenticated access prepares it first; a blocked source stops the run.
+if type prepare_repo >/dev/null 2>&1; then run_logged prepare_repo; fi
 
 # 1. Download, install, version from /.
 curl -fsSL -o "$run_dir/kogen.tar.gz" "$url"
@@ -126,6 +138,7 @@ say "configured: $(git log -1 --format='%h %s')"
 
 # 4. Shape; answer any question with its recommended option.
 printf '%s\n' "$REQUEST" > "$run_dir/request.md"
+journey_open=shape
 set +e
 kogen intent shape "$SLUG" "$run_dir/request.md" > "$run_dir/shape.out" 2>> "$log"; code=$?
 while [ $code -eq 5 ] && grep -q '^Questions for' "$run_dir/shape.out"; do
@@ -138,8 +151,10 @@ set -e
 cat "$run_dir/shape.out" >> "$log"
 [ $code -eq 0 ] || fail "shaping ended with exit $code"
 check 'grep -q "fail now" "$run_dir/shape.out"' "the Intent is ready with its scenarios failing"
+journey_stage shape ok; journey_open=
 
 # 5. Read the Intent and step files, approve with the card's hash.
+journey_open=approve
 kogen intent approve "$SLUG" > "$run_dir/card.out" || [ $? -eq 5 ]
 say "read the approval card in card.out"
 # Keep the exact reviewed files separate from command output. They can
@@ -151,8 +166,10 @@ done
 say "read the Intent and step files in reviewed-approval.txt"
 hash=$(sed -n "s/^  kogen intent approve $SLUG //p" "$run_dir/card.out")
 run_logged kogen intent approve "$SLUG" "$hash"
+journey_stage approve ok; journey_open=
 
 # 6. Build, interrupt it, discard the edits.
+journey_open=build
 previous_runs="$run_dir/previous-build-runs.txt"
 for output in .kogen/local/runs/*/log.jsonl; do
   [ ! -f "$output" ] || printf '%s\n' "$output"
@@ -186,7 +203,9 @@ if [ "$route" = claude-code ]; then
 else
   check 'grep -q "\"event\":\"tool_call\"" .kogen/local/runs/$run/log.jsonl' "at least one tool call ran with the default configuration"
 fi
+journey_stage build ok; journey_open=review
 check 'grep -q "^  review: approved" "$run_dir/build2.out"' "the Build landed with review: approved"
+journey_stage review ok; journey_open=
 if grep -q '"green":false' ".kogen/local/runs/$run/log.jsonl" || grep -q '"verdict":"changes"' ".kogen/local/runs/$run/log.jsonl"; then
   say "repair: yes (a failing pass or a changes review was repaired)"
 else
@@ -196,8 +215,10 @@ fi
 # 8. Without Kogen: the project's own acceptance command and tests on the new commit.
 new=$(git rev-parse HEAD)
 say "new commit $new"
+journey_open=verify
 verify_project
 say "ok: the project's own acceptance command and tests pass without Kogen"
+journey_stage verify ok; journey_open=commit
 title=$(sed -n '1s/^# //p' ".kogen/intents/$SLUG/intent.md")
 check '[ "$(git log -1 --format=%s)" = "$title" ]' "commit subject is the Intent title"
 check '[ "$(git log -1 --format=%b | grep -c .)" = 1 ] && git log -1 --format=%b | grep -qx "Kogen-Intent: $SLUG"' "the only trailer is Kogen-Intent: $SLUG"
@@ -207,6 +228,7 @@ if [ "$(git config --get commit.gpgsign || true)" = "true" ]; then
 else
   check '! git cat-file commit HEAD | grep -q "^gpgsig"' "unsigned, as this host's Git configuration says"
 fi
+journey_stage commit ok; journey_open=
 git show --stat --format='%H %s' HEAD >> "$log"
 cat .kogen/local/runs/$run/review-*.json > "$run_dir/reviewed-result.txt"
 say "read the saved review(s) in reviewed-result.txt"
@@ -244,4 +266,5 @@ run_logged kogen uninstall
 hash -r
 check '[ "$(command -v kogen || true)" != "$HOME/.local/bin/kogen" ] && [ ! -e "$HOME/.local/bin/kogen" ] && [ ! -e "$HOME/.local/lib/kogen" ]' "kogen is gone"
 check '[ -f "$HOME/.kogen/credentials/$route.json" ] && [ -f .kogen/project.yaml ] && [ "$(git rev-parse HEAD)" = "$new" ]' "the project and ~/.kogen are intact"
+journey_conclude "$start" "${JOURNEY_FILE:-.kogen/intents/$SLUG/acceptance.feature}"
 say "REL-1 passed for $project"
