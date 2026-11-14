@@ -8,8 +8,8 @@ github.com/KogenAI/kogen-review v0.0.0-20261113154643-47c694035e56 h1:5KPEgXWH0D
 github.com/KogenAI/kogen-review v0.0.0-20261113154643-47c694035e56/go.mod h1:GerfruyyxJ+W0DGad6OzxbMVvTZKmakjYcXwXwccjmo=
 github.com/KogenAI/kogen-setup v0.0.0-20261113030035-7ffe554b3341 h1:mXdC8vrtBbAWfowB+cwnmJMMA9LPei0LW+7Ebw8Gg6E=
 github.com/KogenAI/kogen-setup v0.0.0-20261113030035-7ffe554b3341/go.mod h1:4THbjkp7PQq98oZPWsuDc5jJUpabsHaQzIwXIbKZcUg=
-github.com/KogenAI/kogen-shaping v0.0.0-20261113155410-86704c972790 h1:x4zB8Akv05/239Ol4Kw+dtJ1+ap+q9XxqGegnbHrd6o=
-github.com/KogenAI/kogen-shaping v0.0.0-20261113155410-86704c972790/go.mod h1:F+AcLN1k7d7RRegyA7xqzjydHCKUwd8vSSitpaGnTeI=
+github.com/KogenAI/kogen-shaping v0.0.0-20261114225710-a73489f9cdd8 h1:eghINB4+VYgUdbfCErm5Tr7MEO7O7GSF4VqwkjyXSDA=
+github.com/KogenAI/kogen-shaping v0.0.0-20261114225710-a73489f9cdd8/go.mod h1:F+AcLN1k7d7RRegyA7xqzjydHCKUwd8vSSitpaGnTeI=
 github.com/KogenAI/kogen-verification v0.0.0-20261113024304-b1572e671c95 h1:SJyKj0f9WW9rH9hozZ/j0ez7uuJy0IQOQr2pxpHCJ1s=
 github.com/KogenAI/kogen-verification v0.0.0-20261113024304-b1572e671c95/go.mod h1:b3TIpodtSQnpvmfgd8lXd5PtiNNn4Y/fQM+IsTj8tQA=
 golang.org/x/text v0.43.0 h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=
