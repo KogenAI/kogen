@@ -93,6 +93,10 @@ type Direct struct {
 	Observer provider.Observer // nil: none
 	CacheID  string            // one cache identity per conversation (kept across rounds)
 	Cache    *provider.Cache
+	// Budget, when not nil, is the stage's request budget shared by every request Direct
+	// sends: the normal request of each round and every condensation summarization request.
+	// Nil keeps today's behavior.
+	Budget *provider.RequestBudget
 	// Condensed, when set, is told about each condensation before the condensed request is sent.
 	// A condensation that fails after sending at least one summarization request is told once,
 	// before Request returns its unchanged error, with Failed true, the requests sent, the summed
@@ -120,7 +124,7 @@ func (d *Direct) Request(ctx context.Context, r Request) (*provider.Response, []
 	}
 	resp, err := client.Respond(ctx, d.Session, provider.Request{
 		Role: r.Role, Instructions: r.Instructions, Input: sent, Tools: r.Tools,
-		CacheID: d.CacheID, Cache: d.Cache,
+		CacheID: d.CacheID, Cache: d.Cache, Budget: d.Budget,
 	}, d.Observer)
 	if err != nil {
 		return nil, nil, err

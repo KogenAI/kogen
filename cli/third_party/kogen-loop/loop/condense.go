@@ -329,7 +329,7 @@ func (c *condenser) summaryRequest(prompt string) provider.Request {
 	return provider.Request{
 		Role: c.r.Role, Instructions: summaryInstructions, Tools: []any{},
 		Input:   []any{map[string]any{"role": "user", "content": prompt}},
-		CacheID: c.cacheID, Cache: c.d.Cache,
+		CacheID: c.cacheID, Cache: c.d.Cache, Budget: c.d.Budget,
 	}
 }
 

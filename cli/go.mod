@@ -3,7 +3,7 @@ module kogen
 go 1.27.2
 
 require (
-	github.com/KogenAI/kogen-build v0.0.0-20261113161222-fe1cb3251029
+	github.com/KogenAI/kogen-build v0.0.0-20261113234604-1ed3d0ed6cc8
 	github.com/KogenAI/kogen-coordinator v0.0.0-20261113145033-09a169cc6730
 	github.com/KogenAI/kogen-executor v0.0.0-20261113140126-0d2a0b86a6d1
 	github.com/KogenAI/kogen-loop v0.0.0

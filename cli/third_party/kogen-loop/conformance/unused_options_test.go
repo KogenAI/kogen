@@ -22,7 +22,6 @@ func TestUnusedOptionsRemoved(t *testing.T) {
 		field string
 	}{
 		{reflect.TypeOf(provider.Request{}), "AnthropicCacheTTL"},
-		{reflect.TypeOf(provider.Request{}), "Budget"},
 		{reflect.TypeOf(loop.Direct{}), "Policy"},
 		{reflect.TypeOf(loop.Round{}), "StopAfterTerminal"},
 		{reflect.TypeOf(loop.SessionConfig{}), "CacheID"},
@@ -30,6 +29,10 @@ func TestUnusedOptionsRemoved(t *testing.T) {
 		if _, ok := c.typ.FieldByName(c.field); ok {
 			t.Errorf("%s.%s still exists", c.typ, c.field)
 		}
+	}
+	// Request.Budget is the stage's *provider.RequestBudget; the removed option was a duration.
+	if f, ok := reflect.TypeOf(provider.Request{}).FieldByName("Budget"); ok && f.Type != reflect.TypeOf((*provider.RequestBudget)(nil)) {
+		t.Errorf("provider.Request.Budget has type %s, want *provider.RequestBudget", f.Type)
 	}
 	for _, c := range []struct {
 		typ   reflect.Type

@@ -40,6 +40,11 @@ func renderMessages(info Info, req Request, id string, input []any) (rendered, e
 		body["thinking"] = map[string]any{"type": p.Settings.Reasoning}
 		body["max_tokens"] = p.Limits.Output
 	}
+	if c := req.Budget.outputCeiling(); c > 0 {
+		if cur, _ := body["max_tokens"].(int); c < cur {
+			body["max_tokens"] = c
+		}
+	}
 	if len(req.Tools) > 0 {
 		tools := make([]any, len(req.Tools))
 		for i, t := range req.Tools {

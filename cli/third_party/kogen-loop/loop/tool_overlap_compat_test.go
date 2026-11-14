@@ -164,12 +164,12 @@ func TestToolOverlapCompatibility(t *testing.T) {
 			want []string
 		}{
 			{Request{}, []string{"Owner", "Role", "Instructions", "Input", "Tools"}},
-			{Direct{}, []string{"Client", "Session", "Observer", "CacheID", "Cache", "Condensed", "terminal"}},
+			{Direct{}, []string{"Client", "Session", "Observer", "CacheID", "Cache", "Budget", "Condensed", "terminal"}},
 			{Round{}, []string{"Owner", "Role", "Instructions", "Definitions", "Tools", "Terminal"}},
 			{Hooks{}, []string{"BeforeRequest", "AfterResponse", "BeforeCall", "HandleCall", "AfterCall"}},
 			{Handled{}, []string{"Handled", "Output", "Terminal"}},
 			{Result{}, []string{"Ending", "Terminal", "Input", "Response", "Requests"}},
-			{provider.Request{}, []string{"Role", "Instructions", "Input", "Tools", "ToolChoice", "RequireTool", "Single", "CacheID", "Scope", "Cache", "Context"}},
+			{provider.Request{}, []string{"Role", "Instructions", "Input", "Tools", "ToolChoice", "RequireTool", "Single", "CacheID", "Scope", "Cache", "Context", "Budget"}},
 			{provider.Response{}, []string{"Items", "Usage", "Known", "UsageState", "ID", "Model", "Effort", "CacheStatus", "OperationID", "Metadata"}},
 			{provider.Client{}, []string{"HTTP", "Now", "Sleep", "Cache", "Locker", "Input", "Version", "ResponseBudget", "httpOnce", "defHTTP"}},
 			{tools.Tools{}, []string{"Root", "Session", "Repo", "Enabled", "Protected", "Excluded", "Probe", "Documentation", "ShellAfter", "Now", "shells"}},

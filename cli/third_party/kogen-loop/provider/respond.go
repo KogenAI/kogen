@@ -52,6 +52,10 @@ type Request struct {
 	// Context is merged into every attempt record (phase, role, slug, run_id, lineage,
 	// pass, repair).
 	Context map[string]any
+	// Budget, when not nil, is the stage's caller-owned RequestBudget: every inference attempt
+	// of this request (retries, refresh and routing-key retries included) reserves one request
+	// from it just before the transport call. Nil keeps today's behavior and bytes.
+	Budget *RequestBudget
 }
 
 // Response is a completed, validated answer.
@@ -491,6 +495,15 @@ func (r *run) stripKey() {
 
 // transport makes one HTTP attempt and records it.
 func (r *run) transport(token string) (result, error) {
+	if b := r.req.Budget; b != nil {
+		// A cancelled or expired parent keeps its existing outcome and reserves nothing: the
+		// exchange below fails before anything is sent.
+		if r.k.ctx.Err() == nil && r.k.interrupted() == nil {
+			if err := b.reserve(r.k.c.now(), len(r.encoded)); err != nil {
+				return result{}, err
+			}
+		}
+	}
 	start := r.k.c.now()
 	ts := timestamp(start)
 	load := loadAverage()
