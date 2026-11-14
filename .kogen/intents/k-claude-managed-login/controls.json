@@ -1,0 +1,1 @@
+{"deferred":"The terminal and failure paths need an in-process fake SetupToken seam and a terminal that the Build's Go tests supply; the cucumber acceptance can only observe the built binary's piped path, help, docs and pins."}

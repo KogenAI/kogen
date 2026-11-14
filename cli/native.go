@@ -74,10 +74,40 @@ func runtimeStatus(home string) string {
 // key is for, then the key, and the loop binds the key to that URL's origin (K-CRED-ORIGIN).
 // Every other provider goes through Client.Login unchanged.
 func login(s *sys.Session, client *provider.Client, name string) error {
+	if name == provider.ClaudeCodeName && interactiveLogin() {
+		return loginClaudeCode(s, client)
+	}
 	if name != "openai-compatible" {
 		return client.Login(s.Context(), s, name, browserRedirect(s))
 	}
 	return loginCompatible(s, client)
+}
+
+// setupToken and interactiveLogin are the seams of the Claude Code sign-in: the real sign-in needs
+// network access and a browser, and the terminal check needs a terminal on both ends.
+var (
+	setupToken       = claudecode.SetupToken
+	interactiveLogin = func() bool { return isTerminal(os.Stdin) && isTerminal(os.Stdout) }
+)
+
+// loginClaudeCode signs Kogen's own Claude Code runtime in (installing the pinned runtime when it
+// is missing) and saves the token it prints through the same private store as the piped path.
+// A failed install or sign-in returns before the store is touched, so a saved login stays as it
+// was; the token is never printed.
+func loginClaudeCode(s *sys.Session, client *provider.Client) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return sys.Fail("provider", "login_failed", "cannot find the home directory; run kogen provider login claude-code to retry", 4)
+	}
+	token, err := setupToken(s.Context(), home, os.Stdout)
+	if err != nil {
+		if ie := s.Err(); ie != nil {
+			return ie
+		}
+		return err
+	}
+	client.Input = &provider.Input{Reader: strings.NewReader(token)}
+	return client.Login(s.Context(), s, provider.ClaudeCodeName, nil)
 }
 
 // loginCompatible prompts `Base URL:` and reads a line, then prompts `API key:` and leaves the

@@ -30,11 +30,14 @@ Pick one route. Each command saves the login privately under `~/.kogen`.
 ```sh
 kogen provider login chatgpt                                          # browser, on the same machine
 printf '%s' "$ANTHROPIC_API_KEY" | kogen provider login anthropic     # no browser: an Anthropic API key on stdin
-printf '%s' "$CLAUDE_CODE_TOKEN" | kogen provider login claude-code   # a token from `claude setup-token`
+kogen provider login claude-code                                      # interactive terminal: Kogen's own Claude Code signs in
+printf '%s' "$CLAUDE_CODE_TOKEN" | kogen provider login claude-code   # piped: stores the token you already have
 ```
 
-`claude setup-token` needs a Claude Code: your own, or Kogen's pinned runtime under `~/.kogen/claude-code/`.
-Only the first Claude Code role (Shape, Refine, Build or Review) installs that runtime; `kogen init` and `kogen provider login` never download it.
+On an interactive terminal, `kogen provider login claude-code` installs Kogen's pinned Claude Code runtime under `~/.kogen/claude-code/` when it is missing, opens its browser sign-in and saves the subscription token privately.
+Piped input is storage only: the token is saved, and no runtime is installed and no sign-in runs.
+If the install or sign-in fails, a saved login stays unchanged; run `kogen provider login claude-code` again.
+`kogen init` never downloads the runtime.
 `kogen init` needs one signed-in route; no ChatGPT login is required when another route, for example an Anthropic key, is available.
 List what is saved, without network access:
 
