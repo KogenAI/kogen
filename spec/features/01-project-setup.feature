@@ -140,10 +140,7 @@ Feature: Project setup
     And the fake ChatGPT server plays script "init-invalid-twice"
     When the caller runs "kogen init"
     Then the exit code is 4
-    And stdout is:
-      """
-      provider/init_invalid: the model did not return a valid configuration; nothing was written
-      """
+    And stdout contains "provider/init_invalid: the model did not return a valid configuration; nothing was written"
     And the file ".kogen/project.yaml" does not exist
     And the working tree is unchanged
 

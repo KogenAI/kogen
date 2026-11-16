@@ -245,8 +245,13 @@ Feature: Claude Code serves a complete independent lineup
     Then the exit code is 1
     And stdout contains "candidate/head_moved"
     And no Intent named is-even exists
-    Given the Intent "is-even" from fixture "is-even" is shaped
-    And a fake claude with script "lineup-refine-index" is installed as Kogen's Claude Code
+    Given a fake claude with script "lineup-shape-corrections" is installed as Kogen's Claude Code
+    When the caller runs "kogen intent shape is-even -" with stdin:
+      """
+      Add calc.is_even(n). Non-integers raise TypeError.
+      """
+    Then the exit code is 0
+    Given a fake claude with script "lineup-refine-index" is installed as Kogen's Claude Code
     When the caller refines "is-even" with its current baseline and stdin:
       """
       Clarify the existing title only.

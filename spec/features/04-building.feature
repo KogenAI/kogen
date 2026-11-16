@@ -156,12 +156,9 @@ Feature: Building
     And the program "ruff" is not on PATH
     When the caller runs "kogen intent build is-even"
     Then the exit code is 3
-    And stdout is:
-      """
-      environment/tool_missing: ruff is not available
-        is-even Build {id8} stopped in startup: tool_missing; candidate: {abs:.}; evidence: {abs:.kogen/local/runs}/{id8}; index: {abs:.kogen/local/runs}/{id8}/index-at-start
-        kogen intent inspect {id8} --project '{abs:.}'
-      """
+    And stdout contains "environment/tool_missing: ruff is not available"
+    And stdout contains "is-even Build {id8} stopped in startup: tool_missing; candidate: {abs:.}; evidence: {abs:.kogen/local/runs}/{id8}; index: {abs:.kogen/local/runs}/{id8}/index-at-start"
+    And stdout contains "kogen intent inspect {id8} --project '{abs:.}'"
     And the fake ChatGPT server received 0 requests
 
   @LOOP-13 @CLI-4

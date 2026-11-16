@@ -1374,7 +1374,10 @@ async function dispatch(world, pattern, values, attachment) {
     }
     if (label.includes(' with stdin:')) {
       world.requestText = String(attachment ?? '');
-      await runProduct(world, command, { cwd: world.project || world.archiveDir || world.workspace, stdin: world.requestText });
+      const result = await runProduct(world, command, { cwd: world.project || world.archiveDir || world.workspace, stdin: world.requestText });
+      // A successful Shape publishes an uncommitted package: its bytes are the baseline "is unchanged" compares to.
+      const shaped = command.match(/^kogen intent shape (\S+)/);
+      if (shaped && result && result.code === 0) rememberBaseline(world, shaped[1]);
       return;
     }
     if (label.includes(' with stdin "')) {
