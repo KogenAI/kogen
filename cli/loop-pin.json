@@ -2,8 +2,8 @@
   "module": "github.com/KogenAI/kogen-loop",
   "protocol": "kogen-loop/v1",
   "library": "loop/v1",
-  "digest": "f03dbe90b5d5cbeff432518feb36c3b87891fc3ee3d1e9afd0528ad7e4120e3c",
-  "files": 227,
-  "source_head": "a231579cb8f19bb8f7798539ff849cf73a13058d",
+  "digest": "19a921d9ee981cb333998967cd2c9773f6a2fa5e96486052af4c0f936c0b4908",
+  "files": 228,
+  "source_head": "0369bc7942d56aca2221eac6c82ac195b11f959d",
   "source_state": "clean"
 }

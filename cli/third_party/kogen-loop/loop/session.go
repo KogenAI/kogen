@@ -252,8 +252,11 @@ func build(cfg SessionConfig) (*Session, error) {
 	if cfg.Root == "" {
 		return nil, invalid("root is required")
 	}
+	if cfg.Role.Provider == "" {
+		return nil, invalid("role.provider is required; the providers are " + strings.Join(provider.Names(), ", "))
+	}
 	if _, ok := provider.Lookup(cfg.Role.Provider); !ok {
-		return nil, invalid("unknown provider " + cfg.Role.Provider)
+		return nil, invalid("unknown provider " + cfg.Role.Provider + "; the providers are " + strings.Join(provider.Names(), ", "))
 	}
 	enabled := cfg.Enabled
 	if len(enabled) == 0 {
@@ -268,7 +271,7 @@ func build(cfg SessionConfig) (*Session, error) {
 	for _, name := range enabled {
 		d, ok := tools.Definition(name)
 		if !ok {
-			return nil, invalid("unknown tool " + name)
+			return nil, invalid("unknown tool " + name + "; the tools are " + strings.Join(tools.Names(), ", "))
 		}
 		if seen[name] {
 			return nil, invalid("duplicate tool " + name)
@@ -276,10 +279,18 @@ func build(cfg SessionConfig) (*Session, error) {
 		seen[name] = true
 		defs = append(defs, d)
 	}
+	terminalSeen := map[string]bool{}
 	for _, name := range terminal {
-		if name == "" || seen[name] {
-			return nil, invalid("terminal tool names must be non-empty and unique, and differ from the enabled tools")
+		if name == "" {
+			return nil, invalid("a terminal tool name must not be empty")
 		}
+		if terminalSeen[name] {
+			return nil, invalid("duplicate terminal tool " + name)
+		}
+		if seen[name] {
+			return nil, invalid("terminal tool " + name + " is also an enabled tool")
+		}
+		terminalSeen[name] = true
 		seen[name] = true
 		defs = append(defs, TerminalDefinition(name))
 	}

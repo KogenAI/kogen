@@ -270,6 +270,73 @@ func TestRequiresRefusal(t *testing.T) {
 	})
 }
 
+func TestUnknownProviderRefusalListsTheProviders(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t).signIn()
+	f := newFakeProvider(t, nil)
+	r := runCLI(t, w, f, w.task(map[string]any{"role": map[string]any{"provider": "nobody", "model": "m", "effort": "e", "base_url": ""}}))
+	expectRefusal(t, r, f, "loop", "invalid_task", 2)
+	if got := r.first("error")["detail"]; got != "unknown provider nobody; the providers are chatgpt, supergrok, opencode-go, anthropic, openai-compatible" {
+		t.Errorf("detail %q", got)
+	}
+	if r.first("session.started") != nil {
+		t.Error("refused task started a session")
+	}
+}
+
+func TestMissingProviderRefusalSaysItIsRequired(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t).signIn()
+	f := newFakeProvider(t, nil)
+	r := runCLI(t, w, f, w.task(map[string]any{"role": map[string]any{"provider": "", "model": "m", "effort": "e", "base_url": ""}}))
+	expectRefusal(t, r, f, "loop", "invalid_task", 2)
+	if got := r.first("error")["detail"]; got != "role.provider is required; the providers are chatgpt, supergrok, opencode-go, anthropic, openai-compatible" {
+		t.Errorf("detail %q", got)
+	}
+	if r.first("session.started") != nil {
+		t.Error("refused task started a session")
+	}
+}
+
+func TestUnknownToolRefusalListsTheTools(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t).signIn()
+	f := newFakeProvider(t, nil)
+	r := runCLI(t, w, f, w.task(map[string]any{"tools": []string{"read_file", "teleport"}}))
+	expectRefusal(t, r, f, "loop", "invalid_task", 2)
+	if got := r.first("error")["detail"]; got != "unknown tool teleport; the tools are read_file, write_file, list_files, search_text, shell, view_image, documentation" {
+		t.Errorf("detail %q", got)
+	}
+	if r.first("session.started") != nil {
+		t.Error("refused task started a session")
+	}
+}
+
+func TestTerminalNameRefusalsNameTheFault(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		names  []string
+		detail string
+	}{
+		{[]string{"shell"}, "terminal tool shell is also an enabled tool"},
+		{[]string{""}, "a terminal tool name must not be empty"},
+		{[]string{"finish", "finish"}, "duplicate terminal tool finish"},
+	} {
+		t.Run(tc.detail, func(t *testing.T) {
+			w := newWorld(t).signIn()
+			f := newFakeProvider(t, nil)
+			r := runCLI(t, w, f, w.task(map[string]any{"terminal": tc.names}))
+			expectRefusal(t, r, f, "loop", "invalid_task", 2)
+			if got := r.first("error")["detail"]; got != tc.detail {
+				t.Errorf("detail %q, want %q", got, tc.detail)
+			}
+			if r.first("session.started") != nil {
+				t.Error("refused task started a session")
+			}
+		})
+	}
+}
+
 func TestInvalidTaskFields(t *testing.T) {
 	t.Parallel()
 	cases := map[string]func(w *world) map[string]any{
@@ -687,6 +754,21 @@ func TestCapabilitiesNeedNoNetworkOrCredentials(t *testing.T) {
 	}
 	if got := caps["context_policies"]; !match([]any{"condense_over_budget"}, got) {
 		t.Errorf("context_policies %v", got)
+	}
+}
+
+func TestStandaloneHelp(t *testing.T) {
+	t.Parallel()
+	const usage = "usage: kogen-loop capabilities --json | version | run --task FILE|-\n"
+	for _, form := range []string{"--help", "-h", "help"} {
+		t.Run(form, func(t *testing.T) {
+			if out, code := runPlain(t, form); code != 0 || out != usage {
+				t.Errorf("standalone help: exit %d stdout %q, want exit 0 stdout %q", code, out, usage)
+			}
+			if out, code := runPlain(t, form, "extra"); code != 2 || out != "" {
+				t.Errorf("help with extra argument: exit %d stdout %q, want exit 2 and empty stdout", code, out)
+			}
+		})
 	}
 }
 

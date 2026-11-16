@@ -16,6 +16,14 @@ const (
 	DocumentationTool = "documentation"
 )
 
+// Names lists the generic tool names accepted by Definition.
+func Names() []string {
+	return []string{
+		ReadFileTool, WriteFileTool, ListFilesTool, SearchTextTool,
+		ShellTool, ViewImageTool, DocumentationTool,
+	}
+}
+
 // ProbeTool is the name of the probe callback seam of Tools. It is a Kogen-named residue:
 // the probe tool, its definition and its scratch copy belong to Kogen's shaper, which sets
 // Tools.Probe. The definition is not here.

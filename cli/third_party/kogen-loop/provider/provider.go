@@ -57,6 +57,15 @@ func Catalog() []Info {
 	}
 }
 
+// Names lists the supported provider names in catalog order.
+func Names() []string {
+	var names []string
+	for _, p := range Catalog() {
+		names = append(names, p.Name)
+	}
+	return names
+}
+
 // Lookup finds a provider by name; an empty or unknown name is not found.
 func Lookup(name string) (Info, bool) {
 	for _, p := range Catalog() {

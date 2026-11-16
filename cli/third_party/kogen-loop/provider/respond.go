@@ -312,6 +312,30 @@ func (r *run) unavailable(detail string, diag map[string]any) error {
 	return withDiagnostics(providerFail("unavailable", detail), diag)
 }
 
+// namingEarlier (ChatGPT only) adds the "earlier attempts: " detail line to an unavailable error when an
+// earlier failed attempt's detail differs from the detail of the attempt that ended the call.
+// earlier holds the details of attempts 1..len(earlier), in order.
+func (r *run) namingEarlier(err error, earlier []string, ending string) error {
+	e, ok := err.(*sys.Error)
+	if !ok || r.k.info.Name != "chatgpt" {
+		return err
+	}
+	var parts []string
+	differs := false
+	for i, d := range earlier {
+		parts = append(parts, itoa(int64(i+1))+" "+d)
+		if d != ending {
+			differs = true
+		}
+	}
+	if !differs {
+		return err
+	}
+	c := *e
+	c.Lines = append(append([]string(nil), e.Lines...), "earlier attempts: "+strings.Join(parts, "; "))
+	return &c
+}
+
 // refusedError is a key provider's definite refusal: the reason chosen from its status, the
 // safe diagnostics and the sanitised upstream message, when one was kept.
 func (r *run) refusedError(res result) error {
@@ -386,6 +410,7 @@ func (r *run) single() (*Response, error) {
 // never for a key provider's unreadable answer).
 func (r *run) attempts() (*Response, error) {
 	n, refreshed, retriedInvalid := 1, false, false
+	var failed []string // the detail of each failed transport attempt, in order
 	keyed := r.k.info.key
 	token := ""
 	for {
@@ -419,7 +444,7 @@ func (r *run) attempts() (*Response, error) {
 			}
 		case resTransient:
 			if n >= 3 {
-				return nil, r.unavailable(r.label()+" did not answer after 3 attempts: "+res.detail, res.diag)
+				return nil, r.namingEarlier(r.unavailable(r.label()+" did not answer after 3 attempts: "+res.detail, res.diag), failed, res.detail)
 			}
 			wait := 2 * time.Second
 			if n > 1 {
@@ -427,7 +452,7 @@ func (r *run) attempts() (*Response, error) {
 			}
 			if a := res.after; a != nil {
 				if a.wait > maxRetryAfter {
-					return nil, r.unavailable(r.label()+" asked to wait "+a.secs+" s before retrying, more than the 60 s limit: "+res.detail, res.diag)
+					return nil, r.namingEarlier(r.unavailable(r.label()+" asked to wait "+a.secs+" s before retrying, more than the 60 s limit: "+res.detail, res.diag), failed, res.detail)
 				}
 				wait = a.wait
 			}
@@ -439,6 +464,7 @@ func (r *run) attempts() (*Response, error) {
 					return nil, err
 				}
 			}
+			failed = append(failed, res.detail)
 			n++
 		case resInvalid:
 			if keyed {
