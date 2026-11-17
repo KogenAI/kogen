@@ -260,3 +260,75 @@ func TestInspectUnknownRunNamesNextCommand(t *testing.T) {
 		t.Fatal(e, out)
 	}
 }
+
+func projectAnswerDetail(t *testing.T, args ...string) (string, object) {
+	t.Helper()
+	var code int
+	out := captureStdout(t, func() { _, code = localRead(args) })
+	if code != 3 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	var got struct {
+		Error object `json:"error"`
+	}
+	if e := json.Unmarshal([]byte(out), &got); e != nil {
+		t.Fatal(out, e)
+	}
+	return fmt.Sprint(got.Error["detail"]), got.Error
+}
+
+const notProjectTail = " is not a Kogen project: no Git checkout with .kogen/project.yaml here; run kogen init in the project folder, or pass --project with its path"
+
+func TestProjectAnswersNameTheFolderThatIsNotAGitCheckout(t *testing.T) {
+	dir := t.TempDir()
+	for _, args := range [][]string{{"intent", "list", "--project", dir}, {"intent", "usage", "--project", dir}} {
+		detail, er := projectAnswerDetail(t, args...)
+		if detail != dir+notProjectTail || er["reason"] != "not_project" || er["class"] != "environment" || len(er) != 4 {
+			t.Fatal(detail, er)
+		}
+	}
+}
+
+func TestProjectAnswersNameAGitCheckoutWithoutProjectConfig(t *testing.T) {
+	dir := t.TempDir()
+	if b, e := exec.Command("git", "init", "-q", dir).CombinedOutput(); e != nil {
+		t.Fatalf("%s: %v", b, e)
+	}
+	detail, er := projectAnswerDetail(t, "intent", "inspect", "0a1b2c3d", "--project", dir)
+	if detail != dir+notProjectTail || er["reason"] != "not_project" {
+		t.Fatal(detail, er)
+	}
+}
+
+func TestProjectAnswersNameAMissingProjectFolder(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "gone")
+	want := " is not a readable directory; pass --project with the path of the project folder"
+	for _, args := range [][]string{{"intent", "list", "--project", gone}, {"context", "--project", gone}} {
+		detail, er := projectAnswerDetail(t, args...)
+		if detail != gone+want || er["reason"] != "project_unavailable" {
+			t.Fatal(detail, er)
+		}
+	}
+	abs, _ := filepath.Abs("gone-relative")
+	if detail, _ := projectAnswerDetail(t, "intent", "list", "--project", "gone-relative"); detail != abs+want {
+		t.Fatal(detail)
+	}
+}
+
+func TestProjectAnswersDocumentIsCurrent(t *testing.T) {
+	b, e := os.ReadFile("../docs/troubleshooting.md")
+	if e != nil {
+		t.Fatal(e)
+	}
+	doc := string(b)
+	for _, want := range []string{"intent/not_found: Intent does not exist: is-even (looked in .kogen/intents/is-even)", "kogen intent list shows existing Intents;"} {
+		if !strings.Contains(doc, want) {
+			t.Fatal("missing", want)
+		}
+	}
+	for _, bad := range []string{"names no next command", "prints raw"} {
+		if strings.Contains(doc, bad) {
+			t.Fatal("stale", bad)
+		}
+	}
+}

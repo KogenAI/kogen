@@ -224,13 +224,33 @@ func observe(c object, r object) object {
 }
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 func response(kind string, c object, data any, reason string, code int) int {
+	return responseDetail(kind, c, data, reason, reason, code)
+}
+
+// projectDetail words the answer for a folder where Kogen finds no project: it names the
+// absolute folder that was looked at and the next step.
+func projectDetail(reason, project string) string {
+	if project == "" {
+		project = "."
+	}
+	if abs, e := filepath.Abs(project); e == nil {
+		project = abs
+	}
+	if reason == "project_unavailable" {
+		return project + " is not a readable directory; pass --project with the path of the project folder"
+	}
+	return project + " is not a Kogen project: no Git checkout with .kogen/project.yaml here; run kogen init in the project folder, or pass --project with its path"
+}
+
+// responseDetail is response with its own error.detail.
+func responseDetail(kind string, c object, data any, reason, detail string, code int) int {
 	var er any
 	if reason != "" {
 		class := "environment"
 		if code == 1 || code == 2 {
 			class = "intent"
 		}
-		er = object{"class": class, "reason": reason, "detail": reason, "paths": []string{}}
+		er = object{"class": class, "reason": reason, "detail": detail, "paths": []string{}}
 	}
 	json.NewEncoder(os.Stdout).Encode(object{"schema_version": 1, "kind": kind, "checkout": c, "data": data, "error": er})
 	return code
@@ -355,7 +375,7 @@ func localRead(args []string) (bool, int) {
 		if kind == "context" && reason == "not_project" {
 			return true, response(kind, nil, contextData(nil), "", 0)
 		}
-		return true, response(kind, nil, nil, reason, 3)
+		return true, responseDetail(kind, nil, nil, reason, projectDetail(reason, project), 3)
 	}
 	if kind == "context" {
 		return true, response(kind, c, contextData(c), "", 0)

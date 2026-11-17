@@ -56,7 +56,8 @@ invalid environment/configuration returns exit 3. Read success is exit 0,
 including empty lists; usage is 2 (`intent/invalid_argument`), absent projects
 are 3 (`environment/not_project`), unavailable paths are 3
 (`environment/project_unavailable`), unknown runs are 1
-(`intent/run_not_found`; see below). Invalid required local records return 3
+(`intent/run_not_found`; see below). The `error.detail` of a `not_project` or
+`project_unavailable` answer names the folder and the next step. Invalid required local records return 3
 (`environment/local_data_invalid`); context instead safely reports invalid.
 
 `kogen intent inspect <run-id>` for an unknown run says which case it is in

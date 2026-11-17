@@ -96,7 +96,7 @@ func usageCommand(args []string) int {
 	}
 	c, reason := discover(project)
 	if reason != "" {
-		return response("usage", nil, nil, reason, 3)
+		return responseDetail("usage", nil, nil, reason, projectDetail(reason, project), 3)
 	}
 	s := usageScan{root: c["root"].(string), limitations: map[string]bool{}, metadata: map[string]object{}, selected: map[string]bool{}}
 	rows := s.scan(id, lineage)

@@ -67,16 +67,17 @@ kogen intent list
 ### Intent not found
 
 ```
-intent/not_found: Intent does not exist
+intent/not_found: Intent does not exist: is-even (looked in .kogen/intents/is-even)
+  kogen intent list shows existing Intents; ...
 ```
 
-`kogen intent refine`, `approve` and `build` print this when no Intent has that slug. The message names no next command.
+`kogen intent refine`, `approve` and `build` print this when no Intent has that slug. The first line names the slug and the folder searched. The indented line starting `kogen intent list shows existing Intents;` also names the command that shapes a new Intent, and an indented `did you mean:` line follows when a similar Intent exists.
 Run `kogen intent list` to see the Intents and Build attempts of the project, and check the slug and the folder you are in.
 
 ### Inspect outside a project
 
-`kogen intent inspect <id>` outside a Kogen project answers with raw JSON whose reason is `not_project`.
-Inside a project, an unknown id names `kogen intent list`. Change into the project, or run `kogen init` there.
+`kogen intent inspect <id>` outside a Kogen project answers with one JSON line whose `error.detail` names the folder that was looked at. Run `kogen init` in the project folder, or pass `--project` with its path.
+Inside a project, an unknown id names `kogen intent list`.
 
 ## Setup in a non-Go repository
 
@@ -93,6 +94,4 @@ These are what Kogen does today:
 
 - `kogen intent --help` and `kogen provider --help` print the group listing. A command's own page is `kogen intent <command> --help`.
 - The no-login refusal is a multi-line message, not one line.
-- `intent/not_found` names no next command.
-- `kogen intent inspect <id>` outside a project prints raw `not_project` JSON.
 - After an environment refusal, Kogen can still print a `kogen: shape time` line.
