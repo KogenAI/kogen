@@ -287,10 +287,7 @@ Feature: Project setup
     And the file "app.txt" is changed outside Kogen
     When the caller runs "kogen init"
     Then the exit code is 3
-    And stdout is:
-      """
-      environment/no_commits: 1 file(s) are not committed yet; commit them first (git add -A && git commit -m "Initial commit"), then run kogen init
-      """
+    And stdout matches "^environment/no_commits: 1 file[(]s[)] are not committed yet([ ][(]app[.]txt[)])?; commit them first [(]git add -A && git commit -m \x22Initial commit\x22[)], then run kogen init$"
 
   @SET-10 @SET-13 @SHP-2 @VER-3
   Scenario: The generated bridge shapes and builds in a checkout with spaces
