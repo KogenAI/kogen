@@ -49,6 +49,23 @@ printf '%s' "$ANTHROPIC_API_KEY" | kogen provider login anthropic
 
 `kogen init` needs only one signed-in route; it does not need ChatGPT when another route is available.
 
+### Context file refused
+
+```
+intent/context_unavailable: /tmp/work/absent.txt: not found
+```
+
+`kogen intent build <slug> --context <file>` refuses with exit code 2, before any provider request or repository work. The line names the absolute path of the file, resolved against the folder where you ran `kogen` (not `--project`), and one cause, the first that applies:
+
+- `not found`: the path does not exist.
+- `not a regular file`: it exists but is a directory, a socket or another non-file.
+- `unreadable`: the file cannot be opened or read.
+- `larger than 262144 bytes`: the file is over the limit; exactly 262144 bytes is accepted.
+- `not valid UTF-8`: the file is not text.
+- `blank`: the file is empty or only whitespace.
+
+Fix the file, or pass the path of another one.
+
 ## Build ids and Intents
 
 ### Not a Build id

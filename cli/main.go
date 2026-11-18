@@ -459,18 +459,37 @@ func validateDiagnostic(data []byte) bool {
 
 func readDiagnostic(cwd, file string) (*build.Diagnostic, error) {
 	path := absFrom(cwd, file)
+	refuse := func(cause string) (*build.Diagnostic, error) {
+		return nil, fmt.Errorf("%s: %s", path, cause)
+	}
 	st, err := os.Stat(path)
-	if err != nil || !st.Mode().IsRegular() {
-		return nil, fmt.Errorf("file must be readable and regular")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return refuse("not found")
+		}
+		return refuse("unreadable")
+	}
+	if !st.Mode().IsRegular() {
+		return refuse("not a regular file")
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("file is unreadable")
+		return refuse("unreadable")
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, 262145))
-	if err != nil || !validateDiagnostic(data) {
-		return nil, fmt.Errorf("file must contain nonblank UTF-8 data of at most 262144 bytes")
+	if err != nil {
+		return refuse("unreadable")
+	}
+	if !validateDiagnostic(data) {
+		switch {
+		case len(data) > 262144:
+			return refuse("larger than 262144 bytes")
+		case !utf8.Valid(data):
+			return refuse("not valid UTF-8")
+		default:
+			return refuse("blank")
+		}
 	}
 	return &build.Diagnostic{Text: string(data), SourcePath: path, SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}, nil
 }
