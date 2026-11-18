@@ -1,0 +1,1 @@
+{"deferred":"The correct implementation rewrites six exact stdout blocks in the 21 KB spec/features/08-chatgpt.feature into long anchored regular expressions; the Build writes it and the maintained acceptance suite plus this Intent's replay of old, new and altered outputs verify it."}

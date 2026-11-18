@@ -9,24 +9,7 @@ Feature: ChatGPT connection
   @GPT-2 @GPT-3 @GPT-4
   Scenario: Browser login, private credentials and the status command
     When the caller runs "kogen provider list"
-    Then stdout is:
-      """
-      chatgpt: not signed in
-      supergrok: not signed in
-      opencode-go: not signed in
-      anthropic: not signed in
-      claude-code: not signed in
-      claude-code runtime: Claude Code 2.1.318 not installed
-      Official compatibility (text/tool input, normal routes only):
-      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
-        shape/high [go-live-2026-10-24]
-        build/medium [go-live-2026-10-24]
-        review/high [native-go-sol-review-2026-10-24]
-      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
-        review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
-      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
-      """
+    Then stdout matches "^chatgpt: not signed in\nsupergrok: not signed in\nopencode-go: not signed in\nanthropic: not signed in\nclaude-code: not signed in\nclaude-code runtime: Claude Code 2\.1\.318 not installed\nOfficial compatibility \(text/tool input, normal routes only\):\nchatgpt-sol-6-1: chatgpt/gpt-6\.1-sol — https://api\.openai\.com/v1/responses\n  shape/high \[go-live-2026-10-24\]\n  build/medium \[go-live-2026-10-24\]\n  review/high \[native-go-sol-review-2026-10-24\]\nanthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api\.anthropic\.com/v1/messages\n  review/medium \[go-live-2026-10-24\]\nRecommended ChatGPT defaults: Shape gpt-6\.1-sol/high, Build gpt-6\.1-sol/medium, Review gpt-6\.1-terra/medium \(omitted roles keep these defaults\)\.\n(?:Route messages-compatible \(experimental\): an explicit streamed Messages wire sent only to the role's base_url; no profile qualifies it, so every model on it is experimental\. Local fixtures only; live qualification and account debit reconciliation are still required\.\n)?Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked\. Recommended defaults are not qualification\. Login status is local only; no credentials refreshed or account checked\.$"
     When the caller runs "kogen provider login chatgpt" in the background
     And the browser completes sign-in for "user@example.com"
     And the background command finishes
@@ -40,24 +23,7 @@ Feature: ChatGPT connection
     And the authorization request used PKCE S256 and a fresh state
     And the file "{home}/.kogen/credentials/chatgpt.json" has mode "600"
     When the caller runs "kogen provider list"
-    Then stdout is:
-      """
-      chatgpt: signed in (user@example.com)
-      supergrok: not signed in
-      opencode-go: not signed in
-      anthropic: not signed in
-      claude-code: not signed in
-      claude-code runtime: Claude Code 2.1.318 not installed
-      Official compatibility (text/tool input, normal routes only):
-      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
-        shape/high [go-live-2026-10-24]
-        build/medium [go-live-2026-10-24]
-        review/high [native-go-sol-review-2026-10-24]
-      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
-        review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
-      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
-      """
+    Then stdout matches "^chatgpt: signed in \(user@example\.com\)\nsupergrok: not signed in\nopencode-go: not signed in\nanthropic: not signed in\nclaude-code: not signed in\nclaude-code runtime: Claude Code 2\.1\.318 not installed\nOfficial compatibility \(text/tool input, normal routes only\):\nchatgpt-sol-6-1: chatgpt/gpt-6\.1-sol — https://api\.openai\.com/v1/responses\n  shape/high \[go-live-2026-10-24\]\n  build/medium \[go-live-2026-10-24\]\n  review/high \[native-go-sol-review-2026-10-24\]\nanthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api\.anthropic\.com/v1/messages\n  review/medium \[go-live-2026-10-24\]\nRecommended ChatGPT defaults: Shape gpt-6\.1-sol/high, Build gpt-6\.1-sol/medium, Review gpt-6\.1-terra/medium \(omitted roles keep these defaults\)\.\n(?:Route messages-compatible \(experimental\): an explicit streamed Messages wire sent only to the role's base_url; no profile qualifies it, so every model on it is experimental\. Local fixtures only; live qualification and account debit reconciliation are still required\.\n)?Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked\. Recommended defaults are not qualification\. Login status is local only; no credentials refreshed or account checked\.$"
 
   @GPT-4
   Scenario: An incomplete saved login is not reported as signed in
@@ -67,24 +33,7 @@ Feature: ChatGPT connection
       """
     When the caller runs "kogen provider list"
     Then the exit code is 0
-    And stdout is:
-      """
-      chatgpt: saved login cannot be used; run kogen provider login chatgpt
-      supergrok: not signed in
-      opencode-go: not signed in
-      anthropic: not signed in
-      claude-code: not signed in
-      claude-code runtime: Claude Code 2.1.318 not installed
-      Official compatibility (text/tool input, normal routes only):
-      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
-        shape/high [go-live-2026-10-24]
-        build/medium [go-live-2026-10-24]
-        review/high [native-go-sol-review-2026-10-24]
-      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
-        review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
-      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
-      """
+    And stdout matches "^chatgpt: saved login cannot be used; run kogen provider login chatgpt\nsupergrok: not signed in\nopencode-go: not signed in\nanthropic: not signed in\nclaude-code: not signed in\nclaude-code runtime: Claude Code 2\.1\.318 not installed\nOfficial compatibility \(text/tool input, normal routes only\):\nchatgpt-sol-6-1: chatgpt/gpt-6\.1-sol — https://api\.openai\.com/v1/responses\n  shape/high \[go-live-2026-10-24\]\n  build/medium \[go-live-2026-10-24\]\n  review/high \[native-go-sol-review-2026-10-24\]\nanthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api\.anthropic\.com/v1/messages\n  review/medium \[go-live-2026-10-24\]\nRecommended ChatGPT defaults: Shape gpt-6\.1-sol/high, Build gpt-6\.1-sol/medium, Review gpt-6\.1-terra/medium \(omitted roles keep these defaults\)\.\n(?:Route messages-compatible \(experimental\): an explicit streamed Messages wire sent only to the role's base_url; no profile qualifies it, so every model on it is experimental\. Local fixtures only; live qualification and account debit reconciliation are still required\.\n)?Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked\. Recommended defaults are not qualification\. Login status is local only; no credentials refreshed or account checked\.$"
 
   @GPT-2
   Scenario: A redirect with the wrong state is ignored and the right one succeeds
@@ -333,48 +282,14 @@ Feature: ChatGPT connection
       """
     When the caller runs "kogen provider list"
     Then the exit code is 0
-    And stdout is:
-      """
-      chatgpt: not signed in
-      supergrok: signed in (grok@example.com)
-      opencode-go: not signed in
-      anthropic: not signed in
-      claude-code: not signed in
-      claude-code runtime: Claude Code 2.1.318 not installed
-      Official compatibility (text/tool input, normal routes only):
-      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
-        shape/high [go-live-2026-10-24]
-        build/medium [go-live-2026-10-24]
-        review/high [native-go-sol-review-2026-10-24]
-      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
-        review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
-      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
-      """
+    And stdout matches "^chatgpt: not signed in\nsupergrok: signed in \(grok@example\.com\)\nopencode-go: not signed in\nanthropic: not signed in\nclaude-code: not signed in\nclaude-code runtime: Claude Code 2\.1\.318 not installed\nOfficial compatibility \(text/tool input, normal routes only\):\nchatgpt-sol-6-1: chatgpt/gpt-6\.1-sol — https://api\.openai\.com/v1/responses\n  shape/high \[go-live-2026-10-24\]\n  build/medium \[go-live-2026-10-24\]\n  review/high \[native-go-sol-review-2026-10-24\]\nanthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api\.anthropic\.com/v1/messages\n  review/medium \[go-live-2026-10-24\]\nRecommended ChatGPT defaults: Shape gpt-6\.1-sol/high, Build gpt-6\.1-sol/medium, Review gpt-6\.1-terra/medium \(omitted roles keep these defaults\)\.\n(?:Route messages-compatible \(experimental\): an explicit streamed Messages wire sent only to the role's base_url; no profile qualifies it, so every model on it is experimental\. Local fixtures only; live qualification and account debit reconciliation are still required\.\n)?Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked\. Recommended defaults are not qualification\. Login status is local only; no credentials refreshed or account checked\.$"
     Given the file "{home}/.kogen/credentials/supergrok.json" contains:
       """
       {"client_id":"fixture","referrer":"another-harness","access_token":"synthetic-access","refresh_token":"synthetic-refresh","expires_at":0}
       """
     When the caller runs "kogen provider list"
     Then the exit code is 0
-    And stdout is:
-      """
-      chatgpt: not signed in
-      supergrok: saved login cannot be used; run kogen provider login supergrok
-      opencode-go: not signed in
-      anthropic: not signed in
-      claude-code: not signed in
-      claude-code runtime: Claude Code 2.1.318 not installed
-      Official compatibility (text/tool input, normal routes only):
-      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
-        shape/high [go-live-2026-10-24]
-        build/medium [go-live-2026-10-24]
-        review/high [native-go-sol-review-2026-10-24]
-      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
-        review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
-      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
-      """
+    And stdout matches "^chatgpt: not signed in\nsupergrok: saved login cannot be used; run kogen provider login supergrok\nopencode-go: not signed in\nanthropic: not signed in\nclaude-code: not signed in\nclaude-code runtime: Claude Code 2\.1\.318 not installed\nOfficial compatibility \(text/tool input, normal routes only\):\nchatgpt-sol-6-1: chatgpt/gpt-6\.1-sol — https://api\.openai\.com/v1/responses\n  shape/high \[go-live-2026-10-24\]\n  build/medium \[go-live-2026-10-24\]\n  review/high \[native-go-sol-review-2026-10-24\]\nanthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api\.anthropic\.com/v1/messages\n  review/medium \[go-live-2026-10-24\]\nRecommended ChatGPT defaults: Shape gpt-6\.1-sol/high, Build gpt-6\.1-sol/medium, Review gpt-6\.1-terra/medium \(omitted roles keep these defaults\)\.\n(?:Route messages-compatible \(experimental\): an explicit streamed Messages wire sent only to the role's base_url; no profile qualifies it, so every model on it is experimental\. Local fixtures only; live qualification and account debit reconciliation are still required\.\n)?Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked\. Recommended defaults are not qualification\. Login status is local only; no credentials refreshed or account checked\.$"
 
   @GPT-4
   Scenario: Saved native Claude keys are local status rather than verified API access
@@ -384,24 +299,7 @@ Feature: ChatGPT connection
       """
     When the caller runs "kogen provider list"
     Then the exit code is 0
-    And stdout is:
-      """
-      chatgpt: not signed in
-      supergrok: not signed in
-      opencode-go: not signed in
-      anthropic: key saved (not verified)
-      claude-code: not signed in
-      claude-code runtime: Claude Code 2.1.318 not installed
-      Official compatibility (text/tool input, normal routes only):
-      chatgpt-sol-6-1: chatgpt/gpt-6.1-sol — https://api.openai.com/v1/responses
-        shape/high [go-live-2026-10-24]
-        build/medium [go-live-2026-10-24]
-        review/high [native-go-sol-review-2026-10-24]
-      anthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api.anthropic.com/v1/messages
-        review/medium [go-live-2026-10-24]
-      Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).
-      Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.
-      """
+    And stdout matches "^chatgpt: not signed in\nsupergrok: not signed in\nopencode-go: not signed in\nanthropic: key saved \(not verified\)\nclaude-code: not signed in\nclaude-code runtime: Claude Code 2\.1\.318 not installed\nOfficial compatibility \(text/tool input, normal routes only\):\nchatgpt-sol-6-1: chatgpt/gpt-6\.1-sol — https://api\.openai\.com/v1/responses\n  shape/high \[go-live-2026-10-24\]\n  build/medium \[go-live-2026-10-24\]\n  review/high \[native-go-sol-review-2026-10-24\]\nanthropic-sonnet-5-5: anthropic/claude-sonnet-5-5 — https://api\.anthropic\.com/v1/messages\n  review/medium \[go-live-2026-10-24\]\nRecommended ChatGPT defaults: Shape gpt-6\.1-sol/high, Build gpt-6\.1-sol/medium, Review gpt-6\.1-terra/medium \(omitted roles keep these defaults\)\.\n(?:Route messages-compatible \(experimental\): an explicit streamed Messages wire sent only to the role's base_url; no profile qualifies it, so every model on it is experimental\. Local fixtures only; live qualification and account debit reconciliation are still required\.\n)?Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked\. Recommended defaults are not qualification\. Login status is local only; no credentials refreshed or account checked\.$"
 
   @GPT-4
   Scenario: The compatible login reads the base URL, then the key, and binds the key to that origin
