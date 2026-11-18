@@ -41,8 +41,26 @@ type Client struct {
 	// the package ResponseBudget (30 minutes); a nonzero value must be in [1s, 30m].
 	ResponseBudget time.Duration
 
+	managedMu   sync.Mutex
+	managedHigh map[string]int64 // highest managed snapshot expiry accepted, per credentials file
+
 	httpOnce sync.Once
 	defHTTP  *http.Client
+}
+
+// acceptManaged records a managed snapshot expiry for the credentials file and reports
+// false when it is lower than one this Client already accepted (a regressed snapshot).
+func (c *Client) acceptManaged(path string, expiresAt int64) bool {
+	c.managedMu.Lock()
+	defer c.managedMu.Unlock()
+	if high, ok := c.managedHigh[path]; ok && expiresAt < high {
+		return false
+	}
+	if c.managedHigh == nil {
+		c.managedHigh = map[string]int64{}
+	}
+	c.managedHigh[path] = expiresAt
+	return true
 }
 
 // NewClient returns a Client with the default transport and no conversation cache identities yet.
@@ -108,6 +126,7 @@ type call struct {
 	deadline time.Time // zero: no budget
 	expiry   string    // the duration text of the expiry detail; empty: the default 30 minutes
 	baseURL  string    // the role's base_url (openai-compatible only)
+	managed  bool      // the call authenticates with a managed access snapshot
 }
 
 func (c *Client) newCall(ctx context.Context, s *sys.Session, info Info, budget time.Duration) *call {

@@ -17,8 +17,9 @@ type RequestBudgetLimits struct {
 	Deadline time.Time
 	// MaxInputBytes is the most bytes of one encoded request body (bytes, never tokens).
 	MaxInputBytes int
-	// MaxOutputTokens is a per-response ceiling, not an aggregate limit. Only the Messages
-	// wire carries an output-token field; other wires refuse a request with this limit.
+	// MaxOutputTokens is a per-response ceiling, not an aggregate limit. The Messages and
+	// Chat Completions wires carry it (as max_tokens); only the Responses wire refuses a
+	// request with this limit.
 	MaxOutputTokens int
 }
 

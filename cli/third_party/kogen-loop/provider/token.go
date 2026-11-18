@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/KogenAI/kogen-loop/sys"
 )
 
 const (
@@ -33,7 +35,7 @@ func (k *call) accessToken() (string, error) {
 	if k.info.key {
 		// An API key does not expire or refresh. An optional key may be absent: "" sends no
 		// Authorization header. A compatible key is bound to the origin it was saved for.
-		if k.info.compatible() {
+		if k.info.external() {
 			return k.compatibleToken()
 		}
 		return storedKey(k.home, k.info)
@@ -42,10 +44,33 @@ func (k *call) accessToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if c.hasMode() {
+		return k.managedToken(c)
+	}
 	if c.expiresAt()-60 <= k.unix() {
 		return k.refreshed(text(c["access_token"]), refreshProactive)
 	}
 	return text(c["access_token"]), nil
+}
+
+// managedToken is the access token of a valid managed access snapshot. It only reads: no
+// lock, no token endpoint, no write. An expired or regressed snapshot stops the call until
+// the external owner publishes a newer one.
+func (k *call) managedToken(c credentials) (string, error) {
+	k.managed = true
+	exp := c.expiresAt()
+	if !c.managedFresh(k.unix()) {
+		return "", managedStop("expired")
+	}
+	if !k.c.acceptManaged(credentialsPath(k.home, k.info), exp) {
+		return "", managedStop("regressed")
+	}
+	return text(c["access_token"]), nil
+}
+
+// managedStop is the refusal of a managed access snapshot that cannot serve a request.
+func managedStop(what string) *sys.Error {
+	return providerFail("login", "managed access snapshot "+what+"; owner refresh required")
 }
 
 // refreshed refreshes under the exclusive credentials lock; another Kogen may already have
@@ -118,6 +143,9 @@ func expiresIn(v any) int64 {
 // rejected is the refusal when the sign-in no longer works; diag are the provider
 // diagnostics of the failure that led here.
 func (k *call) rejected(diag map[string]any) error {
+	if k.managed {
+		return withDiagnostics(managedStop("was rejected"), diag)
+	}
 	e := providerFail("login", "the "+k.info.Label+" sign-in was rejected; "+loginHint(k.info))
 	return withDiagnostics(e, diag)
 }

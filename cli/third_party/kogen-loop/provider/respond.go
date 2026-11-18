@@ -208,8 +208,11 @@ func (c *Client) Respond(ctx context.Context, s *sys.Session, req Request, obs O
 		}
 		budget = c.ResponseBudget
 	}
-	if info.compatible() && req.Role.BaseURL == "" {
-		return nil, sys.Fail("provider", "refused", "openai-compatible needs base_url in .kogen/project.yaml", 4)
+	if info.external() && req.Role.BaseURL == "" {
+		return nil, sys.Fail("provider", "refused", info.Name+" needs base_url in .kogen/project.yaml", 4)
+	}
+	if info.messagesCompatible() && s.Getenv("KOGEN_PROVIDER_URL") != "" {
+		return nil, sys.Fail("provider", "refused", info.Name+" is sent only to the role's base_url; KOGEN_PROVIDER_URL is not used for it, unset it", 4)
 	}
 	k := c.newCall(ctx, s, info, budget)
 	defer k.cancel()
@@ -430,7 +433,7 @@ func (r *run) attempts() (*Response, error) {
 		case resOK:
 			return r.response(res), nil
 		case resUnauthorized:
-			if keyed || refreshed {
+			if keyed || refreshed || r.k.managed {
 				return nil, r.k.rejected(res.fail.diagnostics())
 			}
 			fresh, rerr := r.k.refreshed(used, refreshAfter401)
@@ -555,7 +558,7 @@ func (r *run) transport(token string) (result, error) {
 
 // origin is the inference origin: the loopback test seam or the provider's own.
 func (k *call) origin() string {
-	if k.info.compatible() {
+	if k.info.external() {
 		return k.baseURL
 	}
 	if v := k.env("KOGEN_PROVIDER_URL"); v != "" {
@@ -964,7 +967,7 @@ func (r *run) completeMessages(stream, key, end string) (result, error) {
 		return result{}, err
 	}
 	r.so.finish(end)
-	res := parseMessages(stream)
+	res := parseMessagesFor(stream, r.k.info.messagesCompatible())
 	if res.kind == resOK {
 		meta := map[string]any{
 			"id":                          safeIdentifier(res.meta["id"], key),
@@ -1188,7 +1191,7 @@ func (r *run) record(res result, err error, start time.Time, ts string, load any
 	case res.kind == resUnauthorized && r.k.info.key:
 		rec["provider_failure"] = res.fail.diagnostics()
 	}
-	if r.k.info.Name == "anthropic" {
+	if r.k.info.wire == wireMessages {
 		rec["anthropic_stop_reason"] = meta["anthropic_stop_reason"]
 		marker, _ := meta["anthropic_end_turn_tool_use"].(bool)
 		rec["anthropic_end_turn_tool_use"] = marker

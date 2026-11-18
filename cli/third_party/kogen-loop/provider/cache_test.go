@@ -197,7 +197,7 @@ func TestRoleNames(t *testing.T) {
 	for _, p := range Catalog() {
 		names = append(names, p.Name)
 	}
-	if !reflect.DeepEqual(names, []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible"}) {
+	if !reflect.DeepEqual(names, []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible", "messages-compatible"}) {
 		t.Fatal(names)
 	}
 }

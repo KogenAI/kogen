@@ -161,7 +161,7 @@ func TestOpenCodeGoMalformedAnswersReturnNoExecutableItems(t *testing.T) {
 		"false calls":     goAnswer(map[string]any{"role": "assistant", "content": "text", "tool_calls": false}, "stop"),
 		"empty calls":     goAnswer(map[string]any{"role": "assistant", "content": "text", "tool_calls": []any{}}, "tool_calls"),
 		"no content":      goAnswer(noContent, "tool_calls"),
-		"length":          goAnswer(raw, "length"),
+		"other finish":    goAnswer(raw, "content_filter"),
 		"explicit error":  goAnswer(raw, "tool_calls", "error", map[string]any{"code": "failure"}),
 		"no choices":      {"choices": []any{}},
 		"duplicate ids":   goAnswer(with(raw, "tool_calls", []any{goCall("a"), goCall("a")}), "tool_calls"),
@@ -182,7 +182,7 @@ func TestOpenCodeGoMalformedAnswersReturnNoExecutableItems(t *testing.T) {
 		t.Fatalf("stop with calls: %+v", res)
 	}
 	// Through Respond an unreadable answer is never retried and says which provider.
-	e, f := keyEnv(t, "opencode-go", jsonAnswer(200, goAnswer(raw, "length")), jsonAnswer(200, goText("never")))
+	e, f := keyEnv(t, "opencode-go", jsonAnswer(200, goAnswer(raw, "content_filter")), jsonAnswer(200, goText("never")))
 	_, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p", Input: user("x")}, nil)
 	if se := mustErr(t, err); se.Reason != "invalid_response" || se.Detail != "malformed OpenCode Go completion" || se.Exit != 4 || len(f.requests()) != 1 {
 		t.Fatalf("%v, %d requests", se, len(f.requests()))

@@ -45,6 +45,9 @@ func renderChat(info Info, req Request, id string, input []any) (rendered, error
 	if req.Role.Effort != "default" {
 		body["reasoning_effort"] = req.Role.Effort
 	}
+	if n := req.Budget.outputCeiling(); n > 0 {
+		body["max_tokens"] = n
+	}
 	if info.compatible() {
 		// A generic host gets no vendor routing field or header (strict hosts refuse unknown
 		// fields); its prefix cache still sees the frozen front and append-only history.
@@ -158,7 +161,8 @@ func toUsage(k KnownUsage, state string) Usage {
 }
 
 // adaptChat turns a Chat Completions answer into validated items: a complete assistant
-// message that finished with stop or tool_calls, its calls each valid, unique and carrying a
+// message that finished with stop or tool_calls (a length finish is a transient cut, never
+// items), its calls each valid, unique and carrying a
 // JSON object, and some text or call to act on. Anything else is unreadable, never
 // partially executed.
 func adaptChat(info Info, response map[string]any) result {
@@ -195,6 +199,12 @@ func adaptChat(info Info, response map[string]any) result {
 	}
 	if refusal := raw["refusal"]; refusal != nil && refusal != "" {
 		return invalid
+	}
+	if finish == "length" {
+		// The answer was cut at the output limit: a named transient outcome that keeps the
+		// reported usage and exposes no item, so a partial tool call never runs.
+		known, state := chatUsage(response)
+		return result{kind: resTransient, detail: info.Label + " output cut at the length limit (finish_reason length)", usage: toUsage(known, state), known: known, state: state, meta: chatMeta(response)}
 	}
 	if finish != "stop" && finish != "tool_calls" {
 		return invalid
@@ -236,6 +246,13 @@ func adaptChat(info Info, response map[string]any) result {
 		fn, _ := asMap(cm["function"])
 		items = append(items, map[string]any{"type": "function_call", "call_id": cm["id"], "name": fn["name"], "arguments": fn["arguments"]})
 	}
+	known, state := chatUsage(response)
+	meta := chatMeta(response)
+	return result{kind: resOK, items: items, usage: toUsage(known, state), known: known, state: state, meta: meta}
+}
+
+// chatUsage is the validated usage an answer reports.
+func chatUsage(response map[string]any) (KnownUsage, string) {
 	u, _ := asMap(response["usage"])
 	known := KnownUsage{}
 	if u != nil {
@@ -245,14 +262,18 @@ func adaptChat(info Info, response map[string]any) result {
 			Output: count(u["completion_tokens"]), Reasoning: detailCount(u, "completion_tokens_details", "reasoning_tokens"),
 		}
 	}
-	state := known.State()
+	return known, known.State()
+}
+
+// chatMeta is the identity an answer reports.
+func chatMeta(response map[string]any) map[string]any {
 	meta := map[string]any{}
 	for _, k := range []string{"id", "model"} {
 		if v, has := response[k]; has {
 			meta[k] = v
 		}
 	}
-	return result{kind: resOK, items: items, usage: toUsage(known, state), known: known, state: state, meta: meta}
+	return meta
 }
 
 func nonNilList(l []any) []any {

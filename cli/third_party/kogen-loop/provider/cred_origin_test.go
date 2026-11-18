@@ -320,8 +320,8 @@ func TestLCredOriginUnboundKey(t *testing.T) {
 		if !bytes.Equal(credBytes(t, e), before) {
 			t.Errorf("%s: credential changed", name)
 		}
-		if got := Status(e.home)[len(Catalog())-1]; got != "openai-compatible: saved key has no origin; log in again" {
-			t.Errorf("status %q", got)
+		if lines := Status(e.home); lines[len(lines)-1] != "openai-compatible: saved key has no origin; log in again" {
+			t.Errorf("status %q", Status(e.home))
 		}
 	}
 	if len(tls.requests())+len(plain.requests())+rec.count() != 0 {

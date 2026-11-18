@@ -698,8 +698,8 @@ func TestSessionEmitsToolEventsWithCutAndHashes(t *testing.T) {
 func TestNewSessionRefusalListsTheProviders(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, detail string }{
-		{"nobody", "unknown provider nobody; the providers are chatgpt, supergrok, opencode-go, anthropic, openai-compatible"},
-		{"", "role.provider is required; the providers are chatgpt, supergrok, opencode-go, anthropic, openai-compatible"},
+		{"nobody", "unknown provider nobody; the providers are chatgpt, supergrok, opencode-go, anthropic, openai-compatible, messages-compatible"},
+		{"", "role.provider is required; the providers are chatgpt, supergrok, opencode-go, anthropic, openai-compatible, messages-compatible"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := newWorld(t)

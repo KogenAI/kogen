@@ -157,6 +157,7 @@ func OfficialText() string {
 		}
 	}
 	b.WriteString("Recommended ChatGPT defaults: Shape gpt-6.1-sol/high, Build gpt-6.1-sol/medium, Review gpt-6.1-terra/medium (omitted roles keep these defaults).\n")
+	b.WriteString("Route messages-compatible (experimental): an explicit streamed Messages wire sent only to the role's base_url; no profile qualifies it, so every model on it is experimental. Local fixtures only; live qualification and account debit reconciliation are still required.\n")
 	b.WriteString("Other model/effort/role strings and custom routes are experimental, may fail, and are not blocked. Recommended defaults are not qualification. Login status is local only; no credentials refreshed or account checked.\n")
 	return b.String()
 }

@@ -54,7 +54,7 @@ func (c *Client) login(ctx context.Context, s *sys.Session, name, baseURL string
 		return err
 	}
 	origin := ""
-	if info.compatible() {
+	if info.external() {
 		if baseURL == "" {
 			return loginFailed(info.Label + " login needs the base URL the key is for; use a login that supplies one (Client.LoginWithBaseURL); saved login unchanged")
 		}

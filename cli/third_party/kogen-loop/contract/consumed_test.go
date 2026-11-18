@@ -35,7 +35,7 @@ func TestProviderCatalog(t *testing.T) {
 			defaults[info.Name] = info.Models[0]
 		}
 	}
-	if want := []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible"}; !reflect.DeepEqual(names, want) {
+	if want := []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible", "messages-compatible"}; !reflect.DeepEqual(names, want) {
 		t.Fatalf("Catalog names = %v, want %v", names, want)
 	}
 	want := map[string]string{"supergrok": "grok-4.7", "opencode-go": "kimi-k3", "anthropic": "claude-opus-5-5"}

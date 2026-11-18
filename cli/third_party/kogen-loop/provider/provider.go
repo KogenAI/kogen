@@ -8,7 +8,7 @@
 // are fields the caller (or a test) controls.
 package provider
 
-// Role is a model role as the provider needs it: the provider (required), model and reasoning effort, sent unchanged, and for openai-compatible the base URL.
+// Role is a model role as the provider needs it: the provider (required), model and reasoning effort, sent unchanged, and for openai-compatible and messages-compatible the base URL.
 type Role struct{ Provider, Model, Effort, BaseURL string }
 
 // wire is the request/response protocol a provider speaks.
@@ -22,7 +22,7 @@ const (
 
 // Info describes one supported provider.
 type Info struct {
-	Name  string // "chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible"
+	Name  string // "chatgpt", "supergrok", "opencode-go", "anthropic", "openai-compatible", "messages-compatible"
 	Label string // "ChatGPT", "SuperGrok", "OpenCode Go", "Anthropic", "OpenAI-compatible"
 	// AuthBase and APIBase are the default authorization and inference origins; the
 	// loopback test seams KOGEN_AUTH_URL and KOGEN_PROVIDER_URL replace them. Key
@@ -54,6 +54,10 @@ func Catalog() []Info {
 			wire: wireMessages, key: true},
 		// The role's base_url names the host (Ollama, LM Studio, vLLM, ...): there is no default.
 		{Name: "openai-compatible", Label: "OpenAI-compatible", wire: wireChat, key: true, optionalKey: true},
+		// Experimental research route: a streamed Messages wire whose only destination is the
+		// role's base_url (<base_url>/v1/messages). The key is required and origin-bound;
+		// there is no default destination and KOGEN_PROVIDER_URL is never used.
+		{Name: messagesCompatibleName, Label: "Messages-compatible (experimental)", wire: wireMessages, key: true},
 	}
 }
 
@@ -78,4 +82,13 @@ func Lookup(name string) (Info, bool) {
 
 func (p Info) supergrok() bool  { return p.Name == "supergrok" }
 func (p Info) compatible() bool { return p.Name == "openai-compatible" }
-func (p Info) chatgpt() bool    { return p.Name == "chatgpt" }
+
+// messagesCompatibleName is the explicit, experimental external Messages route.
+const messagesCompatibleName = "messages-compatible"
+
+func (p Info) messagesCompatible() bool { return p.Name == messagesCompatibleName }
+
+// external reports a provider whose destination is only the role's base_url and whose key is
+// bound to that URL's origin.
+func (p Info) external() bool { return p.compatible() || p.messagesCompatible() }
+func (p Info) chatgpt() bool  { return p.Name == "chatgpt" }

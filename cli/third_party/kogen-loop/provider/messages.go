@@ -228,6 +228,7 @@ type messageState struct {
 	stop          any
 	usage         map[string]any
 	meta          map[string]any
+	external      bool // an external endpoint: absent cache counts are zero in the total input
 }
 
 type malformed struct {
@@ -412,7 +413,11 @@ func blank(v any) bool {
 // unsuccessful one invalid, an exhausted context window a definite refusal; only a complete,
 // valid end_turn with text or calls, or tool_use with calls, is an answer, and no call is exposed
 // unless every block is valid.
-func parseMessages(text string) result {
+func parseMessages(text string) result { return parseMessagesFor(text, false) }
+
+// parseMessagesFor is parseMessages for an external Messages endpoint when external is true:
+// such an endpoint may omit the cache counts, so an absent one adds nothing to the total input.
+func parseMessagesFor(text string, external bool) result {
 	invalid := result{kind: resInvalid, detail: "malformed Anthropic completion"}
 	cut := result{kind: resTransient, detail: "Anthropic cut stream"}
 	fs := frames(text)
@@ -427,7 +432,7 @@ func parseMessages(text string) result {
 			return cut
 		}
 	}
-	s := &messageState{usage: map[string]any{}, meta: map[string]any{}}
+	s := &messageState{usage: map[string]any{}, meta: map[string]any{}, external: external}
 	for _, f := range fs {
 		if f.event == nil {
 			continue
@@ -475,8 +480,12 @@ func (s *messageState) result() result {
 			valid = valid && hasInput && isObj && validName(b["id"]) && validName(b["name"]) && !blank(b["id"]) && !blank(b["name"])
 		case "thinking":
 			_, okT := b["thinking"].(string)
-			sig, okS := b["signature"].(string)
-			valid = valid && okT && okS && sig != ""
+			rawSig, hasSig := b["signature"]
+			sig, okS := rawSig.(string)
+			// An external route may return unsigned thinking: signature absent or empty.
+			signed := okS && sig != ""
+			unsigned := s.external && (!hasSig || (okS && sig == ""))
+			valid = valid && okT && (signed || unsigned)
 		case "redacted_thinking":
 			_, ok := b["data"].(string)
 			valid = valid && ok
@@ -521,6 +530,17 @@ func (s *messageState) result() result {
 		items = append(items, callItem(c))
 	}
 	known, inconsistent := anthropicUsage(s.usage)
+	if s.external && known.Input == nil && !inconsistent {
+		if i := count(s.usage["input_tokens"]); i != nil {
+			total := *i
+			for _, f := range []string{"cache_read_input_tokens", "cache_creation_input_tokens"} {
+				if n := count(s.usage[f]); n != nil {
+					total += *n
+				}
+			}
+			known.Input = &total
+		}
+	}
 	state := known.State()
 	if inconsistent {
 		state = UsageInconsistent

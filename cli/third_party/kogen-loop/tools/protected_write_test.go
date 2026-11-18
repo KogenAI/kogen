@@ -25,6 +25,10 @@ func TestProtectedWriteDestinations(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(root, target), []byte("keep"), 0640); err != nil {
 					t.Fatal(err)
 				}
+				// WriteFile applies the process umask; set the mode explicitly.
+				if err := os.Chmod(filepath.Join(root, target), 0640); err != nil {
+					t.Fatal(err)
+				}
 			}
 			path := target
 			links := map[string]string{}

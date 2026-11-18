@@ -171,7 +171,7 @@ func TestToolOverlapCompatibility(t *testing.T) {
 			{Result{}, []string{"Ending", "Terminal", "Input", "Response", "Requests"}},
 			{provider.Request{}, []string{"Role", "Instructions", "Input", "Tools", "ToolChoice", "RequireTool", "Single", "CacheID", "Scope", "Cache", "Context", "Budget"}},
 			{provider.Response{}, []string{"Items", "Usage", "Known", "UsageState", "ID", "Model", "Effort", "CacheStatus", "OperationID", "Metadata"}},
-			{provider.Client{}, []string{"HTTP", "Now", "Sleep", "Cache", "Locker", "Input", "Version", "ResponseBudget", "httpOnce", "defHTTP"}},
+			{provider.Client{}, []string{"HTTP", "Now", "Sleep", "Cache", "Locker", "Input", "Version", "ResponseBudget", "managedMu", "managedHigh", "httpOnce", "defHTTP"}},
 			{tools.Tools{}, []string{"Root", "Session", "Repo", "Enabled", "Protected", "Excluded", "Probe", "Documentation", "ShellAfter", "Now", "shells"}},
 			{tools.Output{}, []string{"Text", "Parts", "Rule"}},
 		} {

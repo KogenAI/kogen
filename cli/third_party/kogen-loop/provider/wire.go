@@ -26,8 +26,8 @@ func render(info Info, req Request, id string, unsupported bool) (rendered, erro
 	if (req.ToolChoice != "" || req.RequireTool) && !toolChoiceSupported(info, req.Role) {
 		return rendered{}, providerFail("unsupported_capability", "ToolChoice/RequireTool cannot force a tool on "+info.Label+" ("+wireLabel(info.wire)+" route "+info.Name+"): its thinking mode refuses a forced tool; leave ToolChoice empty and RequireTool false")
 	}
-	if req.Budget.outputCeiling() > 0 && info.wire != wireMessages {
-		return rendered{}, providerFail("unsupported_capability", "the stage request budget's MaxOutputTokens cannot be sent on "+info.Label+" ("+wireLabel(info.wire)+" route "+info.Name+"): only the Messages wire carries an output-token field; leave MaxOutputTokens zero")
+	if req.Budget.outputCeiling() > 0 && info.wire == wireResponses {
+		return rendered{}, providerFail("unsupported_capability", "the stage request budget's MaxOutputTokens cannot be sent on "+info.Label+" ("+wireLabel(info.wire)+" route "+info.Name+"): only the Messages and Chat Completions wires carry an output-token field; leave MaxOutputTokens zero")
 	}
 	switch info.wire {
 	case wireChat:
@@ -159,7 +159,7 @@ func hasImage(v any) bool {
 
 func imageRefusal(info Info) error {
 	why := "images are unqualified"
-	if info.Name == "anthropic" {
+	if info.Name == "anthropic" || info.messagesCompatible() {
 		why = "images are unsupported"
 	}
 	return providerFail("unsupported_capability", info.Label+" "+why+"; use external image preparation and pixel-review handoff")

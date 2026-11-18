@@ -105,7 +105,7 @@ func (c credentials) apiKey(p Info) (string, bool) {
 		return "", false
 	}
 	key, ok := c["api_key"].(string)
-	if !ok || !validKey(key) || (p.Name == "anthropic" && strings.TrimSpace(key) == "") {
+	if !ok || !validKey(key) || ((p.Name == "anthropic" || p.messagesCompatible()) && strings.TrimSpace(key) == "") {
 		return "", false
 	}
 	return key, true

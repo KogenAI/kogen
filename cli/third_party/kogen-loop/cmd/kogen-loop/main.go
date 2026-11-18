@@ -172,8 +172,17 @@ func execute(args []string, stdin io.Reader, stderr io.Writer, s *sys.Session, o
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	taskPath := fs.String("task", "", "the task: a JSON file, or - for standard input")
-	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || *taskPath == "" {
-		return refuse(sys.Fail(api.ErrClassLoop, api.ErrInvalidTask, usage, api.ExitInvalid))
+	invalid := func(detail string) (string, int) {
+		return refuse(sys.Fail(api.ErrClassLoop, api.ErrInvalidTask, detail, api.ExitInvalid))
+	}
+	if err := fs.Parse(args); err != nil {
+		return invalid(err.Error())
+	}
+	if fs.NArg() != 0 {
+		return invalid(fmt.Sprintf("run takes no argument besides --task, got %q", fs.Arg(0)))
+	}
+	if *taskPath == "" {
+		return invalid("run needs --task FILE|- (a task file, or - for standard input)")
 	}
 	task, err := readTask(*taskPath, stdin)
 	if err != nil {
@@ -257,6 +266,13 @@ func readTask(path string, stdin io.Reader) (api.Task, error) {
 	}
 	if err != nil {
 		return api.Task{}, sys.Fail(api.ErrClassLoop, api.ErrInvalidTask, "cannot read the task: "+err.Error(), api.ExitInvalid)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		detail := "the task file " + path + " is empty"
+		if path == "-" {
+			detail = "the task read from standard input is empty"
+		}
+		return api.Task{}, sys.Fail(api.ErrClassLoop, api.ErrInvalidTask, detail, api.ExitInvalid)
 	}
 	// A task of another protocol is refused as such before its fields are judged.
 	var peek struct {

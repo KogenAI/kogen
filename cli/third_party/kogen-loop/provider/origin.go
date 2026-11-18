@@ -63,6 +63,9 @@ func (k *call) compatibleToken() (string, error) {
 	}
 	c := readCredentials(k.home, k.info)
 	if c == nil {
+		if !k.info.optionalKey {
+			return "", providerFail("login", "no usable "+k.info.Label+" key; "+loginHint(k.info))
+		}
 		if strings.HasPrefix(dest, "http://") && !plaintextLoopback(dest) {
 			return "", providerFail("refused", "plaintext HTTP to "+dest+" is refused: HTTP is allowed only for localhost or a loopback IP address; use HTTPS")
 		}

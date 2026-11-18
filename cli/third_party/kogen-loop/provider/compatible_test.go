@@ -94,8 +94,8 @@ func TestOpenAICompatibleNeedsNoLoginButShowsItsKeyState(t *testing.T) {
 	}
 	e := newEnv(t, nil)
 	e.saveCreds("openai-compatible", map[string]any{"provider": "openai-compatible", "api_key": testKey, "origin": "https://models.example"})
-	if got := Status(e.home)[len(Catalog())-1]; got != "openai-compatible: key saved (not verified)" {
-		t.Fatalf("status %q", got)
+	if lines := Status(e.home); lines[len(lines)-1] != "openai-compatible: key saved (not verified)" {
+		t.Fatalf("status %q", Status(e.home))
 	}
 	// The other providers keep their exact lines.
 	if got := Status(home); !slices.Equal(got[:4], []string{"chatgpt: not signed in", "supergrok: not signed in", "opencode-go: not signed in", "anthropic: not signed in"}) {
