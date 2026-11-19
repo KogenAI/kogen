@@ -652,8 +652,9 @@ _kogen() {
     context) options=(--project --json --help) ;;
     completion) compadd zsh; return ;;
     provider)
-      if (( CURRENT == 3 )); then compadd login list
-      elif [[ $words[3] == login ]]; then compadd chatgpt supergrok opencode-go anthropic claude-code openai-compatible; fi
+      if (( CURRENT == 3 )); then compadd login list update
+      elif [[ $words[3] == login ]]; then compadd chatgpt supergrok opencode-go anthropic claude-code openai-compatible
+      elif [[ $words[3] == update ]]; then compadd claude-code; fi
       return ;;
     intent)
       op=$words[3]

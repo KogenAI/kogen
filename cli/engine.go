@@ -8,12 +8,12 @@ import (
 	"github.com/KogenAI/kogen-build/build"
 	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-executor/executor"
-	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"github.com/KogenAI/kogen-loop/provider"
 	"github.com/KogenAI/kogen-loop/sys"
 	"github.com/KogenAI/kogen-setup/setup"
 	"github.com/KogenAI/kogen-shaping/shape"
 	"github.com/KogenAI/kogen-verification/verify"
+	"kogen/internal/claudecode"
 )
 
 // engineJob is an Intent command or init after the command line and the caller's files were
@@ -57,6 +57,10 @@ func runEngine(job engineJob) int {
 	client := provider.NewClient(versionLine(job.root))
 	var code int
 	var err error
+	if inv.command == "build" || inv.command == "resume" {
+		before := runResults(job.project)
+		defer func() { stampClaudeCode(job.project, before) }()
+	}
 	switch inv.command {
 	case "init":
 		code, err = setup.Init(s.Context(), s, setup.InitInput{Client: client, Tools: tools})

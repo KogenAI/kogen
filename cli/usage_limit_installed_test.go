@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Catches a usage-limit stop or resume across rounds that breaks on the real installed binary.
@@ -155,6 +156,12 @@ protect:
 		t.Fatalf("unsupported runtime platform: %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	if err := os.Truncate(claudecode.RuntimePath(home), size); err != nil {
+		t.Fatal(err)
+	}
+	// The pinned fake is the runtime under test: a check ended just now keeps role starts from
+	// asking the real distribution for a newer Claude Code.
+	checked := `{"checked_at":"` + time.Now().UTC().Format(time.RFC3339) + `"}` + "\n"
+	if err := os.WriteFile(filepath.Join(claudecode.Root(home), "harness.json"), []byte(checked), 0600); err != nil {
 		t.Fatal(err)
 	}
 	env := isolatedGit(home, "KOGEN_FAKE_CLAUDE_SCRIPT="+script, "KOGEN_FAKE_CLAUDE_STATE="+state)

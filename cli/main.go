@@ -8,9 +8,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"github.com/KogenAI/kogen-build/build"
-	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"github.com/KogenAI/kogen-loop/sys"
 	"io"
+	"kogen/internal/claudecode"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -95,17 +95,18 @@ type spec struct {
 }
 
 var leaves = map[string]spec{
-	"init":           {path: "init", command: "init", page: "top"},
-	"uninstall":      {path: "uninstall", command: "uninstall", page: "top"},
-	"version":        {path: "version", command: "version", page: "top"},
-	"intent shape":   {path: "intent shape", command: "shape", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<file|->"}},
-	"intent refine":  {path: "intent refine", command: "refine", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<sha256>", "<file|->"}},
-	"intent approve": {path: "intent approve", command: "approve", page: "intent", options: []string{"project", "by"}, positional: []string{"<slug>", "<hash>"}, optional: 1},
-	"intent recover": {path: "intent recover", command: "recover", page: "intent", options: []string{"project", "output"}, positional: []string{"<build-id>"}},
-	"intent resume":  {path: "intent resume", command: "resume", page: "intent", options: []string{"project"}, positional: []string{"<build-id>"}},
-	"intent build":   {path: "intent build", command: "build", page: "intent", options: []string{"project", "context"}, positional: []string{"<slug>"}},
-	"provider login": {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
-	"provider list":  {path: "provider list", command: "list", page: "provider", options: []string{"json"}},
+	"init":            {path: "init", command: "init", page: "top"},
+	"uninstall":       {path: "uninstall", command: "uninstall", page: "top"},
+	"version":         {path: "version", command: "version", page: "top"},
+	"intent shape":    {path: "intent shape", command: "shape", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<file|->"}},
+	"intent refine":   {path: "intent refine", command: "refine", page: "intent", options: []string{"project"}, positional: []string{"<slug>", "<sha256>", "<file|->"}},
+	"intent approve":  {path: "intent approve", command: "approve", page: "intent", options: []string{"project", "by"}, positional: []string{"<slug>", "<hash>"}, optional: 1},
+	"intent recover":  {path: "intent recover", command: "recover", page: "intent", options: []string{"project", "output"}, positional: []string{"<build-id>"}},
+	"intent resume":   {path: "intent resume", command: "resume", page: "intent", options: []string{"project"}, positional: []string{"<build-id>"}},
+	"intent build":    {path: "intent build", command: "build", page: "intent", options: []string{"project", "context"}, positional: []string{"<slug>"}},
+	"provider login":  {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
+	"provider list":   {path: "provider list", command: "list", page: "provider", options: []string{"json"}},
+	"provider update": {path: "provider update", command: "update", page: "provider", positional: []string{"<provider>"}},
 }
 
 var hashRe = regexp.MustCompile(`^[0-9a-f]{6,64}$`)
@@ -215,6 +216,11 @@ func parse(args []string) (*invocation, string, *usageError) {
 		inv.provider = pos[0]
 		if pos[0] != "chatgpt" && pos[0] != "supergrok" && pos[0] != "opencode-go" && pos[0] != "anthropic" && pos[0] != "claude-code" && pos[0] != "openai-compatible" {
 			return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)", pos[0])
+		}
+	case "update":
+		inv.provider = pos[0]
+		if pos[0] != "claude-code" {
+			return fail("unknown provider '%s' (only claude-code updates)", pos[0])
 		}
 	case "shape":
 		inv.slug, inv.file = pos[0], pos[1]
@@ -431,7 +437,8 @@ func uninstall(root string) error {
 	return nil
 }
 
-// removeClaudeRuntime removes Kogen's own Claude Code folder with everything in it. It never
+// removeClaudeRuntime removes Kogen's own Claude Code folder with everything in it (every
+// installed version, the active file and harness.json included). It never
 // touches ~/.kogen/credentials, ~/.claude, ~/.claude.json or the user's own Claude Code.
 func removeClaudeRuntime() error {
 	home, err := os.UserHomeDir()

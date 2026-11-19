@@ -17,9 +17,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/KogenAI/kogen-executor/executor/claudecode"
 	"github.com/KogenAI/kogen-loop/provider"
 	"github.com/KogenAI/kogen-loop/sys"
+	"kogen/internal/claudecode"
 )
 
 // runNative runs the commands implemented in Go. ok is false for commands that are not.
@@ -48,6 +48,8 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 		fmt.Println(runtimeStatus(home))
 		fmt.Print(provider.OfficialText())
 		return 0, true
+	case "update":
+		return exitFor(updateClaudeCode()), true
 	case "login":
 		s := sys.New()
 		if err := provider.CheckSeams(s); err != nil {
@@ -61,13 +63,40 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 	return 0, false
 }
 
-// runtimeStatus reports the pinned runtime's local presence without running it.
+// runtimeStatus reports the local presence of the runtime a role start would run (the active
+// version, otherwise the pin) without running it.
 func runtimeStatus(home string) string {
-	path := claudecode.RuntimePath(home)
+	version, path := claudecode.Active(home)
 	if st, err := os.Stat(path); err == nil && st.Mode().IsRegular() {
-		return "claude-code runtime: Claude Code " + claudecode.Version + " installed (" + path + ")"
+		return "claude-code runtime: Claude Code " + version + " installed (" + path + ")"
 	}
-	return "claude-code runtime: Claude Code " + claudecode.Version + " not installed"
+	return "claude-code runtime: Claude Code " + version + " not installed"
+}
+
+// updateClaudeCode is `kogen provider update claude-code`: one check at once, whatever the age
+// of the last one (LOOP-15).
+func updateClaudeCode() error {
+	s := sys.New()
+	stop := s.WatchSignals()
+	defer stop()
+	// Nothing the check started outlives it: stop every command group.
+	defer func() { sys.Terminate(s.Groups()) }()
+	exe, err := os.Executable()
+	if err != nil {
+		return sys.Fail("environment", "claude_code_update_unfinished", "cannot locate this program for the executor hooks: "+err.Error(), 3)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return sys.Fail("environment", "claude_code_update_unfinished", "cannot find the home directory for Kogen's Claude Code runtime", 3)
+	}
+	opts := claudecode.Options{Home: home, HookCommand: []string{exe, claudecode.HookSubcommand}}
+	if err := claudecode.Update(s.Context(), opts, os.Stdout); err != nil {
+		if ie := s.Err(); ie != nil {
+			return ie
+		}
+		return err
+	}
+	return nil
 }
 
 // login signs in to one provider. Only openai-compatible differs: it reads the base URL the
