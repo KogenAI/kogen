@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -257,5 +258,89 @@ func TestDisposableSelfRepositoriesLeaveSourceHeadIndexAndEditsUntouched(t *test
 		if got := git(destination, "show", "HEAD:README.md"); got != "Uncommitted candidate\n" {
 			t.Fatalf("committed README = %q", got)
 		}
+	}
+}
+
+// suiteWithFakeGo copies test/suite.sh into a scratch project whose spec, live-helper and
+// acceptance layers are fakes and whose `go` records its arguments and working directory, then
+// runs the suite. It never runs the real go test, Cucumber or Quint.
+func suiteWithFakeGo(t *testing.T, goExit int) (out string, code int, calls string, project string) {
+	t.Helper()
+	base := t.TempDir()
+	project = filepath.Join(base, "project")
+	bin := filepath.Join(base, "bin")
+	record := filepath.Join(base, "go-calls.txt")
+	put := func(path, text string, mode os.FileMode) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	copyScript(t, "test/suite.sh", filepath.Join(project, "test/suite.sh"))
+	put(filepath.Join(project, "archive.tar.gz"), "archive\n", 0o644)
+	for dir, tool := range map[string]string{"spec": "quint", "test/acceptance": "cucumber-js"} {
+		d := filepath.Join(project, dir)
+		put(filepath.Join(d, "package.json"), "{}\n", 0o644)
+		put(filepath.Join(d, "package-lock.json"), "{}\n", 0o644)
+		put(filepath.Join(d, "node_modules/.bin", tool), "#!/bin/sh\nexit 0\n", 0o755)
+		sum, code := runIn(t, d, os.Environ(), "shasum", "-a", "256", "package.json", "package-lock.json")
+		if code != 0 {
+			t.Fatalf("shasum: %d\n%s", code, sum)
+		}
+		put(filepath.Join(d, "node_modules/.kogen-suite-manifests"), strings.TrimRight(sum, "\n")+"\n", 0o644)
+	}
+	put(filepath.Join(project, "spec/check.sh"), "exit 0\n", 0o644)
+	put(filepath.Join(project, "test/live/check-verify.sh"), "exit 0\n", 0o644)
+	put(filepath.Join(project, "test/live/check-journey.sh"), "exit 0\n", 0o644)
+	put(filepath.Join(project, "cli/.keep"), "", 0o644)
+	put(filepath.Join(bin, "npm"), "#!/bin/sh\nexit 0\n", 0o755)
+	put(filepath.Join(bin, "go"), "#!/bin/sh\n{ echo call; echo \"cwd:$(pwd -P)\"; for a in \"$@\"; do printf 'arg:%s\\n' \"$a\"; done; } >> \""+record+"\"\nexit "+strconv.Itoa(goExit)+"\n", 0o755)
+
+	nodeBin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not on PATH")
+	}
+	env := isolatedGit(t.TempDir(),
+		"KOGEN_ARCHIVE="+filepath.Join(project, "archive.tar.gz"),
+		"PATH="+strings.Join([]string{bin, filepath.Dir(nodeBin), "/usr/bin", "/bin", "/usr/sbin", "/sbin"}, ":"))
+	out, code = runIn(t, base, env, "/bin/sh", filepath.Join(project, "test/suite.sh"))
+	if b, err := os.ReadFile(record); err == nil {
+		calls = string(b)
+	}
+	project, _ = filepath.EvalSymlinks(project)
+	return out, code, calls, project
+}
+
+func TestSuiteGoLayerPassesAnExplicitLimitOf40MinutesInTheCliDirectory(t *testing.T) {
+	out, code, calls, project := suiteWithFakeGo(t, 0)
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\n%s", code, out)
+	}
+	want := "call\ncwd:" + filepath.Join(project, "cli") + "\narg:test\narg:-race\narg:-count=1\narg:-timeout=40m\narg:./...\n"
+	if calls != want {
+		t.Fatalf("go was called as\n%s\nwant exactly once as\n%s\n%s", calls, want, out)
+	}
+}
+
+func TestSuiteFailsWhenTheGoLayerExitsNonzero(t *testing.T) {
+	out, code, calls, _ := suiteWithFakeGo(t, 1)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1\n%s", code, out)
+	}
+	if strings.Count(calls, "call\n") != 1 {
+		t.Fatalf("go was not called exactly once:\n%s", calls)
+	}
+	var failed bool
+	for _, line := range strings.Split(out, "\n") {
+		failed = failed || strings.HasPrefix(line, "suite: go FAILED")
+		if strings.HasPrefix(line, "suite: all passed") {
+			t.Fatalf("a failing go layer was reported as passing:\n%s", out)
+		}
+	}
+	if !failed {
+		t.Fatalf("output has no line starting with %q:\n%s", "suite: go FAILED", out)
 	}
 }

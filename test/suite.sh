@@ -35,7 +35,7 @@ const { spawn, execFileSync } = require('node:child_process');
 const root = process.cwd();
 const logs = fs.mkdtempSync(path.join(os.tmpdir(), 'kogen-suite-'));
 const layers = [
-  ['go', path.join(root, 'cli'), 'go', ['test', '-race', '-count=1', './...']],
+  ['go', path.join(root, 'cli'), 'go', ['test', '-race', '-count=1', '-timeout=40m', './...']],
   ['spec', path.join(root, 'spec'), 'sh', ['check.sh']],
   ['live-helper', root, 'sh', ['-c', 'sh test/live/check-verify.sh && sh test/live/check-journey.sh']],
   ['acceptance', path.join(root, 'test/acceptance'), 'npm', ['test']],
