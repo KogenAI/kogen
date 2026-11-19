@@ -332,3 +332,80 @@ func TestProjectAnswersDocumentIsCurrent(t *testing.T) {
 		}
 	}
 }
+
+// refusedDetail runs a read command that must be refused with exit 2 and returns error.detail.
+func refusedDetail(t *testing.T, args ...string) string {
+	t.Helper()
+	var code int
+	out := captureStdout(t, func() { _, code = localRead(args) })
+	var got struct {
+		Error object `json:"error"`
+	}
+	if e := json.Unmarshal([]byte(out), &got); e != nil || code != 2 {
+		t.Fatalf("%v: exit %d: %s", args, code, out)
+	}
+	if got.Error["class"] != "intent" || got.Error["reason"] != "invalid_argument" || len(got.Error) != 4 {
+		t.Fatalf("%v: %v", args, got.Error)
+	}
+	d, _ := got.Error["detail"].(string)
+	return d
+}
+
+func checkRefusedDetails(t *testing.T, cases [][]string) {
+	t.Helper()
+	for _, c := range cases {
+		if got := refusedDetail(t, c[1:]...); got != c[0] {
+			t.Errorf("%v: detail %q, want %q", c[1:], got, c[0])
+		}
+	}
+}
+
+func TestReadCommandsNameOptionsAndPositionals(t *testing.T) {
+	checkRefusedDetails(t, [][]string{
+		{"kogen intent inspect: unknown option '--bogus'", "intent", "inspect", "--bogus=1", "0a1b2c3d"},
+		{"kogen intent inspect: unknown option '--limit'", "intent", "inspect", "--limit", "5", "0a1b2c3d"},
+		{"kogen intent preflight: unknown option '--json'", "intent", "preflight", "--json=1", "abc"},
+		{"kogen intent list: unknown option '--bogus'", "intent", "list", "--bogus"},
+		{"kogen intent list: --project needs a value", "intent", "list", "--project"},
+		{"kogen intent list: --cursor needs a value", "intent", "list", "--cursor"},
+		{"kogen context: unknown option '--cursor'", "context", "--cursor=x"},
+		{"kogen context: unexpected argument 'extra'", "context", "extra"},
+		{"kogen intent list: unexpected argument 'extra'", "intent", "list", "extra"},
+		{"kogen intent list: unexpected argument 'extra'", "intent", "list", "--", "extra"},
+		{"kogen intent list: unknown option '--bogus'", "intent", "list", "extra", "--bogus"},
+	})
+}
+
+func TestInspectAndPreflightNameMissingAndInvalid(t *testing.T) {
+	root := factProject(t)["root"].(string)
+	checkRefusedDetails(t, [][]string{
+		{"kogen intent inspect: unexpected argument '1a1b2c3d'", "intent", "inspect", "--project", root, "0a1b2c3d", "1a1b2c3d"},
+		{"kogen intent inspect: missing the run id", "intent", "inspect", "--project", root},
+		{"kogen intent preflight: missing the slug", "intent", "preflight", "--project", root},
+		{"kogen intent preflight: the slug must be 3 to 48 characters and use lowercase letters, digits and dashes", "intent", "preflight", "--project", root, "Is_Even"},
+		{"kogen intent preflight: unexpected argument 'two'", "intent", "preflight", "--project", root, "one", "two"},
+	})
+}
+
+func TestListAndUsageNameLimitAndCursor(t *testing.T) {
+	root := factProject(t)["root"].(string)
+	checkRefusedDetails(t, [][]string{
+		{"kogen intent list: --limit must be a whole number from 1 to 100", "intent", "list", "--limit", "0"},
+		{"kogen intent list: --limit must be a whole number from 1 to 100", "intent", "list", "--limit=x"},
+		{"kogen intent usage: --limit must be a whole number from 1 to 100", "intent", "usage", "--limit", "101"},
+		{"kogen intent list: --cursor is not a cursor of the current list", "intent", "list", "--project", root, "--cursor=x"},
+	})
+}
+
+func TestUsageNamesTheRefusedFilter(t *testing.T) {
+	checkRefusedDetails(t, [][]string{
+		{"kogen intent usage: --lineage needs a run id", "intent", "usage", "--lineage"},
+		{"kogen intent usage: --group-by field 'bogus' is unknown (fields: project, slug, lineage, phase, role, model, effective-model, effort, effective-effort, outcome, pass, repair)", "intent", "usage", "--group-by", "phase,bogus"},
+		{"kogen intent usage: --since must be a UTC time such as 2026-11-16T00:00:00Z", "intent", "usage", "--since", "2026-11-16"},
+		{"kogen intent usage: --until must be a UTC time such as 2026-11-16T00:00:00Z", "intent", "usage", "--until=2026-11-16T00:00:00+01:00"},
+		{"kogen intent usage: unknown option '--bogus'", "intent", "usage", "extra", "--bogus"},
+		{"kogen intent usage: unexpected argument 'extra'", "intent", "usage", "extra"},
+		{"kogen intent usage: --slug needs a value", "intent", "usage", "--slug"},
+		{"kogen intent usage: unknown option '--lineage'", "intent", "usage", "--lineage=1"},
+	})
+}

@@ -29,7 +29,8 @@ func usageCommand(args []string) int {
 	lineage, jsonMode := false, false
 	filters := object{}
 	group := []string{"phase", "role"}
-	bad := false
+	badPositional := ""
+	hasBadPositional := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch a {
@@ -43,11 +44,14 @@ func usageCommand(args []string) int {
 		}
 		if strings.HasPrefix(a, "--") {
 			k, v, has := strings.Cut(strings.TrimPrefix(a, "--"), "=")
+			name := "--" + k
+			if !contains([]string{"project", "limit", "group-by", "since", "until"}, k) && !(contains(usageKeys, k) && k != "lineage") {
+				return invalidArgument("usage", nil, unknownOptionText(name))
+			}
 			if !has {
 				i++
 				if i >= len(args) {
-					bad = true
-					break
+					return invalidArgument("usage", nil, name+" needs a value")
 				}
 				v = args[i]
 			}
@@ -57,42 +61,36 @@ func usageCommand(args []string) int {
 			case "limit":
 				n, e := strconv.Atoi(v)
 				if e != nil || n < 1 || n > 100 {
-					bad = true
-				} else {
-					limit = n
+					return invalidArgument("usage", nil, limitText)
 				}
+				limit = n
 			case "group-by":
 				group = strings.Split(v, ",")
 				for _, g := range group {
 					if !contains(usageKeys, g) {
-						bad = true
+						return invalidArgument("usage", nil, "--group-by field '"+g+"' is unknown (fields: "+strings.Join(usageKeys, ", ")+")")
 					}
 				}
 			case "since", "until":
 				t, e := time.Parse(time.RFC3339, v)
 				if e != nil || !strings.HasSuffix(v, "Z") {
-					bad = true
-				} else {
-					filters[k] = t.Format(time.RFC3339Nano)
+					return invalidArgument("usage", nil, name+" must be a UTC time such as 2026-11-16T00:00:00Z")
 				}
+				filters[k] = t.Format(time.RFC3339Nano)
 			default:
-				if contains(usageKeys, k) && k != "project" && k != "lineage" {
-					filters[k] = v
-				} else {
-					bad = true
-				}
+				filters[k] = v
 			}
 		} else if id == "" && runID.MatchString(a) {
 			id = a
-		} else {
-			bad = true
+		} else if !hasBadPositional {
+			badPositional, hasBadPositional = a, true
 		}
 	}
-	if lineage && id == "" {
-		bad = true
+	if hasBadPositional {
+		return invalidArgument("usage", nil, "unexpected argument '"+badPositional+"'")
 	}
-	if bad {
-		return response("usage", nil, nil, "invalid_argument", 2)
+	if lineage && id == "" {
+		return invalidArgument("usage", nil, "--lineage needs a run id")
 	}
 	c, reason := discover(project)
 	if reason != "" {

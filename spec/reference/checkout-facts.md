@@ -53,7 +53,8 @@ commands. Checks are configuration, package, approval, cleanliness, conflict.
 tool availability, signing, full readiness and resume safety are not established.
 Build always revalidates. Blockers return exit 1 with data and null error;
 invalid environment/configuration returns exit 3. Read success is exit 0,
-including empty lists; usage is 2 (`intent/invalid_argument`), absent projects
+including empty lists; usage is 2 (`intent/invalid_argument`; its `error.detail` names the
+argument and what was expected), absent projects
 are 3 (`environment/not_project`), unavailable paths are 3
 (`environment/project_unavailable`), unknown runs are 1
 (`intent/run_not_found`; see below). The `error.detail` of a `not_project` or

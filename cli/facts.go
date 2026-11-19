@@ -242,6 +242,18 @@ func projectDetail(reason, project string) string {
 	return project + " is not a Kogen project: no Git checkout with .kogen/project.yaml here; run kogen init in the project folder, or pass --project with its path"
 }
 
+const limitText = "--limit must be a whole number from 1 to 100"
+
+func unknownOptionText(key string) string { return "unknown option '" + key + "'" }
+
+// commandPaths maps the answer kind of a read command to the command path named in its errors.
+var commandPaths = map[string]string{"intents": "intent list", "run": "intent inspect", "preflight": "intent preflight", "context": "context", "usage": "intent usage"}
+
+// invalidArgument answers a refused argument: the detail names the command and what was wrong or expected.
+func invalidArgument(kind string, c object, text string) int {
+	return responseDetail(kind, c, nil, "invalid_argument", "kogen "+commandPaths[kind]+": "+text, 2)
+}
+
 // responseDetail is response with its own error.detail.
 func responseDetail(kind string, c object, data any, reason, detail string, code int) int {
 	var er any
@@ -306,8 +318,13 @@ func localRead(args []string) (bool, int) {
 	cursor := ""
 	jsonMode := kind == "context"
 	pos := []string{}
-	bad := false
 	endOpts := false
+	refuse := func(c object, text string) int {
+		if kind == "complete" {
+			return response(kind, c, nil, "invalid_argument", 2)
+		}
+		return invalidArgument(kind, c, text)
+	}
 	for i := 0; i < len(rest); i++ {
 		a := rest[i]
 		if endOpts {
@@ -324,10 +341,12 @@ func localRead(args []string) (bool, int) {
 		}
 		if strings.HasPrefix(a, "--") {
 			key, val, has := strings.Cut(a, "=")
+			if key != "--project" && (kind != "intents" || (key != "--limit" && key != "--cursor")) {
+				return true, refuse(nil, unknownOptionText(key))
+			}
 			if !has {
 				if i+1 == len(rest) {
-					bad = true
-					break
+					return true, refuse(nil, key+" needs a value")
 				}
 				i++
 				val = rest[i]
@@ -336,22 +355,13 @@ func localRead(args []string) (bool, int) {
 			case "--project":
 				project = val
 			case "--limit":
-				if kind != "intents" {
-					bad = true
-				}
 				n, e := strconv.Atoi(val)
 				if e != nil || n < 1 || n > 100 {
-					bad = true
-				} else {
-					limit = n
+					return true, refuse(nil, limitText)
 				}
+				limit = n
 			case "--cursor":
-				if kind != "intents" {
-					bad = true
-				}
 				cursor = val
-			default:
-				bad = true
 			}
 		} else {
 			pos = append(pos, a)
@@ -361,11 +371,15 @@ func localRead(args []string) (bool, int) {
 	if kind == "run" || kind == "preflight" || kind == "complete" {
 		want = 1
 	}
-	if len(pos) != want {
-		bad = true
+	if len(pos) > want {
+		return true, refuse(nil, "unexpected argument '"+pos[want]+"'")
 	}
-	if bad {
-		return true, response(kind, nil, nil, "invalid_argument", 2)
+	if len(pos) < want {
+		missing := "missing the run id"
+		if kind == "preflight" {
+			missing = "missing the slug"
+		}
+		return true, refuse(nil, missing)
 	}
 	c, reason := discover(project)
 	if reason != "" {
@@ -382,7 +396,7 @@ func localRead(args []string) (bool, int) {
 	}
 	if kind == "preflight" {
 		if !slugRe.MatchString(pos[0]) || len(pos[0]) < 3 || len(pos[0]) > 48 {
-			return true, response(kind, c, nil, "invalid_argument", 2)
+			return true, invalidArgument(kind, c, "the slug must be 3 to 48 characters and use lowercase letters, digits and dashes")
 		}
 		s := sys.New()
 		stop := s.WatchSignals()
@@ -475,7 +489,7 @@ func localRead(args []string) (bool, int) {
 	rows := append(packages, runs...)
 	items, next, e := pageRows(rows, limit, cursor)
 	if e != nil {
-		return true, response(kind, c, nil, "invalid_argument", 2)
+		return true, invalidArgument(kind, c, "--cursor is not a cursor of the current list")
 	}
 	for _, r := range items {
 		if r["type"] == "build" {
