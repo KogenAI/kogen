@@ -348,7 +348,7 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 | `session.started` | `session_id`, `resumed` (bool), `role`, `capabilities_digest` |
 | `request.started` | `n`, `owner`, `model`, `effort` |
 | `request.attempt` | `n`, `record` (the provider observer record, credentials never included) |
-| `response` | `n`, `response_id`, `usage` (`api.Usage`) |
+| `response` | `n`, `response_id`, `usage` (`api.Usage`), `model_ms` (integer, every response) |
 | `context.condensed` | `n` (the request it precedes), `requests` (summarization requests), `condensed_exchanges`, `kept_exchanges`, `bytes_before`, `bytes_after`, `limit`, `summary_bytes`, `usage` (`api.Usage` of the summarization requests; unknown stays null); `failed` (`true`) only on a condensation that failed after sending a summarization request, with `condensed_exchanges`, `kept_exchanges`, `bytes_after` and `summary_bytes` 0, emitted before the round's `error` |
 | `tool.call` | `call_id`, `name`, `arguments_sha256` |
 | `tool.result` | `call_id`, `name`, `result_sha256`, `bytes`, `cut` (bool), `elapsed_ms` (integer, every result), `rule` only for a refused shell call, `shell_wait` only for a shell call that reached its bounded wait (see [Shell time limit](#shell-time-limit)), `exit_status` (integer) only for a shell call that returns a completed command's result (see [Shell time limit](#shell-time-limit)), `error_kind` only for a tool error and `malformed_class` only for a malformed call (see [Tool error kinds and malformed call classes](#tool-error-kinds-and-malformed-call-classes)), `omitted_lines` only for a cut numbered `read_file` result and `recovers` only for a numbered `read_file` result that delivers lines an earlier cut read of the same file omitted (see [Tool result cut](#tool-result-cut-fixed)). `bytes` and `result_sha256` describe what the model received, after the cut. |
@@ -357,6 +357,8 @@ Every line has `protocol`, `seq` (1-based, gapless), `time` (RFC 3339 UTC) and `
 | `session.ended` | `status` (`ended`/`failed`/`interrupted`), `exit` |
 
 `elapsed_ms` is the wall time in whole milliseconds from the moment the session starts running the call to the moment its output is complete (before the cut); it is measured with `Tools.Now`, a test seam that production leaves nil (`time.Now`) and that the `shell_wait` wait instants also read; it holds a number only.
+
+`model_ms` is the wall time in whole milliseconds of that model turn, from the moment the session emits the turn's `request.started` to the moment it emits the turn's `response` event; `model_ms` and `elapsed_ms` use the same clock (`Tools.Now`, `time.Now` when nil).
 
 `session.ended` is always the last line. Callers must ignore unknown fields and unknown event types inside the same major version.
 

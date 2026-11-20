@@ -378,6 +378,13 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 	exitStatuses := map[string]int{}
 	elapsedMS := map[string]int64{}
 	reads := map[string]readLines{}
+	now := func() time.Time {
+		if s.tools.Now != nil {
+			return s.tools.Now()
+		}
+		return time.Now()
+	}
+	var requestStarted time.Time
 	s.requests = 0
 	rd := Round{
 		Owner: "loop", Role: s.cfg.Role, Instructions: s.instructions, Definitions: s.defs,
@@ -389,6 +396,7 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			s.emit(api.EventRequestStarted, map[string]any{
 				"n": s.requests, "owner": rd.Owner, "model": s.cfg.Role.Model, "effort": s.cfg.Role.Effort,
 			})
+			requestStarted = now()
 			return nil
 		},
 		AfterResponse: func(ctx context.Context, resp *provider.Response, sent []any) error {
@@ -398,7 +406,8 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 			if resp.ID != "" {
 				id = resp.ID
 			}
-			s.emit(api.EventResponse, map[string]any{"n": s.requests, "response_id": id, "usage": u})
+			modelMS := now().Sub(requestStarted).Milliseconds()
+			s.emit(api.EventResponse, map[string]any{"n": s.requests, "response_id": id, "usage": u, "model_ms": modelMS})
 			return nil
 		},
 		BeforeCall: func(ctx context.Context, call tools.Call, in []any) error {
@@ -410,12 +419,6 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 		// The engine cuts what it runs itself; the session runs the call here to learn
 		// whether the cut applied, which the engine's order does not report.
 		HandleCall: func(ctx context.Context, call tools.Call) (Handled, error) {
-			now := func() time.Time {
-				if s.tools.Now != nil {
-					return s.tools.Now()
-				}
-				return time.Now()
-			}
 			began := now()
 			classified, err := s.tools.CallClassified(ctx, call)
 			finished := now()
