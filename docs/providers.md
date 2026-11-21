@@ -23,6 +23,8 @@ See [configuration.md](configuration.md) for the lineup file.
 
 experimental: Build verified with Claude Review; Shape and Review not qualified
 
+The Build evidence behind this label came through the fleet proxy, so the direct public-install Build is still under test.
+
 The label above is not a qualification record. No file in this repository records it, so the table keeps every role of `openai-compatible` as not qualified.
 
 Setup, guided: run `kogen provider login` on an interactive terminal and choose QwenCloud.

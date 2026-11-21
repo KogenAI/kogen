@@ -155,3 +155,43 @@ func TestProvidersGuideKeepsTheQwenCloudFacts(t *testing.T) {
 		t.Error("docs/providers.md mentions messages-compatible")
 	}
 }
+
+func TestProvidersGuideSaysTheQwenCloudBuildEvidenceCameViaTheFleetProxy(t *testing.T) {
+	page := readProvidersGuide(t)
+	start := strings.Index(page, "### QwenCloud\n")
+	if start < 0 {
+		t.Fatal("docs/providers.md has no QwenCloud section")
+	}
+	section := page[start:]
+	lines := strings.Split(section, "\n")
+	label, fence := -1, -1
+	for i, line := range lines {
+		if line == qwenLabel && label < 0 {
+			label = i
+		}
+		if strings.HasPrefix(line, "```") && fence < 0 {
+			fence = i
+		}
+	}
+	if label < 0 || fence <= label {
+		t.Fatal("the QwenCloud section needs the label line before its setup example")
+	}
+	var between []string
+	for _, line := range lines[label+1 : fence] {
+		if strings.TrimSpace(line) != "" {
+			between = append(between, line)
+		}
+	}
+	if len(between) == 0 || !strings.Contains(between[0], "fleet proxy") {
+		t.Fatalf("the line directly after the label line does not name the fleet proxy: %q", between)
+	}
+	sentence := between[0]
+	for _, want := range []string{"direct public-install Build", "still under test"} {
+		if !strings.Contains(sentence, want) {
+			t.Errorf("the fleet proxy sentence does not contain %q: %s", want, sentence)
+		}
+	}
+	if n := strings.Count(strings.ToLower(page), "fleet proxy"); n != 1 {
+		t.Errorf("docs/providers.md names the fleet proxy %d times, want once", n)
+	}
+}
