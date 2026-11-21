@@ -18,7 +18,7 @@ import tempfile
 
 
 # The docs that packaging/package.sh copies into the archive (INS-2).
-SHIPPED_DOCS = ('getting-started.md', 'configuration.md', 'troubleshooting.md', 'testing-rules.md')
+SHIPPED_DOCS = ('getting-started.md', 'configuration.md', 'providers.md', 'troubleshooting.md', 'testing-rules.md')
 
 
 def digest(data):
