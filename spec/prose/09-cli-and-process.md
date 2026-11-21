@@ -77,6 +77,7 @@ Options:
 Usage: kogen provider <command>
 
 Commands:
+  login                    On an interactive terminal, ask which account to use and guide the sign-in
   login chatgpt            Sign in with a ChatGPT account
   login supergrok          Sign in with a SuperGrok subscription
   login opencode-go        Save your OpenCode Go workspace key from stdin
