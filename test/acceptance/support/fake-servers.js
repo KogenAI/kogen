@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { buildRunsCommandTwice } = require('./build-runs-command-twice');
 
 const FAKE_ACCESS_TOKEN = 'KOGEN_ACCEPTANCE_FAKE_ACCESS_TOKEN_DO_NOT_LEAK_20261016';
 const FAKE_REFRESH_TOKEN = 'KOGEN_ACCEPTANCE_FAKE_REFRESH_TOKEN_20261016';
@@ -667,6 +668,7 @@ class FakeServers {
       }
       return calls(correct);
     }
+    if (name === 'build-runs-command-twice') return buildRunsCommandTwice({ server: this, record, args, ordinal, functionCall, finishCalls: () => calls(correct) });
     if (name === 'build-with-background-server') {
       const start = 'python3 -m http.server 8765 > server.log 2>&1 &';
       const wait = 'for i in $(seq 50); do curl -s -o /dev/null http://127.0.0.1:8765/ && break; sleep 0.1; done';

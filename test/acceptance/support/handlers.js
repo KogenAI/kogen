@@ -1497,7 +1497,7 @@ async function dispatchAssertions(world, label, args, attachment) {
     return;
   }
   if (label === 'no request was sent after that command') {
-    const call = world.server.responseItems.find(item => item.name === 'shell' && item.kind === 'build');
+    const call = world.server.responseItems.filter(item => item.name === 'shell' && item.kind === 'build').pop();
     assert.ok(call, 'the builder did not call a shell command');
     assert.ok(!world.server.requests.some(request => request.order > call.requestOrder));
     return;

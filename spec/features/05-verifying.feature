@@ -71,9 +71,26 @@ Feature: Verifying and repair
     And the run log shows the command "quint run .kogen/intents/counter/model.qnt --backend typescript --invariant NeverNegative --seed 7 --max-samples 500 --max-steps 30"
 
   @VER-8 @VER-12 @model:build
-  Scenario Outline: Weakening the baseline is refused or stops the Build at once
+  Scenario Outline: A first shell edit of a protected file is restored and the Build goes on
     Given the Intent "is-even" from fixture "is-even" is approved
     And the fake ChatGPT server plays script "build-runs-command" with command "<command>"
+    When the caller runs "kogen intent build is-even"
+    Then the tool result for the first shell call contains "<path>"
+    And the tool result for the first shell call contains "acceptance files cannot be edited"
+    And the file "<path>" is unchanged
+    And the file ".kogen/intents/is-even/acceptance.feature" is unchanged
+    And the exit code is 0
+
+    Examples:
+      | command                                                                | path                                      |
+      | echo '  # weakened' >> .kogen/intents/is-even/acceptance.feature     | .kogen/intents/is-even/acceptance.feature |
+      | echo pass > features/steps/is_even_steps.js                            | features/steps/is_even_steps.js           |
+      | echo ignore=E >> .style.cfg                                            | .style.cfg                                |
+
+  @VER-8 @VER-12 @model:build
+  Scenario Outline: A second shell edit of a protected file in one attempt is refused
+    Given the Intent "is-even" from fixture "is-even" is approved
+    And the fake ChatGPT server plays script "build-runs-command-twice" with command "<command>"
     When the caller runs "kogen intent build is-even"
     Then the exit code is 1
     And stdout contains "candidate/baseline_changed: the Build changed acceptance files: <path>; nothing was committed"
