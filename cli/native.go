@@ -103,6 +103,9 @@ func updateClaudeCode() error {
 // key is for, then the key, and the loop binds the key to that URL's origin (K-CRED-ORIGIN).
 // Every other provider goes through Client.Login unchanged.
 func login(s *sys.Session, client *provider.Client, name string) error {
+	if name == "" {
+		return loginGuided(s, client, provider.StdinInput())
+	}
 	if name == provider.ClaudeCodeName && interactiveLogin() {
 		return loginClaudeCode(s, client)
 	}
@@ -162,6 +165,11 @@ func loginCompatible(s *sys.Session, client *provider.Client) error {
 
 // readInputLine reads one line without its line ending, giving up when the caller interrupts.
 func readInputLine(s *sys.Session, r *bufio.Reader) (string, error) {
+	return readLine(s, r, "OpenAI-compatible base URL input")
+}
+
+// readLine is readInputLine for any prompt; what names the input in the interrupted refusal.
+func readLine(s *sys.Session, r *bufio.Reader, what string) (string, error) {
 	type read struct {
 		line string
 		err  error
@@ -174,7 +182,7 @@ func readInputLine(s *sys.Session, r *bufio.Reader) (string, error) {
 	select {
 	case x := <-got:
 		if x.err != nil && x.err != io.EOF {
-			return "", sys.Fail("provider", "login_failed", "OpenAI-compatible base URL input interrupted; saved login unchanged", 4)
+			return "", sys.Fail("provider", "login_failed", what+" interrupted; saved login unchanged", 4)
 		}
 		return strings.TrimSuffix(strings.TrimSuffix(x.line, "\n"), "\r"), nil
 	case <-s.Context().Done():

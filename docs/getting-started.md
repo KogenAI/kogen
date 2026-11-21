@@ -25,7 +25,19 @@ kogen v0.1.0-dev.62015185 (2026-11-07)
 
 ## 2. Sign in
 
-Pick one route. Each command saves the login privately under `~/.kogen`.
+Which account do you want to use?
+
+1. ChatGPT
+2. Claude subscription
+3. Anthropic API key
+4. SuperGrok
+5. OpenCode Go
+6. QwenCloud
+7. Advanced setup
+
+On an interactive terminal, `kogen provider login` with no provider asks this same question and takes the number or the name of a choice. Each choice runs its login and saves it privately under `~/.kogen`.
+QwenCloud asks for a plan and then only for the key; it shows the build role it would write to `.kogen/models.yaml` and saves nothing until you answer `y`. Advanced setup is a custom endpoint: Chat Completions, a base URL and a key.
+Scripts and agents name the provider instead; each command saves the login privately under `~/.kogen`:
 
 ```sh
 kogen provider login chatgpt                                          # browser, on the same machine

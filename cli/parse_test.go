@@ -55,6 +55,7 @@ Options:
 		{name: "provider page", args: []string{"provider"}, want: `Usage: kogen provider <command>
 
 Commands:
+  login                    On an interactive terminal, ask which account to use and guide the sign-in
   login chatgpt            Sign in with a ChatGPT account
   login supergrok          Sign in with a SuperGrok subscription
   login opencode-go        Save your OpenCode Go workspace key from stdin
@@ -101,6 +102,7 @@ func TestParseCommandTreeCLI1(t *testing.T) {
 		{name: "build", args: []string{"intent", "build", "feature"}, want: invocation{command: "build", slug: "feature"}},
 		{name: "anthropic private login", args: []string{"provider", "login", "anthropic"}, want: invocation{command: "login", provider: "anthropic"}},
 		{name: "provider login", args: []string{"provider", "login", "chatgpt"}, want: invocation{command: "login", provider: "chatgpt"}},
+		{name: "provider login without a provider is the guided form", args: []string{"provider", "login"}, want: invocation{command: "login"}},
 		{name: "supergrok login", args: []string{"provider", "login", "supergrok"}, want: invocation{command: "login", provider: "supergrok"}},
 		{name: "provider list JSON", args: []string{"provider", "list", "--json"}, want: invocation{command: "list", json: true}},
 		{name: "provider list", args: []string{"provider", "list"}, want: invocation{command: "list"}},
@@ -174,7 +176,6 @@ func TestParseGrammarCLI2(t *testing.T) {
 		{name: "shape missing file", args: []string{"intent", "shape", "feature"}, msg: "kogen intent shape: missing <file|->", page: "intent"},
 		{name: "approve missing slug", args: []string{"intent", "approve"}, msg: "kogen intent approve: missing <slug>", page: "intent"},
 		{name: "build missing slug", args: []string{"intent", "build"}, msg: "kogen intent build: missing <slug>", page: "intent"},
-		{name: "login missing provider", args: []string{"provider", "login"}, msg: "kogen provider login: missing <provider>", page: "provider"},
 		{name: "shape extra positional", args: []string{"intent", "shape", "feature", "request.md", "extra"}, msg: "kogen intent shape: unexpected argument 'extra'", page: "intent"},
 		{name: "version extra positional", args: []string{"version", "extra"}, msg: "kogen version: unexpected argument 'extra'", page: "top"},
 		{name: "list extra positional", args: []string{"provider", "list", "extra"}, msg: "kogen provider list: unexpected argument 'extra'", page: "provider"},

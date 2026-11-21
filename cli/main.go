@@ -55,6 +55,7 @@ Options:
 const providerPage = `Usage: kogen provider <command>
 
 Commands:
+  login                    On an interactive terminal, ask which account to use and guide the sign-in
   login chatgpt            Sign in with a ChatGPT account
   login supergrok          Sign in with a SuperGrok subscription
   login opencode-go        Save your OpenCode Go workspace key from stdin
@@ -104,10 +105,13 @@ var leaves = map[string]spec{
 	"intent recover":  {path: "intent recover", command: "recover", page: "intent", options: []string{"project", "output"}, positional: []string{"<build-id>"}},
 	"intent resume":   {path: "intent resume", command: "resume", page: "intent", options: []string{"project"}, positional: []string{"<build-id>"}},
 	"intent build":    {path: "intent build", command: "build", page: "intent", options: []string{"project", "context"}, positional: []string{"<slug>"}},
-	"provider login":  {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}},
+	"provider login":  {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}, optional: 1},
 	"provider list":   {path: "provider list", command: "list", page: "provider", options: []string{"json"}},
 	"provider update": {path: "provider update", command: "update", page: "provider", positional: []string{"<provider>"}},
 }
+
+// loginProviders are the names `kogen provider login <provider>` accepts.
+var loginProviders = []string{"chatgpt", "supergrok", "opencode-go", "anthropic", "claude-code", "openai-compatible"}
 
 var hashRe = regexp.MustCompile(`^[0-9a-f]{6,64}$`)
 var slugRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -213,9 +217,12 @@ func parse(args []string) (*invocation, string, *usageError) {
 	}
 	switch leaf.command {
 	case "login":
-		inv.provider = pos[0]
-		if pos[0] != "chatgpt" && pos[0] != "supergrok" && pos[0] != "opencode-go" && pos[0] != "anthropic" && pos[0] != "claude-code" && pos[0] != "openai-compatible" {
-			return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)", pos[0])
+		// No provider is the guided form; run refuses it unless both ends are terminals.
+		if len(pos) == 1 {
+			inv.provider = pos[0]
+			if !contains(loginProviders, pos[0]) {
+				return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)", pos[0])
+			}
 		}
 	case "update":
 		inv.provider = pos[0]
@@ -286,6 +293,9 @@ func run(args []string, locate func() (string, error)) int {
 		return code
 	}
 	inv, page, uerr := parse(args)
+	if uerr == nil && inv != nil && inv.command == "login" && inv.provider == "" && !interactiveLogin() {
+		uerr = &usageError{"kogen provider login: missing <provider>", "provider"}
+	}
 	if uerr != nil {
 		fmt.Print(uerr.msg + "\n\n" + pages[uerr.page])
 		return 2
