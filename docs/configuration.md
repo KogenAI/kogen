@@ -52,7 +52,7 @@ models:
 - `shape`: the role for Shape and Refine.
 - `build`: the role that implements the Intent.
 - `review`: the independent reviewer; it starts its own conversation.
-- `provider`: `chatgpt`, `supergrok`, `opencode-go`, `anthropic` or `openai-compatible`; omitted means `chatgpt`.
+- `provider`: `chatgpt`, `supergrok`, `opencode-go`, `anthropic` or `openai-compatible`; omitted means `chatgpt`. `claude-code` is an `executor`, not a `provider`, and QwenCloud is an `openai-compatible` host; [providers.md](providers.md) compares them all.
 - `executor`: `native` (the default) or `claude-code`, which runs Kogen's pinned Claude Code; it takes no `provider`.
 - `model`: any nonempty name; Kogen sends it unchanged.
 - `effort`: any nonempty value; for `anthropic` and `claude-code` it is `low`, `medium`, `high`, `xhigh` or `max`.

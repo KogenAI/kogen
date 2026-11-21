@@ -66,6 +66,7 @@ Run `kogen help` for every command.
 
 - [docs/getting-started.md](docs/getting-started.md): install to your first landed Build
 - [docs/configuration.md](docs/configuration.md): `.kogen/project.yaml` and the model lineup
+- [docs/providers.md](docs/providers.md): every provider compared, with its setup and what is qualified
 - [docs/troubleshooting.md](docs/troubleshooting.md): each error message and the command that fixes it
 - [docs/testing-rules.md](docs/testing-rules.md): which tests a change needs
 - [spec/](https://github.com/KogenAI/kogen/tree/main/spec): the specification, plus reference notes in `spec/reference/`
