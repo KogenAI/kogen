@@ -68,7 +68,7 @@ func TestOpenCodeGoWireRecordAndUsage(t *testing.T) {
 		}
 	}
 	want := map[string]any{
-		"model": "kimi-k3", "stream": false, "store": false, "reasoning_effort": "high", "tool_choice": "auto",
+		"model": "kimi-k3", "stream": true, "stream_options": map[string]any{"include_usage": true}, "store": false, "reasoning_effort": "high", "tool_choice": "auto",
 		"messages": []any{
 			map[string]any{"role": "system", "content": "policy"},
 			map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "original Δ\n"}}},
@@ -187,8 +187,8 @@ func TestOpenCodeGoMalformedAnswersReturnNoExecutableItems(t *testing.T) {
 	if se := mustErr(t, err); se.Reason != "invalid_response" || se.Detail != "malformed OpenCode Go completion" || se.Exit != 4 || len(f.requests()) != 1 {
 		t.Fatalf("%v, %d requests", se, len(f.requests()))
 	}
-	// A body that is not a JSON object is the same unreadable answer.
-	e, _ = keyEnv(t, "opencode-go", rawAnswer(200, "[1,2]"))
+	// A JSON body without choices is the same unreadable answer.
+	e, _ = keyEnv(t, "opencode-go", rawAnswer(200, `{"id":"x"}`))
 	if _, err := e.c.Respond(context.Background(), e.s, Request{Role: goRole, Instructions: "p"}, nil); mustErr(t, err).Detail != "malformed OpenCode Go completion" {
 		t.Fatal(err)
 	}

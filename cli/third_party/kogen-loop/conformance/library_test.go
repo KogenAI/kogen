@@ -565,7 +565,7 @@ func TestSessionRoundsInMemoryAndTheFeedbackRule(t *testing.T) {
 	if err != nil || res.Ending != loop.EndTerminal {
 		t.Fatalf("%v %v", res, err)
 	}
-	want := []string{"request.started", "request.attempt", "response", "tool.call", "round.ended"}
+	want := []string{"request.started", "request.attempt", "response", "tool.call", "turn.timing", "round.ended"}
 	if got := eventTypes(events); !reflect.DeepEqual(got, want) {
 		t.Errorf("events %v", got)
 	}

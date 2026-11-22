@@ -98,9 +98,11 @@ const (
 	EventContextCondensed = "context.condensed"
 	EventToolCall         = "tool.call"
 	EventToolResult       = "tool.result"
-	EventRoundEnded       = "round.ended"
-	EventError            = "error"
-	EventSessionEnded     = "session.ended"
+	// EventTurnTiming is the last event of every turn: how the turn's wall time was spent.
+	EventTurnTiming   = "turn.timing"
+	EventRoundEnded   = "round.ended"
+	EventError        = "error"
+	EventSessionEnded = "session.ended"
 )
 
 // Endings of a round (round.ended "ending"): model claims, not completion.

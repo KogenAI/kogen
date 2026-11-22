@@ -10,11 +10,16 @@ import (
 	"time"
 )
 
-// Default per-attempt silence limits. The first response progress must come within firstByteChatGPT
-// (ChatGPT) or firstByteDefault (every other provider) of the request's dispatch; afterwards no
-// more than streamIdle may pass between progress reads. Keep-alive bytes are not progress. The
+// Default per-attempt silence limits. Every attempt first waits for its response headers up to the
+// Client's header timeout (DefaultHeaderTimeout). On a stream (Responses, Messages) the first
+// response progress must then come within firstByteChatGPT (ChatGPT) or firstByteDefault (every
+// other provider) of the headers; on Chat Completions the headers are the first progress. Afterwards
+// no more than streamIdle may pass between progress reads. Keep-alive bytes are not progress. The
 // limits are absolute within an attempt and never renew the call's budget.
 const (
+	// DefaultHeaderTimeout is the header wait used when Client.HeaderTimeout is not positive.
+	DefaultHeaderTimeout = 120 * time.Second
+
 	firstByteChatGPT = 90 * time.Second
 	firstByteDefault = 45 * time.Second
 	streamIdle       = 180 * time.Second
@@ -40,7 +45,9 @@ type idleWatch struct {
 	mu       sync.Mutex
 	last     time.Time
 	limit    time.Duration
-	idle     bool // progress has arrived: the limit is the idle one
+	first    time.Duration // the first-progress limit that starts at the headers of a stream
+	idle     bool          // progress has arrived: the limit is the idle one
+	headers  bool          // the limit is a wait for the response headers
 	timedOut bool
 	body     io.Closer
 
@@ -48,14 +55,15 @@ type idleWatch struct {
 	done chan struct{}
 }
 
-// newWatch starts the attempt's clock at dispatch. cancel ends the request context.
+// newWatch starts the attempt's header wait at dispatch. cancel ends the request context.
 func (r *run) newWatch(cancel context.CancelFunc) *idleWatch {
 	first := firstByteDefault
 	if r.k.info.chatgpt() {
 		first = firstByteChatGPT
 	}
 	now := r.k.c.now
-	w := &idleWatch{now: now, cancel: cancel, last: now(), limit: first, quit: make(chan struct{}), done: make(chan struct{})}
+	w := &idleWatch{now: now, cancel: cancel, last: now(), limit: r.k.c.headerTimeout(), first: first, headers: true,
+		quit: make(chan struct{}), done: make(chan struct{})}
 	r.watch = w
 	liveWatches.Add(1)
 	go w.run()
@@ -127,7 +135,7 @@ func (w *idleWatch) observe(at time.Time, progress bool) bool {
 		return true
 	}
 	if progress {
-		w.last, w.limit, w.idle = at, streamIdle, true
+		w.last, w.limit, w.idle, w.headers = at, streamIdle, true, false
 	}
 	return false
 }
@@ -140,12 +148,28 @@ func (w *idleWatch) expired() bool {
 	return w.observe(w.now(), false)
 }
 
+// gotHeaders reports whether the header wait ended the attempt by at. Headers strictly inside the
+// limit end the wait and restart the clock at them with the first-progress limit.
+func (w *idleWatch) gotHeaders(at time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.timedOut || at.Sub(w.last) >= w.limit {
+		w.timedOut = true
+		return true
+	}
+	w.last, w.limit, w.headers = at, w.first, false
+	return false
+}
+
 // detail is the transient failure text of the phase that timed out.
 func (w *idleWatch) detail() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.idle {
 		return "stream idle for " + strconv.Itoa(int(streamIdle/time.Second)) + " s"
+	}
+	if w.headers {
+		return "no response headers within " + strconv.Itoa(int(w.limit/time.Second)) + " s"
 	}
 	return "no first byte within " + strconv.Itoa(int(w.limit/time.Second)) + " s"
 }

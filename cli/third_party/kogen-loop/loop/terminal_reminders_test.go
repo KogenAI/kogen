@@ -121,7 +121,7 @@ func TestNoCallEndsRound(t *testing.T) {
 					types = append(types, e.Type)
 				}
 			}
-			want := []string{api.EventRequestStarted, api.EventResponse, api.EventRoundEnded}
+			want := []string{api.EventRequestStarted, api.EventResponse, api.EventTurnTiming, api.EventRoundEnded}
 			if !reflect.DeepEqual(types, want) {
 				t.Fatalf("turn %d events %v", turn, types)
 			}

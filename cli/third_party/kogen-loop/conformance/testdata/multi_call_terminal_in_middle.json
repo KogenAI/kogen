@@ -1,5 +1,5 @@
 {
-  "description": "a batch with finish in the middle: the call before and the call after it both run; finish is not executed and has no tool.result",
+  "description": "a batch with finish in the middle: the call before and the call after it both run; finish is not executed and has no tool.result; each turn ends with a turn.timing event",
   "files": {"a.txt": "alpha\n", "b.txt": "beta\n"},
   "task": {"prompt": "read both and finish"},
   "exchanges": [
@@ -23,6 +23,7 @@
       {"type": "tool.call", "call_id": "c2", "name": "finish"},
       {"type": "tool.call", "call_id": "c3", "name": "read_file"},
       {"type": "tool.result", "call_id": "c3", "name": "read_file", "cut": false},
+      {"type": "turn.timing", "n": 1},
       {"type": "round.ended", "ending": "terminal", "terminal_tool": "finish", "claim": "{\"summary\":\"partial\"}", "requests": 1},
       {"type": "session.ended", "status": "ended", "exit": 0}
     ]

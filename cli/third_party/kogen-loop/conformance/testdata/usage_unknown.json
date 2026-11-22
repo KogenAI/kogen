@@ -1,5 +1,5 @@
 {
-  "description": "the provider reports no usage: every category stays null and the state is unknown (nothing is estimated)",
+  "description": "the provider reports no usage: every category stays null and the state is unknown (nothing is estimated); each turn ends with a turn.timing event",
   "task": {"prompt": "finish"},
   "exchanges": [
     {"items": [{"type": "function_call", "call_id": "c1", "name": "finish", "arguments": "{\"summary\":\"done\"}"}]}
@@ -14,6 +14,7 @@
       {"type": "response", "n": 1, "response_id": null,
        "usage": {"input": null, "cached": null, "output": null, "reasoning": null, "state": "unknown", "source": "provider"}},
       {"type": "tool.call", "call_id": "c1", "name": "finish"},
+      {"type": "turn.timing", "n": 1},
       {"type": "round.ended", "ending": "terminal",
        "usage": {"input": null, "cached": null, "output": null, "reasoning": null, "state": "unknown", "source": "provider"}},
       {"type": "session.ended", "status": "ended", "exit": 0}

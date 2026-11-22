@@ -1,5 +1,5 @@
 {
-  "description": "a shell result over 16384 bytes is cut (marker included) before the model sees it; tool.result reports cut=true",
+  "description": "a shell result over 16384 bytes is cut (marker included) before the model sees it; tool.result reports cut=true; each turn ends with a turn.timing event",
   "task": {"prompt": "print a lot"},
   "exchanges": [
     {"id": "resp-1", "usage": {"input_tokens": 3, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 3, "output_tokens_details": {"reasoning_tokens": 0}},
@@ -17,10 +17,12 @@
       {"type": "response", "n": 1},
       {"type": "tool.call", "call_id": "c1", "name": "shell"},
       {"type": "tool.result", "call_id": "c1", "name": "shell", "cut": true},
+      {"type": "turn.timing", "n": 1},
       {"type": "request.started", "n": 2},
       {"type": "request.attempt"},
       {"type": "response", "n": 2},
       {"type": "tool.call", "call_id": "c2", "name": "finish"},
+      {"type": "turn.timing", "n": 2},
       {"type": "round.ended", "ending": "terminal", "requests": 2},
       {"type": "session.ended", "status": "ended", "exit": 0}
     ]

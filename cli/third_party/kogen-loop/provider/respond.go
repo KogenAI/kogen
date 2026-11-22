@@ -640,7 +640,7 @@ func (r *run) exchangeResponses(token string) (result, error) {
 	hat := k.c.now()
 	r.so.gotHeaders(hat)
 	r.requestID = identifier(resp.Header.Get("X-Request-Id"))
-	if w.expired() {
+	if w.gotHeaders(hat) {
 		return r.idleStop(ctx, w)
 	}
 	if resp.StatusCode != 200 && resp.StatusCode != 206 {
@@ -768,7 +768,8 @@ func visibleBytes(ev map[string]any) int {
 	return len(s)
 }
 
-// exchangeChat is one OpenCode Go request: a JSON POST answered by one JSON body.
+// exchangeChat is one Chat Completions request: it asks for an event stream, and a host that
+// answers one JSON body instead is read whole.
 func (r *run) exchangeChat(key string) (result, error) {
 	k := r.k
 	ctx, cancel, err := k.requestContext()
@@ -778,7 +779,7 @@ func (r *run) exchangeChat(key string) (result, error) {
 	defer cancel()
 	w := r.newWatch(cancel)
 	defer w.stop()
-	header := map[string]string{"Accept": "application/json", "Content-Type": "application/json", "User-Agent": k.c.userAgent()}
+	header := map[string]string{"Accept": "text/event-stream", "Content-Type": "application/json", "User-Agent": k.c.userAgent()}
 	if key != "" {
 		header["Authorization"] = "Bearer " + key
 	}
@@ -795,17 +796,27 @@ func (r *run) exchangeChat(key string) (result, error) {
 	at := k.c.now()
 	r.so.gotHeaders(at)
 	r.requestID = identifier(resp.Header.Get("X-Request-Id"))
-	// A body read whole has no stream: its headers are the first byte and idle starts there.
+	// The headers are the first byte and the idle clock starts there.
 	if w.observe(at, true) {
 		return r.idleStop(ctx, w)
 	}
 	r.so.progress(at)
-	body, rerr := io.ReadAll(io.LimitReader(r.whole(resp.Body), 64<<20))
-	if rerr != nil {
-		return r.transportFailure(ctx, rerr)
-	}
-	if err := k.check(); err != nil {
-		return result{}, err
+	var body []byte
+	if resp.StatusCode == 200 {
+		plain, isPlain, res, err := r.readChat(ctx, resp.Body)
+		if err != nil || !isPlain {
+			return res, err
+		}
+		body = plain
+	} else {
+		var rerr error
+		body, rerr = io.ReadAll(io.LimitReader(r.whole(resp.Body), 64<<20))
+		if rerr != nil {
+			return r.transportFailure(ctx, rerr)
+		}
+		if err := k.check(); err != nil {
+			return result{}, err
+		}
 	}
 	response := map[string]any{}
 	if v, derr := decodeJSON(body); derr == nil {
@@ -869,7 +880,7 @@ func (r *run) exchangeMessages(key string) (result, error) {
 			break
 		}
 	}
-	if w.expired() {
+	if w.gotHeaders(hat) {
 		return r.idleStop(ctx, w)
 	}
 	if resp.StatusCode != 200 && resp.StatusCode != 206 {

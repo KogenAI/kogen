@@ -242,7 +242,7 @@ func TestQueuedLeverDefaults(t *testing.T) {
 		if got := len(f.requests()); got != 1 {
 			t.Errorf("provider saw %d requests", got)
 		}
-		want := []string{"request.started", "request.attempt", "response", "round.ended"}
+		want := []string{"request.started", "request.attempt", "response", "turn.timing", "round.ended"}
 		if got := eventTypes(events); !reflect.DeepEqual(got, want) {
 			t.Errorf("events %v", got)
 		}

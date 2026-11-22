@@ -117,6 +117,11 @@ type emitter struct {
 	w   io.Writer
 	log io.Writer
 	seq int
+
+	// started is when session.started was emitted and sess the session that ran; both are set by
+	// execute and give session.ended its timing field.
+	started time.Time
+	sess    *loop.Session
 }
 
 func (e *emitter) emit(typ string, fields map[string]any) {
@@ -158,7 +163,12 @@ func runTask(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	defer stopSignals()
 
 	status, exit := execute(args, stdin, stderr, s, out)
-	out.emit(api.EventSessionEnded, map[string]any{"status": status, "exit": exit})
+	timing := out.sess.Timing()
+	timing["session_wall_ms"] = int64(0)
+	if !out.started.IsZero() {
+		timing["session_wall_ms"] = time.Since(out.started).Milliseconds()
+	}
+	out.emit(api.EventSessionEnded, map[string]any{"status": status, "exit": exit, "timing": timing})
 	return exit
 }
 
@@ -234,6 +244,7 @@ func execute(args []string, stdin io.Reader, stderr io.Writer, s *sys.Session, o
 		"session_id": sess.ID(), "resumed": task.Session.Resume, "role": task.Role,
 		"capabilities_digest": capabilitiesDigest(),
 	})
+	out.started, out.sess = time.Now(), sess
 
 	_, err = sess.Round(ctx, task.Prompt)
 	if err == nil {

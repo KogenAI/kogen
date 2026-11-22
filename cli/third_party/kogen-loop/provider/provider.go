@@ -16,7 +16,7 @@ type wire int
 
 const (
 	wireResponses wire = iota // streamed Responses API (ChatGPT, SuperGrok)
-	wireChat                  // non-streaming Chat Completions (OpenCode Go, OpenAI-compatible)
+	wireChat                  // streamed Chat Completions (OpenCode Go, OpenAI-compatible)
 	wireMessages              // streamed Messages API (Anthropic)
 )
 

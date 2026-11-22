@@ -85,8 +85,10 @@ type Session struct {
 	input    []any
 	pending  *terminalRef // the terminal call of the last round, if it ended with one
 	seq      int
-	requests int       // requests started in the current round (read by Attempt)
-	cutReads []cutRead // cut read_file results of this Session, in tool.result order; saved in session.json as cut_reads
+	requests int        // requests started in the current round (read by Attempt)
+	cutReads []cutRead  // cut read_file results of this Session, in tool.result order; saved in session.json as cut_reads
+	turn     turnTiming // the open turn (see Session.closeTurn)
+	sum      timingSum  // the timing of the turns this Session ran itself (see Session.Timing)
 }
 
 // cutRead is a cut read_file result whose tool.result event was emitted: the file it read
@@ -333,6 +335,7 @@ type attempts struct{ s *Session }
 
 // Attempt forwards one provider attempt record as a request.attempt event.
 func (a attempts) Attempt(record map[string]any) {
+	a.s.turn.attempt(record)
 	a.s.emit(api.EventRequestAttempt, map[string]any{"n": a.s.requests, "record": record})
 }
 
@@ -385,18 +388,22 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 		return time.Now()
 	}
 	var requestStarted time.Time
+	spans := map[string][2]time.Time{}
 	s.requests = 0
+	s.turn = turnTiming{}
 	rd := Round{
 		Owner: "loop", Role: s.cfg.Role, Instructions: s.instructions, Definitions: s.defs,
 		Tools: s.tools, Terminal: s.terminal,
 	}
 	hooks := Hooks{
 		BeforeRequest: func(ctx context.Context, in []any) error {
+			s.closeTurn(now)
 			s.requests++
 			s.emit(api.EventRequestStarted, map[string]any{
 				"n": s.requests, "owner": rd.Owner, "model": s.cfg.Role.Model, "effort": s.cfg.Role.Effort,
 			})
 			requestStarted = now()
+			s.turn = turnTiming{open: true, n: s.requests, start: requestStarted}
 			return nil
 		},
 		AfterResponse: func(ctx context.Context, resp *provider.Response, sent []any) error {
@@ -426,6 +433,7 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 				return Handled{}, err
 			}
 			elapsedMS[fmt.Sprint(call.CallID())] = finished.Sub(began).Milliseconds()
+			spans[fmt.Sprint(call.CallID())] = [2]time.Time{began, finished}
 			out := classified.Output()
 			cut := out.Cut()
 			cutCalls[fmt.Sprint(call.CallID())] = cut.Text != out.Text
@@ -491,12 +499,15 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 					s.cutReads = append(s.cutReads, cutRead{CallID: call.CallID(), File: r.file, From: r.omitted[0], To: r.omitted[1]})
 				}
 			}
+			id := fmt.Sprint(call.CallID())
+			s.turn.tool(call.Name, elapsedMS[id], spans[id][0], spans[id][1])
 			s.emit(api.EventToolResult, fields)
 			return nil
 		},
 	}
 	res, err := Run(ctx, rd, input, s.direct, hooks)
 	if err != nil {
+		s.closeTurn(now)
 		return Result{}, err
 	}
 	var pending *terminalRef
@@ -507,7 +518,10 @@ func (s *Session) Round(ctx context.Context, text string) (Result, error) {
 		terminalTool = res.Terminal.Name
 		claim = res.Terminal.Arguments
 	}
-	if err := s.persist(res.Input, pending); err != nil {
+	// Writing the transcript is part of the last turn: its turn.timing event follows it.
+	err = s.persist(res.Input, pending)
+	s.closeTurn(now)
+	if err != nil {
 		return Result{}, err
 	}
 	s.input, s.pending = res.Input, pending

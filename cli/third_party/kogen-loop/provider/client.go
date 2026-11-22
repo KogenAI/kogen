@@ -40,6 +40,11 @@ type Client struct {
 	// ResponseBudget lowers the absolute budget of one logical Respond call. Zero keeps
 	// the package ResponseBudget (30 minutes); a nonzero value must be in [1s, 30m].
 	ResponseBudget time.Duration
+	// HeaderTimeout is how long a Chat Completions request may wait for its response headers
+	// before the attempt ends as a transient failure; it is separate from the 30 s connect
+	// ceiling and from the idle limit, which starts counting at the headers. Zero (or a negative
+	// value) uses DefaultHeaderTimeout.
+	HeaderTimeout time.Duration
 
 	managedMu   sync.Mutex
 	managedHigh map[string]int64 // highest managed snapshot expiry accepted, per credentials file
@@ -73,6 +78,13 @@ func (c *Client) now() time.Time {
 		return c.Now()
 	}
 	return time.Now()
+}
+
+func (c *Client) headerTimeout() time.Duration {
+	if c.HeaderTimeout > 0 {
+		return c.HeaderTimeout
+	}
+	return DefaultHeaderTimeout
 }
 
 func (c *Client) sleep(ctx context.Context, d time.Duration) error {

@@ -6,9 +6,9 @@ import (
 	"unicode/utf8"
 )
 
-// OpenCode Go speaks non-streaming Chat Completions at /inference/go/openai/v1/chat/completions
+// OpenCode Go speaks streaming Chat Completions at /inference/go/openai/v1/chat/completions
 // (an OpenAI-compatible host at <base_url>/chat/completions):
-// one JSON POST, one JSON answer. The complete received assistant message is kept (its
+// one JSON POST, one server-sent event stream (a plain JSON answer is still accepted). The complete received assistant message is kept (its
 // reasoning included) as opencode_go_message and replayed exactly once; the normalized text
 // and function calls only drive the tool loops.
 
@@ -19,7 +19,7 @@ func renderChat(info Info, req Request, id string, input []any) (rendered, error
 		return rendered{}, imageRefusal(info)
 	}
 	messages := append([]any{map[string]any{"role": "system", "content": req.Instructions}}, chatMessages(input)...)
-	body := map[string]any{"model": req.Role.Model, "stream": false, "store": false, "messages": messages}
+	body := map[string]any{"model": req.Role.Model, "stream": true, "stream_options": map[string]any{"include_usage": true}, "store": false, "messages": messages}
 	if len(req.Tools) > 0 {
 		tools := make([]any, len(req.Tools))
 		for i, t := range req.Tools {
