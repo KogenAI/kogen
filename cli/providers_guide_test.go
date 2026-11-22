@@ -145,10 +145,15 @@ func TestProvidersGuideKeepsTheQwenCloudFacts(t *testing.T) {
 		"build: {provider: openai-compatible, base_url: https://token-plan.maas.qwencloudapi.com/compatible-mode/v1, model: qwen4-max, effort: high}",
 		"Token Plan terms",
 		"pay-as-you-go",
-		"does not yet stream",
+		"The Chat Completions route streams its reply, and a first byte that arrives 60 seconds late is still waited for.",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("docs/providers.md does not contain: %s", want)
+		}
+	}
+	for _, obsolete := range []string{"does not yet stream", "arrives whole", "45 seconds", "45-second"} {
+		if strings.Contains(page, obsolete) {
+			t.Errorf("docs/providers.md still contains the obsolete wording: %s", obsolete)
 		}
 	}
 	if strings.Contains(strings.ToLower(page), "messages-compatible") {

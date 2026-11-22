@@ -44,4 +44,4 @@ The direct form is unchanged for scripts and agents: `kogen provider login opena
 The guided flow makes no network call.
 
 Honesty note: Token Plan terms restrict automation and non-interactive batch use, so read them before you choose between a Token Plan and pay-as-you-go.
-The Chat Completions route does not yet stream, so a reply arrives whole and the 45 seconds first-byte watchdog applies to the wait for it.
+The Chat Completions route streams its reply, and a first byte that arrives 60 seconds late is still waited for.
