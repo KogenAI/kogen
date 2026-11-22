@@ -20,6 +20,19 @@ func TestText(t *testing.T) {
 	}
 }
 
+func TestEmptyReportPrintsNothing(t *testing.T) {
+	if got := Text(nil); got != "" {
+		t.Fatalf("Text(nil) = %q, want an empty string", got)
+	}
+}
+
+func TestNonFailureStatusPrintsNoFixLine(t *testing.T) {
+	checks := []Check{{"models", "warn", "stale login", "kogen provider login chatgpt"}}
+	if got, want := Text(checks), "warn models - stale login\n"; got != want {
+		t.Fatalf("Text = %q, want %q", got, want)
+	}
+}
+
 // managedClaude installs a fake Kogen Claude Code in home that answers --version and
 // `auth status --json`, and puts a decoy `claude` first on PATH that must never run.
 func managedClaude(t *testing.T, home, version, auth string) (decoyRan func() bool) {
