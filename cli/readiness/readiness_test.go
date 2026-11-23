@@ -236,3 +236,78 @@ func TestOutsideRepositoryAndMissingConfigFixes(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 }
+
+func checkNames(checks []Check) []string {
+	var names []string
+	for _, c := range checks {
+		names = append(names, c.Check)
+	}
+	return names
+}
+
+func assertReportOrder(t *testing.T, checks []Check) {
+	t.Helper()
+	if got, want := strings.Join(checkNames(checks), ","), "install,git,config,models"; got != want {
+		t.Fatalf("Run returned the checks %q, want %q", got, want)
+	}
+}
+
+// runEnv keeps the host's Git configuration out of the examined repository.
+func runEnv(extra ...string) []string {
+	return append(append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"), extra...)
+}
+
+const supergrokLineup = "models:\n" +
+	"  shape: {provider: supergrok, model: grok-4.7, effort: high}\n" +
+	"  build: {provider: supergrok, model: grok-4.7, effort: high}\n" +
+	"  review: {provider: supergrok, model: grok-4.7, effort: high}\n"
+
+const supergrokDetail = "shape: supergrok has no stored login; build: supergrok has no stored login; review: supergrok has no stored login"
+
+func TestRunReportsInOrderAndChecksTheRepositoryRoot(t *testing.T) {
+	repo := gitRepo(t)
+	for _, args := range [][]string{{"config", "user.name", "T"}, {"config", "user.email", "t@example.invalid"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	writeProjectFile(t, repo, project.ConfigPath, "version: 1\n")
+	writeProjectFile(t, repo, project.ModelsPath, supergrokLineup)
+	nested := filepath.Join(repo, "services", "api")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	checks := Run(sys.NewWith(runEnv(), nested), Input{Project: nested, Home: t.TempDir()})
+	assertReportOrder(t, checks)
+	if c := checks[1]; c.Status != "ok" || !strings.HasSuffix(c.Detail, repo) {
+		t.Fatalf("git check = %+v, want ok for the repository %s", c, repo)
+	}
+	if c, want := checks[2], ok("config", project.ConfigPath+" is valid"); c != want {
+		t.Fatalf("config check = %+v, want %+v from the repository root", c, want)
+	}
+	if c := checks[3]; c.Status != "fail" || c.Detail != supergrokDetail {
+		t.Fatalf("models check = %+v, want the lineup of the repository root", c)
+	}
+}
+
+func TestRunOutsideRepositoryStillReportsAllChecks(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "project")
+	writeProjectFile(t, dir, project.ConfigPath, "version: 1\n")
+	writeProjectFile(t, dir, project.ModelsPath, supergrokLineup)
+	// The ceiling keeps Git from finding a repository above the temporary folder.
+	env := runEnv("GIT_CEILING_DIRECTORIES=" + base)
+	checks := Run(sys.NewWith(env, dir), Input{Project: dir, Home: t.TempDir()})
+	assertReportOrder(t, checks)
+	if c := checks[1]; c.Status != "fail" || c.Detail != dir+" is not inside a Git repository" {
+		t.Fatalf("git check = %+v, want the failure for %s", c, dir)
+	}
+	if c, want := checks[2], ok("config", project.ConfigPath+" is valid"); c != want {
+		t.Fatalf("config check = %+v, want %+v from the project directory", c, want)
+	}
+	if c := checks[3]; c.Status != "fail" || c.Detail != supergrokDetail {
+		t.Fatalf("models check = %+v, want the lineup of the project directory", c)
+	}
+}
