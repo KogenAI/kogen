@@ -47,6 +47,14 @@ func TestHarnessDueAfterADay(t *testing.T) {
 	}
 }
 
+func TestHarnessDueWhenCheckedAtIsInTheFuture(t *testing.T) {
+	now := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
+	h := Harness{CheckedAt: now.Add(time.Hour).Format(time.RFC3339)}
+	if !h.due(now) {
+		t.Error("a checked_at one hour later than now: due = false, want true")
+	}
+}
+
 func TestActiveFollowsTheFileOnlyForNewerInstalledVersions(t *testing.T) {
 	home := t.TempDir()
 	root := Root(home)

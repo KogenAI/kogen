@@ -76,10 +76,11 @@ type Harness struct {
 	Failed     map[string]string `json:"failed,omitempty"`
 }
 
-// due reports whether the last check ended more than CheckInterval before now, or never.
+// due reports whether the last check ended more than CheckInterval before now, never, or
+// after now (a skewed clock must not postpone the check until the clock catches up).
 func (h Harness) due(now time.Time) bool {
 	t, err := time.Parse(time.RFC3339, h.CheckedAt)
-	return err != nil || now.Sub(t) > CheckInterval
+	return err != nil || t.After(now) || now.Sub(t) > CheckInterval
 }
 
 // readHarness is the record; a missing or unreadable file is an empty record.
