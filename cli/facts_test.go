@@ -409,3 +409,29 @@ func TestUsageNamesTheRefusedFilter(t *testing.T) {
 		{"kogen intent usage: unknown option '--lineage'", "intent", "usage", "--lineage=1"},
 	})
 }
+
+func TestResumeCompletionOffersOnlyResumableRunsInRunIDOrder(t *testing.T) {
+	runs := []object{
+		{"run_id": "cccc0003", "slug": "gamma", "state": "interrupted", "resume_status": "requires_validation"},
+		{"run_id": "1111aaaa", "slug": "unsupported-run", "state": "build_blocked", "resume_status": "unsupported"},
+		{"run_id": "aaaa0001", "slug": "alpha", "state": "build_blocked", "resume_status": "potentially_available"},
+		{"run_id": "2222bbbb", "slug": "landed-run", "state": "landed", "resume_status": "potentially_available"},
+		{"run_id": "bbbb0002", "slug": "beta", "state": "build_blocked", "resume_status": "potentially_available"},
+		{"run_id": "3333cccc", "slug": "present-run", "state": "already_present", "resume_status": "potentially_available"},
+	}
+	reversed := make([]object, len(runs))
+	for i, r := range runs {
+		reversed[len(runs)-1-i] = r
+	}
+	want := "aaaa0001\talpha build_blocked\nbbbb0002\tbeta build_blocked\ncccc0003\tgamma interrupted\n"
+	for name, input := range map[string][]object{"forward": runs, "reversed": reversed} {
+		got := captureStdout(t, func() {
+			if code := completeCandidates("resume", nil, input); code != 0 {
+				t.Fatal(name, code)
+			}
+		})
+		if got != want {
+			t.Fatalf("%s input: got %q, want %q", name, got, want)
+		}
+	}
+}
