@@ -777,7 +777,7 @@ func TestVersionAndUsage(t *testing.T) {
 	if out, code := runPlain(t, "version"); code != 0 || out != "kogen-loop dev\n" {
 		t.Errorf("version %q exit %d", out, code)
 	}
-	for _, args := range [][]string{nil, {"bogus"}, {"capabilities", "--yaml"}, {"version", "extra"}} {
+	for _, args := range [][]string{nil, {"bogus"}, {"capabilities", "--yaml"}, {"capabilities"}, {"capabilities", "--json=false"}, {"version", "extra"}} {
 		if out, code := runPlain(t, args...); code != 2 || out != "" {
 			t.Errorf("%v: exit %d stdout %q", args, code, out)
 		}

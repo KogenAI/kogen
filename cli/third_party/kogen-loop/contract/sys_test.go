@@ -1,6 +1,7 @@
 package contract_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -339,17 +341,166 @@ func liveMembers(t *testing.T, pgid int) []string {
 	return live
 }
 
-// waitGone waits for the process group to have no member (kill reports ESRCH). A group that only has
-// members that are ending can still answer EPERM or success for a moment on a loaded machine.
+// groupGone reports whether the process group has no member that can still run, with the error
+// kill answered. The group is gone when kill reports ESRCH, or when /proc can be read and every
+// member found there is a zombie: on Linux a killed member whose parent has not reaped it stays a
+// zombie of the group and kill keeps succeeding. Where /proc cannot be read only ESRCH counts.
+func groupGone(pgid int) (bool, error) {
+	err := syscall.Kill(-pgid, 0)
+	if err == syscall.ESRCH {
+		return true, err
+	}
+	entries, rerr := os.ReadDir("/proc")
+	if rerr != nil {
+		return false, err
+	}
+	members := 0
+	for _, e := range entries {
+		if _, aerr := strconv.Atoi(e.Name()); aerr != nil {
+			continue
+		}
+		state, group, ok := procStat(filepath.Join("/proc", e.Name(), "stat"))
+		if !ok || group != pgid {
+			continue
+		}
+		if state != "Z" {
+			return false, err
+		}
+		members++
+	}
+	return members > 0, err
+}
+
+// procStat reads the state and the process group of a proc stat file, which are the first and the
+// third field after the last closing parenthesis (the command name may contain one).
+func procStat(path string) (state string, group int, ok bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", 0, false
+	}
+	s := string(b)
+	f := strings.Fields(s[strings.LastIndex(s, ")")+1:])
+	if len(f) < 3 {
+		return "", 0, false
+	}
+	group, err = strconv.Atoi(f[2])
+	if err != nil {
+		return "", 0, false
+	}
+	return f[0], group, true
+}
+
+// waitGone waits for the process group to have no member that can still run (kill reports ESRCH,
+// or every member is an unreaped zombie). A group that only has members that are ending can still
+// answer EPERM or success for a moment on a loaded machine.
 func waitGone(t *testing.T, pgid int, what string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
-	for syscall.Kill(-pgid, 0) != syscall.ESRCH && time.Now().Before(deadline) {
+	for {
+		if gone, _ := groupGone(pgid); gone || !time.Now().Before(deadline) {
+			break
+		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if err := syscall.Kill(-pgid, 0); err != syscall.ESRCH {
+	if gone, err := groupGone(pgid); !gone {
 		t.Fatalf("%s remains: %v", what, err)
 	}
+}
+
+var prctlNumber = map[string]uintptr{"amd64": 157, "arm64": 167, "386": 172, "arm": 172, "riscv64": 167, "loong64": 167, "ppc64le": 171, "s390x": 172}
+
+// The test binary started with KGZ_PARENT=1 is the parent of TestWaitGoneCountsAnUnreapedZombieAsGone:
+// it becomes a child subreaper, starts a child in a new process group that exits at once, prints
+// the child's pid and then never waits for it.
+func init() {
+	if os.Getenv("KGZ_PARENT") != "1" {
+		return
+	}
+	if n, ok := prctlNumber[runtime.GOARCH]; ok {
+		syscall.RawSyscall(n, 36, 1, 0) // PR_SET_CHILD_SUBREAPER
+	}
+	child := exec.Command("sh", "-c", "exit 0")
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := child.Start(); err != nil {
+		os.Exit(2)
+	}
+	fmt.Println(child.Process.Pid)
+	time.Sleep(time.Minute)
+	os.Exit(0)
+}
+
+// TestWaitGoneCountsAnUnreapedZombieAsGone pins that a group whose only member is a zombie its
+// parent never reaped is gone to waitGone at once instead of failing after its deadline.
+func TestWaitGoneCountsAnUnreapedZombieAsGone(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("an unreaped zombie stays in its process group only on Linux")
+	}
+	parent := exec.Command(os.Args[0])
+	parent.Env = append(os.Environ(), "KGZ_PARENT=1")
+	out, err := parent.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { parent.Process.Kill(); parent.Wait() })
+	line, err := bufio.NewReader(out).ReadString('\n')
+	pid, perr := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil || perr != nil {
+		t.Fatalf("the parent reported %q: %v, %v", line, err, perr)
+	}
+	statePath := fmt.Sprintf("/proc/%d/stat", pid)
+	state, _, _ := procStat(statePath)
+	deadline := time.Now().Add(5 * time.Second)
+	for state != "Z" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		state, _, _ = procStat(statePath)
+	}
+	if state != "Z" {
+		t.Fatalf("member %d is not an unreaped zombie: state %q", pid, state)
+	}
+	if err := syscall.Kill(-pid, 0); err != nil {
+		t.Fatalf("kill with signal 0 on the group of the zombie member %d = %v, want success", pid, err)
+	}
+	start := time.Now()
+	waitGone(t, pid, "the zombie group")
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("waitGone took %v for a group whose only member is a zombie", d)
+	}
+}
+
+// TestWaitGoneFailsWhileAMemberRuns pins that a group with a running member still fails after the
+// deadline with the remains message. waitGone fails the test that calls it, so the failing call runs
+// in a child test process whose output is checked.
+func TestWaitGoneFailsWhileAMemberRuns(t *testing.T) {
+	t.Parallel()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestWaitGoneRunningMemberChild$")
+	cmd.Env = append(os.Environ(), "KGZ_RUNNING=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("waitGone returned without a failure for a group with a running member:\n%s", out)
+	}
+	if !strings.Contains(string(out), "the running group remains: <nil>") {
+		t.Fatalf("waitGone failed without the remains message:\n%s", out)
+	}
+}
+
+// TestWaitGoneRunningMemberChild is the failing call of TestWaitGoneFailsWhileAMemberRuns; it does
+// nothing unless that test started this process.
+func TestWaitGoneRunningMemberChild(t *testing.T) {
+	if os.Getenv("KGZ_RUNNING") != "1" {
+		t.Skip("run by TestWaitGoneFailsWhileAMemberRuns")
+	}
+	sleeper := exec.Command("sleep", "60")
+	sleeper.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := sleeper.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pgid := sleeper.Process.Pid
+	t.Cleanup(func() { syscall.Kill(-pgid, syscall.SIGKILL); sleeper.Wait() })
+	waitGone(t, pgid, "the running group")
 }
 
 // startAndInterrupt runs command in a goroutine, waits for it to write ./ready and then

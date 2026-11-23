@@ -16,3 +16,4 @@ github.com/KogenAI/kogen-loop/conformance TestShellLifecycleYieldSnapshot # real
 github.com/KogenAI/kogen-loop/tools TestShellNewCommandCompletesWithinBound # real binary: a shell command runs sleep 2 and the test waits for it to complete
 github.com/KogenAI/kogen-loop/provider TestSuperGrokDeviceLifetimeExpiresWhileAPollIsInFlight # real network-free timer: waits for the 2 s device code lifetime on the real clock
 github.com/KogenAI/kogen-loop/provider TestClientResponseBudgetStall # real network-free timer: waits for the 2 s response budget to elapse on the real clock
+github.com/KogenAI/kogen-loop/contract TestWaitGoneFailsWhileAMemberRuns # real network-free timer: waits for the 10 s deadline of waitGone on the real clock for a group whose member keeps running

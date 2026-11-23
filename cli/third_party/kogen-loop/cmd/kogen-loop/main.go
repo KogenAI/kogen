@@ -64,8 +64,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "capabilities":
 		fs := flag.NewFlagSet("capabilities", flag.ContinueOnError)
 		fs.SetOutput(stderr)
-		fs.Bool("json", true, "print the capabilities as JSON (the only format)")
-		if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 0 {
+		asJSON := fs.Bool("json", false, "print the capabilities as JSON (required; the only format)")
+		if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 0 || !*asJSON {
 			fmt.Fprintln(stderr, usage)
 			return api.ExitInvalid
 		}
