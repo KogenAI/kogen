@@ -193,6 +193,9 @@ func parse(args []string) (*invocation, string, *usageError) {
 				i++
 				value = rest[i]
 			}
+			if value == "" && (name == "project" || name == "context" || name == "output") {
+				return fail("--%s must not be empty", name)
+			}
 			opts[name] = value
 		}
 	}

@@ -230,3 +230,44 @@ func TestRecoverUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRejectsEmptyPathOptions(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"intent", "shape", "demo", "request.md", "--project="}, "kogen intent shape: --project must not be empty"},
+		{[]string{"intent", "resume", "build-1", "--project", ""}, "kogen intent resume: --project must not be empty"},
+		{[]string{"intent", "build", "demo", "--context="}, "kogen intent build: --context must not be empty"},
+		{[]string{"intent", "build", "demo", "--context", ""}, "kogen intent build: --context must not be empty"},
+		{[]string{"intent", "recover", "build-1", "--output="}, "kogen intent recover: --output must not be empty"},
+		{[]string{"intent", "recover", "build-1", "--output", ""}, "kogen intent recover: --output must not be empty"},
+		{[]string{"intent", "recover", "build-1"}, "kogen intent recover: missing --output <directory>"},
+	} {
+		_, _, err := parse(tc.args)
+		if err == nil || err.msg != tc.want {
+			t.Fatalf("parse(%q) = %v, want usage error %q", tc.args, err, tc.want)
+		}
+	}
+}
+
+func TestParseNonemptyPathOptionsPopulate(t *testing.T) {
+	for _, args := range [][]string{
+		{"intent", "build", "demo", "--project=/work/repo", "--context=/tmp/ctx.json"},
+		{"intent", "build", "demo", "--project", "/work/repo", "--context", "/tmp/ctx.json"},
+	} {
+		inv, _, err := parse(args)
+		if err != nil || inv.project != "/work/repo" || inv.context == nil || *inv.context != "/tmp/ctx.json" {
+			t.Fatalf("parse(%q) = %+v %v", args, inv, err)
+		}
+	}
+	for want, args := range map[string][]string{
+		"/tmp/out":  {"intent", "recover", "build-1", "--output=/tmp/out"},
+		"/tmp/out2": {"intent", "recover", "build-1", "--output", "/tmp/out2"},
+	} {
+		inv, _, err := parse(args)
+		if err != nil || inv.output != want {
+			t.Fatalf("parse(%q) = %+v %v", args, inv, err)
+		}
+	}
+}
