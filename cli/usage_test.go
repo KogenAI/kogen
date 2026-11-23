@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -192,6 +193,62 @@ func TestUsageNativeBoundaryArgumentsAndGroups(t *testing.T) {
 	}
 }
 
+func TestUsageLineageSelectsResumedChainAndSibling(t *testing.T) {
+	c := factProject(t)
+	root := c["root"].(string)
+	runs := []struct {
+		id, meta string
+		input    int
+	}{
+		{"aaaaaaa1", `{"slug":"fixture","root_build":"aaaaaaa1"}`, 100},
+		{"bbbbbbb2", `{"slug":"fixture","root_build":"aaaaaaa1","resumed_from":"aaaaaaa1"}`, 200},
+		{"ccccccc3", `{"slug":"fixture","root_build":"aaaaaaa1"}`, 400},
+		{"ddddddd4", `{"slug":"other","root_build":"ddddddd4"}`, 800},
+	}
+	for _, r := range runs {
+		dir := filepath.Join(root, ".kogen/local/runs", r.id)
+		if e := os.MkdirAll(dir, 0700); e != nil {
+			t.Fatal(e)
+		}
+		row := `{"event":"request","role":"build","model":"configured","effort":"high","at":"2026-10-21T00:00:00Z","usage":{"input":` + strconv.Itoa(r.input) + `,"cached":0,"output":10,"reasoning":2}}` + "\n"
+		if e := os.WriteFile(filepath.Join(dir, "result.json"), []byte(r.meta), 0600); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(filepath.Join(dir, "log.jsonl"), []byte(row), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	raw, _ := json.Marshal([]string{"intent", "usage", "bbbbbbb2", "--lineage", "--json", "--project", root})
+	cmd := exec.Command(os.Args[0], "-test.run=^TestLocalReadProcess$")
+	cmd.Env = append(os.Environ(), "KOGEN_LOCAL_ARGS="+string(raw))
+	out, e := cmd.CombinedOutput()
+	if e != nil {
+		t.Fatalf("%v: %s", e, out)
+	}
+	var report object
+	if json.Unmarshal(out, &report) != nil {
+		t.Fatal(string(out))
+	}
+	data, ok := report["data"].(map[string]any)
+	if !ok {
+		t.Fatal(string(out))
+	}
+	scope, _ := data["scope"].(map[string]any)
+	if scope["run_id"] != "bbbbbbb2" || scope["lineage"] != true {
+		t.Fatal(scope)
+	}
+	requests, _ := data["requests"].([]any)
+	got := map[string]bool{}
+	for _, r := range requests {
+		got[r.(map[string]any)["run_id"].(string)] = true
+	}
+	if len(requests) != 3 || !got["aaaaaaa1"] || !got["bbbbbbb2"] || !got["ccccccc3"] || got["ddddddd4"] {
+		t.Fatal(got, string(out))
+	}
+	if totals, _ := data["totals"].(map[string]any); totals["known_input"] != float64(700) {
+		t.Fatal(totals)
+	}
+}
 func TestUsageDuplicateInconsistencyCannotBeLost(t *testing.T) {
 	a := usageFixture("same", 100, 20)
 	b := usageFixture("same", 100, 20)
