@@ -1,6 +1,7 @@
 package readiness
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -170,17 +171,62 @@ func TestRunClaudeAuthStatusErrors(t *testing.T) {
 }
 
 func TestInstallCheck(t *testing.T) {
-	s := sys.NewWith(os.Environ(), t.TempDir())
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("no node")
-	}
-	c := checkInstall(s, Input{Tools: verify.Tools{Node: node, Quint: "/nonexistent/cli.js", Cucumber: "/nonexistent"}, Version: "kogen dev"})
-	if c.Status != "fail" || c.Fix != reinstall || !strings.Contains(c.Detail, "cucumber") || strings.Contains(c.Detail, "node does") {
-		t.Fatalf("%+v", c)
-	}
-	if c := checkInstall(s, Input{Tools: verify.Tools{Node: node}}); !strings.Contains(c.Detail, "VERSION") {
-		t.Fatalf("%+v", c)
+	for _, tc := range []struct {
+		name            string
+		missingNode     bool
+		cucumber, quint int
+	}{
+		{name: "missing Node", missingNode: true},
+		{name: "Cucumber failure", cucumber: 23},
+		{name: "Quint failure", quint: 29},
+		{name: "multiple failures", cucumber: 23, quint: 29},
+		{name: "success"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			tools := verify.Tools{Node: filepath.Join(root, "node executable"), Cucumber: filepath.Join(root, "cucumber modules"), Quint: filepath.Join(root, "quint cli")}
+			writeScript := func(path, script string) {
+				t.Helper()
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !tc.missingNode {
+				writeScript(tools.Node, "if [ \"$1\" = --version ]; then exit 0; fi\nexec \"$@\"\n")
+			}
+			writeScript(filepath.Join(tools.Cucumber, "@cucumber/cucumber/bin/cucumber.js"), fmt.Sprintf("echo private-command-output\necho private-command-error >&2\nexit %d\n", tc.cucumber))
+			writeScript(tools.Quint, fmt.Sprintf("echo private-command-output\necho private-command-error >&2\nexit %d\n", tc.quint))
+			s := sys.NewWith(os.Environ(), root)
+			in := Input{Tools: tools, Version: "kogen dev"}
+			c := checkInstall(s, in)
+			statuses := []int{0, tc.cucumber, tc.quint}
+			if tc.missingNode {
+				statuses = []int{127, 127, 127}
+			}
+			var want []string
+			for i, tool := range []struct{ name, path string }{{"node", tools.Node}, {"cucumber", tools.Cucumber}, {"quint", tools.Quint}} {
+				if statuses[i] != 0 {
+					want = append(want, fmt.Sprintf("bundled %s at %s does not run (exit status %d)", tool.name, tool.path, statuses[i]))
+				}
+			}
+			if len(want) == 0 {
+				if expected := ok("install", "kogen dev; node, cucumber and quint run"); c != expected {
+					t.Fatalf("%+v, want %+v", c, expected)
+				}
+			} else if c.Status != "fail" || c.Fix != reinstall || c.Detail != strings.Join(want, "; ") {
+				t.Fatalf("%+v, want failures %q", c, want)
+			}
+			if strings.Contains(Text([]Check{c}), "private-command-") {
+				t.Fatalf("command output leaked: %+v", c)
+			}
+			in.Version = ""
+			if c := checkInstall(s, in); c.Status != "fail" || c.Fix != reinstall || !strings.Contains(c.Detail, "the VERSION file is missing") {
+				t.Fatalf("%+v", c)
+			}
+		})
 	}
 }
 

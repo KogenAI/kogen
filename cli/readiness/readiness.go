@@ -91,14 +91,14 @@ func checkInstall(s *sys.Session, in Input) Check {
 	if in.Version == "" {
 		problems = append(problems, "the VERSION file is missing")
 	}
-	for _, c := range []struct{ name, command string }{
-		{"node", `"$KOGEN_NODE" --version`},
-		{"cucumber", cucumberVersion},
-		{"quint", `"$KOGEN_NODE" "$KOGEN_QUINT" --version`},
+	for _, c := range []struct{ name, path, command string }{
+		{"node", in.Tools.Node, `"$KOGEN_NODE" --version`},
+		{"cucumber", in.Tools.Cucumber, cucumberVersion},
+		{"quint", in.Tools.Quint, `"$KOGEN_NODE" "$KOGEN_QUINT" --version`},
 	} {
 		res, err := exec1(s, in.Tools, c.command, s.Cwd)
 		if err != nil || res.Status != 0 {
-			problems = append(problems, "bundled "+c.name+" does not run")
+			problems = append(problems, fmt.Sprintf("bundled %s at %s does not run (exit status %d)", c.name, c.path, res.Status))
 		}
 	}
 	if len(problems) > 0 {
