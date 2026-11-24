@@ -129,6 +129,46 @@ func TestClaudeChecks(t *testing.T) {
 	})
 }
 
+func TestRunClaudeAuthStatusErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, auth, exit, diagnosis string
+	}{
+		{"nonzero with signed-in JSON", `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}`, "7", "auth status could not be checked"},
+		{"malformed JSON", `{not-json`, "0", "auth status returned invalid JSON"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, home := t.TempDir(), t.TempDir()
+			managedClaude(t, home, "2.1.318 (Claude Code)", tc.auth)
+			path := claudecode.RuntimePath(home)
+			script, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append(script, []byte("exit "+tc.exit+"\n")...), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeProjectFile(t, root, project.ConfigPath, "version: 1\n")
+			writeProjectFile(t, root, project.ModelsPath, "models:\n"+
+				"  shape: {executor: claude-code, model: claude-sonnet-5-5, effort: medium}\n"+
+				"  build: {executor: claude-code, model: claude-sonnet-5-5, effort: medium}\n"+
+				"  review: {executor: claude-code, model: claude-sonnet-5-5, effort: medium}\n")
+			checks := Run(sys.NewWith(runEnv("GIT_CEILING_DIRECTORIES="+root), root), Input{Project: root, Home: home, Tools: verify.Tools{Node: "/bin/true"}})
+			var models []Check
+			for _, c := range checks {
+				if c.Check == "models" {
+					models = append(models, c)
+				}
+			}
+			if len(models) != 1 || models[0].Status != "fail" || !strings.Contains(models[0].Detail, tc.diagnosis) || strings.Contains(models[0].Detail, "no claude.ai subscription sign-in") {
+				t.Fatalf("models = %+v, want failed auth-status diagnosis %q", models, tc.diagnosis)
+			}
+			if text := Text(models); !strings.Contains(text, "fail models - claude-code: "+tc.diagnosis) || strings.Contains(text, "no claude.ai subscription sign-in") {
+				t.Fatalf("Text = %q", text)
+			}
+		})
+	}
+}
+
 func TestInstallCheck(t *testing.T) {
 	s := sys.NewWith(os.Environ(), t.TempDir())
 	node, err := exec.LookPath("node")

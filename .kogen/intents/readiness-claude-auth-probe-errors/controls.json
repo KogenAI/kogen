@@ -1,0 +1,51 @@
+{
+  "correct": {
+    "files": {
+      "cli/readiness/readiness.go": {
+        "patch": "--- a/cli/readiness/readiness.go\n+++ b/cli/readiness/readiness.go\n@@ -250,8 +250,18 @@\n \t}\n \tsignedIn := false\n \tif present {\n-\t\tstatus, _ := claudecode.Probe(context.Background(), in.Home, \"auth\", \"status\", \"--json\")\n-\t\tsignedIn = json.Unmarshal(status, &info) == nil && info.LoggedIn && info.AuthMethod == \"claude.ai\"\n+\t\tstatus, err := claudecode.Probe(context.Background(), in.Home, \"auth\", \"status\", \"--json\")\n+\t\tif err != nil {\n+\t\t\tproblems = append(problems, \"claude-code: could not check auth status: \"+err.Error())\n+\t\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n+\t\t\treturn\n+\t\t}\n+\t\tif err := json.Unmarshal(status, &info); err != nil {\n+\t\t\tproblems = append(problems, \"claude-code: invalid auth status JSON: \"+err.Error())\n+\t\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n+\t\t\treturn\n+\t\t}\n+\t\tsignedIn = info.LoggedIn && info.AuthMethod == \"claude.ai\"\n \t}\n \tif !signedIn {\n \t\tproblems = append(problems, \"claude-code: no stored token and no claude.ai subscription sign-in\")\n"
+      }
+    }
+  },
+  "wrong": [
+    {
+      "name": "Treat confirmed logout as probe failure",
+      "scenario": "Confirmed logged out keeps its existing diagnosis and fix",
+      "step": "Then readiness-claude-auth-probe-errors: the models report satisfies:",
+      "files": {
+        "cli/readiness/readiness.go": {
+          "patch": "--- a/cli/readiness/readiness.go\n+++ b/cli/readiness/readiness.go\n@@ -261,6 +261,11 @@\n \t\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n \t\t\treturn\n \t\t}\n+\t\tif !info.LoggedIn {\n+\t\t\tproblems = append(problems, \"claude-code: could not check auth status\")\n+\t\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n+\t\t\treturn\n+\t\t}\n \t\tsignedIn = info.LoggedIn && info.AuthMethod == \"claude.ai\"\n \t}\n \tif !signedIn {\n"
+        }
+      }
+    },
+    {
+      "name": "Collapse probe error into logged out",
+      "scenario": "Nonzero auth probe is unavailable even with signed-in JSON",
+      "step": "Then readiness-claude-auth-probe-errors: the models report satisfies:",
+      "files": {
+        "cli/readiness/readiness.go": {
+          "patch": "--- a/cli/readiness/readiness.go\n+++ b/cli/readiness/readiness.go\n@@ -252,9 +252,7 @@\n \tif present {\n \t\tstatus, err := claudecode.Probe(context.Background(), in.Home, \"auth\", \"status\", \"--json\")\n \t\tif err != nil {\n-\t\t\tproblems = append(problems, \"claude-code: could not check auth status: \"+err.Error())\n-\t\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n-\t\t\treturn\n+\t\t\treturn []string{\"claude-code: no stored token and no claude.ai subscription sign-in\"}, []string{\"kogen provider login claude-code\"}\n \t\t}\n \t\tif err := json.Unmarshal(status, &info); err != nil {\n \t\t\tproblems = append(problems, \"claude-code: invalid auth status JSON: \"+err.Error())\n"
+        }
+      }
+    },
+    {
+      "name": "Collapse malformed JSON into logged out",
+      "scenario": "Malformed auth JSON is not confirmed logout",
+      "step": "Then readiness-claude-auth-probe-errors: the models report satisfies:",
+      "files": {
+        "cli/readiness/readiness.go": {
+          "patch": "--- a/cli/readiness/readiness.go\n+++ b/cli/readiness/readiness.go\n@@ -257,7 +257,7 @@\n \t\t\treturn\n \t\t}\n \t\tif err := json.Unmarshal(status, &info); err != nil {\n-\t\t\tproblems = append(problems, \"claude-code: invalid auth status JSON: \"+err.Error())\n+\t\t\tproblems = append(problems, \"claude-code: no stored token and no claude.ai subscription sign-in\")\n \t\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n \t\t\treturn\n \t\t}\n"
+        }
+      }
+    },
+    {
+      "name": "Reject valid subscription as invalid status",
+      "scenario": "Valid subscription sign-in stays ready",
+      "step": "Then readiness-claude-auth-probe-errors: the models report satisfies:",
+      "files": {
+        "cli/readiness/readiness.go": {
+          "patch": "--- a/cli/readiness/readiness.go\n+++ b/cli/readiness/readiness.go\n@@ -261,7 +261,9 @@\n \t\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n \t\t\treturn\n \t\t}\n-\t\tsignedIn = info.LoggedIn && info.AuthMethod == \"claude.ai\"\n+\t\tproblems = append(problems, \"claude-code: invalid auth status JSON\")\n+\t\tfixes = append(fixes, \"kogen provider login claude-code\")\n+\t\treturn\n \t}\n \tif !signedIn {\n \t\tproblems = append(problems, \"claude-code: no stored token and no claude.ai subscription sign-in\")\n"
+        }
+      }
+    }
+  ]
+}

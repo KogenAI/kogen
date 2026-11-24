@@ -250,8 +250,18 @@ func checkClaude(in Input) (problems, fixes []string) {
 	}
 	signedIn := false
 	if present {
-		status, _ := claudecode.Probe(context.Background(), in.Home, "auth", "status", "--json")
-		signedIn = json.Unmarshal(status, &info) == nil && info.LoggedIn && info.AuthMethod == "claude.ai"
+		status, err := claudecode.Probe(context.Background(), in.Home, "auth", "status", "--json")
+		if err != nil {
+			problems = append(problems, "claude-code: auth status could not be checked")
+			fixes = append(fixes, "retry kogen init")
+			return
+		}
+		if err := json.Unmarshal(status, &info); err != nil {
+			problems = append(problems, "claude-code: auth status returned invalid JSON")
+			fixes = append(fixes, "retry kogen init")
+			return
+		}
+		signedIn = info.LoggedIn && info.AuthMethod == "claude.ai"
 	}
 	if !signedIn {
 		problems = append(problems, "claude-code: no stored token and no claude.ai subscription sign-in")

@@ -1,0 +1,269 @@
+{
+  "good": [
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: no stored token and no claude.ai subscription sign-in",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: no stored token and no claude.ai subscription sign-in\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "message": "claude-code: no stored token and no claude.ai subscription sign-in",
+        "fix": "kogen provider login claude-code"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: could not check auth status: executor/unavailable: `claude auth status --json` failed: exited with status 7",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: could not check auth status: executor/unavailable: `claude auth status --json` failed: exited with status 7\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: invalid auth status JSON: invalid character 'n' looking for beginning of object key string",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: invalid auth status JSON: invalid character 'n' looking for beginning of object key string\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "invalid or unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "ok",
+          "Detail": "shape, build, review ready",
+          "Fix": ""
+        },
+        "Text": "ok models - shape, build, review ready\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "ok",
+        "message": "shape, build, review ready",
+        "fix": ""
+      }
+    }
+  ],
+  "bad": [
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: could not check auth status",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: could not check auth status\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "message": "claude-code: no stored token and no claude.ai subscription sign-in",
+        "fix": "kogen provider login claude-code"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: no stored token and no claude.ai subscription sign-in",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: no stored token and no claude.ai subscription sign-in\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: no stored token and no claude.ai subscription sign-in",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: no stored token and no claude.ai subscription sign-in\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "invalid or unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: invalid auth status JSON",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: invalid auth status JSON\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "ok",
+        "message": "shape, build, review ready",
+        "fix": ""
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: no stored token and no claude.ai subscription sign-in",
+          "Fix": ""
+        },
+        "Text": "fail models - claude-code: no stored token and no claude.ai subscription sign-in\n  fix: \n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "message": "claude-code: no stored token and no claude.ai subscription sign-in",
+        "fix": "kogen provider login claude-code"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: could not check auth status",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: could not check auth status\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "message": "claude-code: no stored token and no claude.ai subscription sign-in",
+        "fix": "kogen provider login claude-code"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: no stored token and no claude.ai subscription sign-in",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: no stored token and no claude.ai subscription sign-in\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: status ready",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: status ready\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: status ready",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: status ready\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "invalid or unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "ok",
+          "Detail": "invalid auth status",
+          "Fix": ""
+        },
+        "Text": "ok models - invalid auth status\n",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "ok",
+        "message": "shape, build, review ready",
+        "fix": ""
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: could not check auth status: executor/unavailable: `claude auth status --json` failed: exited with status 7",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "fail models - claude-code: could not check auth status: executor/unavailable: `claude auth status --json` failed: exited with status 7\n  fix: kogen provider login claude-code\n",
+        "AuthProbed": false
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "unavailable"
+      }
+    },
+    {
+      "actual": {
+        "Check": {
+          "Check": "models",
+          "Status": "fail",
+          "Detail": "claude-code: invalid auth status JSON: invalid character 'n' looking for beginning of object key string",
+          "Fix": "kogen provider login claude-code"
+        },
+        "Text": "",
+        "AuthProbed": true
+      },
+      "expected": {
+        "status": "fail",
+        "diagnosis": "invalid or unavailable"
+      }
+    }
+  ]
+}
