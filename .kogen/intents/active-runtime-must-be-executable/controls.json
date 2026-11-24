@@ -1,0 +1,34 @@
+{
+  "correct": {
+    "files": {
+      "cli/internal/claudecode/update.go": {
+        "patch": "--- a/cli/internal/claudecode/update.go\n+++ b/cli/internal/claudecode/update.go\n@@ -411,7 +411,7 @@\n func Active(home string) (version, path string) {\n \tif v := readActive(Root(home)); v != \"\" && newer(v, Version) {\n \t\trt := refFor(home, v)\n-\t\tif info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() {\n+\t\tif info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {\n \t\t\treturn rt.version, rt.path\n \t\t}\n \t}\n"
+      },
+      "cli/internal/claudecode/update_test.go": {
+        "patch": "--- a/cli/internal/claudecode/update_test.go\n+++ b/cli/internal/claudecode/update_test.go\n@@ -149,3 +149,35 @@\n \t\t}\n \t}\n }\n+\n+func TestActiveRequiresExecutableRuntime(t *testing.T) {\n+\thome := t.TempDir()\n+\tversion := \"2.1.319\"\n+\truntime := refFor(home, version).path\n+\tif err := os.MkdirAll(filepath.Dir(runtime), 0o700); err != nil {\n+\t\tt.Fatal(err)\n+\t}\n+\tif err := os.WriteFile(filepath.Join(Root(home), ActiveFile), []byte(version+\"\\n\"), 0o600); err != nil {\n+\t\tt.Fatal(err)\n+\t}\n+\tif err := os.WriteFile(runtime, []byte(\"runtime fixture\\n\"), 0o644); err != nil {\n+\t\tt.Fatal(err)\n+\t}\n+\tfor _, c := range []struct {\n+\t\tname          string\n+\t\tmode          os.FileMode\n+\t\tversion, path string\n+\t}{\n+\t\t{\"not executable\", 0o644, Version, RuntimePath(home)},\n+\t\t{\"executable\", 0o755, version, runtime},\n+\t} {\n+\t\tt.Run(c.name, func(t *testing.T) {\n+\t\t\tif err := os.Chmod(runtime, c.mode); err != nil {\n+\t\t\t\tt.Fatal(err)\n+\t\t\t}\n+\t\t\tif v, p := Active(home); v != c.version || p != c.path {\n+\t\t\t\tt.Errorf(\"Active = %q %q, want %q %q\", v, p, c.version, c.path)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n"
+      }
+    }
+  },
+  "wrong": [
+    {
+      "name": "Accept a non-executable regular file",
+      "scenario": "Fall back when the active runtime is not executable",
+      "step": "Then active-runtime-must-be-executable: the returned version and path identify the \"pinned\" runtime",
+      "files": {
+        "cli/internal/claudecode/update.go": {
+          "patch": "--- a/cli/internal/claudecode/update.go\n+++ b/cli/internal/claudecode/update.go\n@@ -411,7 +411,7 @@\n func Active(home string) (version, path string) {\n \tif v := readActive(Root(home)); v != \"\" && newer(v, Version) {\n \t\trt := refFor(home, v)\n-\t\tif info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {\n+\t\tif info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() {\n \t\t\treturn rt.version, rt.path\n \t\t}\n \t}\n"
+        }
+      }
+    },
+    {
+      "name": "Always fall back to the pin",
+      "scenario": "Keep an executable active runtime",
+      "step": "Then active-runtime-must-be-executable: the returned version and path identify the \"active\" runtime",
+      "files": {
+        "cli/internal/claudecode/update.go": {
+          "patch": "--- a/cli/internal/claudecode/update.go\n+++ b/cli/internal/claudecode/update.go\n@@ -411,7 +411,7 @@\n func Active(home string) (version, path string) {\n \tif v := readActive(Root(home)); v != \"\" && newer(v, Version) {\n \t\trt := refFor(home, v)\n-\t\tif info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {\n+\t\tif info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() && false {\n \t\t\treturn rt.version, rt.path\n \t\t}\n \t}\n"
+        }
+      }
+    }
+  ]
+}

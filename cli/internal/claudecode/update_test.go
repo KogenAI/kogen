@@ -88,6 +88,14 @@ func TestActiveFollowsTheFileOnlyForNewerInstalledVersions(t *testing.T) {
 	expect("active folder not installed", Version, pin)
 	newer := install("2.1.319")
 	expect("active installed", "2.1.319", newer)
+	if err := os.Chmod(newer, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	expect("active runtime not executable", Version, pin)
+	if err := os.Chmod(newer, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	expect("active runtime executable", "2.1.319", newer)
 	activate("2.1.100\n")
 	install("2.1.100")
 	expect("active older than the pin", Version, pin)

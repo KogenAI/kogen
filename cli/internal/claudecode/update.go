@@ -411,7 +411,7 @@ func Update(ctx context.Context, opts Options, out io.Writer) error {
 func Active(home string) (version, path string) {
 	if v := readActive(Root(home)); v != "" && newer(v, Version) {
 		rt := refFor(home, v)
-		if info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() {
+		if info, err := os.Stat(rt.path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
 			return rt.version, rt.path
 		}
 	}
