@@ -1,0 +1,158 @@
+{
+  "good": [
+    {
+      "kind": "missing",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml is missing",
+          "Fix": "in your project, run kogen init"
+        },
+        "Text": "fail config - .kogen/project.yaml is missing\n  fix: in your project, run kogen init\n"
+      },
+      "expected": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml is missing",
+          "Fix": "in your project, run kogen init"
+        },
+        "Text": "fail config - .kogen/project.yaml is missing\n  fix: in your project, run kogen init\n"
+      }
+    },
+    {
+      "kind": "directory",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml cannot be read as a config file: read <project>/.kogen/project.yaml: is a directory",
+          "Fix": "make .kogen/project.yaml a readable regular file"
+        },
+        "Text": "fail config - .kogen/project.yaml cannot be read as a config file: read <project>/.kogen/project.yaml: is a directory\n  fix: make .kogen/project.yaml a readable regular file\n"
+      },
+      "expected": ".kogen/project.yaml"
+    },
+    {
+      "kind": "valid",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "ok",
+          "Detail": ".kogen/project.yaml is valid",
+          "Fix": ""
+        },
+        "Text": "ok config - .kogen/project.yaml is valid\n"
+      },
+      "expected": {
+        "Check": {
+          "Check": "config",
+          "Status": "ok",
+          "Detail": ".kogen/project.yaml is valid",
+          "Fix": ""
+        },
+        "Text": "ok config - .kogen/project.yaml is valid\n"
+      }
+    },
+    {
+      "kind": "malformed",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": "line 2: unclosed [",
+          "Fix": "edit .kogen/project.yaml at line 2"
+        },
+        "Text": "fail config - line 2: unclosed [\n  fix: edit .kogen/project.yaml at line 2\n"
+      },
+      "expected": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": "line 2: unclosed [",
+          "Fix": "edit .kogen/project.yaml at line 2"
+        },
+        "Text": "fail config - line 2: unclosed [\n  fix: edit .kogen/project.yaml at line 2\n"
+      }
+    }
+  ],
+  "bad": [
+    {
+      "kind": "missing",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml is missing",
+          "Fix": "edit .kogen/project.yaml"
+        },
+        "Text": "fail config - .kogen/project.yaml is missing\n  fix: edit .kogen/project.yaml\n"
+      },
+      "expected": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml is missing",
+          "Fix": "in your project, run kogen init"
+        },
+        "Text": "fail config - .kogen/project.yaml is missing\n  fix: in your project, run kogen init\n"
+      }
+    },
+    {
+      "kind": "directory",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml is missing",
+          "Fix": "in your project, run kogen init"
+        },
+        "Text": "fail config - .kogen/project.yaml is missing\n  fix: in your project, run kogen init\n"
+      },
+      "expected": ".kogen/project.yaml"
+    },
+    {
+      "kind": "valid",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml is invalid",
+          "Fix": "edit .kogen/project.yaml"
+        },
+        "Text": "fail config - .kogen/project.yaml is invalid\n  fix: edit .kogen/project.yaml\n"
+      },
+      "expected": {
+        "Check": {
+          "Check": "config",
+          "Status": "ok",
+          "Detail": ".kogen/project.yaml is valid",
+          "Fix": ""
+        },
+        "Text": "ok config - .kogen/project.yaml is valid\n"
+      }
+    },
+    {
+      "kind": "malformed",
+      "actual": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": ".kogen/project.yaml cannot be read as a config file",
+          "Fix": "make .kogen/project.yaml a readable regular file"
+        },
+        "Text": "fail config - .kogen/project.yaml cannot be read as a config file\n  fix: make .kogen/project.yaml a readable regular file\n"
+      },
+      "expected": {
+        "Check": {
+          "Check": "config",
+          "Status": "fail",
+          "Detail": "line 2: unclosed [",
+          "Fix": "edit .kogen/project.yaml at line 2"
+        },
+        "Text": "fail config - line 2: unclosed [\n  fix: edit .kogen/project.yaml at line 2\n"
+      }
+    }
+  ]
+}

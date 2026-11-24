@@ -232,7 +232,7 @@ func TestOutsideRepositoryAndMissingConfigFixes(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 	dir := gitRepo(t)
-	if c := checkConfig(dir); c.Status != "fail" || c.Fix != "in your project, run kogen init" {
+	if c, want := checkConfig(dir), (Check{"config", "fail", ".kogen/project.yaml is missing", "in your project, run kogen init"}); c != want {
 		t.Fatalf("%+v", c)
 	}
 }
@@ -309,5 +309,50 @@ func TestRunOutsideRepositoryStillReportsAllChecks(t *testing.T) {
 	}
 	if c := checks[3]; c.Status != "fail" || c.Detail != supergrokDetail {
 		t.Fatalf("models check = %+v, want the lineup of the project directory", c)
+	}
+}
+
+func TestRunConfigReports(t *testing.T) {
+	for _, state := range []string{"missing", "directory", "valid", "malformed"} {
+		t.Run(state, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, project.ConfigPath)
+			want := Check{"config", "fail", ".kogen/project.yaml is missing", "in your project, run kogen init"}
+			wantText := "fail config - .kogen/project.yaml is missing\n  fix: in your project, run kogen init\n"
+			switch state {
+			case "directory":
+				if err := os.MkdirAll(path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				_, err := os.ReadFile(path)
+				if err == nil {
+					t.Fatal("reading a directory unexpectedly succeeded")
+				}
+				want.Detail = ".kogen/project.yaml cannot be read: " + err.Error()
+				want.Fix = "make .kogen/project.yaml a readable regular config file"
+				wantText = "fail config - .kogen/project.yaml cannot be read: " + err.Error() + "\n  fix: make .kogen/project.yaml a readable regular config file\n"
+			case "valid":
+				writeProjectFile(t, root, project.ConfigPath, "version: 1\n")
+				want = Check{"config", "ok", ".kogen/project.yaml is valid", ""}
+				wantText = "ok config - .kogen/project.yaml is valid\n"
+			case "malformed":
+				writeProjectFile(t, root, project.ConfigPath, "version: 1\ncommands: [\n")
+				want = Check{"config", "fail", "line 2: unclosed [", "edit .kogen/project.yaml at line 2"}
+				wantText = "fail config - line 2: unclosed [\n  fix: edit .kogen/project.yaml at line 2\n"
+			}
+			checks := Run(sys.NewWith(runEnv("GIT_CEILING_DIRECTORIES="+root), root), Input{Project: root, Home: t.TempDir()})
+			var config []Check
+			for _, c := range checks {
+				if c.Check == "config" {
+					config = append(config, c)
+				}
+			}
+			if len(config) != 1 || config[0] != want {
+				t.Fatalf("config checks = %+v, want %+v", config, want)
+			}
+			if got := Text(config); got != wantText {
+				t.Fatalf("Text = %q, want %q", got, wantText)
+			}
+		})
 	}
 }

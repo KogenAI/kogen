@@ -121,7 +121,10 @@ func checkGit(s *sys.Session, in Input) (*git.Repo, Check) {
 func checkConfig(root string) Check {
 	text, err := os.ReadFile(filepath.Join(root, project.ConfigPath))
 	if err != nil {
-		return fail("config", project.ConfigPath+" is missing", "in your project, run kogen init")
+		if os.IsNotExist(err) {
+			return fail("config", project.ConfigPath+" is missing", "in your project, run kogen init")
+		}
+		return fail("config", project.ConfigPath+" cannot be read: "+err.Error(), "make "+project.ConfigPath+" a readable regular config file")
 	}
 	_, err = project.ParseConfig(string(text), filepath.Join(root, project.ConfigPath))
 	if err == nil {
