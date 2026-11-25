@@ -1,0 +1,12 @@
+{
+  "None": false,
+  "Path": ".kogen/models/tiny-tasks-complete-command/model.qnt",
+  "Invariants": [
+    "StableIdentitiesAndOrder",
+    "OnlySelectedTaskChanges",
+    "UnknownPreservesState"
+  ],
+  "Seed": "41",
+  "Samples": "100",
+  "Steps": "8"
+}

@@ -1,0 +1,66 @@
+{
+  "correct": {
+    "files": {
+      "examples/tiny_tasks/lib/tiny_tasks.ex": "defmodule TinyTasks do\n  alias TinyTasks.Store\n\n  def add(title) do\n    tasks = Store.read()\n    id = tasks |> Enum.map(& &1.id) |> Enum.max(fn -> 0 end) |> Kernel.+(1)\n    task = %{id: id, status: \"open\", title: title}\n\n    Store.write(tasks ++ [task])\n    task\n  end\n\n  def list do\n    Store.read()\n  end\n\n  def complete(id) do\n    tasks = Store.read()\n\n    case Enum.find_index(tasks, &(&1.id == id)) do\n      nil ->\n        {:error, :not_found}\n\n      index ->\n        updated = List.update_at(tasks, index, &%{&1 | status: \"done\"})\n        Store.write(updated)\n        {:ok, Enum.at(updated, index)}\n    end\n  end\nend\n",
+      "examples/tiny_tasks/lib/mix/tasks/todo/complete.ex": "defmodule Mix.Tasks.Todo.Complete do\n  use Mix.Task\n\n  @shortdoc \"Complete a task\"\n\n  @impl Mix.Task\n  def run([id]) do\n    Mix.Task.run(\"app.start\")\n\n    case TinyTasks.complete(String.to_integer(id)) do\n      {:ok, task} -> Mix.shell().info(\"Completed task #{task.id}.\")\n      {:error, :not_found} -> Mix.raise(\"Unknown task ID: #{id}\")\n    end\n  end\nend\n"
+    }
+  },
+  "wrong": [
+    {
+      "name": "Reinsert the task at the end",
+      "scenario": "Complete the middle open task in place",
+      "step": "And tiny-tasks-complete-command: plain mix todo.list shows exactly these tasks with their original IDs in order:",
+      "files": {
+        "examples/tiny_tasks/lib/tiny_tasks.ex": "defmodule TinyTasks do\n  alias TinyTasks.Store\n\n  def add(title) do\n    tasks = Store.read()\n    id = tasks |> Enum.map(& &1.id) |> Enum.max(fn -> 0 end) |> Kernel.+(1)\n    task = %{id: id, status: \"open\", title: title}\n\n    Store.write(tasks ++ [task])\n    task\n  end\n\n  def list do\n    Store.read()\n  end\n\n  def complete(id) do\n    tasks = Store.read()\n\n    case Enum.find_index(tasks, &(&1.id == id)) do\n      nil ->\n        {:error, :not_found}\n\n      index ->\n        updated = List.update_at(tasks, index, &%{&1 | status: \"done\"})\n        Store.write(List.delete_at(updated, index) ++ [Enum.at(updated, index)])\n        {:ok, Enum.at(updated, index)}\n    end\n  end\nend\n"
+      }
+    },
+    {
+      "name": "Give the completed task a new ID in place",
+      "scenario": "Complete the middle open task in place",
+      "step": "And tiny-tasks-complete-command: plain mix todo.list shows exactly these tasks with their original IDs in order:",
+      "files": {
+        "examples/tiny_tasks/lib/tiny_tasks.ex": "defmodule TinyTasks do\n  alias TinyTasks.Store\n\n  def add(title) do\n    tasks = Store.read()\n    id = tasks |> Enum.map(& &1.id) |> Enum.max(fn -> 0 end) |> Kernel.+(1)\n    task = %{id: id, status: \"open\", title: title}\n\n    Store.write(tasks ++ [task])\n    task\n  end\n\n  def list do\n    Store.read()\n  end\n\n  def complete(id) do\n    tasks = Store.read()\n\n    case Enum.find_index(tasks, &(&1.id == id)) do\n      nil ->\n        {:error, :not_found}\n\n      index ->\n        updated = List.update_at(tasks, index, &%{&1 | status: \"done\", id: Enum.max(Enum.map(tasks, fn task -> task.id end)) + 1})\n        Store.write(updated)\n        {:ok, Enum.at(updated, index)}\n    end\n  end\nend\n"
+      }
+    },
+    {
+      "name": "Also change the next task status",
+      "scenario": "Complete the middle open task in place",
+      "step": "And tiny-tasks-complete-command: plain mix todo.list shows exactly these tasks with their original IDs in order:",
+      "files": {
+        "examples/tiny_tasks/lib/tiny_tasks.ex": "defmodule TinyTasks do\n  alias TinyTasks.Store\n\n  def add(title) do\n    tasks = Store.read()\n    id = tasks |> Enum.map(& &1.id) |> Enum.max(fn -> 0 end) |> Kernel.+(1)\n    task = %{id: id, status: \"open\", title: title}\n\n    Store.write(tasks ++ [task])\n    task\n  end\n\n  def list do\n    Store.read()\n  end\n\n  def complete(id) do\n    tasks = Store.read()\n\n    case Enum.find_index(tasks, &(&1.id == id)) do\n      nil ->\n        {:error, :not_found}\n\n      index ->\n        updated = List.update_at(tasks, index, &%{&1 | status: \"done\"})\n        Store.write(List.update_at(updated, index + 1, &%{&1 | status: \"done\"}))\n        {:ok, Enum.at(updated, index)}\n    end\n  end\nend\n"
+      }
+    },
+    {
+      "name": "Report completion without persisting it",
+      "scenario": "Complete the middle open task in place",
+      "step": "And tiny-tasks-complete-command: plain mix todo.list shows exactly these tasks with their original IDs in order:",
+      "files": {
+        "examples/tiny_tasks/lib/tiny_tasks.ex": "defmodule TinyTasks do\n  alias TinyTasks.Store\n\n  def add(title) do\n    tasks = Store.read()\n    id = tasks |> Enum.map(& &1.id) |> Enum.max(fn -> 0 end) |> Kernel.+(1)\n    task = %{id: id, status: \"open\", title: title}\n\n    Store.write(tasks ++ [task])\n    task\n  end\n\n  def list do\n    Store.read()\n  end\n\n  def complete(id) do\n    tasks = Store.read()\n\n    case Enum.find_index(tasks, &(&1.id == id)) do\n      nil ->\n        {:error, :not_found}\n\n      index ->\n        updated = List.update_at(tasks, index, &%{&1 | status: \"done\"})\n        {:ok, Enum.at(updated, index)}\n    end\n  end\nend\n"
+      }
+    },
+    {
+      "name": "Silently succeed for an unknown ID",
+      "scenario": "Reject an unknown ID without rewriting the file",
+      "step": "Then tiny-tasks-complete-command: mix todo.complete fails and reports the offending ID",
+      "files": {
+        "examples/tiny_tasks/lib/mix/tasks/todo/complete.ex": "defmodule Mix.Tasks.Todo.Complete do\n  use Mix.Task\n\n  @shortdoc \"Complete a task\"\n\n  @impl Mix.Task\n  def run([id]) do\n    Mix.Task.run(\"app.start\")\n\n    case TinyTasks.complete(String.to_integer(id)) do\n      {:ok, task} -> Mix.shell().info(\"Completed task #{task.id}.\")\n      {:error, :not_found} -> :ok\n    end\n  end\nend\n"
+      }
+    },
+    {
+      "name": "Fail without reporting the offending ID",
+      "scenario": "Reject an unknown ID without rewriting the file",
+      "step": "Then tiny-tasks-complete-command: mix todo.complete fails and reports the offending ID",
+      "files": {
+        "examples/tiny_tasks/lib/mix/tasks/todo/complete.ex": "defmodule Mix.Tasks.Todo.Complete do\n  use Mix.Task\n\n  @shortdoc \"Complete a task\"\n\n  @impl Mix.Task\n  def run([id]) do\n    Mix.Task.run(\"app.start\")\n\n    case TinyTasks.complete(String.to_integer(id)) do\n      {:ok, task} -> Mix.shell().info(\"Completed task #{task.id}.\")\n      {:error, :not_found} -> Mix.raise(\"Unknown task ID\")\n    end\n  end\nend\n"
+      }
+    },
+    {
+      "name": "Rewrite identical bytes for an unknown ID",
+      "scenario": "Reject an unknown ID without rewriting the file",
+      "step": "And tiny-tasks-complete-command: the task file is unchanged and was not rewritten",
+      "files": {
+        "examples/tiny_tasks/lib/tiny_tasks.ex": "defmodule TinyTasks do\n  alias TinyTasks.Store\n\n  def add(title) do\n    tasks = Store.read()\n    id = tasks |> Enum.map(& &1.id) |> Enum.max(fn -> 0 end) |> Kernel.+(1)\n    task = %{id: id, status: \"open\", title: title}\n\n    Store.write(tasks ++ [task])\n    task\n  end\n\n  def list do\n    Store.read()\n  end\n\n  def complete(id) do\n    tasks = Store.read()\n\n    case Enum.find_index(tasks, &(&1.id == id)) do\n      nil ->\n        Store.write(tasks)\n        {:error, :not_found}\n\n      index ->\n        updated = List.update_at(tasks, index, &%{&1 | status: \"done\"})\n        Store.write(updated)\n        {:ok, Enum.at(updated, index)}\n    end\n  end\nend\n"
+      }
+    }
+  ]
+}
