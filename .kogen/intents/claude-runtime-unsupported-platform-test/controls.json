@@ -1,0 +1,41 @@
+{
+  "correct": {
+    "files": {
+      "cli/internal/claudecode/runtime_test.go": "package claudecode\n\nimport (\n\t\"testing\"\n)\n\nfunc TestUnsupportedMessage(t *testing.T) {\n\tfor _, tt := range []struct {\n\t\tgoos, goarch string\n\t\twant         string\n\t}{\n\t\t{\"windows\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not windows/amd64\"},\n\t\t{\"darwin\", \"arm64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not darwin/arm64\"},\n\t\t{\"linux\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not linux/amd64\"},\n\t} {\n\t\tif got := UnsupportedMessage(tt.goos, tt.goarch); got != tt.want {\n\t\t\tt.Errorf(\"UnsupportedMessage(%q, %q) = %q, want %q\", tt.goos, tt.goarch, got, tt.want)\n\t\t}\n\t}\n}\n"
+    }
+  },
+  "wrong": [
+    {
+      "name": "Windows test ignores the rejected target",
+      "scenario": "Refusal identifies the rejected Windows target",
+      "step": "Then claude-runtime-unsupported-platform-test: the tests expecting \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not windows/amd64\" for \"windows\" and \"amd64\" reject \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only\"",
+      "files": {
+        "cli/internal/claudecode/runtime_test.go": "package claudecode\n\nimport (\n\t\"strings\"\n\t\"testing\"\n)\n\nfunc TestUnsupportedMessage(t *testing.T) {\n\tfor _, tt := range []struct {\n\t\tgoos, goarch string\n\t\twant         string\n\t}{\n\t\t{\"windows\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not windows/amd64\"},\n\t\t{\"darwin\", \"arm64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not darwin/arm64\"},\n\t\t{\"linux\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not linux/amd64\"},\n\t} {\n\t\tgot := UnsupportedMessage(tt.goos, tt.goarch)\n\t\tif tt.goos == \"windows\" && strings.HasPrefix(got, strings.SplitN(tt.want, \", not \", 2)[0]) {\n\t\t\tcontinue\n\t\t}\n\t\tif got != tt.want {\n\t\t\tt.Errorf(\"UnsupportedMessage(%q, %q) = %q, want %q\", tt.goos, tt.goarch, got, tt.want)\n\t\t}\n\t}\n}\n"
+      }
+    },
+    {
+      "name": "Windows test ignores the supported-platform wording",
+      "scenario": "Refusal identifies both supported platforms",
+      "step": "Then claude-runtime-unsupported-platform-test: the tests expecting \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not windows/amd64\" for \"windows\" and \"amd64\" reject \"Kogen's Claude Code runtime supports macOS on Apple Silicon only, not windows/amd64\"",
+      "files": {
+        "cli/internal/claudecode/runtime_test.go": "package claudecode\n\nimport (\n\t\"strings\"\n\t\"testing\"\n)\n\nfunc TestUnsupportedMessage(t *testing.T) {\n\tfor _, tt := range []struct {\n\t\tgoos, goarch string\n\t\twant         string\n\t}{\n\t\t{\"windows\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not windows/amd64\"},\n\t\t{\"darwin\", \"arm64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not darwin/arm64\"},\n\t\t{\"linux\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not linux/amd64\"},\n\t} {\n\t\tgot := UnsupportedMessage(tt.goos, tt.goarch)\n\t\tif tt.goos == \"windows\" && strings.HasSuffix(got, \", not windows/amd64\") {\n\t\t\tcontinue\n\t\t}\n\t\tif got != tt.want {\n\t\t\tt.Errorf(\"UnsupportedMessage(%q, %q) = %q, want %q\", tt.goos, tt.goarch, got, tt.want)\n\t\t}\n\t}\n}\n"
+      }
+    },
+    {
+      "name": "No direct macOS refusal check",
+      "scenario": "Direct macOS call retains the same refusal form",
+      "step": "Then claude-runtime-unsupported-platform-test: the tests expecting \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not darwin/arm64\" for \"darwin\" and \"arm64\" reject \"unknown target darwin/arm64\"",
+      "files": {
+        "cli/internal/claudecode/runtime_test.go": "package claudecode\n\nimport (\n\t\"testing\"\n)\n\nfunc TestUnsupportedMessage(t *testing.T) {\n\tfor _, tt := range []struct {\n\t\tgoos, goarch string\n\t\twant         string\n\t}{\n\t\t{\"windows\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not windows/amd64\"},\n\t\t{\"linux\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not linux/amd64\"},\n\t} {\n\t\tif got := UnsupportedMessage(tt.goos, tt.goarch); got != tt.want {\n\t\t\tt.Errorf(\"UnsupportedMessage(%q, %q) = %q, want %q\", tt.goos, tt.goarch, got, tt.want)\n\t\t}\n\t}\n}\n"
+      }
+    },
+    {
+      "name": "No direct Linux refusal check",
+      "scenario": "Direct Linux call retains the same refusal form",
+      "step": "Then claude-runtime-unsupported-platform-test: the tests expecting \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not linux/amd64\" for \"linux\" and \"amd64\" reject \"unknown target linux/amd64\"",
+      "files": {
+        "cli/internal/claudecode/runtime_test.go": "package claudecode\n\nimport (\n\t\"testing\"\n)\n\nfunc TestUnsupportedMessage(t *testing.T) {\n\tfor _, tt := range []struct {\n\t\tgoos, goarch string\n\t\twant         string\n\t}{\n\t\t{\"windows\", \"amd64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not windows/amd64\"},\n\t\t{\"darwin\", \"arm64\", \"Kogen's Claude Code runtime supports macOS on Apple Silicon and Linux x86-64 only, not darwin/arm64\"},\n\t} {\n\t\tif got := UnsupportedMessage(tt.goos, tt.goarch); got != tt.want {\n\t\t\tt.Errorf(\"UnsupportedMessage(%q, %q) = %q, want %q\", tt.goos, tt.goarch, got, tt.want)\n\t\t}\n\t}\n}\n"
+      }
+    }
+  ]
+}
