@@ -1,0 +1,49 @@
+{
+  "correct": {
+    "files": {
+      "examples/tiny_tasks/lib/mix/tasks/todo/list.ex": "defmodule Mix.Tasks.Todo.List do\n  use Mix.Task\n\n  @shortdoc \"List tasks\"\n\n  @impl Mix.Task\n  def run(args) do\n    Mix.Task.run(\"app.start\")\n\n    all_tasks = TinyTasks.list()\n    tasks = if args == [\"--open\"], do: Enum.filter(all_tasks, &(&1.status == \"open\")), else: all_tasks\n\n    case tasks do\n      [] -> Mix.shell().info(\"No tasks yet.\")\n      tasks -> Enum.each(tasks, &print_task/1)\n    end\n  end\n\n  defp print_task(task) do\n    Mix.shell().info(\"#{task.id} [#{task.status}] #{task.title}\")\n  end\nend\n"
+    }
+  },
+  "wrong": [
+    {
+      "name": "sort by ID before filtering",
+      "scenario": "List open tasks without changing the plain list",
+      "step": "Then tiny-tasks-open-task-filter: the filtered listing is exactly:",
+      "files": {
+        "examples/tiny_tasks/lib/mix/tasks/todo/list.ex": "defmodule Mix.Tasks.Todo.List do\n  use Mix.Task\n\n  @shortdoc \"List tasks\"\n\n  @impl Mix.Task\n  def run(args) do\n    Mix.Task.run(\"app.start\")\n\n    all_tasks = TinyTasks.list()\n    tasks = if args == [\"--open\"], do: Enum.filter(Enum.sort_by(all_tasks, & &1.id), &(&1.status == \"open\")), else: all_tasks\n\n    case tasks do\n      [] -> Mix.shell().info(\"No tasks yet.\")\n      tasks -> Enum.each(tasks, &print_task/1)\n    end\n  end\n\n  defp print_task(task) do\n    Mix.shell().info(\"#{task.id} [#{task.status}] #{task.title}\")\n  end\nend\n"
+      }
+    },
+    {
+      "name": "include done among mixed tasks",
+      "scenario": "List open tasks without changing the plain list",
+      "step": "Then tiny-tasks-open-task-filter: the filtered listing is exactly:",
+      "files": {
+        "examples/tiny_tasks/lib/mix/tasks/todo/list.ex": "defmodule Mix.Tasks.Todo.List do\n  use Mix.Task\n\n  @shortdoc \"List tasks\"\n\n  @impl Mix.Task\n  def run(args) do\n    Mix.Task.run(\"app.start\")\n\n    all_tasks = TinyTasks.list()\n    tasks = if args == [\"--open\"], do: Enum.filter(all_tasks, &(&1.status in [\"open\", \"done\"])), else: all_tasks\n\n    case tasks do\n      [] -> Mix.shell().info(\"No tasks yet.\")\n      tasks -> Enum.each(tasks, &print_task/1)\n    end\n  end\n\n  defp print_task(task) do\n    Mix.shell().info(\"#{task.id} [#{task.status}] #{task.title}\")\n  end\nend\n"
+      }
+    },
+    {
+      "name": "fall back to done tasks on an empty selection",
+      "scenario": "List a file with no open tasks",
+      "step": "Then tiny-tasks-open-task-filter: the empty result is exactly:",
+      "files": {
+        "examples/tiny_tasks/lib/mix/tasks/todo/list.ex": "defmodule Mix.Tasks.Todo.List do\n  use Mix.Task\n\n  @shortdoc \"List tasks\"\n\n  @impl Mix.Task\n  def run(args) do\n    Mix.Task.run(\"app.start\")\n\n    all_tasks = TinyTasks.list()\n    tasks = if args == [\"--open\"], do: Enum.filter(all_tasks, &(&1.status == \"open\")), else: all_tasks\n\n    tasks = if tasks == [], do: all_tasks, else: tasks\n\n    case tasks do\n      [] -> Mix.shell().info(\"No tasks yet.\")\n      tasks -> Enum.each(tasks, &print_task/1)\n    end\n  end\n\n  defp print_task(task) do\n    Mix.shell().info(\"#{task.id} [#{task.status}] #{task.title}\")\n  end\nend\n"
+      }
+    },
+    {
+      "name": "omit the empty-list message",
+      "scenario": "List a file with no open tasks",
+      "step": "Then tiny-tasks-open-task-filter: the empty result is exactly:",
+      "files": {
+        "examples/tiny_tasks/lib/mix/tasks/todo/list.ex": "defmodule Mix.Tasks.Todo.List do\n  use Mix.Task\n\n  @shortdoc \"List tasks\"\n\n  @impl Mix.Task\n  def run(args) do\n    Mix.Task.run(\"app.start\")\n\n    all_tasks = TinyTasks.list()\n    tasks = if args == [\"--open\"], do: Enum.filter(all_tasks, &(&1.status == \"open\")), else: all_tasks\n\n    case tasks do\n      [] -> :ok\n      tasks -> Enum.each(tasks, &print_task/1)\n    end\n  end\n\n  defp print_task(task) do\n    Mix.shell().info(\"#{task.id} [#{task.status}] #{task.title}\")\n  end\nend\n"
+      }
+    },
+    {
+      "name": "default to open tasks for the plain command",
+      "scenario": "List open tasks without changing the plain list",
+      "step": "Then tiny-tasks-open-task-filter: the plain listing is exactly:",
+      "files": {
+        "examples/tiny_tasks/lib/mix/tasks/todo/list.ex": "defmodule Mix.Tasks.Todo.List do\n  use Mix.Task\n\n  @shortdoc \"List tasks\"\n\n  @impl Mix.Task\n  def run(args) do\n    Mix.Task.run(\"app.start\")\n\n    all_tasks = TinyTasks.list()\n    tasks = if args in [[], [\"--open\"]], do: Enum.filter(all_tasks, &(&1.status == \"open\")), else: all_tasks\n\n    case tasks do\n      [] -> Mix.shell().info(\"No tasks yet.\")\n      tasks -> Enum.each(tasks, &print_task/1)\n    end\n  end\n\n  defp print_task(task) do\n    Mix.shell().info(\"#{task.id} [#{task.status}] #{task.title}\")\n  end\nend\n"
+      }
+    }
+  ]
+}

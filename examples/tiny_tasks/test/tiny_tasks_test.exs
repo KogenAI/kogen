@@ -56,6 +56,49 @@ defmodule TinyTasksTest do
     assert after_stat.mtime == stat.mtime
   end
 
+  test "TASK-2: open listing preserves stored order" do
+    assert_open_listing(
+      "7\topen\tWmVicmE=\n4\tdone\tRmluaXNoZWQ=\n9\topen\tQXBwbGU=\n2\topen\tTWFuZ28=\n",
+      ["7 [open] Zebra", "9 [open] Apple", "2 [open] Mango"]
+    )
+  end
+
+  test "TASK-2: no open tasks prints the empty message" do
+    assert_open_listing("4\tdone\tRmluaXNoZWQ=\n", ["No tasks yet."])
+  end
+
+  defp assert_open_listing(contents, expected) do
+    root = Path.join(System.tmp_dir!(), "tiny-tasks-#{System.unique_integer([:positive])}")
+    file = Path.join(root, "tasks.tsv")
+    File.mkdir_p!(root)
+    File.write!(file, contents)
+    previous_file = System.get_env("TODO_FILE")
+    previous_shell = Mix.shell()
+
+    on_exit(fn ->
+      if previous_file,
+        do: System.put_env("TODO_FILE", previous_file),
+        else: System.delete_env("TODO_FILE")
+
+      Mix.shell(previous_shell)
+      File.rm_rf!(root)
+    end)
+
+    System.put_env("TODO_FILE", file)
+    Mix.shell(Mix.Shell.Process)
+    Mix.Tasks.Todo.List.run(["--open"])
+
+    lines =
+      for _ <- expected do
+        assert_receive {:mix_shell, :info, [line]}
+        line
+      end
+
+    assert lines == expected
+    refute_receive {:mix_shell, :info, _}
+    assert File.read!(file) == contents
+  end
+
   defp task_lines(output),
     do: output |> String.split("\n") |> Enum.filter(&Regex.match?(~r/^\d+ \[/, &1))
 

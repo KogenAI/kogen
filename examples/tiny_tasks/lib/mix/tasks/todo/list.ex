@@ -4,10 +4,13 @@ defmodule Mix.Tasks.Todo.List do
   @shortdoc "List tasks"
 
   @impl Mix.Task
-  def run(_args) do
+  def run(args) do
     Mix.Task.run("app.start")
 
-    case TinyTasks.list() do
+    tasks = TinyTasks.list()
+    tasks = if args == ["--open"], do: Enum.filter(tasks, &(&1.status == "open")), else: tasks
+
+    case tasks do
       [] -> Mix.shell().info("No tasks yet.")
       tasks -> Enum.each(tasks, &print_task/1)
     end
