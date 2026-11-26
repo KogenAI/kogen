@@ -230,7 +230,7 @@ Feature: Shaping
     Then the exit code is 1
     And stdout contains "shape/protected_conflict: required edits touch protected files: .style.cfg"
     And stdout contains "the requested check definition must change"
-    And stdout contains "Next: revise the request, or review and commit .kogen/project.yaml outside Build, then shape again; preserve checks and actual check configuration. There is no protected-edit override."
+    And stdout contains "Next: revise the request so it needs no edit to the files listed above, or review and commit those files outside Build, then shape again; preserve checks and actual check configuration. There is no protected-edit override."
     And request 1 contains "blocked"
     And request 1 contains "configured protect patterns"
     And request 1 contains "paths currently matched by those patterns"

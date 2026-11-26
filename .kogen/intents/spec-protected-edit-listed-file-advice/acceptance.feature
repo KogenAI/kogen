@@ -1,0 +1,4 @@
+Feature: Canonical protected-edit advice names the listed files
+  Scenario: Both canonical specs give the listed-file advice
+    Then spec-protected-edit-listed-file-advice: scenario "A required protected edit is reported without creating an Intent or approval" has exactly the stdout Next step for "Next: revise the request so it needs no edit to the files listed above, or review and commit those files outside Build, then shape again; preserve checks and actual check configuration. There is no protected-edit override."
+    And spec-protected-edit-listed-file-advice: SHP-4 contains the literal "Next: revise the request so it needs no edit to the files listed above, or review and commit those files outside Build, then shape again; preserve checks and actual check configuration. There is no protected-edit override."
