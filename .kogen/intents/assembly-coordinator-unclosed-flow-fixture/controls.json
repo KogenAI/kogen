@@ -1,0 +1,41 @@
+{
+  "correct": {
+    "files": {
+      "cli/consumes/kogen-coordinator/config_test.go": {
+        "patch": "--- a/cli/consumes/kogen-coordinator/config_test.go\n+++ b/cli/consumes/kogen-coordinator/config_test.go\n@@ -179,7 +179,7 @@\n \t\t{\"removed shape_workers key\", \"version: 1\\nshape_workers:\\n  enabled: true\\n\", []string{\"line 2: unknown key shape_workers\"}},\n \t\t{\"unsupported version\", \"version: 2\\n\", []string{\"line 1: version must be 1\"}},\n \t\t{\"empty file\", \"\", []string{\"line 1: the file is empty\"}},\n-\t\t{\"unclosed flow\", \"version: 1\\n\\tbad: [\\n\", []string{\"line 2: unclosed [\"}},\n+\t\t{\"unclosed flow\", \"version: 1\\ncommands: [\\n\", []string{\"line 2: unclosed [\"}},\n \t}\n \tfor _, c := range cases {\n \t\tt.Run(c.name, func(t *testing.T) {\n"
+      }
+    }
+  },
+  "wrong": [
+    {
+      "name": "Keep the old tab-indented unknown key",
+      "scenario": "The Coordinator consumer package passes with an isolated unclosed sequence",
+      "step": "And assembly-coordinator-unclosed-flow-fixture: the tracked refusal case has this exact input and unchanged assertions",
+      "files": {
+        "cli/consumes/kogen-coordinator/config_test.go": {
+          "patch": "--- a/cli/consumes/kogen-coordinator/config_test.go\n+++ b/cli/consumes/kogen-coordinator/config_test.go\n@@ -179,7 +179,7 @@\n \t\t{\"removed shape_workers key\", \"version: 1\\nshape_workers:\\n  enabled: true\\n\", []string{\"line 2: unknown key shape_workers\"}},\n \t\t{\"unsupported version\", \"version: 2\\n\", []string{\"line 1: version must be 1\"}},\n \t\t{\"empty file\", \"\", []string{\"line 1: the file is empty\"}},\n-\t\t{\"unclosed flow\", \"version: 1\\ncommands: [\\n\", []string{\"line 2: unclosed [\"}},\n+\t\t{\"unclosed flow\", \"version: 1\\n\\tbad: [\\n\", []string{\"line 2: unclosed [\"}},\n \t}\n \tfor _, c := range cases {\n \t\tt.Run(c.name, func(t *testing.T) {\n"
+        }
+      }
+    },
+    {
+      "name": "Weaken exact rendered diagnostics to a substring",
+      "scenario": "The Coordinator consumer package passes with an isolated unclosed sequence",
+      "step": "And assembly-coordinator-unclosed-flow-fixture: the tracked refusal case has this exact input and unchanged assertions",
+      "files": {
+        "cli/consumes/kogen-coordinator/config_test.go": {
+          "patch": "--- a/cli/consumes/kogen-coordinator/config_test.go\n+++ b/cli/consumes/kogen-coordinator/config_test.go\n@@ -194,7 +194,7 @@\n \t\t\tif e.Detail != \"project.yaml\" || e.Exit != 3 || !slices.Equal(e.Lines, c.lines) {\n \t\t\t\tt.Fatalf(\"Detail %q, Exit %d, Lines %q; want project.yaml, 3, %q\", e.Detail, e.Exit, e.Lines, c.lines)\n \t\t\t}\n-\t\t\tif want := \"environment/project_config_invalid: project.yaml\\n  \" + strings.Join(c.lines, \"\\n  \") + \"\\n\"; e.Render() != want {\n+\t\t\tif want := \"environment/project_config_invalid: project.yaml\\n  \" + strings.Join(c.lines, \"\\n  \") + \"\\n\"; !strings.Contains(e.Render(), want) {\n \t\t\t\tt.Fatalf(\"Render = %q, want %q\", e.Render(), want)\n \t\t\t}\n \t\t})\n"
+        }
+      }
+    },
+    {
+      "name": "Skip the named refusal case",
+      "scenario": "The Coordinator consumer package passes with an isolated unclosed sequence",
+      "step": "Then assembly-coordinator-unclosed-flow-fixture: go test -count=1 ./consumes/kogen-coordinator passes from cli and runs TestParseConfigRefusalsAreSysErrorsWithLines/unclosed_flow",
+      "files": {
+        "cli/consumes/kogen-coordinator/config_test.go": {
+          "patch": "--- a/cli/consumes/kogen-coordinator/config_test.go\n+++ b/cli/consumes/kogen-coordinator/config_test.go\n@@ -183,6 +183,9 @@\n \t}\n \tfor _, c := range cases {\n \t\tt.Run(c.name, func(t *testing.T) {\n+\t\t\tif c.name == \"unclosed flow\" {\n+\t\t\t\tt.Skip(\"omit the malformed flow case\")\n+\t\t\t}\n \t\t\tcfg, err := project.ParseConfig(c.text, \"project.yaml\")\n \t\t\tif err == nil || cfg != nil {\n \t\t\t\tt.Fatalf(\"ParseConfig = %+v, %v; want an error\", cfg, err)\n"
+        }
+      }
+    }
+  ]
+}

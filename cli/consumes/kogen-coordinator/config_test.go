@@ -179,7 +179,7 @@ func TestParseConfigRefusalsAreSysErrorsWithLines(t *testing.T) {
 		{"removed shape_workers key", "version: 1\nshape_workers:\n  enabled: true\n", []string{"line 2: unknown key shape_workers"}},
 		{"unsupported version", "version: 2\n", []string{"line 1: version must be 1"}},
 		{"empty file", "", []string{"line 1: the file is empty"}},
-		{"unclosed flow", "version: 1\n\tbad: [\n", []string{"line 2: unclosed ["}},
+		{"unclosed flow", "version: 1\ncommands: [\n", []string{"line 2: unclosed ["}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
