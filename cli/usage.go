@@ -78,6 +78,9 @@ func usageCommand(args []string) int {
 				}
 				filters[k] = t.Format(time.RFC3339Nano)
 			default:
+				if v == "" {
+					return invalidArgument("usage", nil, name+" must not be empty")
+				}
 				filters[k] = v
 			}
 		} else if id == "" && runID.MatchString(a) {

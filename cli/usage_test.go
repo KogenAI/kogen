@@ -96,6 +96,20 @@ func TestUsageScanDamageSymlinksAndCaps(t *testing.T) {
 	}
 }
 
+func TestUsageRejectsEmptyRecordFilters(t *testing.T) {
+	root := factProject(t)["root"].(string)
+	var cases [][]string
+	for _, option := range []string{"slug", "phase", "role", "model", "effective-model", "effort", "effective-effort", "outcome", "pass", "repair"} {
+		name := "--" + option
+		for _, jsonArg := range [][]string{nil, {"--json"}} {
+			prefix := append([]string{"kogen intent usage: " + name + " must not be empty", "intent", "usage", "--project", root}, jsonArg...)
+			cases = append(cases, append(append([]string{}, prefix...), name+"="))
+			cases = append(cases, append(append([]string{}, prefix...), name, ""))
+		}
+	}
+	checkRefusedDetails(t, cases)
+}
+
 func TestUsageExactFiltersDatesAndUnknowns(t *testing.T) {
 	r := usageFixture("a", float64(100), float64(20))
 	for _, k := range usageKeys {

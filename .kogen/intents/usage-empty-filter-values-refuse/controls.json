@@ -1,0 +1,51 @@
+{
+  "correct": {
+    "files": {
+      "cli/usage.go": {
+        "patch": "--- a/cli/usage.go\n+++ b/cli/usage.go\n@@ -78,6 +78,9 @@\n \t\t\t\t}\n \t\t\t\tfilters[k] = t.Format(time.RFC3339Nano)\n \t\t\tdefault:\n+\t\t\t\tif v == \"\" {\n+\t\t\t\t\treturn invalidArgument(\"usage\", nil, name+\" must not be empty\")\n+\t\t\t\t}\n \t\t\t\tfilters[k] = v\n \t\t\t}\n \t\t} else if id == \"\" && runID.MatchString(a) {\n"
+      }
+    }
+  },
+  "wrong": [
+    {
+      "name": "accept empty exact filters",
+      "scenario": "Reject an empty phase in equals form",
+      "step": "Then usage-empty-filter-values-refuse: the usage error names \"--phase\" as empty",
+      "files": {
+        "cli/usage.go": {
+          "patch": "--- a/cli/usage.go\n+++ b/cli/usage.go\n@@ -78,9 +78,6 @@\n \t\t\t\t}\n \t\t\t\tfilters[k] = t.Format(time.RFC3339Nano)\n \t\t\tdefault:\n-\t\t\t\tif v == \"\" {\n-\t\t\t\t\treturn invalidArgument(\"usage\", nil, name+\" must not be empty\")\n-\t\t\t\t}\n \t\t\t\tfilters[k] = v\n \t\t\t}\n \t\t} else if id == \"\" && runID.MatchString(a) {\n"
+        }
+      }
+    },
+    {
+      "name": "validate only equals form",
+      "scenario": "Reject an empty model in a separate argument",
+      "step": "Then usage-empty-filter-values-refuse: the usage error names \"--model\" as empty",
+      "files": {
+        "cli/usage.go": {
+          "patch": "--- a/cli/usage.go\n+++ b/cli/usage.go\n@@ -78,7 +78,7 @@\n \t\t\t\t}\n \t\t\t\tfilters[k] = t.Format(time.RFC3339Nano)\n \t\t\tdefault:\n-\t\t\t\tif v == \"\" {\n+\t\t\t\tif v == \"\" && has {\n \t\t\t\t\treturn invalidArgument(\"usage\", nil, name+\" must not be empty\")\n \t\t\t\t}\n \t\t\t\tfilters[k] = v\n"
+        }
+      }
+    },
+    {
+      "name": "reject nonempty filters too",
+      "scenario": "Keep exact matching for a nonempty phase",
+      "step": "Then usage-empty-filter-values-refuse: the report lists exactly these request phases in order \"review\"",
+      "files": {
+        "cli/usage.go": {
+          "patch": "--- a/cli/usage.go\n+++ b/cli/usage.go\n@@ -78,7 +78,7 @@\n \t\t\t\t}\n \t\t\t\tfilters[k] = t.Format(time.RFC3339Nano)\n \t\t\tdefault:\n-\t\t\t\tif v == \"\" {\n+\t\t\t\tif true {\n \t\t\t\t\treturn invalidArgument(\"usage\", nil, name+\" must not be empty\")\n \t\t\t\t}\n \t\t\t\tfilters[k] = v\n"
+        }
+      }
+    },
+    {
+      "name": "match phases case-insensitively",
+      "scenario": "Keep exact matching for a nonempty phase",
+      "step": "Then usage-empty-filter-values-refuse: the report lists exactly these request phases in order \"review\"",
+      "files": {
+        "cli/usage.go": {
+          "patch": "--- a/cli/usage.go\n+++ b/cli/usage.go\n@@ -271,7 +271,7 @@\n \t\t\tcontinue\n \t\t}\n \t\tx := usageField(r, k)\n-\t\tif x == nil || fmt.Sprint(x) != fmt.Sprint(v) {\n+\t\tif x == nil || (k == \"phase\" && !strings.EqualFold(fmt.Sprint(x), fmt.Sprint(v))) || (k != \"phase\" && fmt.Sprint(x) != fmt.Sprint(v)) {\n \t\t\treturn false\n \t\t}\n \t}\n"
+        }
+      }
+    }
+  ]
+}
