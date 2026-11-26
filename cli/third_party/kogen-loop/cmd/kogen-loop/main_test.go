@@ -60,3 +60,27 @@ func TestValidateTaskDeadlineSeconds(t *testing.T) {
 		}
 	})
 }
+
+func TestReadTaskProtocolRefusalPrecedesFieldDecoding(t *testing.T) {
+	cases := []struct {
+		name, input, reason string
+		detailParts         []string
+	}{
+		{"foreign protocol", `{"protocol":"kogen-loop/v2","unknown_field":true}`, api.ErrUnsupportedProtocol, []string{"kogen-loop/v2", "kogen-loop/v1"}},
+		{"supported protocol", `{"protocol":"kogen-loop/v1","unknown_field":true}`, api.ErrInvalidTask, []string{"unknown_field"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := readTask("-", strings.NewReader(tc.input))
+			e, ok := sys.AsError(err)
+			if !ok || e.Class != api.ErrClassLoop || e.Exit != api.ExitInvalid || e.Reason != tc.reason {
+				t.Fatalf("readTask error = %v; want loop/%s exit 2", err, tc.reason)
+			}
+			for _, part := range tc.detailParts {
+				if !strings.Contains(e.Detail, part) {
+					t.Errorf("readTask detail = %q; want %q", e.Detail, part)
+				}
+			}
+		})
+	}
+}
