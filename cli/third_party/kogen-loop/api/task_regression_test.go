@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -54,13 +55,35 @@ func TestDecodeTaskRejectsUnknownNestedField(t *testing.T) {
 	}
 }
 
+func TestDecodeTaskRejectsInexactFieldNames(t *testing.T) {
+	for _, tc := range []struct{ name, text, field string }{
+		{"root", `{"Prompt":"hello"}`, "Prompt"},
+		{"role", `{"role":{"Model":"m"}}`, "Model"},
+		{"session", `{"session":{"Dir":"/tmp/s"}}`, "Dir"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := api.DecodeTask(strings.NewReader(tc.text))
+			if err == nil || !strings.Contains(err.Error(), tc.field) || !reflect.DeepEqual(got, api.Task{}) {
+				t.Fatalf("got task %+v, error %v; want zero task and error naming %q", got, err, tc.field)
+			}
+		})
+	}
+}
+
 func TestDecodeTaskAcceptsKnownNestedFields(t *testing.T) {
-	text := `{"prompt":"hello",` +
+	escaped, err := api.DecodeTask(strings.NewReader(`{"pr\u006fmpt":"hello","role":{"m\u006fdel":"m"},"session":{"d\u0069r":"/tmp/s"}}`))
+	if err != nil || escaped.Prompt != "hello" || escaped.Role.Model != "m" || escaped.Session.Dir != "/tmp/s" {
+		t.Fatalf("escaped exact names: task %+v, error %v", escaped, err)
+	}
+	text := " \n" + `{"prompt":"hello",` +
 		`"role":{"provider":"anthropic","model":"m","effort":"high","base_url":"http://example.test"},` +
-		`"session":{"dir":"/tmp/s","resume":true}}`
+		`"session":{"dir":"/tmp/s","resume":true},"tools":["read_file","list_files"]}` + "\t\n"
 	got, err := api.DecodeTask(strings.NewReader(text))
 	if err != nil {
 		t.Fatalf("rejected a task with only known nested fields: %v", err)
+	}
+	if got.Prompt != "hello" || !reflect.DeepEqual(got.Tools, []string{"read_file", "list_files"}) {
+		t.Fatalf("prompt or tools not preserved: %+v", got)
 	}
 	wantRole := api.Role{Provider: "anthropic", Model: "m", Effort: "high", BaseURL: "http://example.test"}
 	if got.Role != wantRole {
@@ -69,5 +92,24 @@ func TestDecodeTaskAcceptsKnownNestedFields(t *testing.T) {
 	wantSession := api.SessionSpec{Dir: "/tmp/s", Resume: true}
 	if got.Session != wantSession {
 		t.Fatalf("session = %+v, want %+v", got.Session, wantSession)
+	}
+}
+
+func TestDecodeTaskRejectsDuplicateMembers(t *testing.T) {
+	for _, tc := range []struct{ name, text, key string }{
+		{"root", `{"prompt":"first","prompt":"last"}`, "prompt"},
+		{"role", `{"role":{"model":"first","model":"last"}}`, "model"},
+		{"session", `{"session":{"dir":"first","dir":"last"}}`, "dir"},
+		{"array", `{"tools":[{"inner":{"label":"first","label":"last"}}]}`, "label"},
+		{"escape", `{"prompt":"first","pr\u006fmpt":"last"}`, "prompt"},
+		{"schema precedence", `{"unknown":1,"role":{"model":1,"model":2}}`, "model"},
+		{"large number before duplicate", `{"unknown":1e1000,"prompt":"a","prompt":"b"}`, "prompt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := api.DecodeTask(strings.NewReader(tc.text))
+			if err == nil || !strings.Contains(err.Error(), tc.key) || !reflect.DeepEqual(got, api.Task{}) {
+				t.Fatalf("got task %+v, error %v; want zero task and error naming %q", got, err, tc.key)
+			}
+		})
 	}
 }

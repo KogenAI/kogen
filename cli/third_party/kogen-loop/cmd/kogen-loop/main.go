@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -327,6 +328,9 @@ func validateTask(t api.Task) (string, error) {
 	}
 	if t.DeadlineSeconds < 0 {
 		return bad("deadline_seconds must not be negative")
+	}
+	if int64(t.DeadlineSeconds) > math.MaxInt64/int64(time.Second) {
+		return bad(fmt.Sprintf("deadline_seconds exceeds the maximum duration: %d", t.DeadlineSeconds))
 	}
 	if t.Session.Resume && t.Session.Dir == "" {
 		return bad("session.resume needs session.dir")
