@@ -3,6 +3,7 @@ package claudecode
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -155,5 +156,42 @@ func TestJudgeNamesTheFailingCheck(t *testing.T) {
 		if got := judge(c.root, calls, c.results, c.records, false); got != c.want {
 			t.Errorf("%s: judge = %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+func TestUsesReturnsOrderedIndependentSnapshots(t *testing.T) {
+	usesMu.Lock()
+	previous := uses
+	uses = nil
+	usesMu.Unlock()
+	t.Cleanup(func() {
+		usesMu.Lock()
+		uses = previous
+		usesMu.Unlock()
+	})
+
+	pin := pinnedRef(t.TempDir())
+	updated := refFor(t.TempDir(), "2.1.319")
+	noteStarted("shape", "2.1.318 (Claude Code)", pin)
+	noteStarted("build", "2.1.319 (Claude Code)", updated)
+	want := []RuntimeUse{
+		{Role: "shape", Version: "2.1.318", Source: "pinned", Path: pin.path},
+		{Role: "build", Version: "2.1.319", Source: "updated", Path: updated.path},
+	}
+	if got := Uses(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Uses() = %#v, want %#v", got, want)
+	}
+
+	snapshot := Uses()
+	snapshot[0] = RuntimeUse{Role: "caller", Version: "9.9.9", Source: "caller", Path: "/caller"}
+	if got := Uses(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Uses() after overwrite = %#v, want %#v", got, want)
+	}
+
+	// Restore the returned prefix so the append check independently tests the tail.
+	copy(snapshot, want)
+	snapshot = append(snapshot, RuntimeUse{Role: "caller", Version: "9.9.9", Source: "caller", Path: "/caller"})
+	if got := Uses(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Uses() after append = %#v, want %#v", got, want)
 	}
 }
