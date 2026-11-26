@@ -1,6 +1,8 @@
 package loop
 
 import (
+	"math"
+
 	"github.com/KogenAI/kogen-loop/api"
 	"github.com/KogenAI/kogen-loop/provider"
 )
@@ -17,7 +19,8 @@ func UsageOf(resp *provider.Response) api.Usage {
 }
 
 // SumUsage adds usages. A category is nil as soon as one usage lacks it: a total that hides
-// a missing value would be an estimate. Summing nothing is unknown.
+// a missing value would be an estimate. A category is also nil if its sum exceeds int.
+// Summing nothing is unknown.
 func SumUsage(us ...api.Usage) api.Usage {
 	if len(us) == 0 {
 		return usageFrom(nil, nil, nil, nil)
@@ -26,7 +29,7 @@ func SumUsage(us ...api.Usage) api.Usage {
 		sum := 0
 		for _, u := range us {
 			p := pick(u)
-			if p == nil {
+			if p == nil || *p > math.MaxInt-sum {
 				return nil
 			}
 			sum += *p

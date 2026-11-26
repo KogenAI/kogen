@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"reflect"
 	"strings"
@@ -181,6 +182,29 @@ func TestUsageValidatesDisjointWritesAndSubsetReasoning(t *testing.T) {
 	}
 	if got := (Usage{1, 2, 3, 4}).Add(Usage{1, 1, 1, 1}); got != (Usage{2, 3, 4, 5}) || got.Line() != "input=2 cached=3 output=4 reasoning=5" || got.Total() != 6 {
 		t.Fatal(got)
+	}
+}
+
+func TestKnownUsageStateIntBoundary(t *testing.T) {
+	t.Parallel()
+	n := func(i int) *int { return &i }
+	for _, tc := range []struct {
+		name                              string
+		input, cached, write, short, long int
+		want                              string
+	}{
+		{"disjoint overflow", math.MaxInt, math.MaxInt, 1, 0, 1, UsageInconsistent},
+		{"lifetime overflow", math.MaxInt, 0, math.MaxInt, math.MaxInt, 1, UsageInconsistent},
+		{"both at limit", math.MaxInt, 0, math.MaxInt, math.MaxInt - 1, 1, UsageKnown},
+		{"disjoint at limit", math.MaxInt, 1, math.MaxInt - 1, math.MaxInt - 2, 1, UsageKnown},
+		{"below limit", math.MaxInt - 1, 0, math.MaxInt - 1, math.MaxInt - 2, 1, UsageKnown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := KnownUsage{Input: n(tc.input), Cached: n(tc.cached), Write: n(tc.write), Write30m: n(tc.short), Write12h: n(tc.long), Output: n(1), Reasoning: n(0)}
+			if got := k.State(); got != tc.want {
+				t.Errorf("State() = %s, want %s", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"math"
 )
 
 // Usage is the compatible token total of a request or a run (GPT-9): reasoning is a
@@ -87,8 +88,8 @@ func (r rawUsage) state() string {
 	}
 	k := r.known()
 	le := func(a, b *int) bool { return a == nil || b == nil || *a <= *b }
-	disjoint := k.Cached == nil || k.Write == nil || k.Input == nil || *k.Cached+*k.Write <= *k.Input
-	lifetimes := k.Write == nil || k.Write30m == nil || k.Write12h == nil || *k.Write30m+*k.Write12h == *k.Write
+	disjoint := k.Cached == nil || k.Write == nil || k.Input == nil || (*k.Cached <= math.MaxInt-*k.Write && *k.Cached+*k.Write <= *k.Input)
+	lifetimes := k.Write == nil || k.Write30m == nil || k.Write12h == nil || (*k.Write30m <= math.MaxInt-*k.Write12h && *k.Write30m+*k.Write12h == *k.Write)
 	if !le(k.Cached, k.Input) || !le(k.Write, k.Input) || !le(k.Write30m, k.Write) || !le(k.Write12h, k.Write) || !le(k.Reasoning, k.Output) || !disjoint || !lifetimes {
 		return UsageInconsistent
 	}
