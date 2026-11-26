@@ -113,6 +113,8 @@ Next: kogen intent approve <slug>
 If the model needs a decision, it prints numbered questions; answer with `printf '1: a\n' | kogen intent shape <slug> -`.
 To correct a ready Intent, run `kogen intent refine <slug> <sha256> <correction-file>`.
 
+If Shape refuses with `shape/protected_conflict`, follow the [protected dependency update handoff](configuration.md#updating-dependencies-when-files-are-protected).
+
 ## 5. Approve
 
 ```sh

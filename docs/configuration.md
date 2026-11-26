@@ -38,6 +38,23 @@ For a test that fails now and then, rerun the failed tests in the same check, fo
 Start services such as databases yourself, and put what prepares them in `setup`.
 An invalid file is refused as `environment/project_config_invalid` with one `line <n>: <message>` per problem.
 
+### Updating dependencies when files are protected
+
+Dependency-only manifests and lockfiles can change in a Build while preserving checks and actual verification configuration. For example, `go.mod` and `go.sum` are ordinary dependency inputs; being consumed by a check is not grounds for protection. Do not add or remove paths from `protect` wholesale on that basis.
+
+If a combined manifest is explicitly protected, the whole file cannot change in an ordinary Build: there is no dependency-only exception, and approval of an Intent does not grant protected-file edit permission.
+
+For example, `mix.exs` can contain dependencies and the `test` alias reached by configured `mix test`. Likewise, `package.json` can contain dependencies and the `test` script reached by configured `npm test`. Whole-file protection applies to either only when it is explicitly protected, not because of its name or language.
+
+After `shape/protected_conflict`, the CLI names the files to review. First revise the request to avoid the protected edit if possible. Otherwise, outside Build:
+
+1. Review the exact dependency and lockfile diff against the current base, keeping existing test definitions protected.
+2. Apply the candidate change to a fresh checkout and verify all existing checks and any proposed new checks.
+3. For a new required check, review its command and actual check configuration in that baseline change and verify it before enabling it.
+4. Commit the reviewed change, then shape again on the updated base with `kogen intent shape <slug> request.md`.
+
+A Shape refusal starts no Build and does not need recovery. For a Build stopped by a protected-file contradiction, follow the separate [Build recovery instructions](getting-started.md#6-build).
+
 ## `.kogen/models.yaml`
 
 The team lineup: which model runs each role. A role the file omits keeps its default.
