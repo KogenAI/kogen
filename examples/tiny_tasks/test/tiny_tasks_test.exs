@@ -76,6 +76,34 @@ defmodule TinyTasksTest do
     end
   end
 
+  test "adding without a title fails without creating a task file" do
+    root = Path.join(System.tmp_dir!(), "tiny-tasks-#{System.unique_integer([:positive])}")
+    file = Path.join(root, "tasks.tsv")
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    {output, status} = run_task(file, "todo.add", [])
+
+    assert status != 0
+    assert output =~ "title"
+    refute output =~ "FunctionClauseError"
+    refute File.exists?(file)
+  end
+
+  test "completing without an ID fails without changing the task file" do
+    root = Path.join(System.tmp_dir!(), "tiny-tasks-#{System.unique_integer([:positive])}")
+    file = Path.join(root, "tasks.tsv")
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    add_task(file, "Pay the rent")
+    before = File.read!(file)
+    {output, status} = run_task(file, "todo.complete", [])
+
+    assert status != 0
+    assert output =~ "ID"
+    refute output =~ "FunctionClauseError"
+    assert File.read!(file) == before
+  end
+
   test "TASK-2: open listing preserves stored order" do
     assert_open_listing(
       "7\topen\tWmVicmE=\n4\tdone\tRmluaXNoZWQ=\n9\topen\tQXBwbGU=\n2\topen\tTWFuZ28=\n",

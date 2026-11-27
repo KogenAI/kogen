@@ -4,6 +4,8 @@ defmodule Mix.Tasks.Todo.Complete do
   @shortdoc "Complete a task"
 
   @impl Mix.Task
+  def run([]), do: Mix.raise("Missing task ID")
+
   def run([id]) do
     number =
       case Integer.parse(id) do

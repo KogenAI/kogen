@@ -4,6 +4,8 @@ defmodule Mix.Tasks.Todo.Add do
   @shortdoc "Add a task"
 
   @impl Mix.Task
+  def run([]), do: Mix.raise("Missing task title")
+
   def run([title | _rest]) do
     Mix.Task.run("app.start")
     task = TinyTasks.add(title)
