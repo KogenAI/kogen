@@ -115,6 +115,35 @@ defmodule TinyTasksTest do
     assert_open_listing("4\tdone\tRmluaXNoZWQ=\n", ["No tasks yet."])
   end
 
+  test "malformed stored rows report their location without writing the file" do
+    root = Path.join(System.tmp_dir!(), "tiny-tasks-#{System.unique_integer([:positive])}")
+    file = Path.join(root, "tasks.tsv")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    for {contents, line} <- [
+          {"1\topen\tWmVicmE=\n2\topen\n", 2},
+          {"1\topen\tWmVicmE=\n\n2\topen\tQXBwbGU=\textra\n", 3},
+          {"abc\topen\tWmVicmE=\n", 1},
+          {"1\topen\tWmVicmE=\n2x\topen\tQXBwbGU=\n", 2}
+        ] do
+      File.write!(file, contents)
+      File.touch!(file, {{2000, 1, 1}, {0, 0, 0}})
+      stat = File.stat!(file)
+
+      for {task, args} <- [{"todo.list", []}, {"todo.add", ["New task"]}] do
+        {output, status} = run_task(file, task, args)
+        assert status != 0
+        assert output =~ "** (Mix) Malformed task row at #{file}:#{line}"
+        refute output =~ "MatchError"
+        refute output =~ "ArgumentError"
+        assert File.read!(file) == contents
+        assert File.stat!(file).inode == stat.inode
+        assert File.stat!(file).mtime == stat.mtime
+      end
+    end
+  end
+
   defp assert_open_listing(contents, expected) do
     root = Path.join(System.tmp_dir!(), "tiny-tasks-#{System.unique_integer([:positive])}")
     file = Path.join(root, "tasks.tsv")

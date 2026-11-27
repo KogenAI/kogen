@@ -1,16 +1,20 @@
 defmodule TinyTasks.Store do
   def read do
-    case File.read(path()) do
+    file = path()
+
+    case File.read(file) do
       {:ok, contents} ->
         contents
-        |> String.split("\n", trim: true)
-        |> Enum.map(&decode/1)
+        |> String.split("\n")
+        |> Enum.with_index(1)
+        |> Enum.reject(fn {line, _number} -> line == "" end)
+        |> Enum.map(fn {line, number} -> decode(line, file, number) end)
 
       {:error, :enoent} ->
         []
 
       {:error, reason} ->
-        raise File.Error, reason: reason, action: "read", path: path()
+        raise File.Error, reason: reason, action: "read", path: file
     end
   end
 
@@ -35,9 +39,13 @@ defmodule TinyTasks.Store do
     |> Enum.join("\t")
   end
 
-  defp decode(line) do
-    [id, status, title] = String.split(line, "\t")
-    %{id: String.to_integer(id), status: status, title: Base.decode64!(title)}
+  defp decode(line, file, number) do
+    with [id, status, title] <- String.split(line, "\t"),
+         {id, ""} <- Integer.parse(id) do
+      %{id: id, status: status, title: Base.decode64!(title)}
+    else
+      _ -> Mix.raise("Malformed task row at #{file}:#{number}")
+    end
   end
 
   defp append_newline(contents, []), do: contents
