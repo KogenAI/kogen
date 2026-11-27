@@ -56,6 +56,26 @@ defmodule TinyTasksTest do
     assert after_stat.mtime == stat.mtime
   end
 
+  test "nonnumeric IDs fail without writing the file" do
+    root = Path.join(System.tmp_dir!(), "tiny-tasks-#{System.unique_integer([:positive])}")
+    file = Path.join(root, "tasks.tsv")
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    add_task(file, "Pay the rent")
+    before = File.read!(file)
+    File.touch!(file, {{2000, 1, 1}, {0, 0, 0}})
+    stat = File.stat!(file)
+
+    for id <- ["abc", "2x"] do
+      {output, status} = run_task(file, "todo.complete", [id])
+      assert status != 0
+      assert output =~ id
+      assert String.downcase(output) =~ "invalid"
+      assert File.read!(file) == before
+      assert File.stat!(file).mtime == stat.mtime
+    end
+  end
+
   test "TASK-2: open listing preserves stored order" do
     assert_open_listing(
       "7\topen\tWmVicmE=\n4\tdone\tRmluaXNoZWQ=\n9\topen\tQXBwbGU=\n2\topen\tTWFuZ28=\n",
