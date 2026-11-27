@@ -1,11 +1,11 @@
-github.com/KogenAI/kogen-build v0.0.0-20261126192428-6f463750c981 h1:9D4cQPGvhVAW+gYR0AswdWy57Je3u9oE2ne6ERi/qLY=
-github.com/KogenAI/kogen-build v0.0.0-20261126192428-6f463750c981/go.mod h1:VStS0N3K6SuZLV7+2irR3wzxCrcuax1/95X2TUyhoQ0=
+github.com/KogenAI/kogen-build v0.0.0-20261127120859-c39e529ad1a9 h1:TizpQp+C/fmFDAifzjbOcz88hH5rWRxYBKjlL6AsELs=
+github.com/KogenAI/kogen-build v0.0.0-20261127120859-c39e529ad1a9/go.mod h1:VStS0N3K6SuZLV7+2irR3wzxCrcuax1/95X2TUyhoQ0=
 github.com/KogenAI/kogen-coordinator v0.0.0-20261126061203-c7baef4a8e89 h1:Zyhzu11TwjIoqvP6obaEQ54o7Amd3N3GD13+RJBRkvk=
 github.com/KogenAI/kogen-coordinator v0.0.0-20261126061203-c7baef4a8e89/go.mod h1:SR9BBvnCfFrNHnL7J3D9lCicIubivffh21/q/4TXIFk=
 github.com/KogenAI/kogen-executor v0.0.0-20261125004010-a9c81c0ca1dd h1:3rSNbQ1o6rNg5+k54cuJOrUmfZYyd8mm33ccFI2p3XI=
 github.com/KogenAI/kogen-executor v0.0.0-20261125004010-a9c81c0ca1dd/go.mod h1:1aw+rhdSBMEagexTyXdL7aRCYZO9Vj1zTx4c88AI+hE=
-github.com/KogenAI/kogen-review v0.0.0-20261125005854-5525f1d100e6 h1:K5+LEhsC4DZJ2n2OZWN61kO+50QyKCzYCe4H9cwxxok=
-github.com/KogenAI/kogen-review v0.0.0-20261125005854-5525f1d100e6/go.mod h1:YLmmnKXgutXlKe9QvAxja/wiXim9r1kByzbBb/MzyjE=
+github.com/KogenAI/kogen-review v0.0.0-20261127133902-ef39f4fce152 h1:t371OK4YAfskmrIzpFjjLc+fQgPeQPU2gwGj1mGEBQY=
+github.com/KogenAI/kogen-review v0.0.0-20261127133902-ef39f4fce152/go.mod h1:YLmmnKXgutXlKe9QvAxja/wiXim9r1kByzbBb/MzyjE=
 github.com/KogenAI/kogen-setup v0.0.0-20261125011042-1142707f6ab3 h1:DhPBnGHIX6c/5RrnM+CkwOOK8MGO/lIUTn22gfThV4g=
 github.com/KogenAI/kogen-setup v0.0.0-20261125011042-1142707f6ab3/go.mod h1:roMz4ULqqdGEIzmweIZxRjM+Fkk5YjtJYdnUbY5l+xg=
 github.com/KogenAI/kogen-shaping v0.0.0-20261124024815-aac5e7292db2 h1:yrK6Tcb0z00izqvHZQX5txIFpLn4YxbnVvIula4kJx4=

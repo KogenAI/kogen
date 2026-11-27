@@ -82,7 +82,7 @@ func (s *Session) Owned(pid int) bool {
 // ForeignKill is the only implementation of the refusal rule. It is a text filter, not
 // a security boundary: it stops the model's habit of cleaning up by name, not a bypass.
 // It does not see `eval "$(echo ... | base64 -d)"`, `sh -c "$VAR"`, `python -c
-// 'os.kill'`, `find -exec kill`, a script file containing pkill, `busybox killall` or
+// 'os.kill'`, a script file containing pkill or
 // computed ids. A group kill is not a sandbox either, and the exit sweep
 // (Options.KillGroupOnExit) does not reach a process that left the group (setsid,
 // own-session nohup, double-fork daemons, Gradle-style daemons).
@@ -94,7 +94,9 @@ func (s *Session) Owned(pid int) bool {
 func ForeignKill(command string, owned func(pid int) bool) (rule string, refused bool) {
 	cmds, undecidable := splitCommands(command)
 	assigned := pidAssignments(command)
-	for _, c := range cmds {
+	all := append([]simpleCmd(nil), cmds...)
+	for i := 0; i < len(cmds); i++ {
+		c := cmds[i]
 		for _, w := range c.words {
 			if w.quot && wholeWord.MatchString(w.text) {
 				return RulePkillKillall, true // prefer a false refusal: echo "do not pkill"
@@ -105,10 +107,28 @@ func ForeignKill(command string, owned func(pid int) bool) (rule string, refused
 			undecidable = true
 		}
 		switch name {
+		case "find":
+			var actions []simpleCmd
+			for j := 0; j < len(args); j++ {
+				if args[j].text != "-exec" && args[j].text != "-execdir" {
+					continue
+				}
+				start := j + 1
+				j = start
+				for j < len(args) && args[j].text != ";" && args[j].text != "+" {
+					j++
+				}
+				actions = append(actions, simpleCmd{args[start:j], c.pipe})
+			}
+			cmds = append(cmds[:i+1], append(actions, cmds[i+1:]...)...)
 		case "pkill", "killall":
 			return RulePkillKillall, true
+		case "busybox":
+			if len(args) > 0 && args[0].text == "killall" {
+				return RulePkillKillall, true
+			}
 		case "kill":
-			if killsForeign(c, args, xargs, cmds, assigned, command, owned) {
+			if killsForeign(c, args, xargs, all, assigned, command, owned) {
 				return RuleKillForeignPid, true
 			}
 		}
