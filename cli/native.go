@@ -17,6 +17,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-loop/provider"
 	"github.com/KogenAI/kogen-loop/sys"
 	"kogen/internal/claudecode"
@@ -39,15 +40,28 @@ func runNative(inv *invocation, root string) (code int, ok bool) {
 			return 0, true
 		}
 		home, _ := os.UserHomeDir()
-		for _, line := range provider.Status(home) {
+		status := provider.Status(home)
+		for _, line := range status {
 			fmt.Println(line)
 		}
 		if _, saved := provider.ClaudeCodeToken(home); !saved {
 			fmt.Println("claude-code: not signed in")
+			status = append(status, "claude-code: not signed in")
 		}
 		fmt.Println(runtimeStatus(home))
 		fmt.Print(provider.OfficialText())
+		var lineup *project.Config
+		if cwd, err := os.Getwd(); err == nil {
+			if cfg, err := project.LoadConfig(cwd); err == nil {
+				lineup = cfg
+			}
+		}
+		for _, line := range stateLines(home, root, status, lineup) {
+			fmt.Println(line)
+		}
 		return 0, true
+	case "test":
+		return providerTest(inv), true
 	case "update":
 		return exitFor(updateClaudeCode()), true
 	case "login":

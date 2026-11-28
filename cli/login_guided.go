@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-loop/provider"
 	"github.com/KogenAI/kogen-loop/sys"
 )
@@ -23,6 +24,7 @@ const (
 	qwenEffort       = "high"
 	qwenWarning      = "Warning: the Token Plan's terms restrict automation and non-interactive batch use; pay-as-you-go suits unattended loops."
 	confirmPrompt    = "Save this login and lineup? [y/N]"
+	connectionOffer  = "Run a connection test now? [y/N]"
 )
 
 // accountChoices are the answers to the account question, in the order they are listed.
@@ -158,6 +160,41 @@ func loginQwenCloud(s *sys.Session, client *provider.Client, in provider.Input, 
 		return sys.Fail("environment", "login_failed", modelsPath+": cannot write ("+err.Error()+"); the login was saved, the lineup was not", 3)
 	}
 	s.Puts("Saved the build role in " + filepath.ToSlash(modelsPath))
+	return offerConnectionTest(s, lines, baseURL)
+}
+
+// offerConnectionTest asks whether to run the connection test now (default no; only `y` runs
+// it, so end of input means no), then prints the three states of the build role. The test is the
+// opt-in `kogen provider test` request and nothing else ever starts it from a login.
+func offerConnectionTest(s *sys.Session, lines *bufio.Reader, baseURL string) error {
+	role := project.Role{Provider: testableProvider, Model: qwenModel, Effort: qwenEffort, BaseURL: baseURL}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	s.Out(connectionOffer + " ")
+	answer, err := readLine(s, lines, "Connection test input")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(answer) == "y" {
+		res, err := connectionTester(s.Context(), home, role)
+		switch {
+		case err != nil && s.Err() != nil:
+			return s.Err()
+		case err != nil:
+			if e, ok := sys.AsError(err); ok {
+				s.Out(e.Render())
+			} else {
+				s.Puts(testableProvider + ": connection test failed, class: " + classEndpoint + " (" + strings.SplitN(err.Error(), "\n", 2)[0] + ")")
+			}
+		default:
+			s.Puts(res.line(testableProvider))
+		}
+	}
+	status := provider.Status(home)
+	root, _ := installRoot()
+	s.Puts(roleStatesLine(home, shippedDocs(root), "build", role, loginSaved(status, testableProvider)))
 	return nil
 }
 

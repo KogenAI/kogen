@@ -13,6 +13,17 @@ A qualification record is not a promise of access or availability; it names the 
 | `claude-code` | Claude subscription, signed in through Kogen's pinned Claude Code | Shape: not qualified; Build: not qualified; Review: not qualified | Built in | [Sign in](getting-started.md#2-sign-in) |
 | `openai-compatible` | Base URL and key of the host | Shape: not qualified; Build: not qualified; Review: not qualified | Custom endpoint | [openai-compatible](#openai-compatible) |
 
+## Credential states
+
+The CLI shows three separate states with exactly these labels, the same ones Kogen.dev uses:
+
+- `key saved` means a credential is stored locally.
+- `connection tested` means a minimal request to the configured endpoint succeeded (HTTP status and a well-formed reply) at a recorded time.
+- `role verified` means the provider and model are listed with a qualification record for that role in docs/providers.md.
+
+`kogen provider list` prints, after its status lines, one `states <provider>: ...` line per provider and one `states role <shape|build|review> (<provider>, <model>): ...` line per role of `.kogen/models.yaml`, each with the labels that hold joined by `; ` or `none`. `connection tested` is followed by the recorded time. `role verified` is read only from the table above, never from a test result, and is shown only for roles.
+`kogen provider test openai-compatible` is the opt-in connection test: one short streaming request without tools to the `base_url` of the first role that uses `openai-compatible`, sent only to the origin the key is saved for. It prints `connection tested <time> (HTTP <status>)`, or `connection test failed, class: <class>` and exits 4, with the class `auth`, `endpoint`, `timeout` or `malformed reply`. It records the result next to the login in `~/.kogen/credentials`, never in the repository, and a failed test drops an earlier `connection tested`. Shape, Build and Review never run it.
+
 ## openai-compatible
 
 `openai-compatible` talks to a host you choose. Kogen has no qualification record for any compatible host, so every role of this provider is not qualified, whatever the host advertises.
@@ -41,7 +52,7 @@ build: {provider: openai-compatible, base_url: https://token-plan.maas.qwencloud
 The guided flow writes the same role in block form. The Singapore pay-as-you-go base URL is `https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1`.
 
 The direct form is unchanged for scripts and agents: `kogen provider login openai-compatible` reads the base URL on line 1 and the key on line 2 from stdin, and you add the role to `.kogen/models.yaml` yourself.
-The guided flow makes no network call.
+The guided flow makes no network call, except that after saving it asks `Run a connection test now? [y/N]` (default no; only `y` runs the test) and then prints the three states of the build role.
 
 Honesty note: Token Plan terms restrict automation and non-interactive batch use, so read them before you choose between a Token Plan and pay-as-you-go.
 The Chat Completions route streams its reply, and a first byte that arrives 60 seconds late is still waited for.

@@ -63,6 +63,7 @@ Commands:
   login claude-code        Sign in with Kogen's Claude Code on an interactive terminal; piped input is token storage only
   login openai-compatible  Save a key for an OpenAI-compatible host: its base URL line, then the key line (stdin or terminal)
   list [--json]            Show local logins and official compatibility
+  test <provider>          Opt in: send one minimal request to the configured endpoint and record the result
 
 Logins belong to this machine, never to a repo.
 `
@@ -107,6 +108,7 @@ var leaves = map[string]spec{
 	"intent build":    {path: "intent build", command: "build", page: "intent", options: []string{"project", "context"}, positional: []string{"<slug>"}},
 	"provider login":  {path: "provider login", command: "login", page: "provider", positional: []string{"<provider>"}, optional: 1},
 	"provider list":   {path: "provider list", command: "list", page: "provider", options: []string{"json"}},
+	"provider test":   {path: "provider test", command: "test", page: "provider", positional: []string{"<provider>"}},
 	"provider update": {path: "provider update", command: "update", page: "provider", positional: []string{"<provider>"}},
 }
 
@@ -226,6 +228,11 @@ func parse(args []string) (*invocation, string, *usageError) {
 			if !contains(loginProviders, pos[0]) {
 				return fail("unknown provider '%s' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)", pos[0])
 			}
+		}
+	case "test":
+		inv.provider = pos[0]
+		if pos[0] != testableProvider {
+			return fail("unknown provider '%s' (only %s can be tested)", pos[0], testableProvider)
 		}
 	case "update":
 		inv.provider = pos[0]
@@ -446,7 +453,7 @@ func uninstall(root string) error {
 	if err := removeClaudeRuntime(); err != nil {
 		return err
 	}
-	fmt.Print("Kept your ChatGPT, SuperGrok, OpenCode Go, Anthropic, Claude Code and OpenAI-compatible logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock ~/.kogen/credentials/claude-code.json ~/.kogen/credentials/claude-code.lock ~/.kogen/credentials/openai-compatible.json ~/.kogen/credentials/openai-compatible.lock\n")
+	fmt.Print("Kept your ChatGPT, SuperGrok, OpenCode Go, Anthropic, Claude Code and OpenAI-compatible logins; remove it with: rm -f ~/.kogen/credentials/chatgpt.json ~/.kogen/credentials/chatgpt.lock ~/.kogen/host-id ~/.kogen/credentials/supergrok.json ~/.kogen/credentials/supergrok.lock ~/.kogen/credentials/opencode-go.json ~/.kogen/credentials/opencode-go.lock ~/.kogen/credentials/anthropic.json ~/.kogen/credentials/anthropic.lock ~/.kogen/credentials/claude-code.json ~/.kogen/credentials/claude-code.lock ~/.kogen/credentials/openai-compatible.json ~/.kogen/credentials/openai-compatible.lock ~/.kogen/credentials/openai-compatible.connection.json\n")
 	return nil
 }
 

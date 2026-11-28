@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/KogenAI/kogen-coordinator/project"
 	"github.com/KogenAI/kogen-loop/provider"
 	"github.com/KogenAI/kogen-loop/sys"
 )
@@ -151,5 +154,70 @@ func TestLoginWithoutProviderIsRefusedOffATerminal(t *testing.T) {
 	interactiveLogin = func() bool { return false }
 	if code := run([]string{"provider", "login"}, func() (string, error) { t.Fatal("runtime lookup"); return "", nil }); code != 2 {
 		t.Fatalf("exit %d, want 2", code)
+	}
+}
+
+// fakeTester replaces the connection test with a recorder that also records a success, so the
+// guided login never reaches a public host.
+func fakeTester(t *testing.T) *int {
+	t.Helper()
+	calls := 0
+	old := connectionTester
+	connectionTester = func(ctx context.Context, home string, role project.Role) (connectionResult, error) {
+		calls++
+		res := connectionResult{At: time.Date(2026, 11, 28, 10, 0, 0, 0, time.UTC), OK: true, Status: 200}
+		origin, _ := normalizeOrigin(role.BaseURL)
+		return res, writeConnectionRecord(home, testableProvider, connectionRecord{Time: formatTime(res.At), Result: "ok", Status: 200, Origin: origin})
+	}
+	t.Cleanup(func() { connectionTester = old })
+	return &calls
+}
+
+func TestGuidedQwenCloudOffersTheConnectionTestAndRunsItOnlyAfterY(t *testing.T) {
+	calls := fakeTester(t)
+	_, _, out, err := guidedRun(t, guidedModels, "6\n1\nsk-fake-guided-key\ny\ny\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 1 {
+		t.Fatalf("test ran %d times", *calls)
+	}
+	if strings.Index(out, "Saved the build role") > strings.Index(out, "Run a connection test now? [y/N]") {
+		t.Fatalf("the offer comes before the save: %s", out)
+	}
+	for _, want := range []string{
+		"openai-compatible: connection tested 2026-11-28T10:00:00Z (HTTP 200)",
+		"states role build (openai-compatible, qwen4-max): key saved; connection tested 2026-11-28T10:00:00Z",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "sk-fake-guided-key") || strings.Contains(out, "role verified") {
+		t.Fatalf("output: %s", out)
+	}
+}
+
+func TestGuidedQwenCloudAnyOtherAnswerRunsNoTest(t *testing.T) {
+	for _, typed := range []string{"n\n", "\n", "yes\n", "Y\n", ""} {
+		calls := fakeTester(t)
+		_, _, out, err := guidedRun(t, guidedModels, "6\n1\nsk-fake-guided-key\ny\n"+typed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *calls != 0 {
+			t.Fatalf("answer %q ran the test", typed)
+		}
+		if !strings.Contains(out, "states role build (openai-compatible, qwen4-max): key saved\n") {
+			t.Fatalf("answer %q: summary missing in: %s", typed, out)
+		}
+	}
+}
+
+func TestGuidedQwenCloudDeclinedSaveOffersNoTest(t *testing.T) {
+	calls := fakeTester(t)
+	_, _, out, err := guidedRun(t, guidedModels, "6\n1\nsk-fake-guided-key\nn\ny\n")
+	if err != nil || *calls != 0 || strings.Contains(out, "connection test") {
+		t.Fatalf("calls %d err %v out %s", *calls, err, out)
 	}
 }

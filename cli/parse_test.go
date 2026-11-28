@@ -63,6 +63,7 @@ Commands:
   login claude-code        Sign in with Kogen's Claude Code on an interactive terminal; piped input is token storage only
   login openai-compatible  Save a key for an OpenAI-compatible host: its base URL line, then the key line (stdin or terminal)
   list [--json]            Show local logins and official compatibility
+  test <provider>          Opt in: send one minimal request to the configured endpoint and record the result
 
 Logins belong to this machine, never to a repo.
 `},
@@ -106,6 +107,7 @@ func TestParseCommandTreeCLI1(t *testing.T) {
 		{name: "supergrok login", args: []string{"provider", "login", "supergrok"}, want: invocation{command: "login", provider: "supergrok"}},
 		{name: "provider list JSON", args: []string{"provider", "list", "--json"}, want: invocation{command: "list", json: true}},
 		{name: "provider list", args: []string{"provider", "list"}, want: invocation{command: "list"}},
+		{name: "provider test openai-compatible", args: []string{"provider", "test", "openai-compatible"}, want: invocation{command: "test", provider: "openai-compatible"}},
 		{name: "provider update claude-code", args: []string{"provider", "update", "claude-code"}, want: invocation{command: "update", provider: "claude-code"}},
 		{name: "uninstall", args: []string{"uninstall"}, want: invocation{command: "uninstall"}},
 		{name: "version", args: []string{"version"}, want: invocation{command: "version"}},
@@ -180,6 +182,8 @@ func TestParseGrammarCLI2(t *testing.T) {
 		{name: "version extra positional", args: []string{"version", "extra"}, msg: "kogen version: unexpected argument 'extra'", page: "top"},
 		{name: "list extra positional", args: []string{"provider", "list", "extra"}, msg: "kogen provider list: unexpected argument 'extra'", page: "provider"},
 		{name: "double dash makes option-looking token positional", args: []string{"intent", "build", "feature", "--", "--project"}, msg: "kogen intent build: unexpected argument '--project'", page: "intent"},
+		{name: "test missing provider", args: []string{"provider", "test"}, msg: "kogen provider test: missing <provider>", page: "provider"},
+		{name: "test other provider", args: []string{"provider", "test", "chatgpt"}, msg: "kogen provider test: unknown provider 'chatgpt' (only openai-compatible can be tested)", page: "provider"},
 		{name: "update missing provider", args: []string{"provider", "update"}, msg: "kogen provider update: missing <provider>", page: "provider"},
 		{name: "update unknown provider", args: []string{"provider", "update", "chatgpt"}, msg: "kogen provider update: unknown provider 'chatgpt' (only claude-code updates)", page: "provider"},
 		{name: "unknown provider", args: []string{"provider", "login", "grok"}, msg: "kogen provider login: unknown provider 'grok' (supported: chatgpt, supergrok, opencode-go, anthropic, claude-code, openai-compatible)", page: "provider"},

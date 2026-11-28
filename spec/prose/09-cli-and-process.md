@@ -85,6 +85,7 @@ Commands:
   login claude-code        Sign in with Kogen's Claude Code on an interactive terminal; piped input is token storage only
   login openai-compatible  Save a key for an OpenAI-compatible host: its base URL line, then the key line (stdin or terminal)
   list [--json]            Show local logins and official compatibility
+  test <provider>          Opt in: send one minimal request to the configured endpoint and record the result
 
 Logins belong to this machine, never to a repo.
 ```
