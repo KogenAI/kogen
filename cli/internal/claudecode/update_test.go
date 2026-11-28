@@ -195,3 +195,55 @@ func TestUsesReturnsOrderedIndependentSnapshots(t *testing.T) {
 		t.Errorf("Uses() after append = %#v, want %#v", got, want)
 	}
 }
+
+func TestReadHarnessMissing(t *testing.T) {
+	root := t.TempDir()
+	if got := readHarness(root); !reflect.DeepEqual(got, Harness{}) {
+		t.Errorf("readHarness(empty root) = %#v, want empty", got)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("root after read contains %v, want no entries", entries)
+	}
+
+	missing := filepath.Join(root, "missing")
+	if got := readHarness(missing); !reflect.DeepEqual(got, Harness{}) {
+		t.Errorf("readHarness(missing root) = %#v, want empty", got)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Errorf("missing root after read: stat error = %v, want not exist", err)
+	}
+}
+
+func TestReadHarnessMalformed(t *testing.T) {
+	for _, c := range []struct{ name, content string }{
+		{"not JSON", `not JSON`},
+		{"truncated", `{"checked_at":"2026-11-19T12:00:00Z","last_result":"failed"`},
+		{"wrong type", `{"checked_at":"2026-11-19T12:00:00Z","last_result":"failed","failed":{"2.1.319":"hook","2.1.320":42}}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, HarnessFile), []byte(c.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got := readHarness(root); !reflect.DeepEqual(got, Harness{}) {
+				t.Errorf("readHarness(malformed) = %#v, want empty", got)
+			}
+		})
+	}
+}
+
+func TestReadHarnessValid(t *testing.T) {
+	root := t.TempDir()
+	content := `{"checked_at":"2026-11-19T12:00:00Z","last_result":"failed","failed":{"2.1.319":"hook","2.1.320":"write"}}`
+	if err := os.WriteFile(filepath.Join(root, HarnessFile), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := Harness{CheckedAt: "2026-11-19T12:00:00Z", LastResult: "failed", Failed: map[string]string{"2.1.319": "hook", "2.1.320": "write"}}
+	if got := readHarness(root); !reflect.DeepEqual(got, want) {
+		t.Errorf("readHarness(valid) = %#v, want %#v", got, want)
+	}
+}
